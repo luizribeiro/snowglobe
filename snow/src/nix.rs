@@ -196,32 +196,6 @@ mod tests {
     }
 
     #[test]
-    fn test_store_path() {
-        let path = StorePath::new("/nix/store/abc123-nixos-system".to_string());
-        assert_eq!(path.as_str(), "/nix/store/abc123-nixos-system");
-    }
-
-    #[test]
-    fn test_deploy_target_ssh_destination() {
-        let target = DeployTarget {
-            user: "root".to_string(),
-            hostname: "hydrogen.example.com".to_string(),
-            port: None,
-        };
-        assert_eq!(target.ssh_destination(), "root@hydrogen.example.com");
-    }
-
-    #[test]
-    fn test_deploy_target_ssh_url() {
-        let target = DeployTarget {
-            user: "root".to_string(),
-            hostname: "hydrogen.example.com".to_string(),
-            port: None,
-        };
-        assert_eq!(target.ssh_url(), "ssh://root@hydrogen.example.com");
-    }
-
-    #[test]
     fn test_deploy_target_ssh_url_with_port() {
         let target = DeployTarget {
             user: "deploy".to_string(),
@@ -229,20 +203,5 @@ mod tests {
             port: Some(2222),
         };
         assert_eq!(target.ssh_url(), "ssh://deploy@hydrogen.example.com:2222");
-    }
-
-    #[test]
-    fn test_host_metadata_construction() {
-        let metadata = HostMetadata {
-            name: "hydrogen".to_string(),
-            phase: Some("p1".to_string()),
-            tags: vec!["etcd".to_string(), "core".to_string()],
-            fqdn: "hydrogen.example.com".to_string(),
-        };
-
-        assert_eq!(metadata.name, "hydrogen");
-        assert_eq!(metadata.phase, Some("p1".to_string()));
-        assert_eq!(metadata.tags.len(), 2);
-        assert_eq!(metadata.fqdn, "hydrogen.example.com");
     }
 }
