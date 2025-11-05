@@ -166,6 +166,28 @@ pub fn get_host_metadata(host: &str) -> Result<HostMetadata> {
     })
 }
 
+/// Build a host configuration and return the store path
+pub fn build_host(host: &str) -> Result<StorePath> {
+    let target = format!(".#nixosConfigurations.{}.config.system.build.toplevel", host);
+
+    let output = Command::new("nix")
+        .args(&["build", &target, "--no-link", "--print-out-paths"])
+        .output()
+        .context("Failed to execute nix build")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("nix build failed for {}: {}", host, stderr);
+    }
+
+    let path = String::from_utf8(output.stdout)
+        .context("build output not valid UTF-8")?
+        .trim()
+        .to_string();
+
+    Ok(StorePath::new(path))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

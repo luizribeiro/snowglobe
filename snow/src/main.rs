@@ -22,6 +22,23 @@ enum Commands {
         #[arg(long)]
         json: bool,
     },
+    /// Deploy configurations to hosts
+    Push {
+        /// Hosts to push (one or more)
+        hosts: Vec<String>,
+
+        /// Dry run - show what would change without activating
+        #[arg(long)]
+        dry_run: bool,
+
+        /// Only set for next boot (don't activate now)
+        #[arg(long)]
+        boot: bool,
+
+        /// Maximum number of hosts to push in parallel
+        #[arg(long, default_value = "3")]
+        concurrency: usize,
+    },
 }
 
 fn main() -> Result<()> {
@@ -29,5 +46,11 @@ fn main() -> Result<()> {
 
     match cli.command {
         Commands::Status { json } => commands::status::run(json),
+        Commands::Push {
+            hosts,
+            dry_run,
+            boot,
+            concurrency,
+        } => commands::push::run(hosts, dry_run, boot, concurrency),
     }
 }
