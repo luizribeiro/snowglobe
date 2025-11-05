@@ -3,6 +3,7 @@ use anyhow::Result;
 
 mod nix;
 mod deploy;
+mod push;
 mod commands;
 
 #[derive(Parser)]
