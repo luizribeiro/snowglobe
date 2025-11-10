@@ -534,7 +534,7 @@ mod tests {
 
         env::set_current_dir(&fixture_path).expect("Failed to change to fixture directory");
 
-        let result = list_hosts(Some("config: config.nixpkgs.hostPlatform == \"x86_64-linux\""));
+        let result = list_hosts(Some("config: (config.nixpkgs.hostPlatform or \"\") == \"x86_64-linux\""));
         assert!(result.is_ok(), "list_hosts with architecture filter should succeed: {:?}", result.err());
 
         let hosts = result.unwrap();
