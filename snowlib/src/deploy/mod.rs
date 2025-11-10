@@ -1,6 +1,6 @@
 pub mod ssh;
 
-#[cfg(test)]
+#[cfg(debug_assertions)]
 pub mod mock;
 
 use crate::error::Result;

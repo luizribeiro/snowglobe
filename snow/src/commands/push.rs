@@ -5,6 +5,9 @@ use snowlib::{
 };
 use tabled::{Table, Tabled};
 
+#[cfg(debug_assertions)]
+use snowlib::{FixtureDeployer, MockDeployer};
+
 /// Deploy configurations to hosts
 #[derive(Debug, Args)]
 pub struct PushArgs {
@@ -22,6 +25,16 @@ pub struct PushArgs {
     /// Maximum number of hosts to push in parallel
     #[arg(long, default_value = "3")]
     pub concurrency: usize,
+
+    #[cfg(debug_assertions)]
+    /// Use mock deployer instead of real SSH (debug builds only)
+    #[arg(long, hide = true)]
+    pub mock: bool,
+
+    #[cfg(debug_assertions)]
+    /// Path to fixture file for mock deployer (requires --mock)
+    #[arg(long, requires = "mock", hide = true)]
+    pub mock_fixture: Option<String>,
 }
 
 #[derive(Debug, Tabled)]
@@ -72,13 +85,32 @@ impl PushArgs {
         // Deploy
         println!("\n→ Deploying...");
 
-        let deployer = SshDeployer::new();
         let opts = PushOptions {
             activation_mode,
             concurrency: self.concurrency,
         };
 
-        let results = push_parallel(&deployer, host_data, &opts)?;
+        #[cfg(debug_assertions)]
+        let results = if self.mock {
+            // Create appropriate mock deployer
+            let deployer: Box<dyn snowlib::Deployer> =
+                if let Some(fixture_path) = &self.mock_fixture {
+                    let path = std::path::Path::new(fixture_path);
+                    Box::new(FixtureDeployer::from_file(path)?)
+                } else {
+                    Box::new(MockDeployer::new())
+                };
+            push_parallel(deployer.as_ref(), host_data, &opts)?
+        } else {
+            let deployer = SshDeployer::new();
+            push_parallel(&deployer, host_data, &opts)?
+        };
+
+        #[cfg(not(debug_assertions))]
+        let results = {
+            let deployer = SshDeployer::new();
+            push_parallel(&deployer, host_data, &opts)?
+        };
 
         // Format results
         let table_data: Vec<DeploymentResult> = results

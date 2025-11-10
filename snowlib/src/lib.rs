@@ -21,6 +21,11 @@ pub use push::{PushOptions, PushResults};
 // Re-export specific implementations
 pub use deploy::ssh::SshDeployer;
 
+#[cfg(debug_assertions)]
+pub use deploy::mock::{
+    DeploymentFixture, FixtureDeployer, HostFixture, MockDeployer, OperationFixture,
+};
+
 // Convenience re-exports of main functions
 pub use nix::{build_host, get_host_metadata, list_hosts};
 pub use push::push_parallel;
