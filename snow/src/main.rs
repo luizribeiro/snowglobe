@@ -3,6 +3,9 @@ use miette::{IntoDiagnostic, Result};
 
 mod commands;
 
+#[cfg(test)]
+mod test_utils;
+
 #[derive(Parser)]
 #[command(name = "snow")]
 #[command(about = "NixOS cluster orchestration tool", long_about = None)]

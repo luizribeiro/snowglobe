@@ -51,3 +51,121 @@ impl StatusArgs {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::test_utils::snow_cmd;
+    use predicates::prelude::*;
+
+    #[test]
+    fn test_status_json_all_hosts() {
+        let output = snow_cmd()
+            .arg("status")
+            .arg("--json")
+            .assert()
+            .success()
+            .get_output()
+            .stdout
+            .clone();
+
+        let stdout = String::from_utf8(output).unwrap();
+        let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+
+        // Should be an array with 4 hosts
+        assert!(json.is_array());
+        let hosts = json.as_array().unwrap();
+        assert_eq!(hosts.len(), 4);
+
+        // Check structure
+        assert!(hosts[0]["name"].is_string());
+        assert!(hosts[0]["status"].is_string());
+        assert_eq!(hosts[0]["status"], "unknown");
+
+        // Check all host names are present
+        let names: Vec<&str> = hosts.iter().map(|h| h["name"].as_str().unwrap()).collect();
+        assert!(names.contains(&"hydrogen"));
+        assert!(names.contains(&"nitrogen"));
+        assert!(names.contains(&"oxygen"));
+        assert!(names.contains(&"helium"));
+    }
+
+    #[test]
+    fn test_status_json_with_filter() {
+        let output = snow_cmd()
+            .arg("status")
+            .arg("--json")
+            .arg("-e")
+            .arg("config: config.services.postgresql.enable or false")
+            .assert()
+            .success()
+            .get_output()
+            .stdout
+            .clone();
+
+        let stdout = String::from_utf8(output).unwrap();
+        let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+
+        let hosts = json.as_array().unwrap();
+        assert_eq!(hosts.len(), 2);
+
+        let names: Vec<&str> = hosts.iter().map(|h| h["name"].as_str().unwrap()).collect();
+        assert!(names.contains(&"hydrogen"));
+        assert!(names.contains(&"oxygen"));
+    }
+
+    #[test]
+    fn test_status_json_empty() {
+        let output = snow_cmd()
+            .arg("status")
+            .arg("--json")
+            .arg("-e")
+            .arg("config: false")
+            .assert()
+            .success()
+            .get_output()
+            .stdout
+            .clone();
+
+        let stdout = String::from_utf8(output).unwrap();
+        let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+
+        let hosts = json.as_array().unwrap();
+        assert_eq!(hosts.len(), 0);
+    }
+
+    #[test]
+    fn test_status_table_output() {
+        snow_cmd()
+            .arg("status")
+            .assert()
+            .success()
+            .stdout(predicate::str::contains("Cluster Status"))
+            .stdout(predicate::str::contains("Host"))
+            .stdout(predicate::str::contains("Status"))
+            .stdout(predicate::str::contains("hydrogen"));
+    }
+
+    #[test]
+    fn test_status_table_empty_shows_message() {
+        snow_cmd()
+            .arg("status")
+            .arg("-e")
+            .arg("config: false")
+            .assert()
+            .success()
+            .stdout(predicate::str::contains("No hosts found"));
+    }
+
+    #[test]
+    fn test_status_with_invalid_filter_shows_error() {
+        snow_cmd()
+            .arg("status")
+            .arg("-e")
+            .arg("config: { invalid syntax")
+            .assert()
+            .failure()
+            .stderr(predicate::str::contains(
+                "Failed to evaluate Nix expression",
+            ));
+    }
+}
