@@ -28,7 +28,7 @@ pub enum SnowError {
 /// Errors related to Nix evaluation and building
 #[derive(Debug, Error, Diagnostic)]
 pub enum NixError {
-    #[error("Failed to evaluate Nix expression")]
+    #[error("Failed to evaluate Nix expression:\n{stderr}")]
     #[diagnostic(
         code(snow::nix::eval_failed),
         help("Check your flake.nix syntax and ensure the expression is valid.\nCommon issues:\n  - Missing 'or' defaults for optional attributes\n  - Syntax errors in filter expressions\n  - Undefined attributes")
@@ -50,7 +50,7 @@ pub enum NixError {
         source: serde_json::Error,
     },
 
-    #[error("Failed to build host configuration for '{host}'")]
+    #[error("Failed to build host configuration for '{host}':\n{stderr}")]
     #[diagnostic(
         code(snow::nix::build_failed),
         help("Check that the host exists in your flake's nixosConfigurations and can be built:\n  nix build .#nixosConfigurations.{host}.config.system.build.toplevel")
