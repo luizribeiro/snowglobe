@@ -1,7 +1,7 @@
 use crate::error::Result;
+use rayon::prelude::*;
 use std::collections::HashMap;
 use std::sync::Arc;
-use rayon::prelude::*;
 
 use crate::deploy::{ActivationMode, DeployResult, Deployer};
 use crate::nix::{DeployTarget, HostMetadata, StorePath};
@@ -58,10 +58,12 @@ pub fn push_parallel(
     let pool = rayon::ThreadPoolBuilder::new()
         .num_threads(opts.concurrency)
         .build()
-        .map_err(|e| crate::error::SnowError::Deploy(crate::error::DeployError::Failed {
-            host: "thread pool".to_string(),
-            source: std::io::Error::new(std::io::ErrorKind::Other, e.to_string()),
-        }))?;
+        .map_err(|e| {
+            crate::error::SnowError::Deploy(crate::error::DeployError::Failed {
+                host: "thread pool".to_string(),
+                source: std::io::Error::new(std::io::ErrorKind::Other, e.to_string()),
+            })
+        })?;
 
     let results: Vec<(String, DeployResult)> = pool.install(|| {
         hosts
@@ -91,7 +93,10 @@ pub fn push_by_phase(
         HashMap::new();
 
     for (metadata, target, store_path) in hosts {
-        let phase = metadata.phase.clone().unwrap_or_else(|| "default".to_string());
+        let phase = metadata
+            .phase
+            .clone()
+            .unwrap_or_else(|| "default".to_string());
         by_phase
             .entry(phase)
             .or_insert_with(Vec::new)

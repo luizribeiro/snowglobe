@@ -105,7 +105,9 @@ pub enum FlakeError {
     )]
     MissingInDir { path: PathBuf },
 
-    #[error("Path must be either a directory containing flake.nix or the flake.nix file itself: {path}")]
+    #[error(
+        "Path must be either a directory containing flake.nix or the flake.nix file itself: {path}"
+    )]
     #[diagnostic(code(snow::flake::invalid_path))]
     InvalidPath { path: PathBuf },
 }

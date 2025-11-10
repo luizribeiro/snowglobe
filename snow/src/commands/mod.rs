@@ -1,12 +1,12 @@
-pub mod status;
-pub mod push;
 pub mod list;
+pub mod push;
+pub mod status;
 
 use clap::Subcommand;
 
-pub use status::StatusArgs;
 pub use list::ListArgs;
 pub use push::PushArgs;
+pub use status::StatusArgs;
 
 #[derive(Debug, Subcommand)]
 pub enum Commands {

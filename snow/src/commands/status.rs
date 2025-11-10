@@ -1,6 +1,6 @@
-use snowlib::{Result, SnowContext, list_hosts};
 use clap::Args;
 use serde::Serialize;
+use snowlib::{list_hosts, Result, SnowContext};
 use tabled::{Table, Tabled};
 
 /// Show cluster status
@@ -28,13 +28,13 @@ impl StatusArgs {
     pub fn run(self, ctx: &SnowContext) -> Result<()> {
         let hosts = list_hosts(ctx, self.filter.as_deref())?;
 
-    let statuses: Vec<HostStatus> = hosts
-        .into_iter()
-        .map(|host| HostStatus {
-            name: host.name,
-            status: "unknown".to_string(),
-        })
-        .collect();
+        let statuses: Vec<HostStatus> = hosts
+            .into_iter()
+            .map(|host| HostStatus {
+                name: host.name,
+                status: "unknown".to_string(),
+            })
+            .collect();
 
         if self.json {
             let json_output = serde_json::to_string_pretty(&statuses)

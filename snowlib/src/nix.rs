@@ -182,33 +182,28 @@ fn validate_flake_path(path: &str) -> Result<PathBuf> {
     let path_buf = PathBuf::from(path);
 
     if !path_buf.exists() {
-        return Err(FlakeError::PathNotFound {
-            path: path_buf,
-        }
-        .into());
+        return Err(FlakeError::PathNotFound { path: path_buf }.into());
     }
 
     // If path points to flake.nix file, use its parent directory
-    let flake_dir = if path_buf.is_file() && path_buf.file_name() == Some(std::ffi::OsStr::new("flake.nix")) {
-        path_buf.parent()
-            .ok_or_else(|| FlakeError::InvalidPath { path: path_buf.clone() })?
-            .to_path_buf()
-    } else if path_buf.is_dir() {
-        // If it's a directory, verify flake.nix exists in it
-        let flake_file = path_buf.join("flake.nix");
-        if !flake_file.exists() {
-            return Err(FlakeError::MissingInDir {
-                path: path_buf,
+    let flake_dir =
+        if path_buf.is_file() && path_buf.file_name() == Some(std::ffi::OsStr::new("flake.nix")) {
+            path_buf
+                .parent()
+                .ok_or_else(|| FlakeError::InvalidPath {
+                    path: path_buf.clone(),
+                })?
+                .to_path_buf()
+        } else if path_buf.is_dir() {
+            // If it's a directory, verify flake.nix exists in it
+            let flake_file = path_buf.join("flake.nix");
+            if !flake_file.exists() {
+                return Err(FlakeError::MissingInDir { path: path_buf }.into());
             }
-            .into());
-        }
-        path_buf
-    } else {
-        return Err(FlakeError::InvalidPath {
-            path: path_buf,
-        }
-        .into());
-    };
+            path_buf
+        } else {
+            return Err(FlakeError::InvalidPath { path: path_buf }.into());
+        };
 
     Ok(flake_dir)
 }
@@ -216,8 +211,7 @@ fn validate_flake_path(path: &str) -> Result<PathBuf> {
 /// Find the flake root by searching up from the current directory
 /// Returns the path to the directory containing flake.nix
 fn find_flake_root() -> Result<PathBuf> {
-    let current_dir = env::current_dir()
-        .map_err(|e| IoError::CurrentDir { source: e })?;
+    let current_dir = env::current_dir().map_err(|e| IoError::CurrentDir { source: e })?;
 
     find_flake_root_from(&current_dir)
 }
@@ -244,19 +238,15 @@ fn find_flake_root_from(start: &Path) -> Result<PathBuf> {
     }
 }
 
-
 /// Parse host names from nix JSON output
 fn parse_host_names(json: &[u8]) -> Result<Vec<Host>> {
-    let host_names: Vec<String> = serde_json::from_slice(json)
-        .map_err(|e| NixError::OutputParseFailed {
+    let host_names: Vec<String> =
+        serde_json::from_slice(json).map_err(|e| NixError::OutputParseFailed {
             output: String::from_utf8_lossy(json).to_string(),
             source: e,
         })?;
 
-    let hosts = host_names
-        .into_iter()
-        .map(|name| Host { name })
-        .collect();
+    let hosts = host_names.into_iter().map(|name| Host { name }).collect();
 
     Ok(hosts)
 }
@@ -323,12 +313,11 @@ pub fn get_host_metadata(ctx: &SnowContext, host: &str) -> Result<HostMetadata> 
             other => other,
         })?;
 
-    let meta: MetadataJson = serde_json::from_slice(&stdout).map_err(|e| {
-        NixError::OutputParseFailed {
+    let meta: MetadataJson =
+        serde_json::from_slice(&stdout).map_err(|e| NixError::OutputParseFailed {
             output: String::from_utf8_lossy(&stdout).to_string(),
             source: e,
-        }
-    })?;
+        })?;
 
     let fqdn = if meta.domain.is_empty() {
         meta.hostname.clone()
@@ -346,7 +335,10 @@ pub fn get_host_metadata(ctx: &SnowContext, host: &str) -> Result<HostMetadata> 
 
 /// Build a host configuration and return the store path
 pub fn build_host(ctx: &SnowContext, host: &str) -> Result<StorePath> {
-    let target = format!(".#nixosConfigurations.{}.config.system.build.toplevel", host);
+    let target = format!(
+        ".#nixosConfigurations.{}.config.system.build.toplevel",
+        host
+    );
 
     let stdout = NixCommand::build(ctx, &target)
         .no_link()
@@ -514,7 +506,11 @@ mod tests {
 
         let ctx = SnowContext::new(Some(fixture_path.to_str().unwrap())).unwrap();
         let result = list_hosts(&ctx, None);
-        assert!(result.is_ok(), "list_hosts should succeed: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "list_hosts should succeed: {:?}",
+            result.err()
+        );
 
         let hosts = result.unwrap();
         assert_eq!(hosts.len(), 4);
@@ -532,8 +528,15 @@ mod tests {
         let fixture_path = PathBuf::from(manifest_dir).join("tests/fixtures");
         let ctx = SnowContext::new(Some(fixture_path.to_str().unwrap())).unwrap();
 
-        let result = list_hosts(&ctx, Some("config: config.services.postgresql.enable or false"));
-        assert!(result.is_ok(), "list_hosts with postgresql filter should succeed: {:?}", result.err());
+        let result = list_hosts(
+            &ctx,
+            Some("config: config.services.postgresql.enable or false"),
+        );
+        assert!(
+            result.is_ok(),
+            "list_hosts with postgresql filter should succeed: {:?}",
+            result.err()
+        );
 
         let hosts = result.unwrap();
         assert_eq!(hosts.len(), 2);
@@ -550,7 +553,11 @@ mod tests {
         let ctx = SnowContext::new(Some(fixture_path.to_str().unwrap())).unwrap();
 
         let result = list_hosts(&ctx, Some("config: config.services.nginx.enable or false"));
-        assert!(result.is_ok(), "list_hosts with nginx filter should succeed: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "list_hosts with nginx filter should succeed: {:?}",
+            result.err()
+        );
 
         let hosts = result.unwrap();
         assert_eq!(hosts.len(), 2);
@@ -566,8 +573,15 @@ mod tests {
         let fixture_path = PathBuf::from(manifest_dir).join("tests/fixtures");
         let ctx = SnowContext::new(Some(fixture_path.to_str().unwrap())).unwrap();
 
-        let result = list_hosts(&ctx, Some("config: (config.nixpkgs.hostPlatform or \"\") == \"x86_64-linux\""));
-        assert!(result.is_ok(), "list_hosts with architecture filter should succeed: {:?}", result.err());
+        let result = list_hosts(
+            &ctx,
+            Some("config: (config.nixpkgs.hostPlatform or \"\") == \"x86_64-linux\""),
+        );
+        assert!(
+            result.is_ok(),
+            "list_hosts with architecture filter should succeed: {:?}",
+            result.err()
+        );
 
         let hosts = result.unwrap();
         assert_eq!(hosts.len(), 2);
@@ -585,7 +599,11 @@ mod tests {
 
         // Filter that matches no hosts
         let result = list_hosts(&ctx, Some("config: false"));
-        assert!(result.is_ok(), "list_hosts with false filter should succeed: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "list_hosts with false filter should succeed: {:?}",
+            result.err()
+        );
 
         let hosts = result.unwrap();
         assert_eq!(hosts.len(), 0);
@@ -599,10 +617,17 @@ mod tests {
 
         // Invalid Nix syntax - missing closing brace
         let result = list_hosts(&ctx, Some("config: { invalid syntax"));
-        assert!(result.is_err(), "list_hosts with invalid syntax should fail");
+        assert!(
+            result.is_err(),
+            "list_hosts with invalid syntax should fail"
+        );
 
         let err_msg = result.unwrap_err().to_string();
-        assert!(err_msg.contains("Failed to evaluate Nix expression"), "Error should mention Nix eval failure: {}", err_msg);
+        assert!(
+            err_msg.contains("Failed to evaluate Nix expression"),
+            "Error should mention Nix eval failure: {}",
+            err_msg
+        );
     }
 
     #[test]
@@ -612,11 +637,21 @@ mod tests {
         let ctx = SnowContext::new(Some(fixture_path.to_str().unwrap())).unwrap();
 
         // Accessing non-existent attribute without 'or' default - should fail
-        let result = list_hosts(&ctx, Some("config: config.nonexistent.deeply.nested.attribute"));
-        assert!(result.is_err(), "list_hosts with invalid attribute access should fail");
+        let result = list_hosts(
+            &ctx,
+            Some("config: config.nonexistent.deeply.nested.attribute"),
+        );
+        assert!(
+            result.is_err(),
+            "list_hosts with invalid attribute access should fail"
+        );
 
         let err_msg = result.unwrap_err().to_string();
-        assert!(err_msg.contains("Failed to evaluate Nix expression"), "Error should mention Nix eval failure: {}", err_msg);
+        assert!(
+            err_msg.contains("Failed to evaluate Nix expression"),
+            "Error should mention Nix eval failure: {}",
+            err_msg
+        );
     }
 
     #[test]
@@ -627,6 +662,9 @@ mod tests {
 
         // Expression that doesn't return a boolean
         let result = list_hosts(&ctx, Some("config: \"not a boolean\""));
-        assert!(result.is_err(), "list_hosts with non-boolean expression should fail");
+        assert!(
+            result.is_err(),
+            "list_hosts with non-boolean expression should fail"
+        );
     }
 }

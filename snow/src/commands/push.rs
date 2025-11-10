@@ -1,8 +1,8 @@
-use snowlib::{
-    Result, SnowContext, ActivationMode, SshDeployer, DeployTarget,
-    PushOptions, get_host_metadata, build_host, push_parallel,
-};
 use clap::Args;
+use snowlib::{
+    build_host, get_host_metadata, push_parallel, ActivationMode, DeployTarget, PushOptions,
+    Result, SnowContext, SshDeployer,
+};
 use tabled::{Table, Tabled};
 
 /// Deploy configurations to hosts
@@ -43,9 +43,9 @@ impl PushArgs {
             ActivationMode::DryActivate
         } else if self.boot {
             ActivationMode::Boot
-    } else {
-        ActivationMode::Switch
-    };
+        } else {
+            ActivationMode::Switch
+        };
 
         println!("→ Building configurations...");
 
@@ -54,53 +54,53 @@ impl PushArgs {
         let mut host_data = Vec::new();
 
         for host in &self.hosts {
-        let metadata = get_host_metadata(ctx, host)?;
+            let metadata = get_host_metadata(ctx, host)?;
 
-        let store_path = build_host(ctx, host)?;
+            let store_path = build_host(ctx, host)?;
 
-        let target = DeployTarget {
-            user: "root".to_string(),
-            hostname: metadata.fqdn.clone(),
-            port: None,
-        };
+            let target = DeployTarget {
+                user: "root".to_string(),
+                hostname: metadata.fqdn.clone(),
+                port: None,
+            };
 
-        host_data.push((metadata, target, store_path));
-    }
+            host_data.push((metadata, target, store_path));
+        }
 
         println!("✓ Built {} configuration(s)", self.hosts.len());
 
-    // Deploy
-    println!("\n→ Deploying...");
+        // Deploy
+        println!("\n→ Deploying...");
 
-    let deployer = SshDeployer::new();
-    let opts = PushOptions {
-        activation_mode,
-        concurrency: self.concurrency,
-    };
+        let deployer = SshDeployer::new();
+        let opts = PushOptions {
+            activation_mode,
+            concurrency: self.concurrency,
+        };
 
-    let results = push_parallel(&deployer, host_data, &opts)?;
+        let results = push_parallel(&deployer, host_data, &opts)?;
 
-    // Format results
-    let table_data: Vec<DeploymentResult> = results
-        .results
-        .iter()
-        .map(|(host, result)| DeploymentResult {
-            host: host.clone(),
-            status: if result.success { "✓" } else { "✗" }.to_string(),
-            message: result.message.clone(),
-        })
-        .collect();
+        // Format results
+        let table_data: Vec<DeploymentResult> = results
+            .results
+            .iter()
+            .map(|(host, result)| DeploymentResult {
+                host: host.clone(),
+                status: if result.success { "✓" } else { "✗" }.to_string(),
+                message: result.message.clone(),
+            })
+            .collect();
 
-    println!("\nPush Results\n");
-    let table = Table::new(&table_data).to_string();
-    println!("{}", table);
+        println!("\nPush Results\n");
+        let table = Table::new(&table_data).to_string();
+        println!("{}", table);
 
-    // Summary
-    println!(
-        "\n{}/{} hosts deployed successfully",
-        results.success_count(),
-        results.results.len()
-    );
+        // Summary
+        println!(
+            "\n{}/{} hosts deployed successfully",
+            results.success_count(),
+            results.results.len()
+        );
 
         if !results.all_succeeded() {
             return Err(snowlib::error::DeployError::Failed {

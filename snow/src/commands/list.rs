@@ -1,5 +1,5 @@
-use snowlib::{Result, SnowContext, list_hosts};
 use clap::Args;
+use snowlib::{list_hosts, Result, SnowContext};
 
 /// List hostnames from nixosConfigurations
 #[derive(Debug, Args)]

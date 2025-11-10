@@ -60,7 +60,10 @@ impl Deployer for SshDeployer {
             let stderr = String::from_utf8_lossy(&output.stderr);
             return Err(DeployError::Failed {
                 host: target.hostname.clone(),
-                source: std::io::Error::new(std::io::ErrorKind::Other, format!("nix copy failed: {}", stderr)),
+                source: std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    format!("nix copy failed: {}", stderr),
+                ),
             }
             .into());
         }
@@ -74,10 +77,8 @@ impl Deployer for SshDeployer {
         store_path: &StorePath,
         mode: ActivationMode,
     ) -> Result<()> {
-        let switch_to_configuration = format!(
-            "{}/bin/switch-to-configuration",
-            store_path.as_str()
-        );
+        let switch_to_configuration =
+            format!("{}/bin/switch-to-configuration", store_path.as_str());
 
         let mode_arg = match mode {
             ActivationMode::Switch => "switch",
@@ -86,23 +87,21 @@ impl Deployer for SshDeployer {
             ActivationMode::DryActivate => "dry-activate",
         };
 
-        let mut cmd = self.ssh_command(
-            target,
-            &["sudo", &switch_to_configuration, mode_arg],
-        );
+        let mut cmd = self.ssh_command(target, &["sudo", &switch_to_configuration, mode_arg]);
 
-        let output = cmd
-            .output()
-            .map_err(|e| DeployError::SshFailed {
-                destination: self.get_destination(target),
-                source: e,
-            })?;
+        let output = cmd.output().map_err(|e| DeployError::SshFailed {
+            destination: self.get_destination(target),
+            source: e,
+        })?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             return Err(DeployError::Failed {
                 host: target.hostname.clone(),
-                source: std::io::Error::new(std::io::ErrorKind::Other, format!("Activation failed: {}", stderr)),
+                source: std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    format!("Activation failed: {}", stderr),
+                ),
             }
             .into());
         }
