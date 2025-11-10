@@ -16,11 +16,11 @@ pub enum Commands {
 }
 
 impl Commands {
-    pub fn run(self) -> crate::error::Result<()> {
+    pub fn run(self, ctx: &crate::nix::SnowContext) -> crate::error::Result<()> {
         match self {
-            Commands::Status(args) => args.run(),
-            Commands::List(args) => args.run(),
-            Commands::Push(args) => args.run(),
+            Commands::Status(args) => args.run(ctx),
+            Commands::List(args) => args.run(ctx),
+            Commands::Push(args) => args.run(ctx),
         }
     }
 }

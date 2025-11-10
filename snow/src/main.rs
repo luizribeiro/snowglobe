@@ -26,8 +26,8 @@ fn main() -> Result<()> {
     miette::set_panic_hook();
     let cli = Cli::parse();
 
-    // Ensure we're in a valid flake directory before running any commands
-    nix::ensure_flake_root(cli.flake_path.as_deref()).into_diagnostic()?;
+    // Create context with flake root
+    let ctx = nix::SnowContext::new(cli.flake_path.as_deref()).into_diagnostic()?;
 
-    cli.command.run().into_diagnostic()
+    cli.command.run(&ctx).into_diagnostic()
 }

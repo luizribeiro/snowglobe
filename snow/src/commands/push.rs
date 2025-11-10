@@ -38,7 +38,7 @@ struct DeploymentResult {
 }
 
 impl PushArgs {
-    pub fn run(self) -> Result<()> {
+    pub fn run(self, ctx: &nix::SnowContext) -> Result<()> {
         // Determine activation mode
         let activation_mode = if self.dry_run {
             ActivationMode::DryActivate
@@ -54,9 +54,9 @@ impl PushArgs {
         let mut host_data = Vec::new();
 
         for host in &self.hosts {
-        let metadata = nix::get_host_metadata(host)?;
+        let metadata = nix::get_host_metadata(ctx, host)?;
 
-        let store_path = nix::build_host(host)?;
+        let store_path = nix::build_host(ctx, host)?;
 
         let target = DeployTarget {
             user: "root".to_string(),

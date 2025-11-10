@@ -4,39 +4,72 @@ use std::env;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+/// Immutable context for snowglobe operations
+///
+/// Holds the flake root directory and can be extended with additional
+/// state in the future (e.g., configuration, cached data, etc.)
+#[derive(Debug, Clone)]
+pub struct SnowContext {
+    flake_root: PathBuf,
+}
+
+impl SnowContext {
+    /// Create a new context from an optional flake path
+    ///
+    /// If flake_path is provided, validates and uses it. Otherwise searches
+    /// up from the current directory to find flake.nix.
+    pub fn new(flake_path: Option<&str>) -> Result<Self> {
+        let flake_root = if let Some(path) = flake_path {
+            validate_flake_path(path)?
+        } else {
+            find_flake_root()?
+        };
+
+        Ok(Self { flake_root })
+    }
+
+    /// Get the flake root directory
+    pub fn flake_root(&self) -> &Path {
+        &self.flake_root
+    }
+}
+
 /// Builder for constructing and executing Nix commands
 ///
 /// Provides a fluent API for building nix command invocations with
-/// proper error handling.
+/// proper error handling. Initialized with a SnowContext and allows
+/// chaining operations.
 struct NixCommand {
     cmd: Command,
+    ctx: SnowContext,
 }
 
 impl NixCommand {
-    /// Create a new nix command builder
-    fn new() -> Self {
+    /// Create a new nix command builder with a context (private)
+    fn new(ctx: &SnowContext) -> Self {
         Self {
             cmd: Command::new("nix"),
+            ctx: ctx.clone(),
         }
     }
 
     /// Start building a `nix eval` command for a flake attribute
-    fn eval(attr: impl AsRef<str>) -> Self {
-        let mut builder = Self::new();
+    fn eval(ctx: &SnowContext, attr: impl AsRef<str>) -> Self {
+        let mut builder = Self::new(ctx);
         builder.cmd.args(&["eval", attr.as_ref()]);
         builder
     }
 
     /// Start building a `nix eval` command with an inline expression
-    fn eval_expr(expr: impl AsRef<str>) -> Self {
-        let mut builder = Self::new();
+    fn eval_expr(ctx: &SnowContext, expr: impl AsRef<str>) -> Self {
+        let mut builder = Self::new(ctx);
         builder.cmd.args(&["eval", "--expr", expr.as_ref()]);
         builder
     }
 
     /// Start building a `nix build` command
-    fn build(target: impl AsRef<str>) -> Self {
-        let mut builder = Self::new();
+    fn build(ctx: &SnowContext, target: impl AsRef<str>) -> Self {
+        let mut builder = Self::new(ctx);
         builder.cmd.args(&["build", target.as_ref()]);
         builder
     }
@@ -75,6 +108,7 @@ impl NixCommand {
     fn run(mut self) -> Result<Vec<u8>> {
         let output = self
             .cmd
+            .current_dir(self.ctx.flake_root())
             .output()
             .map_err(|e| NixError::CommandFailed { source: e })?;
 
@@ -145,9 +179,49 @@ impl DeployTarget {
     }
 }
 
+/// Validate and resolve a flake path provided by the user
+///
+/// The path can be either:
+/// - A directory containing flake.nix
+/// - A direct path to flake.nix file
+fn validate_flake_path(path: &str) -> Result<PathBuf> {
+    let path_buf = PathBuf::from(path);
+
+    if !path_buf.exists() {
+        return Err(FlakeError::PathNotFound {
+            path: path_buf,
+        }
+        .into());
+    }
+
+    // If path points to flake.nix file, use its parent directory
+    let flake_dir = if path_buf.is_file() && path_buf.file_name() == Some(std::ffi::OsStr::new("flake.nix")) {
+        path_buf.parent()
+            .ok_or_else(|| FlakeError::InvalidPath { path: path_buf.clone() })?
+            .to_path_buf()
+    } else if path_buf.is_dir() {
+        // If it's a directory, verify flake.nix exists in it
+        let flake_file = path_buf.join("flake.nix");
+        if !flake_file.exists() {
+            return Err(FlakeError::MissingInDir {
+                path: path_buf,
+            }
+            .into());
+        }
+        path_buf
+    } else {
+        return Err(FlakeError::InvalidPath {
+            path: path_buf,
+        }
+        .into());
+    };
+
+    Ok(flake_dir)
+}
+
 /// Find the flake root by searching up from the current directory
 /// Returns the path to the directory containing flake.nix
-pub fn find_flake_root() -> Result<PathBuf> {
+fn find_flake_root() -> Result<PathBuf> {
     let current_dir = env::current_dir()
         .map_err(|e| IoError::CurrentDir { source: e })?;
 
@@ -176,53 +250,6 @@ fn find_flake_root_from(start: &Path) -> Result<PathBuf> {
     }
 }
 
-/// Ensure we're in a valid flake directory and change to the flake root
-/// If flake_path is provided, use it directly; otherwise search up from current directory
-/// flake_path can be either a directory containing flake.nix or the path to flake.nix itself
-pub fn ensure_flake_root(flake_path: Option<&str>) -> Result<PathBuf> {
-    let flake_root = if let Some(path) = flake_path {
-        let path_buf = PathBuf::from(path);
-        if !path_buf.exists() {
-            return Err(FlakeError::PathNotFound {
-                path: path_buf,
-            }
-            .into());
-        }
-
-        // If path points to flake.nix file, use its parent directory
-        let flake_dir = if path_buf.is_file() && path_buf.file_name() == Some(std::ffi::OsStr::new("flake.nix")) {
-            path_buf.parent()
-                .ok_or_else(|| FlakeError::InvalidPath { path: path_buf.clone() })?
-                .to_path_buf()
-        } else if path_buf.is_dir() {
-            // If it's a directory, verify flake.nix exists in it
-            let flake_file = path_buf.join("flake.nix");
-            if !flake_file.exists() {
-                return Err(FlakeError::MissingInDir {
-                    path: path_buf,
-                }
-                .into());
-            }
-            path_buf
-        } else {
-            return Err(FlakeError::InvalidPath {
-                path: path_buf,
-            }
-            .into());
-        };
-
-        flake_dir
-    } else {
-        find_flake_root()?
-    };
-
-    env::set_current_dir(&flake_root)
-        .map_err(|e| FlakeError::ChdirFailed {
-            path: flake_root.clone(),
-            source: e,
-        })?;
-    Ok(flake_root)
-}
 
 /// Parse host names from nix JSON output
 fn parse_host_names(json: &[u8]) -> Result<Vec<Host>> {
@@ -240,10 +267,10 @@ fn parse_host_names(json: &[u8]) -> Result<Vec<Host>> {
     Ok(hosts)
 }
 
-/// List all nixosConfigurations from the current flake
+/// List all nixosConfigurations from the flake
 /// If filter_expr is provided, it should be a Nix expression that takes a config and returns a boolean
 /// Example: "config: config.features.backup.enable or false"
-pub fn list_hosts(filter_expr: Option<&str>) -> Result<Vec<Host>> {
+pub fn list_hosts(ctx: &SnowContext, filter_expr: Option<&str>) -> Result<Vec<Host>> {
     let apply_arg = if let Some(expr) = filter_expr {
         // Build a filter expression similar to find-hosts in justfile
         format!(
@@ -254,7 +281,7 @@ pub fn list_hosts(filter_expr: Option<&str>) -> Result<Vec<Host>> {
         "builtins.attrNames".to_string()
     };
 
-    let stdout = NixCommand::eval(".#nixosConfigurations")
+    let stdout = NixCommand::eval(ctx, ".#nixosConfigurations")
         .apply(&apply_arg)
         .json()
         .run()?;
@@ -275,7 +302,7 @@ struct MetadataJson {
 /// Get metadata for a specific host
 ///
 /// Fetches all metadata in a single Nix eval for efficiency
-pub fn get_host_metadata(host: &str) -> Result<HostMetadata> {
+pub fn get_host_metadata(ctx: &SnowContext, host: &str) -> Result<HostMetadata> {
     let config_path = format!(".#nixosConfigurations.{}.config", host);
 
     // Build a Nix expression that evaluates all metadata at once
@@ -289,7 +316,7 @@ pub fn get_host_metadata(host: &str) -> Result<HostMetadata> {
         config_path
     );
 
-    let stdout = NixCommand::eval_expr(&eval_expr)
+    let stdout = NixCommand::eval_expr(ctx, &eval_expr)
         .json()
         .run()
         .map_err(|e| match e {
@@ -324,10 +351,10 @@ pub fn get_host_metadata(host: &str) -> Result<HostMetadata> {
 }
 
 /// Build a host configuration and return the store path
-pub fn build_host(host: &str) -> Result<StorePath> {
+pub fn build_host(ctx: &SnowContext, host: &str) -> Result<StorePath> {
     let target = format!(".#nixosConfigurations.{}.config.system.build.toplevel", host);
 
-    let stdout = NixCommand::build(&target)
+    let stdout = NixCommand::build(ctx, &target)
         .no_link()
         .print_out_paths()
         .run()
@@ -442,69 +469,57 @@ mod tests {
     }
 
     #[test]
-    fn test_ensure_flake_root_with_valid_path() {
+    fn test_snow_context_with_valid_path() {
         let temp_dir = tempfile::tempdir().unwrap();
         let flake_file = temp_dir.path().join("flake.nix");
         fs::write(&flake_file, "# test flake").unwrap();
 
-        let original_dir = env::current_dir().unwrap();
         let path_str = temp_dir.path().to_str().unwrap();
-        let result = ensure_flake_root(Some(path_str));
+        let result = SnowContext::new(Some(path_str));
 
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), temp_dir.path());
-        assert_eq!(env::current_dir().unwrap(), temp_dir.path());
-
-        // Clean up: restore original directory
-        env::set_current_dir(original_dir).unwrap();
+        assert_eq!(result.unwrap().flake_root(), temp_dir.path());
     }
 
     #[test]
-    fn test_ensure_flake_root_with_nonexistent_path() {
-        let result = ensure_flake_root(Some("/nonexistent/path"));
+    fn test_snow_context_with_nonexistent_path() {
+        let result = SnowContext::new(Some("/nonexistent/path"));
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
         assert!(err_msg.contains("does not exist"));
     }
 
     #[test]
-    fn test_ensure_flake_root_with_path_missing_flake() {
+    fn test_snow_context_with_path_missing_flake() {
         let temp_dir = tempfile::tempdir().unwrap();
         let path_str = temp_dir.path().to_str().unwrap();
 
-        let result = ensure_flake_root(Some(path_str));
+        let result = SnowContext::new(Some(path_str));
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
         assert!(err_msg.contains("No flake.nix found"));
     }
 
     #[test]
-    fn test_ensure_flake_root_with_flake_nix_file_path() {
+    fn test_snow_context_with_flake_nix_file_path() {
         let temp_dir = tempfile::tempdir().unwrap();
         let flake_file = temp_dir.path().join("flake.nix");
         fs::write(&flake_file, "# test flake").unwrap();
 
-        let original_dir = env::current_dir().unwrap();
         let file_path_str = flake_file.to_str().unwrap();
-        let result = ensure_flake_root(Some(file_path_str));
+        let result = SnowContext::new(Some(file_path_str));
 
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), temp_dir.path());
-        assert_eq!(env::current_dir().unwrap(), temp_dir.path());
-
-        // Clean up: restore original directory
-        env::set_current_dir(original_dir).unwrap();
+        assert_eq!(result.unwrap().flake_root(), temp_dir.path());
     }
 
     #[test]
     fn test_list_hosts_without_filter() {
-        let original_dir = env::current_dir().unwrap();
         let manifest_dir = env!("CARGO_MANIFEST_DIR");
         let fixture_path = PathBuf::from(manifest_dir).join("tests/fixtures");
 
-        env::set_current_dir(&fixture_path).expect("Failed to change to fixture directory");
-
-        let result = list_hosts(None);
+        let ctx = SnowContext::new(Some(fixture_path.to_str().unwrap())).unwrap();
+        let result = list_hosts(&ctx, None);
         assert!(result.is_ok(), "list_hosts should succeed: {:?}", result.err());
 
         let hosts = result.unwrap();
@@ -515,20 +530,15 @@ mod tests {
         assert!(host_names.contains(&"nitrogen".to_string()));
         assert!(host_names.contains(&"oxygen".to_string()));
         assert!(host_names.contains(&"helium".to_string()));
-
-        // Clean up: restore original directory
-        env::set_current_dir(original_dir).unwrap();
     }
 
     #[test]
     fn test_list_hosts_with_postgresql_filter() {
-        let original_dir = env::current_dir().unwrap();
         let manifest_dir = env!("CARGO_MANIFEST_DIR");
         let fixture_path = PathBuf::from(manifest_dir).join("tests/fixtures");
+        let ctx = SnowContext::new(Some(fixture_path.to_str().unwrap())).unwrap();
 
-        env::set_current_dir(&fixture_path).expect("Failed to change to fixture directory");
-
-        let result = list_hosts(Some("config: config.services.postgresql.enable or false"));
+        let result = list_hosts(&ctx, Some("config: config.services.postgresql.enable or false"));
         assert!(result.is_ok(), "list_hosts with postgresql filter should succeed: {:?}", result.err());
 
         let hosts = result.unwrap();
@@ -537,20 +547,15 @@ mod tests {
         let host_names: Vec<String> = hosts.iter().map(|h| h.name.clone()).collect();
         assert!(host_names.contains(&"hydrogen".to_string()));
         assert!(host_names.contains(&"oxygen".to_string()));
-
-        // Clean up: restore original directory
-        env::set_current_dir(original_dir).unwrap();
     }
 
     #[test]
     fn test_list_hosts_with_nginx_filter() {
-        let original_dir = env::current_dir().unwrap();
         let manifest_dir = env!("CARGO_MANIFEST_DIR");
         let fixture_path = PathBuf::from(manifest_dir).join("tests/fixtures");
+        let ctx = SnowContext::new(Some(fixture_path.to_str().unwrap())).unwrap();
 
-        env::set_current_dir(&fixture_path).expect("Failed to change to fixture directory");
-
-        let result = list_hosts(Some("config: config.services.nginx.enable or false"));
+        let result = list_hosts(&ctx, Some("config: config.services.nginx.enable or false"));
         assert!(result.is_ok(), "list_hosts with nginx filter should succeed: {:?}", result.err());
 
         let hosts = result.unwrap();
@@ -559,20 +564,15 @@ mod tests {
         let host_names: Vec<String> = hosts.iter().map(|h| h.name.clone()).collect();
         assert!(host_names.contains(&"hydrogen".to_string()));
         assert!(host_names.contains(&"nitrogen".to_string()));
-
-        // Clean up: restore original directory
-        env::set_current_dir(original_dir).unwrap();
     }
 
     #[test]
     fn test_list_hosts_with_architecture_filter() {
-        let original_dir = env::current_dir().unwrap();
         let manifest_dir = env!("CARGO_MANIFEST_DIR");
         let fixture_path = PathBuf::from(manifest_dir).join("tests/fixtures");
+        let ctx = SnowContext::new(Some(fixture_path.to_str().unwrap())).unwrap();
 
-        env::set_current_dir(&fixture_path).expect("Failed to change to fixture directory");
-
-        let result = list_hosts(Some("config: (config.nixpkgs.hostPlatform or \"\") == \"x86_64-linux\""));
+        let result = list_hosts(&ctx, Some("config: (config.nixpkgs.hostPlatform or \"\") == \"x86_64-linux\""));
         assert!(result.is_ok(), "list_hosts with architecture filter should succeed: {:?}", result.err());
 
         let hosts = result.unwrap();
@@ -581,81 +581,58 @@ mod tests {
         let host_names: Vec<String> = hosts.iter().map(|h| h.name.clone()).collect();
         assert!(host_names.contains(&"hydrogen".to_string()));
         assert!(host_names.contains(&"oxygen".to_string()));
-
-        // Clean up: restore original directory
-        env::set_current_dir(original_dir).unwrap();
     }
 
     #[test]
     fn test_list_hosts_with_no_matches_filter() {
-        let original_dir = env::current_dir().unwrap();
         let manifest_dir = env!("CARGO_MANIFEST_DIR");
         let fixture_path = PathBuf::from(manifest_dir).join("tests/fixtures");
-
-        env::set_current_dir(&fixture_path).expect("Failed to change to fixture directory");
+        let ctx = SnowContext::new(Some(fixture_path.to_str().unwrap())).unwrap();
 
         // Filter that matches no hosts
-        let result = list_hosts(Some("config: false"));
+        let result = list_hosts(&ctx, Some("config: false"));
         assert!(result.is_ok(), "list_hosts with false filter should succeed: {:?}", result.err());
 
         let hosts = result.unwrap();
         assert_eq!(hosts.len(), 0);
-
-        // Clean up: restore original directory
-        env::set_current_dir(original_dir).unwrap();
     }
 
     #[test]
     fn test_list_hosts_with_invalid_syntax() {
-        let original_dir = env::current_dir().unwrap();
         let manifest_dir = env!("CARGO_MANIFEST_DIR");
         let fixture_path = PathBuf::from(manifest_dir).join("tests/fixtures");
-
-        env::set_current_dir(&fixture_path).expect("Failed to change to fixture directory");
+        let ctx = SnowContext::new(Some(fixture_path.to_str().unwrap())).unwrap();
 
         // Invalid Nix syntax - missing closing brace
-        let result = list_hosts(Some("config: { invalid syntax"));
+        let result = list_hosts(&ctx, Some("config: { invalid syntax"));
         assert!(result.is_err(), "list_hosts with invalid syntax should fail");
 
         let err_msg = result.unwrap_err().to_string();
         assert!(err_msg.contains("Failed to evaluate Nix expression"), "Error should mention Nix eval failure: {}", err_msg);
-
-        // Clean up: restore original directory
-        env::set_current_dir(original_dir).unwrap();
     }
 
     #[test]
     fn test_list_hosts_with_invalid_attribute_access() {
-        let original_dir = env::current_dir().unwrap();
         let manifest_dir = env!("CARGO_MANIFEST_DIR");
         let fixture_path = PathBuf::from(manifest_dir).join("tests/fixtures");
-
-        env::set_current_dir(&fixture_path).expect("Failed to change to fixture directory");
+        let ctx = SnowContext::new(Some(fixture_path.to_str().unwrap())).unwrap();
 
         // Accessing non-existent attribute without 'or' default - should fail
-        let result = list_hosts(Some("config: config.nonexistent.deeply.nested.attribute"));
+        let result = list_hosts(&ctx, Some("config: config.nonexistent.deeply.nested.attribute"));
         assert!(result.is_err(), "list_hosts with invalid attribute access should fail");
 
         let err_msg = result.unwrap_err().to_string();
         assert!(err_msg.contains("Failed to evaluate Nix expression"), "Error should mention Nix eval failure: {}", err_msg);
-
-        // Clean up: restore original directory
-        env::set_current_dir(original_dir).unwrap();
     }
 
     #[test]
     fn test_list_hosts_with_malformed_expression() {
-        let original_dir = env::current_dir().unwrap();
         let manifest_dir = env!("CARGO_MANIFEST_DIR");
         let fixture_path = PathBuf::from(manifest_dir).join("tests/fixtures");
-
-        env::set_current_dir(&fixture_path).expect("Failed to change to fixture directory");
+        let ctx = SnowContext::new(Some(fixture_path.to_str().unwrap())).unwrap();
 
         // Expression that doesn't return a boolean
-        let result = list_hosts(Some("config: \"not a boolean\""));
+        let result = list_hosts(&ctx, Some("config: \"not a boolean\""));
         assert!(result.is_err(), "list_hosts with non-boolean expression should fail");
-
-        // Clean up: restore original directory
-        env::set_current_dir(original_dir).unwrap();
     }
 }
