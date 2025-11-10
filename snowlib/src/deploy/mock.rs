@@ -1,6 +1,7 @@
 use crate::deploy::{ActivationMode, Deployer};
 use crate::error::Result;
 use crate::nix::{DeployTarget, StorePath};
+use serde::{Deserialize, Serialize};
 use std::thread;
 use std::time::Duration;
 
@@ -77,6 +78,41 @@ impl Deployer for MockDeployer {
     }
 }
 
+/// Fixture for a complete deployment scenario
+///
+/// Represents a recorded deployment scenario with multiple hosts.
+/// Can be serialized to/from JSON for testing.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeploymentFixture {
+    pub name: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    pub hosts: Vec<HostFixture>,
+}
+
+/// Fixture for a single host's deployment
+///
+/// Contains the expected behavior for copy_closure and activate operations.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HostFixture {
+    pub hostname: String,
+    pub copy_closure: OperationFixture,
+    pub activate: OperationFixture,
+}
+
+/// Fixture for a single deployment operation
+///
+/// Records the success/failure status, output, and timing for an operation.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OperationFixture {
+    pub success: bool,
+    #[serde(default)]
+    pub stdout: String,
+    #[serde(default)]
+    pub stderr: String,
+    pub duration_ms: u64,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -109,5 +145,34 @@ mod tests {
         let store_path = StorePath::new("/nix/store/test".to_string());
 
         assert!(deployer.copy_closure(&target, &store_path).is_err());
+    }
+
+    #[test]
+    fn test_fixture_deserialization() {
+        let json = r#"{
+            "name": "Test scenario",
+            "hosts": [
+                {
+                    "hostname": "test.example.com",
+                    "copy_closure": {
+                        "success": true,
+                        "stdout": "copying...",
+                        "stderr": "",
+                        "duration_ms": 100
+                    },
+                    "activate": {
+                        "success": true,
+                        "stdout": "activating...",
+                        "stderr": "",
+                        "duration_ms": 50
+                    }
+                }
+            ]
+        }"#;
+
+        let fixture: DeploymentFixture = serde_json::from_str(json).unwrap();
+        assert_eq!(fixture.name, "Test scenario");
+        assert_eq!(fixture.hosts.len(), 1);
+        assert_eq!(fixture.hosts[0].hostname, "test.example.com");
     }
 }
