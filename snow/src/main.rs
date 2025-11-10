@@ -1,4 +1,4 @@
-use clap::{Parser, Subcommand};
+use clap::Parser;
 use miette::{IntoDiagnostic, Result};
 
 mod error;
@@ -16,44 +16,7 @@ struct Cli {
     flake_path: Option<String>,
 
     #[command(subcommand)]
-    command: Commands,
-}
-
-#[derive(Subcommand)]
-enum Commands {
-    /// Show cluster status
-    Status {
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
-
-        /// Filter hosts using a Nix expression (e.g., "config: config.services.nginx.enable or false")
-        #[arg(short = 'e', long)]
-        filter: Option<String>,
-    },
-    /// List hostnames from nixosConfigurations
-    List {
-        /// Filter hosts using a Nix expression (e.g., "config: config.services.nginx.enable or false")
-        #[arg(short = 'e', long)]
-        filter: Option<String>,
-    },
-    /// Deploy configurations to hosts
-    Push {
-        /// Hosts to push (one or more)
-        hosts: Vec<String>,
-
-        /// Dry run - show what would change without activating
-        #[arg(long)]
-        dry_run: bool,
-
-        /// Only set for next boot (don't activate now)
-        #[arg(long)]
-        boot: bool,
-
-        /// Maximum number of hosts to push in parallel
-        #[arg(long, default_value = "3")]
-        concurrency: usize,
-    },
+    command: commands::Commands,
 }
 
 fn main() -> Result<()> {
@@ -63,14 +26,5 @@ fn main() -> Result<()> {
     // Ensure we're in a valid flake directory before running any commands
     nix::ensure_flake_root(cli.flake_path.as_deref()).into_diagnostic()?;
 
-    match cli.command {
-        Commands::Status { json, filter } => commands::status::run(json, filter).into_diagnostic(),
-        Commands::List { filter } => commands::list::run(filter).into_diagnostic(),
-        Commands::Push {
-            hosts,
-            dry_run,
-            boot,
-            concurrency,
-        } => commands::push::run(hosts, dry_run, boot, concurrency).into_diagnostic(),
-    }
+    cli.command.run().into_diagnostic()
 }
