@@ -10,6 +10,10 @@ mod commands;
 #[command(name = "snow")]
 #[command(about = "NixOS cluster orchestration tool", long_about = None)]
 struct Cli {
+    /// Path to the flake directory (defaults to searching up from current directory)
+    #[arg(short = 'f', long, global = true)]
+    flake_path: Option<String>,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -45,7 +49,7 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
 
     // Ensure we're in a valid flake directory before running any commands
-    nix::ensure_flake_root()?;
+    nix::ensure_flake_root(cli.flake_path.as_deref())?;
 
     match cli.command {
         Commands::Status { json } => commands::status::run(json),

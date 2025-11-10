@@ -89,8 +89,43 @@ fn find_flake_root_from(start: &Path) -> Result<PathBuf> {
 }
 
 /// Ensure we're in a valid flake directory and change to the flake root
-pub fn ensure_flake_root() -> Result<PathBuf> {
-    let flake_root = find_flake_root()?;
+/// If flake_path is provided, use it directly; otherwise search up from current directory
+/// flake_path can be either a directory containing flake.nix or the path to flake.nix itself
+pub fn ensure_flake_root(flake_path: Option<&str>) -> Result<PathBuf> {
+    let flake_root = if let Some(path) = flake_path {
+        let path_buf = PathBuf::from(path);
+        if !path_buf.exists() {
+            anyhow::bail!("Flake path does not exist: {}", path);
+        }
+
+        // If path points to flake.nix file, use its parent directory
+        let flake_dir = if path_buf.is_file() && path_buf.file_name() == Some(std::ffi::OsStr::new("flake.nix")) {
+            path_buf.parent()
+                .context("flake.nix has no parent directory")?
+                .to_path_buf()
+        } else if path_buf.is_dir() {
+            // If it's a directory, verify flake.nix exists in it
+            let flake_file = path_buf.join("flake.nix");
+            if !flake_file.exists() {
+                anyhow::bail!(
+                    "No flake.nix found in specified directory: {}\n\
+                     Please provide a path to a directory containing flake.nix or the flake.nix file itself",
+                    path
+                );
+            }
+            path_buf
+        } else {
+            anyhow::bail!(
+                "Path must be either a directory containing flake.nix or the flake.nix file itself: {}",
+                path
+            );
+        };
+
+        flake_dir
+    } else {
+        find_flake_root()?
+    };
+
     env::set_current_dir(&flake_root)
         .with_context(|| format!("Failed to change to flake root: {}", flake_root.display()))?;
     Ok(flake_root)
@@ -317,5 +352,60 @@ mod tests {
         let result = find_flake_root_from(&deep_dir);
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), temp_dir.path());
+    }
+
+    #[test]
+    fn test_ensure_flake_root_with_valid_path() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let flake_file = temp_dir.path().join("flake.nix");
+        fs::write(&flake_file, "# test flake").unwrap();
+
+        let original_dir = env::current_dir().unwrap();
+        let path_str = temp_dir.path().to_str().unwrap();
+        let result = ensure_flake_root(Some(path_str));
+
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), temp_dir.path());
+        assert_eq!(env::current_dir().unwrap(), temp_dir.path());
+
+        // Clean up: restore original directory
+        env::set_current_dir(original_dir).unwrap();
+    }
+
+    #[test]
+    fn test_ensure_flake_root_with_nonexistent_path() {
+        let result = ensure_flake_root(Some("/nonexistent/path"));
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("does not exist"));
+    }
+
+    #[test]
+    fn test_ensure_flake_root_with_path_missing_flake() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let path_str = temp_dir.path().to_str().unwrap();
+
+        let result = ensure_flake_root(Some(path_str));
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("No flake.nix found"));
+    }
+
+    #[test]
+    fn test_ensure_flake_root_with_flake_nix_file_path() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let flake_file = temp_dir.path().join("flake.nix");
+        fs::write(&flake_file, "# test flake").unwrap();
+
+        let original_dir = env::current_dir().unwrap();
+        let file_path_str = flake_file.to_str().unwrap();
+        let result = ensure_flake_root(Some(file_path_str));
+
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), temp_dir.path());
+        assert_eq!(env::current_dir().unwrap(), temp_dir.path());
+
+        // Clean up: restore original directory
+        env::set_current_dir(original_dir).unwrap();
     }
 }
