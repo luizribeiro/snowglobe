@@ -14,7 +14,7 @@ struct HostStatus {
 }
 
 pub fn run(json: bool) -> Result<()> {
-    let hosts = nix::list_hosts()?;
+    let hosts = nix::list_hosts(None)?;
 
     let statuses: Vec<HostStatus> = hosts
         .into_iter()

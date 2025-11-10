@@ -145,13 +145,25 @@ fn parse_host_names(json: &[u8]) -> Result<Vec<Host>> {
 }
 
 /// List all nixosConfigurations from the current flake
-pub fn list_hosts() -> Result<Vec<Host>> {
+/// If filter_expr is provided, it should be a Nix expression that takes a config and returns a boolean
+/// Example: "config: config.features.backup.enable or false"
+pub fn list_hosts(filter_expr: Option<&str>) -> Result<Vec<Host>> {
+    let apply_arg = if let Some(expr) = filter_expr {
+        // Build a filter expression similar to find-hosts in justfile
+        format!(
+            "configs: let inherit (builtins) filter attrNames; predicate = {}; matchingHosts = filter (hostname: predicate configs.${{hostname}}.config) (attrNames configs); in matchingHosts",
+            expr
+        )
+    } else {
+        "builtins.attrNames".to_string()
+    };
+
     let output = Command::new("nix")
         .args(&[
             "eval",
             ".#nixosConfigurations",
             "--apply",
-            "builtins.attrNames",
+            &apply_arg,
             "--json",
         ])
         .output()
@@ -404,6 +416,169 @@ mod tests {
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), temp_dir.path());
         assert_eq!(env::current_dir().unwrap(), temp_dir.path());
+
+        // Clean up: restore original directory
+        env::set_current_dir(original_dir).unwrap();
+    }
+
+    #[test]
+    fn test_list_hosts_without_filter() {
+        let original_dir = env::current_dir().unwrap();
+        let manifest_dir = env!("CARGO_MANIFEST_DIR");
+        let fixture_path = PathBuf::from(manifest_dir).join("tests/fixtures");
+
+        env::set_current_dir(&fixture_path).expect("Failed to change to fixture directory");
+
+        let result = list_hosts(None);
+        assert!(result.is_ok(), "list_hosts should succeed: {:?}", result.err());
+
+        let hosts = result.unwrap();
+        assert_eq!(hosts.len(), 4);
+
+        let host_names: Vec<String> = hosts.iter().map(|h| h.name.clone()).collect();
+        assert!(host_names.contains(&"hydrogen".to_string()));
+        assert!(host_names.contains(&"nitrogen".to_string()));
+        assert!(host_names.contains(&"oxygen".to_string()));
+        assert!(host_names.contains(&"helium".to_string()));
+
+        // Clean up: restore original directory
+        env::set_current_dir(original_dir).unwrap();
+    }
+
+    #[test]
+    fn test_list_hosts_with_postgresql_filter() {
+        let original_dir = env::current_dir().unwrap();
+        let manifest_dir = env!("CARGO_MANIFEST_DIR");
+        let fixture_path = PathBuf::from(manifest_dir).join("tests/fixtures");
+
+        env::set_current_dir(&fixture_path).expect("Failed to change to fixture directory");
+
+        let result = list_hosts(Some("config: config.services.postgresql.enable or false"));
+        assert!(result.is_ok(), "list_hosts with postgresql filter should succeed: {:?}", result.err());
+
+        let hosts = result.unwrap();
+        assert_eq!(hosts.len(), 2);
+
+        let host_names: Vec<String> = hosts.iter().map(|h| h.name.clone()).collect();
+        assert!(host_names.contains(&"hydrogen".to_string()));
+        assert!(host_names.contains(&"oxygen".to_string()));
+
+        // Clean up: restore original directory
+        env::set_current_dir(original_dir).unwrap();
+    }
+
+    #[test]
+    fn test_list_hosts_with_nginx_filter() {
+        let original_dir = env::current_dir().unwrap();
+        let manifest_dir = env!("CARGO_MANIFEST_DIR");
+        let fixture_path = PathBuf::from(manifest_dir).join("tests/fixtures");
+
+        env::set_current_dir(&fixture_path).expect("Failed to change to fixture directory");
+
+        let result = list_hosts(Some("config: config.services.nginx.enable or false"));
+        assert!(result.is_ok(), "list_hosts with nginx filter should succeed: {:?}", result.err());
+
+        let hosts = result.unwrap();
+        assert_eq!(hosts.len(), 2);
+
+        let host_names: Vec<String> = hosts.iter().map(|h| h.name.clone()).collect();
+        assert!(host_names.contains(&"hydrogen".to_string()));
+        assert!(host_names.contains(&"nitrogen".to_string()));
+
+        // Clean up: restore original directory
+        env::set_current_dir(original_dir).unwrap();
+    }
+
+    #[test]
+    fn test_list_hosts_with_architecture_filter() {
+        let original_dir = env::current_dir().unwrap();
+        let manifest_dir = env!("CARGO_MANIFEST_DIR");
+        let fixture_path = PathBuf::from(manifest_dir).join("tests/fixtures");
+
+        env::set_current_dir(&fixture_path).expect("Failed to change to fixture directory");
+
+        let result = list_hosts(Some("config: config.nixpkgs.hostPlatform == \"x86_64-linux\""));
+        assert!(result.is_ok(), "list_hosts with architecture filter should succeed: {:?}", result.err());
+
+        let hosts = result.unwrap();
+        assert_eq!(hosts.len(), 2);
+
+        let host_names: Vec<String> = hosts.iter().map(|h| h.name.clone()).collect();
+        assert!(host_names.contains(&"hydrogen".to_string()));
+        assert!(host_names.contains(&"oxygen".to_string()));
+
+        // Clean up: restore original directory
+        env::set_current_dir(original_dir).unwrap();
+    }
+
+    #[test]
+    fn test_list_hosts_with_no_matches_filter() {
+        let original_dir = env::current_dir().unwrap();
+        let manifest_dir = env!("CARGO_MANIFEST_DIR");
+        let fixture_path = PathBuf::from(manifest_dir).join("tests/fixtures");
+
+        env::set_current_dir(&fixture_path).expect("Failed to change to fixture directory");
+
+        // Filter that matches no hosts
+        let result = list_hosts(Some("config: false"));
+        assert!(result.is_ok(), "list_hosts with false filter should succeed: {:?}", result.err());
+
+        let hosts = result.unwrap();
+        assert_eq!(hosts.len(), 0);
+
+        // Clean up: restore original directory
+        env::set_current_dir(original_dir).unwrap();
+    }
+
+    #[test]
+    fn test_list_hosts_with_invalid_syntax() {
+        let original_dir = env::current_dir().unwrap();
+        let manifest_dir = env!("CARGO_MANIFEST_DIR");
+        let fixture_path = PathBuf::from(manifest_dir).join("tests/fixtures");
+
+        env::set_current_dir(&fixture_path).expect("Failed to change to fixture directory");
+
+        // Invalid Nix syntax - missing closing brace
+        let result = list_hosts(Some("config: { invalid syntax"));
+        assert!(result.is_err(), "list_hosts with invalid syntax should fail");
+
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("nix eval failed"), "Error should mention nix eval failure: {}", err_msg);
+
+        // Clean up: restore original directory
+        env::set_current_dir(original_dir).unwrap();
+    }
+
+    #[test]
+    fn test_list_hosts_with_invalid_attribute_access() {
+        let original_dir = env::current_dir().unwrap();
+        let manifest_dir = env!("CARGO_MANIFEST_DIR");
+        let fixture_path = PathBuf::from(manifest_dir).join("tests/fixtures");
+
+        env::set_current_dir(&fixture_path).expect("Failed to change to fixture directory");
+
+        // Accessing non-existent attribute without 'or' default - should fail
+        let result = list_hosts(Some("config: config.nonexistent.deeply.nested.attribute"));
+        assert!(result.is_err(), "list_hosts with invalid attribute access should fail");
+
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("nix eval failed"), "Error should mention nix eval failure: {}", err_msg);
+
+        // Clean up: restore original directory
+        env::set_current_dir(original_dir).unwrap();
+    }
+
+    #[test]
+    fn test_list_hosts_with_malformed_expression() {
+        let original_dir = env::current_dir().unwrap();
+        let manifest_dir = env!("CARGO_MANIFEST_DIR");
+        let fixture_path = PathBuf::from(manifest_dir).join("tests/fixtures");
+
+        env::set_current_dir(&fixture_path).expect("Failed to change to fixture directory");
+
+        // Expression that doesn't return a boolean
+        let result = list_hosts(Some("config: \"not a boolean\""));
+        assert!(result.is_err(), "list_hosts with non-boolean expression should fail");
 
         // Clean up: restore original directory
         env::set_current_dir(original_dir).unwrap();

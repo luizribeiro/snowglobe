@@ -26,6 +26,12 @@ enum Commands {
         #[arg(long)]
         json: bool,
     },
+    /// List hostnames from nixosConfigurations
+    List {
+        /// Filter hosts using a Nix expression (e.g., "config: config.services.nginx.enable or false")
+        #[arg(short = 'e', long)]
+        filter: Option<String>,
+    },
     /// Deploy configurations to hosts
     Push {
         /// Hosts to push (one or more)
@@ -53,6 +59,7 @@ fn main() -> Result<()> {
 
     match cli.command {
         Commands::Status { json } => commands::status::run(json),
+        Commands::List { filter } => commands::list::run(filter),
         Commands::Push {
             hosts,
             dry_run,
