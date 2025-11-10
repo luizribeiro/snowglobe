@@ -60,30 +60,102 @@ impl PushArgs {
             ActivationMode::Switch
         };
 
+        // Load fixture if using mock mode with fixture file
+        #[cfg(debug_assertions)]
+        let fixture = if self.mock && self.mock_fixture.is_some() {
+            let path = std::path::Path::new(self.mock_fixture.as_ref().unwrap());
+            Some(snowlib::DeploymentFixture::from_file(path)?)
+        } else {
+            None
+        };
+
         // Skip building when using mock mode
         #[cfg(debug_assertions)]
         let host_data = if self.mock {
-            println!("⚠ Using mock deployer (skipping builds)");
+            println!("⚠ Using mock deployer");
 
-            // Create fake metadata and store paths for mock mode
-            self.hosts
-                .iter()
-                .map(|host| {
-                    let metadata = snowlib::HostMetadata {
+            // Process each host
+            let mut results = Vec::new();
+            for host in &self.hosts {
+                // Get metadata from fixture or create fake
+                let metadata = if let Some(ref fix) = fixture {
+                    if let Some(meta_fix) = fix.get_metadata(host) {
+                        snowlib::HostMetadata {
+                            name: host.clone(),
+                            phase: meta_fix.phase.clone(),
+                            tags: meta_fix.tags.clone(),
+                            fqdn: meta_fix.fqdn.clone(),
+                        }
+                    } else {
+                        snowlib::HostMetadata {
+                            name: host.clone(),
+                            phase: Some("production".to_string()),
+                            tags: vec![],
+                            fqdn: format!("{}.example.com", host),
+                        }
+                    }
+                } else {
+                    snowlib::HostMetadata {
                         name: host.clone(),
                         phase: Some("production".to_string()),
                         tags: vec![],
                         fqdn: format!("{}.example.com", host),
-                    };
-                    let target = DeployTarget {
-                        user: "root".to_string(),
-                        hostname: metadata.fqdn.clone(),
-                        port: None,
-                    };
-                    let store_path = StorePath::new(format!("/nix/store/mock-{}", host));
-                    (metadata, target, store_path)
-                })
-                .collect()
+                    }
+                };
+
+                // Simulate build phase
+                if let Some(ref fix) = fixture {
+                    if let Some(build_fix) = fix.get_build(host) {
+                        use std::thread;
+                        use std::time::Duration;
+
+                        print!("Building {}... ", host);
+                        thread::sleep(Duration::from_millis(build_fix.duration_ms));
+
+                        if !build_fix.stdout.is_empty() {
+                            print!("{}", build_fix.stdout);
+                        }
+                        if !build_fix.stderr.is_empty() {
+                            eprint!("{}", build_fix.stderr);
+                        }
+
+                        if !build_fix.success {
+                            println!("✗ Build failed");
+                            return Err(snowlib::error::NixError::BuildFailed {
+                                host: host.clone(),
+                                stderr: build_fix.stderr.clone(),
+                                source: std::io::Error::other("Build failed (from fixture)"),
+                            }
+                            .into());
+                        }
+                        println!("✓");
+                    }
+                }
+
+                // Get store path from fixture or create fake
+                let store_path = if let Some(ref fix) = fixture {
+                    if let Some(build_fix) = fix.get_build(host) {
+                        if let Some(ref sp) = build_fix.store_path {
+                            StorePath::new(sp.clone())
+                        } else {
+                            StorePath::new(format!("/nix/store/mock-{}", host))
+                        }
+                    } else {
+                        StorePath::new(format!("/nix/store/mock-{}", host))
+                    }
+                } else {
+                    StorePath::new(format!("/nix/store/mock-{}", host))
+                };
+
+                let target = DeployTarget {
+                    user: "root".to_string(),
+                    hostname: metadata.fqdn.clone(),
+                    port: None,
+                };
+
+                results.push((metadata, target, store_path));
+            }
+            results
         } else {
             println!("→ Building configurations...");
 
@@ -146,13 +218,11 @@ impl PushArgs {
         #[cfg(debug_assertions)]
         let results = if self.mock {
             // Create appropriate mock deployer
-            let deployer: Box<dyn snowlib::Deployer> =
-                if let Some(fixture_path) = &self.mock_fixture {
-                    let path = std::path::Path::new(fixture_path);
-                    Box::new(FixtureDeployer::from_file(path)?)
-                } else {
-                    Box::new(MockDeployer::new())
-                };
+            let deployer: Box<dyn snowlib::Deployer> = if let Some(fix) = fixture {
+                Box::new(FixtureDeployer::from_fixture(fix))
+            } else {
+                Box::new(MockDeployer::new())
+            };
             push_parallel(deployer.as_ref(), host_data, &opts)?
         } else {
             let deployer = SshDeployer::new();
@@ -244,6 +314,8 @@ mod tests {
             description: Some("Test scenario".to_string()),
             hosts: vec![HostFixture {
                 hostname: "hydrogen.example.com".to_string(),
+                metadata: None,
+                build: None,
                 copy_closure: OperationFixture {
                     success: true,
                     stdout: "copying...\n".to_string(),

@@ -1,0 +1,59 @@
+{
+  "name": "Build failure scenario",
+  "description": "One host fails to build, one succeeds",
+  "hosts": [
+    {
+      "hostname": "hydrogen",
+      "metadata": {
+        "fqdn": "hydrogen.example.com",
+        "phase": "production",
+        "tags": ["web", "frontend"]
+      },
+      "build": {
+        "success": false,
+        "stdout": "building '/nix/store/...-hydrogen.drv'...\n",
+        "stderr": "error: builder for '/nix/store/xyz-hydrogen.drv' failed with exit code 1\nerror: attribute 'services.nginx.virtualHosts' already defined at /etc/nixos/nginx.nix:12\n",
+        "duration_ms": 500
+      },
+      "copy_closure": {
+        "success": false,
+        "stdout": "",
+        "stderr": "error: build failed, skipping deployment\n",
+        "duration_ms": 0
+      },
+      "activate": {
+        "success": false,
+        "stdout": "",
+        "stderr": "error: build failed, skipping activation\n",
+        "duration_ms": 0
+      }
+    },
+    {
+      "hostname": "nitrogen",
+      "metadata": {
+        "fqdn": "nitrogen.example.com",
+        "phase": "production",
+        "tags": ["database"]
+      },
+      "build": {
+        "success": true,
+        "stdout": "building '/nix/store/...-nitrogen.drv'...\n",
+        "stderr": "",
+        "duration_ms": 2000,
+        "store_path": "/nix/store/abc123-nitrogen"
+      },
+      "copy_closure": {
+        "success": true,
+        "stdout": "copying 18 paths to ssh://root@nitrogen.example.com...\n",
+        "stderr": "",
+        "duration_ms": 1500
+      },
+      "activate": {
+        "success": true,
+        "stdout": "reloading postgresql.service...\nactivation successful\n",
+        "stderr": "",
+        "duration_ms": 800
+      }
+    }
+  ]
+}

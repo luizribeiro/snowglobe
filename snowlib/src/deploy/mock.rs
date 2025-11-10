@@ -92,14 +92,73 @@ pub struct DeploymentFixture {
     pub hosts: Vec<HostFixture>,
 }
 
+impl DeploymentFixture {
+    /// Load a fixture from a JSON file
+    pub fn from_file(path: &Path) -> Result<Self> {
+        let contents = std::fs::read_to_string(path)
+            .map_err(|e| crate::error::IoError::CurrentDir { source: e })?;
+
+        let fixture: DeploymentFixture = serde_json::from_str(&contents)
+            .map_err(|e| crate::error::IoError::JsonSerialize { source: e })?;
+
+        Ok(fixture)
+    }
+
+    /// Get fixture for a specific host by name
+    pub fn get_host(&self, hostname: &str) -> Option<&HostFixture> {
+        self.hosts.iter().find(|h| h.hostname == hostname)
+    }
+
+    /// Get metadata for a specific host
+    pub fn get_metadata(&self, hostname: &str) -> Option<&MetadataFixture> {
+        self.get_host(hostname)?.metadata.as_ref()
+    }
+
+    /// Get build fixture for a specific host
+    pub fn get_build(&self, hostname: &str) -> Option<&BuildFixture> {
+        self.get_host(hostname)?.build.as_ref()
+    }
+}
+
 /// Fixture for a single host's deployment
 ///
-/// Contains the expected behavior for copy_closure and activate operations.
+/// Contains the expected behavior for metadata, build, copy_closure, and activate operations.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HostFixture {
     pub hostname: String,
+    #[serde(default)]
+    pub metadata: Option<MetadataFixture>,
+    #[serde(default)]
+    pub build: Option<BuildFixture>,
     pub copy_closure: OperationFixture,
     pub activate: OperationFixture,
+}
+
+/// Fixture for host metadata
+///
+/// Mocks the result of get_host_metadata
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MetadataFixture {
+    pub fqdn: String,
+    #[serde(default)]
+    pub phase: Option<String>,
+    #[serde(default)]
+    pub tags: Vec<String>,
+}
+
+/// Fixture for build phase
+///
+/// Mocks the result of build_host
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BuildFixture {
+    pub success: bool,
+    #[serde(default)]
+    pub stdout: String,
+    #[serde(default)]
+    pub stderr: String,
+    pub duration_ms: u64,
+    #[serde(default)]
+    pub store_path: Option<String>,
 }
 
 /// Fixture for a single deployment operation
@@ -133,22 +192,22 @@ impl FixtureDeployer {
         let fixture: DeploymentFixture = serde_json::from_str(&contents)
             .map_err(|e| crate::error::IoError::JsonSerialize { source: e })?;
 
-        let fixtures: HashMap<String, HostFixture> = fixture
-            .hosts
-            .into_iter()
-            .map(|h| (h.hostname.clone(), h))
-            .collect();
-
-        Ok(Self { fixtures })
+        Ok(Self::from_fixture(fixture))
     }
 
     /// Create from a DeploymentFixture directly (useful for tests)
     pub fn from_fixture(fixture: DeploymentFixture) -> Self {
-        let fixtures: HashMap<String, HostFixture> = fixture
-            .hosts
-            .into_iter()
-            .map(|h| (h.hostname.clone(), h))
-            .collect();
+        let mut fixtures: HashMap<String, HostFixture> = HashMap::new();
+
+        for host in fixture.hosts {
+            // Index by hostname
+            fixtures.insert(host.hostname.clone(), host.clone());
+
+            // Also index by FQDN if metadata is present
+            if let Some(ref metadata) = host.metadata {
+                fixtures.insert(metadata.fqdn.clone(), host);
+            }
+        }
 
         Self { fixtures }
     }
@@ -276,6 +335,8 @@ mod tests {
             description: None,
             hosts: vec![HostFixture {
                 hostname: "test.example.com".to_string(),
+                metadata: None,
+                build: None,
                 copy_closure: OperationFixture {
                     success: true,
                     stdout: "copying...\n".to_string(),
