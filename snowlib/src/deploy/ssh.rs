@@ -49,7 +49,7 @@ impl Deployer for SshDeployer {
         let ssh_target = format!("ssh://{}", self.get_destination(target));
 
         let output = Command::new("nix")
-            .args(&["copy", "--to", &ssh_target, store_path.as_str()])
+            .args(["copy", "--to", &ssh_target, store_path.as_str()])
             .output()
             .map_err(|e| DeployError::Failed {
                 host: target.hostname.clone(),
@@ -60,10 +60,7 @@ impl Deployer for SshDeployer {
             let stderr = String::from_utf8_lossy(&output.stderr);
             return Err(DeployError::Failed {
                 host: target.hostname.clone(),
-                source: std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    format!("nix copy failed: {}", stderr),
-                ),
+                source: std::io::Error::other(format!("nix copy failed: {}", stderr)),
             }
             .into());
         }
@@ -98,10 +95,7 @@ impl Deployer for SshDeployer {
             let stderr = String::from_utf8_lossy(&output.stderr);
             return Err(DeployError::Failed {
                 host: target.hostname.clone(),
-                source: std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    format!("Activation failed: {}", stderr),
-                ),
+                source: std::io::Error::other(format!("Activation failed: {}", stderr)),
             }
             .into());
         }

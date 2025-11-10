@@ -40,14 +40,12 @@ impl StatusArgs {
             let json_output = serde_json::to_string_pretty(&statuses)
                 .map_err(|e| snowlib::error::IoError::JsonSerialize { source: e })?;
             println!("{}", json_output);
+        } else if statuses.is_empty() {
+            println!("No hosts found in flake.nix");
         } else {
-            if statuses.is_empty() {
-                println!("No hosts found in flake.nix");
-            } else {
-                let table = Table::new(&statuses).to_string();
-                println!("\nCluster Status\n");
-                println!("{}", table);
-            }
+            let table = Table::new(&statuses).to_string();
+            println!("\nCluster Status\n");
+            println!("{}", table);
         }
 
         Ok(())

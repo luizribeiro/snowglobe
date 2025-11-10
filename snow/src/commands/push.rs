@@ -105,7 +105,7 @@ impl PushArgs {
         if !results.all_succeeded() {
             return Err(snowlib::error::DeployError::Failed {
                 host: "multiple".to_string(),
-                source: std::io::Error::new(std::io::ErrorKind::Other, "Some deployments failed"),
+                source: std::io::Error::other("Some deployments failed"),
             }
             .into());
         }

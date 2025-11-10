@@ -56,21 +56,21 @@ impl NixCommand {
     /// Start building a `nix eval` command for a flake attribute
     fn eval(ctx: &SnowContext, attr: impl AsRef<str>) -> Self {
         let mut builder = Self::new(ctx);
-        builder.cmd.args(&["eval", attr.as_ref()]);
+        builder.cmd.args(["eval", attr.as_ref()]);
         builder
     }
 
     /// Start building a `nix eval` command with an inline expression
     fn eval_expr(ctx: &SnowContext, expr: impl AsRef<str>) -> Self {
         let mut builder = Self::new(ctx);
-        builder.cmd.args(&["eval", "--expr", expr.as_ref()]);
+        builder.cmd.args(["eval", "--expr", expr.as_ref()]);
         builder
     }
 
     /// Start building a `nix build` command
     fn build(ctx: &SnowContext, target: impl AsRef<str>) -> Self {
         let mut builder = Self::new(ctx);
-        builder.cmd.args(&["build", target.as_ref()]);
+        builder.cmd.args(["build", target.as_ref()]);
         builder
     }
 
@@ -82,7 +82,7 @@ impl NixCommand {
 
     /// Add --apply flag with an expression
     fn apply(mut self, expr: impl AsRef<str>) -> Self {
-        self.cmd.args(&["--apply", expr.as_ref()]);
+        self.cmd.args(["--apply", expr.as_ref()]);
         self
     }
 
@@ -110,10 +110,7 @@ impl NixCommand {
             let stderr = String::from_utf8_lossy(&output.stderr).to_string();
             return Err(NixError::EvalFailed {
                 stderr,
-                source: std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    "nix command exited with non-zero status",
-                ),
+                source: std::io::Error::other("nix command exited with non-zero status"),
             }
             .into());
         }

@@ -61,7 +61,7 @@ pub fn push_parallel(
         .map_err(|e| {
             crate::error::SnowError::Deploy(crate::error::DeployError::Failed {
                 host: "thread pool".to_string(),
-                source: std::io::Error::new(std::io::ErrorKind::Other, e.to_string()),
+                source: std::io::Error::other(e.to_string()),
             })
         })?;
 
@@ -99,7 +99,7 @@ pub fn push_by_phase(
             .unwrap_or_else(|| "default".to_string());
         by_phase
             .entry(phase)
-            .or_insert_with(Vec::new)
+            .or_default()
             .push((metadata, target, store_path));
     }
 
