@@ -1,5 +1,7 @@
 use anyhow::{Context, Result};
 use serde::Deserialize;
+use std::env;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 /// A NixOS host from the flake
@@ -51,6 +53,47 @@ impl DeployTarget {
             format!("ssh://{}@{}", self.user, self.hostname)
         }
     }
+}
+
+/// Find the flake root by searching up from the current directory
+/// Returns the path to the directory containing flake.nix
+pub fn find_flake_root() -> Result<PathBuf> {
+    let current_dir = env::current_dir()
+        .context("Failed to get current directory")?;
+
+    find_flake_root_from(&current_dir)
+}
+
+/// Find the flake root by searching up from a given directory
+fn find_flake_root_from(start: &Path) -> Result<PathBuf> {
+    let mut current = start;
+
+    loop {
+        let flake_path = current.join("flake.nix");
+        if flake_path.exists() {
+            return Ok(current.to_path_buf());
+        }
+
+        match current.parent() {
+            Some(parent) => current = parent,
+            None => {
+                anyhow::bail!(
+                    "Could not find flake.nix in {} or any parent directory.\n\
+                     snowglobe requires a flake.nix with nixosConfigurations to operate.\n\
+                     Please run this command from within a NixOS flake directory.",
+                    start.display()
+                )
+            }
+        }
+    }
+}
+
+/// Ensure we're in a valid flake directory and change to the flake root
+pub fn ensure_flake_root() -> Result<PathBuf> {
+    let flake_root = find_flake_root()?;
+    env::set_current_dir(&flake_root)
+        .with_context(|| format!("Failed to change to flake root: {}", flake_root.display()))?;
+    Ok(flake_root)
 }
 
 /// Parse host names from nix JSON output
@@ -191,6 +234,7 @@ pub fn build_host(host: &str) -> Result<StorePath> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
 
     #[test]
     fn test_parse_host_names() {
@@ -225,5 +269,53 @@ mod tests {
             port: Some(2222),
         };
         assert_eq!(target.ssh_url(), "ssh://deploy@hydrogen.example.com:2222");
+    }
+
+    #[test]
+    fn test_find_flake_root_in_current_dir() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let flake_path = temp_dir.path().join("flake.nix");
+        fs::write(&flake_path, "# test flake").unwrap();
+
+        let result = find_flake_root_from(temp_dir.path());
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), temp_dir.path());
+    }
+
+    #[test]
+    fn test_find_flake_root_in_parent_dir() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let flake_path = temp_dir.path().join("flake.nix");
+        fs::write(&flake_path, "# test flake").unwrap();
+
+        let subdir = temp_dir.path().join("subdir");
+        fs::create_dir(&subdir).unwrap();
+
+        let result = find_flake_root_from(&subdir);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), temp_dir.path());
+    }
+
+    #[test]
+    fn test_find_flake_root_not_found() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let result = find_flake_root_from(temp_dir.path());
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("Could not find flake.nix"));
+    }
+
+    #[test]
+    fn test_find_flake_root_multiple_levels() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let flake_path = temp_dir.path().join("flake.nix");
+        fs::write(&flake_path, "# test flake").unwrap();
+
+        let deep_dir = temp_dir.path().join("a").join("b").join("c");
+        fs::create_dir_all(&deep_dir).unwrap();
+
+        let result = find_flake_root_from(&deep_dir);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), temp_dir.path());
     }
 }

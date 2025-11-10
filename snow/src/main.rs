@@ -44,6 +44,9 @@ enum Commands {
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
+    // Ensure we're in a valid flake directory before running any commands
+    nix::ensure_flake_root()?;
+
     match cli.command {
         Commands::Status { json } => commands::status::run(json),
         Commands::Push {
