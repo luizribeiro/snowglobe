@@ -1,5 +1,8 @@
 pub mod ssh;
 
+#[cfg(test)]
+pub mod mock;
+
 use crate::error::Result;
 use crate::nix::{DeployTarget, StorePath};
 
