@@ -1,4 +1,4 @@
-use anyhow::Result;
+use crate::error::Result;
 use crate::nix;
 
 pub fn run(filter: Option<String>) -> Result<()> {

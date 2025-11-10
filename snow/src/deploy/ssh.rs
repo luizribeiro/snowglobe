@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use crate::error::{DeployError, Result};
 use std::process::Command;
 
 use super::{ActivationMode, Deployer};
@@ -51,11 +51,18 @@ impl Deployer for SshDeployer {
         let output = Command::new("nix")
             .args(&["copy", "--to", &ssh_target, store_path.as_str()])
             .output()
-            .context("Failed to execute nix copy")?;
+            .map_err(|e| DeployError::Failed {
+                host: target.hostname.clone(),
+                source: e,
+            })?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            anyhow::bail!("nix copy failed: {}", stderr);
+            return Err(DeployError::Failed {
+                host: target.hostname.clone(),
+                source: std::io::Error::new(std::io::ErrorKind::Other, format!("nix copy failed: {}", stderr)),
+            }
+            .into());
         }
 
         Ok(())
@@ -86,11 +93,18 @@ impl Deployer for SshDeployer {
 
         let output = cmd
             .output()
-            .context("Failed to execute switch-to-configuration")?;
+            .map_err(|e| DeployError::SshFailed {
+                destination: self.get_destination(target),
+                source: e,
+            })?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            anyhow::bail!("Activation failed: {}", stderr);
+            return Err(DeployError::Failed {
+                host: target.hostname.clone(),
+                source: std::io::Error::new(std::io::ErrorKind::Other, format!("Activation failed: {}", stderr)),
+            }
+            .into());
         }
 
         Ok(())

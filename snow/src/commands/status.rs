@@ -1,4 +1,4 @@
-use anyhow::Result;
+use crate::error::{IoError, Result};
 use serde::Serialize;
 use tabled::{Table, Tabled};
 
@@ -25,7 +25,9 @@ pub fn run(json: bool, filter: Option<String>) -> Result<()> {
         .collect();
 
     if json {
-        println!("{}", serde_json::to_string_pretty(&statuses)?);
+        let json_output = serde_json::to_string_pretty(&statuses)
+            .map_err(|e| IoError::JsonSerialize { source: e })?;
+        println!("{}", json_output);
     } else {
         if statuses.is_empty() {
             println!("No hosts found in flake.nix");

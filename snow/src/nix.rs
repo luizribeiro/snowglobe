@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use crate::error::{FlakeError, IoError, NixError, Result};
 use serde::Deserialize;
 use std::env;
 use std::path::{Path, PathBuf};
@@ -59,7 +59,7 @@ impl DeployTarget {
 /// Returns the path to the directory containing flake.nix
 pub fn find_flake_root() -> Result<PathBuf> {
     let current_dir = env::current_dir()
-        .context("Failed to get current directory")?;
+        .map_err(|e| IoError::CurrentDir { source: e })?;
 
     find_flake_root_from(&current_dir)
 }
@@ -77,12 +77,10 @@ fn find_flake_root_from(start: &Path) -> Result<PathBuf> {
         match current.parent() {
             Some(parent) => current = parent,
             None => {
-                anyhow::bail!(
-                    "Could not find flake.nix in {} or any parent directory.\n\
-                     snowglobe requires a flake.nix with nixosConfigurations to operate.\n\
-                     Please run this command from within a NixOS flake directory.",
-                    start.display()
-                )
+                return Err(FlakeError::NotFound {
+                    start_dir: start.to_path_buf(),
+                }
+                .into())
             }
         }
     }
@@ -95,30 +93,32 @@ pub fn ensure_flake_root(flake_path: Option<&str>) -> Result<PathBuf> {
     let flake_root = if let Some(path) = flake_path {
         let path_buf = PathBuf::from(path);
         if !path_buf.exists() {
-            anyhow::bail!("Flake path does not exist: {}", path);
+            return Err(FlakeError::PathNotFound {
+                path: path_buf,
+            }
+            .into());
         }
 
         // If path points to flake.nix file, use its parent directory
         let flake_dir = if path_buf.is_file() && path_buf.file_name() == Some(std::ffi::OsStr::new("flake.nix")) {
             path_buf.parent()
-                .context("flake.nix has no parent directory")?
+                .ok_or_else(|| FlakeError::InvalidPath { path: path_buf.clone() })?
                 .to_path_buf()
         } else if path_buf.is_dir() {
             // If it's a directory, verify flake.nix exists in it
             let flake_file = path_buf.join("flake.nix");
             if !flake_file.exists() {
-                anyhow::bail!(
-                    "No flake.nix found in specified directory: {}\n\
-                     Please provide a path to a directory containing flake.nix or the flake.nix file itself",
-                    path
-                );
+                return Err(FlakeError::MissingInDir {
+                    path: path_buf,
+                }
+                .into());
             }
             path_buf
         } else {
-            anyhow::bail!(
-                "Path must be either a directory containing flake.nix or the flake.nix file itself: {}",
-                path
-            );
+            return Err(FlakeError::InvalidPath {
+                path: path_buf,
+            }
+            .into());
         };
 
         flake_dir
@@ -127,14 +127,20 @@ pub fn ensure_flake_root(flake_path: Option<&str>) -> Result<PathBuf> {
     };
 
     env::set_current_dir(&flake_root)
-        .with_context(|| format!("Failed to change to flake root: {}", flake_root.display()))?;
+        .map_err(|e| FlakeError::ChdirFailed {
+            path: flake_root.clone(),
+            source: e,
+        })?;
     Ok(flake_root)
 }
 
 /// Parse host names from nix JSON output
 fn parse_host_names(json: &[u8]) -> Result<Vec<Host>> {
     let host_names: Vec<String> = serde_json::from_slice(json)
-        .context("Failed to parse nix output")?;
+        .map_err(|e| NixError::OutputParseFailed {
+            output: String::from_utf8_lossy(json).to_string(),
+            source: e,
+        })?;
 
     let hosts = host_names
         .into_iter()
@@ -167,11 +173,15 @@ pub fn list_hosts(filter_expr: Option<&str>) -> Result<Vec<Host>> {
             "--json",
         ])
         .output()
-        .context("Failed to execute nix command")?;
+        .map_err(|e| NixError::CommandFailed { source: e })?;
 
     if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        anyhow::bail!("nix eval failed: {}", stderr);
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        return Err(NixError::EvalFailed {
+            stderr,
+            source: std::io::Error::new(std::io::ErrorKind::Other, "nix eval exited with non-zero status"),
+        }
+        .into());
     }
 
     parse_host_names(&output.stdout)
@@ -186,11 +196,14 @@ pub fn get_host_metadata(host: &str) -> Result<HostMetadata> {
         let output = Command::new("nix")
             .args(&["eval", &format!("{}.core.pushPhase", config_path), "--raw"])
             .output()
-            .context("Failed to eval pushPhase")?;
+            .map_err(|e| NixError::CommandFailed { source: e })?;
 
         if output.status.success() {
             let phase_str = String::from_utf8(output.stdout)
-                .context("pushPhase output not valid UTF-8")?;
+                .map_err(|e| NixError::EvalFailed {
+                    stderr: format!("Non-UTF8 output from pushPhase: {:?}", e.as_bytes()),
+                    source: std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid UTF-8"),
+                })?;
             Some(phase_str)
         } else {
             None
@@ -202,11 +215,14 @@ pub fn get_host_metadata(host: &str) -> Result<HostMetadata> {
         let output = Command::new("nix")
             .args(&["eval", &format!("{}.core.tags", config_path), "--json"])
             .output()
-            .context("Failed to eval tags")?;
+            .map_err(|e| NixError::CommandFailed { source: e })?;
 
         if output.status.success() {
             serde_json::from_slice(&output.stdout)
-                .context("Failed to parse tags")?
+                .map_err(|e| NixError::OutputParseFailed {
+                    output: String::from_utf8_lossy(&output.stdout).to_string(),
+                    source: e,
+                })?
         } else {
             Vec::new()
         }
@@ -217,14 +233,24 @@ pub fn get_host_metadata(host: &str) -> Result<HostMetadata> {
         let output = Command::new("nix")
             .args(&["eval", &format!("{}.networking.hostName", config_path), "--raw"])
             .output()
-            .context("Failed to eval hostName")?;
+            .map_err(|e| NixError::CommandFailed { source: e })?;
 
         if !output.status.success() {
-            anyhow::bail!("Failed to get hostname for {}", host);
+            return Err(NixError::MetadataFailed {
+                host: host.to_string(),
+                source: Box::new(NixError::EvalFailed {
+                    stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+                    source: std::io::Error::new(std::io::ErrorKind::Other, "failed to get hostname"),
+                }),
+            }
+            .into());
         }
 
         String::from_utf8(output.stdout)
-            .context("hostname output not valid UTF-8")?
+            .map_err(|e| NixError::EvalFailed {
+                stderr: format!("Non-UTF8 hostname: {:?}", e.as_bytes()),
+                source: std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid UTF-8"),
+            })?
     };
 
     // Get domain
@@ -232,11 +258,14 @@ pub fn get_host_metadata(host: &str) -> Result<HostMetadata> {
         let output = Command::new("nix")
             .args(&["eval", &format!("{}.networking.domain", config_path), "--raw"])
             .output()
-            .context("Failed to eval domain")?;
+            .map_err(|e| NixError::CommandFailed { source: e })?;
 
         if output.status.success() {
             String::from_utf8(output.stdout)
-                .context("domain output not valid UTF-8")?
+                .map_err(|e| NixError::EvalFailed {
+                    stderr: format!("Non-UTF8 domain: {:?}", e.as_bytes()),
+                    source: std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid UTF-8"),
+                })?
         } else {
             String::new()
         }
@@ -263,15 +292,23 @@ pub fn build_host(host: &str) -> Result<StorePath> {
     let output = Command::new("nix")
         .args(&["build", &target, "--no-link", "--print-out-paths"])
         .output()
-        .context("Failed to execute nix build")?;
+        .map_err(|e| NixError::CommandFailed { source: e })?;
 
     if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        anyhow::bail!("nix build failed for {}: {}", host, stderr);
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        return Err(NixError::BuildFailed {
+            host: host.to_string(),
+            stderr,
+            source: std::io::Error::new(std::io::ErrorKind::Other, "nix build failed"),
+        }
+        .into());
     }
 
     let path = String::from_utf8(output.stdout)
-        .context("build output not valid UTF-8")?
+        .map_err(|e| NixError::EvalFailed {
+            stderr: format!("Non-UTF8 build path: {:?}", e.as_bytes()),
+            source: std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid UTF-8"),
+        })?
         .trim()
         .to_string();
 
@@ -543,7 +580,7 @@ mod tests {
         assert!(result.is_err(), "list_hosts with invalid syntax should fail");
 
         let err_msg = result.unwrap_err().to_string();
-        assert!(err_msg.contains("nix eval failed"), "Error should mention nix eval failure: {}", err_msg);
+        assert!(err_msg.contains("Failed to evaluate Nix expression"), "Error should mention Nix eval failure: {}", err_msg);
 
         // Clean up: restore original directory
         env::set_current_dir(original_dir).unwrap();
@@ -562,7 +599,7 @@ mod tests {
         assert!(result.is_err(), "list_hosts with invalid attribute access should fail");
 
         let err_msg = result.unwrap_err().to_string();
-        assert!(err_msg.contains("nix eval failed"), "Error should mention nix eval failure: {}", err_msg);
+        assert!(err_msg.contains("Failed to evaluate Nix expression"), "Error should mention Nix eval failure: {}", err_msg);
 
         // Clean up: restore original directory
         env::set_current_dir(original_dir).unwrap();

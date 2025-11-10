@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use crate::error::Result;
 use tabled::{Table, Tabled};
 
 use crate::deploy::{ActivationMode, ssh::SshDeployer};
@@ -38,11 +38,9 @@ pub fn run(
     let mut host_data = Vec::new();
 
     for host in &hosts {
-        let metadata = nix::get_host_metadata(host)
-            .with_context(|| format!("Failed to get metadata for {}", host))?;
+        let metadata = nix::get_host_metadata(host)?;
 
-        let store_path = nix::build_host(host)
-            .with_context(|| format!("Failed to build {}", host))?;
+        let store_path = nix::build_host(host)?;
 
         let target = DeployTarget {
             user: "root".to_string(),
@@ -89,7 +87,11 @@ pub fn run(
     );
 
     if !results.all_succeeded() {
-        anyhow::bail!("Some deployments failed");
+        return Err(crate::error::DeployError::Failed {
+            host: "multiple".to_string(),
+            source: std::io::Error::new(std::io::ErrorKind::Other, "Some deployments failed"),
+        }
+        .into());
     }
 
     Ok(())

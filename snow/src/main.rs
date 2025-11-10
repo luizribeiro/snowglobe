@@ -1,6 +1,7 @@
 use clap::{Parser, Subcommand};
-use anyhow::Result;
+use miette::{IntoDiagnostic, Result};
 
+mod error;
 mod nix;
 mod deploy;
 mod push;
@@ -56,19 +57,20 @@ enum Commands {
 }
 
 fn main() -> Result<()> {
+    miette::set_panic_hook();
     let cli = Cli::parse();
 
     // Ensure we're in a valid flake directory before running any commands
-    nix::ensure_flake_root(cli.flake_path.as_deref())?;
+    nix::ensure_flake_root(cli.flake_path.as_deref()).into_diagnostic()?;
 
     match cli.command {
-        Commands::Status { json, filter } => commands::status::run(json, filter),
-        Commands::List { filter } => commands::list::run(filter),
+        Commands::Status { json, filter } => commands::status::run(json, filter).into_diagnostic(),
+        Commands::List { filter } => commands::list::run(filter).into_diagnostic(),
         Commands::Push {
             hosts,
             dry_run,
             boot,
             concurrency,
-        } => commands::push::run(hosts, dry_run, boot, concurrency),
+        } => commands::push::run(hosts, dry_run, boot, concurrency).into_diagnostic(),
     }
 }

@@ -1,6 +1,6 @@
 pub mod ssh;
 
-use anyhow::Result;
+use crate::error::Result;
 use crate::nix::{DeployTarget, StorePath};
 
 /// Activation mode for NixOS configuration
