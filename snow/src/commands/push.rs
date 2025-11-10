@@ -145,3 +145,136 @@ impl PushArgs {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use snowlib::{DeployTarget, StorePath};
+    use snowlib::{
+        Deployer, DeploymentFixture, FixtureDeployer, HostFixture, MockDeployer, OperationFixture,
+    };
+
+    #[test]
+    fn test_mock_deployer_success() {
+        let deployer = MockDeployer::new();
+        let target = DeployTarget {
+            user: "root".to_string(),
+            hostname: "test.example.com".to_string(),
+            port: None,
+        };
+        let store_path = StorePath::new("/nix/store/test".to_string());
+
+        assert!(deployer.copy_closure(&target, &store_path).is_ok());
+        assert!(deployer
+            .activate(&target, &store_path, ActivationMode::Switch)
+            .is_ok());
+    }
+
+    #[test]
+    fn test_mock_deployer_with_failure() {
+        let deployer = MockDeployer::new().with_failures(vec!["fail.example.com".to_string()]);
+
+        let target = DeployTarget {
+            user: "root".to_string(),
+            hostname: "fail.example.com".to_string(),
+            port: None,
+        };
+        let store_path = StorePath::new("/nix/store/test".to_string());
+
+        assert!(deployer.copy_closure(&target, &store_path).is_err());
+    }
+
+    #[test]
+    fn test_fixture_deployer_from_fixture() {
+        let fixture = DeploymentFixture {
+            name: "Test deployment".to_string(),
+            description: Some("Test scenario".to_string()),
+            hosts: vec![HostFixture {
+                hostname: "hydrogen.example.com".to_string(),
+                copy_closure: OperationFixture {
+                    success: true,
+                    stdout: "copying...\n".to_string(),
+                    stderr: "".to_string(),
+                    duration_ms: 10,
+                },
+                activate: OperationFixture {
+                    success: true,
+                    stdout: "activating...\n".to_string(),
+                    stderr: "".to_string(),
+                    duration_ms: 5,
+                },
+            }],
+        };
+
+        let deployer = FixtureDeployer::from_fixture(fixture);
+        let target = DeployTarget {
+            user: "root".to_string(),
+            hostname: "hydrogen.example.com".to_string(),
+            port: None,
+        };
+        let store_path = StorePath::new("/nix/store/test".to_string());
+
+        assert!(deployer.copy_closure(&target, &store_path).is_ok());
+        assert!(deployer
+            .activate(&target, &store_path, ActivationMode::Switch)
+            .is_ok());
+    }
+
+    #[test]
+    fn test_fixture_deployer_from_file() {
+        use std::path::PathBuf;
+
+        let fixture_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/push_scenarios/success.json");
+
+        let deployer = FixtureDeployer::from_file(&fixture_path).unwrap();
+
+        // Test with hydrogen
+        let target = DeployTarget {
+            user: "root".to_string(),
+            hostname: "hydrogen.example.com".to_string(),
+            port: None,
+        };
+        let store_path = StorePath::new("/nix/store/test".to_string());
+
+        assert!(deployer.copy_closure(&target, &store_path).is_ok());
+        assert!(deployer
+            .activate(&target, &store_path, ActivationMode::Switch)
+            .is_ok());
+    }
+
+    #[test]
+    fn test_fixture_deployer_partial_failure() {
+        use std::path::PathBuf;
+
+        let fixture_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/push_scenarios/partial_failure.json");
+
+        let deployer = FixtureDeployer::from_file(&fixture_path).unwrap();
+
+        // Hydrogen should succeed
+        let target_hydrogen = DeployTarget {
+            user: "root".to_string(),
+            hostname: "hydrogen.example.com".to_string(),
+            port: None,
+        };
+        let store_path = StorePath::new("/nix/store/test".to_string());
+
+        assert!(deployer.copy_closure(&target_hydrogen, &store_path).is_ok());
+        assert!(deployer
+            .activate(&target_hydrogen, &store_path, ActivationMode::Switch)
+            .is_ok());
+
+        // Nitrogen should fail on activation
+        let target_nitrogen = DeployTarget {
+            user: "root".to_string(),
+            hostname: "nitrogen.example.com".to_string(),
+            port: None,
+        };
+
+        assert!(deployer.copy_closure(&target_nitrogen, &store_path).is_ok());
+        assert!(deployer
+            .activate(&target_nitrogen, &store_path, ActivationMode::Switch)
+            .is_err());
+    }
+}
