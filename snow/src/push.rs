@@ -1,5 +1,7 @@
 use crate::error::Result;
 use std::collections::HashMap;
+use std::sync::Arc;
+use rayon::prelude::*;
 
 use crate::deploy::{ActivationMode, DeployResult, Deployer};
 use crate::nix::{DeployTarget, HostMetadata, StorePath};
@@ -40,34 +42,42 @@ impl PushResults {
     }
 }
 
-/// Push hosts sequentially (one at a time)
-pub fn push_sequential(
-    deployer: &dyn Deployer,
-    hosts: Vec<(HostMetadata, DeployTarget, StorePath)>,
-    opts: &PushOptions,
-) -> Result<PushResults> {
-    let mut results = Vec::new();
-
-    for (metadata, target, store_path) in hosts {
-        let result = deployer
-            .deploy(&target, &store_path, opts.activation_mode)
-            .unwrap_or_else(|e| DeployResult::failure(e.to_string()));
-
-        results.push((metadata.name, result));
-    }
-
-    Ok(PushResults { results })
-}
-
 /// Push hosts in parallel with concurrency limit
+///
+/// When concurrency is 1, this effectively runs sequentially.
 pub fn push_parallel(
     deployer: &dyn Deployer,
     hosts: Vec<(HostMetadata, DeployTarget, StorePath)>,
     opts: &PushOptions,
 ) -> Result<PushResults> {
-    // TODO: Implement actual parallelism with thread pool
-    // For now, just run sequentially
-    push_sequential(deployer, hosts, opts)
+    // Wrap deployer in Arc to share across threads
+    // Note: This requires the Deployer trait to be Send + Sync
+    let deployer = Arc::new(deployer);
+
+    // Configure rayon to respect concurrency limit
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(opts.concurrency)
+        .build()
+        .map_err(|e| crate::error::SnowError::Deploy(crate::error::DeployError::Failed {
+            host: "thread pool".to_string(),
+            source: std::io::Error::new(std::io::ErrorKind::Other, e.to_string()),
+        }))?;
+
+    let results: Vec<(String, DeployResult)> = pool.install(|| {
+        hosts
+            .into_par_iter()
+            .map(|(metadata, target, store_path)| {
+                let deployer = Arc::clone(&deployer);
+                let result = deployer
+                    .deploy(&target, &store_path, opts.activation_mode)
+                    .unwrap_or_else(|e| DeployResult::failure(e.to_string()));
+
+                (metadata.name, result)
+            })
+            .collect()
+    });
+
+    Ok(PushResults { results })
 }
 
 /// Push hosts grouped by phase, sequential phases but parallel within each phase
@@ -209,35 +219,41 @@ mod tests {
     }
 
     #[test]
-    fn test_push_sequential_all_success() {
+    fn test_push_parallel_all_success() {
         let deployer = MockDeployer {
             should_fail: vec![],
         };
 
         let hosts = vec![make_host("host1", None), make_host("host2", None)];
 
-        let results = push_sequential(&deployer, hosts, &PushOptions::default()).unwrap();
+        let results = push_parallel(&deployer, hosts, &PushOptions::default()).unwrap();
 
         assert_eq!(results.success_count(), 2);
         assert_eq!(results.failure_count(), 0);
     }
 
     #[test]
-    fn test_push_sequential_with_failure() {
+    fn test_push_parallel_with_failure() {
         let deployer = MockDeployer {
             should_fail: vec!["host2.example.com".to_string()],
         };
 
         let hosts = vec![make_host("host1", None), make_host("host2", None)];
 
-        let results = push_sequential(&deployer, hosts, &PushOptions::default()).unwrap();
+        let results = push_parallel(&deployer, hosts, &PushOptions::default()).unwrap();
 
         assert_eq!(results.success_count(), 1);
         assert_eq!(results.failure_count(), 1);
-        assert_eq!(results.results[0].0, "host1");
-        assert!(results.results[0].1.success);
-        assert_eq!(results.results[1].0, "host2");
-        assert!(!results.results[1].1.success);
+        // Note: parallel execution may return results in any order
+        let host_names: Vec<&str> = results.results.iter().map(|(n, _)| n.as_str()).collect();
+        assert!(host_names.contains(&"host1"));
+        assert!(host_names.contains(&"host2"));
+
+        // Check that one succeeded and one failed
+        let host1_result = results.results.iter().find(|(n, _)| n == "host1").unwrap();
+        let host2_result = results.results.iter().find(|(n, _)| n == "host2").unwrap();
+        assert!(host1_result.1.success);
+        assert!(!host2_result.1.success);
     }
 
     #[test]

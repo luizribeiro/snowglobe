@@ -40,7 +40,9 @@ impl DeployResult {
 }
 
 /// Trait for deployment implementations
-pub trait Deployer {
+///
+/// Implementations must be Send + Sync to support parallel deployments
+pub trait Deployer: Send + Sync {
     /// Copy a nix closure to the target host
     fn copy_closure(&self, target: &DeployTarget, store_path: &StorePath) -> Result<()>;
 

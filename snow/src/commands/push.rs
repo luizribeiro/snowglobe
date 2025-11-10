@@ -78,7 +78,7 @@ impl PushArgs {
         concurrency: self.concurrency,
     };
 
-    let results = push::push_sequential(&deployer, host_data, &opts)?;
+    let results = push::push_parallel(&deployer, host_data, &opts)?;
 
     // Format results
     let table_data: Vec<DeploymentResult> = results
