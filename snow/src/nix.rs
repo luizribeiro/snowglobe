@@ -4,6 +4,96 @@ use std::env;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+/// Builder for constructing and executing Nix commands
+///
+/// Provides a fluent API for building nix command invocations with
+/// proper error handling.
+struct NixCommand {
+    cmd: Command,
+}
+
+impl NixCommand {
+    /// Create a new nix command builder
+    fn new() -> Self {
+        Self {
+            cmd: Command::new("nix"),
+        }
+    }
+
+    /// Start building a `nix eval` command for a flake attribute
+    fn eval(attr: impl AsRef<str>) -> Self {
+        let mut builder = Self::new();
+        builder.cmd.args(&["eval", attr.as_ref()]);
+        builder
+    }
+
+    /// Start building a `nix eval` command with an inline expression
+    fn eval_expr(expr: impl AsRef<str>) -> Self {
+        let mut builder = Self::new();
+        builder.cmd.args(&["eval", "--expr", expr.as_ref()]);
+        builder
+    }
+
+    /// Start building a `nix build` command
+    fn build(target: impl AsRef<str>) -> Self {
+        let mut builder = Self::new();
+        builder.cmd.args(&["build", target.as_ref()]);
+        builder
+    }
+
+    /// Add --json flag to output JSON
+    fn json(mut self) -> Self {
+        self.cmd.arg("--json");
+        self
+    }
+
+    /// Add --raw flag to output raw string (no quotes)
+    fn raw(mut self) -> Self {
+        self.cmd.arg("--raw");
+        self
+    }
+
+    /// Add --apply flag with an expression
+    fn apply(mut self, expr: impl AsRef<str>) -> Self {
+        self.cmd.args(&["--apply", expr.as_ref()]);
+        self
+    }
+
+    /// Add --no-link flag (for build commands)
+    fn no_link(mut self) -> Self {
+        self.cmd.arg("--no-link");
+        self
+    }
+
+    /// Add --print-out-paths flag (for build commands)
+    fn print_out_paths(mut self) -> Self {
+        self.cmd.arg("--print-out-paths");
+        self
+    }
+
+    /// Execute the command and return stdout on success
+    fn run(mut self) -> Result<Vec<u8>> {
+        let output = self
+            .cmd
+            .output()
+            .map_err(|e| NixError::CommandFailed { source: e })?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+            return Err(NixError::EvalFailed {
+                stderr,
+                source: std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "nix command exited with non-zero status",
+                ),
+            }
+            .into());
+        }
+
+        Ok(output.stdout)
+    }
+}
+
 /// A NixOS host from the flake
 #[derive(Debug, Clone, Deserialize)]
 pub struct Host {
@@ -164,27 +254,12 @@ pub fn list_hosts(filter_expr: Option<&str>) -> Result<Vec<Host>> {
         "builtins.attrNames".to_string()
     };
 
-    let output = Command::new("nix")
-        .args(&[
-            "eval",
-            ".#nixosConfigurations",
-            "--apply",
-            &apply_arg,
-            "--json",
-        ])
-        .output()
-        .map_err(|e| NixError::CommandFailed { source: e })?;
+    let stdout = NixCommand::eval(".#nixosConfigurations")
+        .apply(&apply_arg)
+        .json()
+        .run()?;
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-        return Err(NixError::EvalFailed {
-            stderr,
-            source: std::io::Error::new(std::io::ErrorKind::Other, "nix eval exited with non-zero status"),
-        }
-        .into());
-    }
-
-    parse_host_names(&output.stdout)
+    parse_host_names(&stdout)
 }
 
 /// Internal struct for deserializing metadata JSON from Nix
@@ -214,28 +289,25 @@ pub fn get_host_metadata(host: &str) -> Result<HostMetadata> {
         config_path
     );
 
-    let output = Command::new("nix")
-        .args(&["eval", "--expr", &eval_expr, "--json"])
-        .output()
-        .map_err(|e| NixError::CommandFailed { source: e })?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-        return Err(NixError::MetadataFailed {
-            host: host.to_string(),
-            source: Box::new(NixError::EvalFailed {
-                stderr,
-                source: std::io::Error::new(std::io::ErrorKind::Other, "metadata eval failed"),
-            }),
-        }
-        .into());
-    }
-
-    let meta: MetadataJson = serde_json::from_slice(&output.stdout)
-        .map_err(|e| NixError::OutputParseFailed {
-            output: String::from_utf8_lossy(&output.stdout).to_string(),
-            source: e,
+    let stdout = NixCommand::eval_expr(&eval_expr)
+        .json()
+        .run()
+        .map_err(|e| match e {
+            crate::error::SnowError::Nix(nix_err) => {
+                crate::error::SnowError::Nix(NixError::MetadataFailed {
+                    host: host.to_string(),
+                    source: Box::new(nix_err),
+                })
+            }
+            other => other,
         })?;
+
+    let meta: MetadataJson = serde_json::from_slice(&stdout).map_err(|e| {
+        NixError::OutputParseFailed {
+            output: String::from_utf8_lossy(&stdout).to_string(),
+            source: e,
+        }
+    })?;
 
     let fqdn = if meta.domain.is_empty() {
         meta.hostname.clone()
@@ -255,22 +327,22 @@ pub fn get_host_metadata(host: &str) -> Result<HostMetadata> {
 pub fn build_host(host: &str) -> Result<StorePath> {
     let target = format!(".#nixosConfigurations.{}.config.system.build.toplevel", host);
 
-    let output = Command::new("nix")
-        .args(&["build", &target, "--no-link", "--print-out-paths"])
-        .output()
-        .map_err(|e| NixError::CommandFailed { source: e })?;
+    let stdout = NixCommand::build(&target)
+        .no_link()
+        .print_out_paths()
+        .run()
+        .map_err(|e| match e {
+            crate::error::SnowError::Nix(NixError::EvalFailed { stderr, source }) => {
+                crate::error::SnowError::Nix(NixError::BuildFailed {
+                    host: host.to_string(),
+                    stderr,
+                    source,
+                })
+            }
+            other => other,
+        })?;
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-        return Err(NixError::BuildFailed {
-            host: host.to_string(),
-            stderr,
-            source: std::io::Error::new(std::io::ErrorKind::Other, "nix build failed"),
-        }
-        .into());
-    }
-
-    let path = String::from_utf8(output.stdout)
+    let path = String::from_utf8(stdout)
         .map_err(|e| NixError::EvalFailed {
             stderr: format!("Non-UTF8 build path: {:?}", e.as_bytes()),
             source: std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid UTF-8"),
