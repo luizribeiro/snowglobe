@@ -260,7 +260,14 @@ pub fn list_hosts(ctx: &SnowContext, filter_expr: Option<&str>) -> Result<Vec<Ho
     let apply_arg = if let Some(expr) = filter_expr {
         // Build a filter expression similar to find-hosts in justfile
         format!(
-            "configs: let inherit (builtins) filter attrNames; predicate = {}; matchingHosts = filter (hostname: predicate configs.${{hostname}}.config) (attrNames configs); in matchingHosts",
+            r#"configs:
+  let
+    inherit (builtins) filter attrNames;
+    predicate = (
+      {}
+    );
+    matchingHosts = filter (hostname: predicate configs.${{hostname}}.config) (attrNames configs);
+  in matchingHosts"#,
             expr
         )
     } else {
