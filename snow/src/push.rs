@@ -99,6 +99,7 @@ pub fn push_by_phase(
     }
 
     // Sort phases lexicographically
+    // TODO: Implement natural sort for phase names (e.g., "phase2" < "phase10")
     let mut phases: Vec<String> = by_phase.keys().cloned().collect();
     phases.sort();
 

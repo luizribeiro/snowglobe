@@ -51,6 +51,7 @@ impl PushArgs {
         println!("→ Building configurations...");
 
         // Build all hosts and gather metadata
+        // TODO: Build all hosts in parallel with single `nix build` command for better performance
         let mut host_data = Vec::new();
 
         for host in &self.hosts {
