@@ -1,0 +1,36 @@
+{
+  "name": "Two-host successful deployment",
+  "description": "Basic happy path with two hosts",
+  "hosts": [
+    {
+      "hostname": "hydrogen.example.com",
+      "copy_closure": {
+        "success": true,
+        "stdout": "copying 42 paths to ssh://root@hydrogen.example.com...\n",
+        "stderr": "",
+        "duration_ms": 1234
+      },
+      "activate": {
+        "success": true,
+        "stdout": "stopping foo.service...\nstarting bar.service...\nactivation successful\n",
+        "stderr": "",
+        "duration_ms": 567
+      }
+    },
+    {
+      "hostname": "nitrogen.example.com",
+      "copy_closure": {
+        "success": true,
+        "stdout": "copying 12 paths to ssh://root@nitrogen.example.com...\n",
+        "stderr": "",
+        "duration_ms": 890
+      },
+      "activate": {
+        "success": true,
+        "stdout": "reloading nginx.service...\nactivation successful\n",
+        "stderr": "warning: some deprecation notice\n",
+        "duration_ms": 234
+      }
+    }
+  ]
+}

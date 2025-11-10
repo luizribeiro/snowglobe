@@ -1,0 +1,36 @@
+{
+  "name": "Partial deployment failure",
+  "description": "First host succeeds, second host fails during activation",
+  "hosts": [
+    {
+      "hostname": "hydrogen.example.com",
+      "copy_closure": {
+        "success": true,
+        "stdout": "copying 42 paths to ssh://root@hydrogen.example.com...\n",
+        "stderr": "",
+        "duration_ms": 1234
+      },
+      "activate": {
+        "success": true,
+        "stdout": "activation successful\n",
+        "stderr": "",
+        "duration_ms": 567
+      }
+    },
+    {
+      "hostname": "nitrogen.example.com",
+      "copy_closure": {
+        "success": true,
+        "stdout": "copying 12 paths to ssh://root@nitrogen.example.com...\n",
+        "stderr": "",
+        "duration_ms": 890
+      },
+      "activate": {
+        "success": false,
+        "stdout": "starting services...\n",
+        "stderr": "error: failed to start nginx.service: port already in use\n",
+        "duration_ms": 234
+      }
+    }
+  ]
+}
