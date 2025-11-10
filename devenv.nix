@@ -11,6 +11,12 @@
       enable = true;
       settings.denyWarnings = true;
     };
+    cargo-test = {
+      enable = true;
+      entry = "cargo test --workspace";
+      files = "\\.rs$";
+      pass_filenames = false;
+    };
   };
 
   enterShell = ''
