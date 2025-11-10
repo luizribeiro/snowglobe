@@ -13,8 +13,8 @@ struct HostStatus {
     status: String,
 }
 
-pub fn run(json: bool) -> Result<()> {
-    let hosts = nix::list_hosts(None)?;
+pub fn run(json: bool, filter: Option<String>) -> Result<()> {
+    let hosts = nix::list_hosts(filter.as_deref())?;
 
     let statuses: Vec<HostStatus> = hosts
         .into_iter()

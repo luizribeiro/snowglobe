@@ -25,6 +25,10 @@ enum Commands {
         /// Output as JSON
         #[arg(long)]
         json: bool,
+
+        /// Filter hosts using a Nix expression (e.g., "config: config.services.nginx.enable or false")
+        #[arg(short = 'e', long)]
+        filter: Option<String>,
     },
     /// List hostnames from nixosConfigurations
     List {
@@ -58,7 +62,7 @@ fn main() -> Result<()> {
     nix::ensure_flake_root(cli.flake_path.as_deref())?;
 
     match cli.command {
-        Commands::Status { json } => commands::status::run(json),
+        Commands::Status { json, filter } => commands::status::run(json, filter),
         Commands::List { filter } => commands::list::run(filter),
         Commands::Push {
             hosts,
