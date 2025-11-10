@@ -1,0 +1,13 @@
+# Cargo audit configuration
+# https://github.com/rustsec/rustsec/blob/main/cargo-audit/audit.toml.example
+
+[advisories]
+# Ignore RUSTSEC-2024-0011 - false positive
+# This advisory is for the "snow" cryptographic library, not our project.
+# Our project is named "snow" but does not depend on the snow crate.
+# Ignore RUSTSEC-2024-0370 - unmaintained proc-macro-error
+# This is a transitive dependency of tabled
+ignore = [
+    "RUSTSEC-2024-0011",
+    "RUSTSEC-2024-0370",
+]

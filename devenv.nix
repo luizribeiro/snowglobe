@@ -1,9 +1,13 @@
-{ ... }:
+{ pkgs, ... }:
 
 {
   languages.rust.enable = true;
 
   dotenv.enable = true;
+
+  packages = [
+    pkgs.cargo-audit
+  ];
 
   pre-commit.hooks = {
     rustfmt.enable = true;
