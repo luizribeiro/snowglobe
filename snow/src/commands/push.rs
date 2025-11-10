@@ -75,7 +75,7 @@ impl PushArgs {
     let deployer = SshDeployer::new();
     let opts = PushOptions {
         activation_mode,
-        concurrency: 3, // TODO: use from args
+        concurrency: self.concurrency,
     };
 
     let results = push::push_sequential(&deployer, host_data, &opts)?;
