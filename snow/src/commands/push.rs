@@ -1,7 +1,7 @@
 use clap::Args;
 use snowlib::{
     build_host, get_host_metadata, push_parallel, ActivationMode, DeployTarget, PushOptions,
-    Result, SnowContext, SshDeployer,
+    Result, SnowContext, SshDeployer, StorePath,
 };
 use tabled::{Table, Tabled};
 
@@ -60,27 +60,80 @@ impl PushArgs {
             ActivationMode::Switch
         };
 
-        println!("→ Building configurations...");
+        // Skip building when using mock mode
+        #[cfg(debug_assertions)]
+        let host_data = if self.mock {
+            println!("⚠ Using mock deployer (skipping builds)");
 
-        // Build all hosts and gather metadata
-        // TODO: Build all hosts in parallel with single `nix build` command for better performance
-        let mut host_data = Vec::new();
+            // Create fake metadata and store paths for mock mode
+            self.hosts
+                .iter()
+                .map(|host| {
+                    let metadata = snowlib::HostMetadata {
+                        name: host.clone(),
+                        phase: Some("production".to_string()),
+                        tags: vec![],
+                        fqdn: format!("{}.example.com", host),
+                    };
+                    let target = DeployTarget {
+                        user: "root".to_string(),
+                        hostname: metadata.fqdn.clone(),
+                        port: None,
+                    };
+                    let store_path = StorePath::new(format!("/nix/store/mock-{}", host));
+                    (metadata, target, store_path)
+                })
+                .collect()
+        } else {
+            println!("→ Building configurations...");
 
-        for host in &self.hosts {
-            let metadata = get_host_metadata(ctx, host)?;
+            // Build all hosts and gather metadata
+            // TODO: Build all hosts in parallel with single `nix build` command for better performance
+            let mut host_data = Vec::new();
 
-            let store_path = build_host(ctx, host)?;
+            for host in &self.hosts {
+                let metadata = get_host_metadata(ctx, host)?;
 
-            let target = DeployTarget {
-                user: "root".to_string(),
-                hostname: metadata.fqdn.clone(),
-                port: None,
-            };
+                let store_path = build_host(ctx, host)?;
 
-            host_data.push((metadata, target, store_path));
-        }
+                let target = DeployTarget {
+                    user: "root".to_string(),
+                    hostname: metadata.fqdn.clone(),
+                    port: None,
+                };
 
-        println!("✓ Built {} configuration(s)", self.hosts.len());
+                host_data.push((metadata, target, store_path));
+            }
+
+            println!("✓ Built {} configuration(s)", self.hosts.len());
+            host_data
+        };
+
+        #[cfg(not(debug_assertions))]
+        let host_data = {
+            println!("→ Building configurations...");
+
+            // Build all hosts and gather metadata
+            // TODO: Build all hosts in parallel with single `nix build` command for better performance
+            let mut host_data = Vec::new();
+
+            for host in &self.hosts {
+                let metadata = get_host_metadata(ctx, host)?;
+
+                let store_path = build_host(ctx, host)?;
+
+                let target = DeployTarget {
+                    user: "root".to_string(),
+                    hostname: metadata.fqdn.clone(),
+                    port: None,
+                };
+
+                host_data.push((metadata, target, store_path));
+            }
+
+            println!("✓ Built {} configuration(s)", self.hosts.len());
+            host_data
+        };
 
         // Deploy
         println!("\n→ Deploying...");
