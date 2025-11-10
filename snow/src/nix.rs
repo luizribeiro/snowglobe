@@ -187,100 +187,66 @@ pub fn list_hosts(filter_expr: Option<&str>) -> Result<Vec<Host>> {
     parse_host_names(&output.stdout)
 }
 
+/// Internal struct for deserializing metadata JSON from Nix
+#[derive(Debug, Deserialize)]
+struct MetadataJson {
+    #[serde(rename = "hostName")]
+    hostname: String,
+    domain: String,
+    phase: Option<String>,
+    tags: Vec<String>,
+}
+
 /// Get metadata for a specific host
+///
+/// Fetches all metadata in a single Nix eval for efficiency
 pub fn get_host_metadata(host: &str) -> Result<HostMetadata> {
     let config_path = format!(".#nixosConfigurations.{}.config", host);
 
-    // Get phase (optional)
-    let phase = {
-        let output = Command::new("nix")
-            .args(&["eval", &format!("{}.core.pushPhase", config_path), "--raw"])
-            .output()
-            .map_err(|e| NixError::CommandFailed { source: e })?;
+    // Build a Nix expression that evaluates all metadata at once
+    let eval_expr = format!(
+        r#"let config = ({}).config; in {{
+          hostName = config.networking.hostName;
+          domain = config.networking.domain or "";
+          phase = config.core.pushPhase or null;
+          tags = config.core.tags or [];
+        }}"#,
+        config_path
+    );
 
-        if output.status.success() {
-            let phase_str = String::from_utf8(output.stdout)
-                .map_err(|e| NixError::EvalFailed {
-                    stderr: format!("Non-UTF8 output from pushPhase: {:?}", e.as_bytes()),
-                    source: std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid UTF-8"),
-                })?;
-            Some(phase_str)
-        } else {
-            None
+    let output = Command::new("nix")
+        .args(&["eval", "--expr", &eval_expr, "--json"])
+        .output()
+        .map_err(|e| NixError::CommandFailed { source: e })?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        return Err(NixError::MetadataFailed {
+            host: host.to_string(),
+            source: Box::new(NixError::EvalFailed {
+                stderr,
+                source: std::io::Error::new(std::io::ErrorKind::Other, "metadata eval failed"),
+            }),
         }
-    };
+        .into());
+    }
 
-    // Get tags
-    let tags = {
-        let output = Command::new("nix")
-            .args(&["eval", &format!("{}.core.tags", config_path), "--json"])
-            .output()
-            .map_err(|e| NixError::CommandFailed { source: e })?;
+    let meta: MetadataJson = serde_json::from_slice(&output.stdout)
+        .map_err(|e| NixError::OutputParseFailed {
+            output: String::from_utf8_lossy(&output.stdout).to_string(),
+            source: e,
+        })?;
 
-        if output.status.success() {
-            serde_json::from_slice(&output.stdout)
-                .map_err(|e| NixError::OutputParseFailed {
-                    output: String::from_utf8_lossy(&output.stdout).to_string(),
-                    source: e,
-                })?
-        } else {
-            Vec::new()
-        }
-    };
-
-    // Get hostname
-    let hostname = {
-        let output = Command::new("nix")
-            .args(&["eval", &format!("{}.networking.hostName", config_path), "--raw"])
-            .output()
-            .map_err(|e| NixError::CommandFailed { source: e })?;
-
-        if !output.status.success() {
-            return Err(NixError::MetadataFailed {
-                host: host.to_string(),
-                source: Box::new(NixError::EvalFailed {
-                    stderr: String::from_utf8_lossy(&output.stderr).to_string(),
-                    source: std::io::Error::new(std::io::ErrorKind::Other, "failed to get hostname"),
-                }),
-            }
-            .into());
-        }
-
-        String::from_utf8(output.stdout)
-            .map_err(|e| NixError::EvalFailed {
-                stderr: format!("Non-UTF8 hostname: {:?}", e.as_bytes()),
-                source: std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid UTF-8"),
-            })?
-    };
-
-    // Get domain
-    let domain = {
-        let output = Command::new("nix")
-            .args(&["eval", &format!("{}.networking.domain", config_path), "--raw"])
-            .output()
-            .map_err(|e| NixError::CommandFailed { source: e })?;
-
-        if output.status.success() {
-            String::from_utf8(output.stdout)
-                .map_err(|e| NixError::EvalFailed {
-                    stderr: format!("Non-UTF8 domain: {:?}", e.as_bytes()),
-                    source: std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid UTF-8"),
-                })?
-        } else {
-            String::new()
-        }
-    };
-
-    let fqdn = if domain.is_empty() {
-        hostname.clone()
+    let fqdn = if meta.domain.is_empty() {
+        meta.hostname.clone()
     } else {
-        format!("{}.{}", hostname, domain)
+        format!("{}.{}", meta.hostname, meta.domain)
     };
 
     Ok(HostMetadata {
         name: host.to_string(),
-        phase,
-        tags,
+        phase: meta.phase,
+        tags: meta.tags,
         fqdn,
     })
 }
