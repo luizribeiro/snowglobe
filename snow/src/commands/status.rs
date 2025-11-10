@@ -1,9 +1,7 @@
-use crate::error::{IoError, Result};
+use snowlib::{Result, SnowContext, list_hosts};
 use clap::Args;
 use serde::Serialize;
 use tabled::{Table, Tabled};
-
-use crate::nix;
 
 /// Show cluster status
 #[derive(Debug, Args)]
@@ -27,8 +25,8 @@ struct HostStatus {
 }
 
 impl StatusArgs {
-    pub fn run(self, ctx: &nix::SnowContext) -> Result<()> {
-        let hosts = nix::list_hosts(ctx, self.filter.as_deref())?;
+    pub fn run(self, ctx: &SnowContext) -> Result<()> {
+        let hosts = list_hosts(ctx, self.filter.as_deref())?;
 
     let statuses: Vec<HostStatus> = hosts
         .into_iter()
@@ -40,7 +38,7 @@ impl StatusArgs {
 
         if self.json {
             let json_output = serde_json::to_string_pretty(&statuses)
-                .map_err(|e| IoError::JsonSerialize { source: e })?;
+                .map_err(|e| snowlib::error::IoError::JsonSerialize { source: e })?;
             println!("{}", json_output);
         } else {
             if statuses.is_empty() {

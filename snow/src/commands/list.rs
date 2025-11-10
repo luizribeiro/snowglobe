@@ -1,5 +1,4 @@
-use crate::error::Result;
-use crate::nix;
+use snowlib::{Result, SnowContext, list_hosts};
 use clap::Args;
 
 /// List hostnames from nixosConfigurations
@@ -11,8 +10,8 @@ pub struct ListArgs {
 }
 
 impl ListArgs {
-    pub fn run(self, ctx: &nix::SnowContext) -> Result<()> {
-        let hosts = nix::list_hosts(ctx, self.filter.as_deref())?;
+    pub fn run(self, ctx: &SnowContext) -> Result<()> {
+        let hosts = list_hosts(ctx, self.filter.as_deref())?;
 
         for host in hosts {
             println!("{}", host.name);

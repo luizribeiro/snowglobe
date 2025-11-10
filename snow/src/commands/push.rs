@@ -1,10 +1,9 @@
-use crate::error::Result;
+use snowlib::{
+    Result, SnowContext, ActivationMode, SshDeployer, DeployTarget,
+    PushOptions, get_host_metadata, build_host, push_parallel,
+};
 use clap::Args;
 use tabled::{Table, Tabled};
-
-use crate::deploy::{ActivationMode, ssh::SshDeployer};
-use crate::nix::{self, DeployTarget};
-use crate::push::{self, PushOptions};
 
 /// Deploy configurations to hosts
 #[derive(Debug, Args)]
@@ -38,7 +37,7 @@ struct DeploymentResult {
 }
 
 impl PushArgs {
-    pub fn run(self, ctx: &nix::SnowContext) -> Result<()> {
+    pub fn run(self, ctx: &SnowContext) -> Result<()> {
         // Determine activation mode
         let activation_mode = if self.dry_run {
             ActivationMode::DryActivate
@@ -55,9 +54,9 @@ impl PushArgs {
         let mut host_data = Vec::new();
 
         for host in &self.hosts {
-        let metadata = nix::get_host_metadata(ctx, host)?;
+        let metadata = get_host_metadata(ctx, host)?;
 
-        let store_path = nix::build_host(ctx, host)?;
+        let store_path = build_host(ctx, host)?;
 
         let target = DeployTarget {
             user: "root".to_string(),
@@ -79,7 +78,7 @@ impl PushArgs {
         concurrency: self.concurrency,
     };
 
-    let results = push::push_parallel(&deployer, host_data, &opts)?;
+    let results = push_parallel(&deployer, host_data, &opts)?;
 
     // Format results
     let table_data: Vec<DeploymentResult> = results
@@ -104,7 +103,7 @@ impl PushArgs {
     );
 
         if !results.all_succeeded() {
-            return Err(crate::error::DeployError::Failed {
+            return Err(snowlib::error::DeployError::Failed {
                 host: "multiple".to_string(),
                 source: std::io::Error::new(std::io::ErrorKind::Other, "Some deployments failed"),
             }

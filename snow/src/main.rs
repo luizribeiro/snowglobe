@@ -1,10 +1,6 @@
 use clap::Parser;
 use miette::{IntoDiagnostic, Result};
 
-mod error;
-mod nix;
-mod deploy;
-mod push;
 mod commands;
 
 #[derive(Parser)]
@@ -27,7 +23,7 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
 
     // Create context with flake root
-    let ctx = nix::SnowContext::new(cli.flake_path.as_deref()).into_diagnostic()?;
+    let ctx = snowlib::SnowContext::new(cli.flake_path.as_deref()).into_diagnostic()?;
 
     cli.command.run(&ctx).into_diagnostic()
 }

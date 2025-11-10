@@ -493,10 +493,21 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "miette",
+ "serde",
+ "serde_json",
+ "snowlib",
+ "tabled",
+ "tempfile",
+]
+
+[[package]]
+name = "snowlib"
+version = "0.1.0"
+dependencies = [
+ "miette",
  "rayon",
  "serde",
  "serde_json",
- "tabled",
  "tempfile",
  "thiserror",
 ]
