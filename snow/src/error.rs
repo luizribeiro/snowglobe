@@ -108,14 +108,6 @@ pub enum FlakeError {
     #[error("Path must be either a directory containing flake.nix or the flake.nix file itself: {path}")]
     #[diagnostic(code(snow::flake::invalid_path))]
     InvalidPath { path: PathBuf },
-
-    #[error("Failed to change to flake root directory: {path}")]
-    #[diagnostic(code(snow::flake::chdir_failed))]
-    ChdirFailed {
-        path: PathBuf,
-        #[source]
-        source: std::io::Error,
-    },
 }
 
 /// Errors related to deployment operations
@@ -151,42 +143,10 @@ pub enum IoError {
         source: std::io::Error,
     },
 
-    #[error("Failed to read file: {path}")]
-    #[diagnostic(code(snow::io::read_file))]
-    ReadFile {
-        path: PathBuf,
-        #[source]
-        source: std::io::Error,
-    },
-
-    #[error("Failed to write file: {path}")]
-    #[diagnostic(code(snow::io::write_file))]
-    WriteFile {
-        path: PathBuf,
-        #[source]
-        source: std::io::Error,
-    },
-
     #[error("JSON serialization failed")]
     #[diagnostic(code(snow::io::json_serialize))]
     JsonSerialize {
         #[source]
         source: serde_json::Error,
     },
-}
-
-/// Helper trait to add context to Results
-pub trait ResultExt<T> {
-    fn context_nix_eval(self) -> Result<T>;
-    fn context_nix_command(self) -> Result<T>;
-}
-
-impl<T> ResultExt<T> for std::result::Result<T, std::io::Error> {
-    fn context_nix_eval(self) -> Result<T> {
-        self.map_err(|e| NixError::CommandFailed { source: e }.into())
-    }
-
-    fn context_nix_command(self) -> Result<T> {
-        self.map_err(|e| NixError::CommandFailed { source: e }.into())
-    }
 }

@@ -80,12 +80,6 @@ impl NixCommand {
         self
     }
 
-    /// Add --raw flag to output raw string (no quotes)
-    fn raw(mut self) -> Self {
-        self.cmd.arg("--raw");
-        self
-    }
-
     /// Add --apply flag with an expression
     fn apply(mut self, expr: impl AsRef<str>) -> Self {
         self.cmd.args(&["--apply", expr.as_ref()]);
