@@ -175,8 +175,13 @@ impl DeployTarget {
 /// The path can be either:
 /// - A directory containing flake.nix
 /// - A direct path to flake.nix file
+///
+/// Supports shell expansions like ~ and environment variables.
 fn validate_flake_path(path: &str) -> Result<PathBuf> {
-    let path_buf = PathBuf::from(path);
+    let expanded = shellexpand::full(path).map_err(|_| FlakeError::InvalidPath {
+        path: PathBuf::from(path),
+    })?;
+    let path_buf = PathBuf::from(expanded.as_ref());
 
     if !path_buf.exists() {
         return Err(FlakeError::PathNotFound { path: path_buf }.into());
