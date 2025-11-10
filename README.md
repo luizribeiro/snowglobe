@@ -1,5 +1,7 @@
 # snowglobe
 
+[![CI](https://github.com/luizribeiro/snowglobe/workflows/CI/badge.svg)](https://github.com/luizribeiro/snowglobe/actions)
+
 Self-contained cluster orchestration for NixOS.
 
 > **Status**: Early design phase. Not ready for use.
