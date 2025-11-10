@@ -4,6 +4,6 @@
   languages.rust.enable = true;
 
   enterShell = ''
-    export PATH="$PWD/snow/target/debug:$PATH"
+    export PATH="$PWD/target/debug:$PATH"
   '';
 }
