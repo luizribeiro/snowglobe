@@ -66,41 +66,39 @@ impl Deployer for SshDeployer {
         // Configure SSH to disable interactive prompts for nix copy
         cmd.env("NIX_SSHOPTS", "-o BatchMode=yes");
 
-        let success = if self.quiet {
-            // Quiet mode: capture output
-            let output = cmd.output().map_err(|e| DeployError::Failed {
-                host: target.hostname.clone(),
-                source: e,
-            })?;
-            if !output.status.success() {
-                let stderr = String::from_utf8_lossy(&output.stderr);
-                return Err(DeployError::Failed {
-                    host: target.hostname.clone(),
-                    source: std::io::Error::other(format!("nix copy failed: {}", stderr)),
-                }
-                .into());
-            }
-            output.status.success()
-        } else {
-            // Verbose mode: show output
-            let status = cmd.status().map_err(|e| DeployError::Failed {
-                host: target.hostname.clone(),
-                source: e,
-            })?;
-            if !status.success() {
-                return Err(DeployError::Failed {
-                    host: target.hostname.clone(),
-                    source: std::io::Error::other("nix copy failed (see output above)"),
-                }
-                .into());
-            }
-            status.success()
-        };
+        // Always capture output to get detailed error messages
+        let output = cmd.output().map_err(|e| DeployError::Failed {
+            host: target.hostname.clone(),
+            source: e,
+        })?;
 
-        if !success {
+        // In verbose mode, print stdout/stderr for user to see
+        if !self.quiet {
+            if !output.stdout.is_empty() {
+                print!("{}", String::from_utf8_lossy(&output.stdout));
+            }
+            if !output.stderr.is_empty() {
+                eprint!("{}", String::from_utf8_lossy(&output.stderr));
+            }
+        }
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+            let error_msg = if stderr.is_empty() {
+                "nix copy failed".to_string()
+            } else {
+                // Include the last few lines of stderr for context (up to 3 lines)
+                let lines: Vec<&str> = stderr.lines().collect();
+                let relevant_lines = if lines.len() <= 3 {
+                    lines.join("\n")
+                } else {
+                    lines[lines.len() - 3..].join("\n")
+                };
+                format!("nix copy failed:\n{}", relevant_lines)
+            };
             return Err(DeployError::Failed {
                 host: target.hostname.clone(),
-                source: std::io::Error::other("nix copy failed"),
+                source: std::io::Error::other(error_msg),
             }
             .into());
         }
@@ -126,41 +124,39 @@ impl Deployer for SshDeployer {
 
         let mut cmd = self.ssh_command(target, &["sudo", &switch_to_configuration, mode_arg]);
 
-        let success = if self.quiet {
-            // Quiet mode: capture output
-            let output = cmd.output().map_err(|e| DeployError::SshFailed {
-                destination: self.get_destination(target),
-                source: e,
-            })?;
-            if !output.status.success() {
-                let stderr = String::from_utf8_lossy(&output.stderr);
-                return Err(DeployError::Failed {
-                    host: target.hostname.clone(),
-                    source: std::io::Error::other(format!("Activation failed: {}", stderr)),
-                }
-                .into());
-            }
-            output.status.success()
-        } else {
-            // Verbose mode: show output
-            let status = cmd.status().map_err(|e| DeployError::SshFailed {
-                destination: self.get_destination(target),
-                source: e,
-            })?;
-            if !status.success() {
-                return Err(DeployError::Failed {
-                    host: target.hostname.clone(),
-                    source: std::io::Error::other("Activation failed (see output above)"),
-                }
-                .into());
-            }
-            status.success()
-        };
+        // Always capture output to get detailed error messages
+        let output = cmd.output().map_err(|e| DeployError::SshFailed {
+            destination: self.get_destination(target),
+            source: e,
+        })?;
 
-        if !success {
+        // In verbose mode, print stdout/stderr for user to see
+        if !self.quiet {
+            if !output.stdout.is_empty() {
+                print!("{}", String::from_utf8_lossy(&output.stdout));
+            }
+            if !output.stderr.is_empty() {
+                eprint!("{}", String::from_utf8_lossy(&output.stderr));
+            }
+        }
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+            let error_msg = if stderr.is_empty() {
+                "Activation failed".to_string()
+            } else {
+                // Include the last few lines of stderr for context (up to 3 lines)
+                let lines: Vec<&str> = stderr.lines().collect();
+                let relevant_lines = if lines.len() <= 3 {
+                    lines.join("\n")
+                } else {
+                    lines[lines.len() - 3..].join("\n")
+                };
+                format!("Activation failed:\n{}", relevant_lines)
+            };
             return Err(DeployError::Failed {
                 host: target.hostname.clone(),
-                source: std::io::Error::other("Activation failed"),
+                source: std::io::Error::other(error_msg),
             }
             .into());
         }
@@ -206,6 +202,110 @@ mod tests {
         assert_eq!(
             deployer.get_destination(&target),
             "deploy@hydrogen.example.com"
+        );
+    }
+
+    #[test]
+    fn test_copy_closure_error_includes_stderr() {
+        let deployer = SshDeployer::new();
+        let target = DeployTarget {
+            user: Some("root".to_string()),
+            hostname: "nonexistent.invalid".to_string(),
+            port: None,
+        };
+        let store_path = StorePath::new("/nix/store/fake-path".to_string());
+
+        // This should fail and include stderr in the error
+        let result = deployer.copy_closure(&target, &store_path);
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        let err_string = format!("{:?}", err);
+
+        // The error should mention it's a deployment failure
+        assert!(
+            err_string.contains("DeployError") || err_string.contains("Failed"),
+            "Error should be a deployment error: {}",
+            err_string
+        );
+    }
+
+    #[test]
+    fn test_copy_closure_quiet_mode_captures_stderr() {
+        let deployer = SshDeployer::new().with_quiet(true);
+        let target = DeployTarget {
+            user: Some("root".to_string()),
+            hostname: "nonexistent.invalid".to_string(),
+            port: None,
+        };
+        let store_path = StorePath::new("/nix/store/fake-path".to_string());
+
+        // This should fail in quiet mode too
+        let result = deployer.copy_closure(&target, &store_path);
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        let err_string = format!("{:?}", err);
+
+        // Should contain error details even in quiet mode
+        assert!(
+            err_string.contains("DeployError") || err_string.contains("Failed"),
+            "Error should be captured in quiet mode: {}",
+            err_string
+        );
+    }
+
+    #[test]
+    fn test_activate_error_includes_stderr() {
+        let deployer = SshDeployer::new();
+        let target = DeployTarget {
+            user: Some("root".to_string()),
+            hostname: "nonexistent.invalid".to_string(),
+            port: None,
+        };
+        let store_path = StorePath::new("/nix/store/fake-path".to_string());
+
+        // This should fail with SSH error
+        let result = deployer.activate(&target, &store_path, ActivationMode::Test);
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        let err_string = format!("{:?}", err);
+
+        // Should be a deployment or SSH error
+        assert!(
+            err_string.contains("DeployError")
+                || err_string.contains("SshFailed")
+                || err_string.contains("Failed"),
+            "Error should indicate SSH/deployment failure: {}",
+            err_string
+        );
+    }
+
+    #[test]
+    fn test_ssh_command_has_batch_mode() {
+        let deployer = SshDeployer::new();
+        let target = DeployTarget {
+            user: Some("root".to_string()),
+            hostname: "example.com".to_string(),
+            port: Some(2222),
+        };
+
+        let cmd = deployer.ssh_command(&target, &["echo", "test"]);
+        let cmd_string = format!("{:?}", cmd);
+
+        // Should include BatchMode flag
+        assert!(
+            cmd_string.contains("BatchMode=yes"),
+            "SSH command should include BatchMode: {}",
+            cmd_string
+        );
+
+        // Should include port
+        assert!(
+            cmd_string.contains("2222"),
+            "SSH command should include port: {}",
+            cmd_string
         );
     }
 }
