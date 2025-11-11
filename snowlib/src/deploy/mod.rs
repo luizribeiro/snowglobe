@@ -1,3 +1,4 @@
+pub mod reboot;
 pub mod ssh;
 
 #[cfg(debug_assertions)]
@@ -7,7 +8,7 @@ use crate::error::Result;
 use crate::nix::{DeployTarget, StorePath};
 
 /// Activation mode for NixOS configuration
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ActivationMode {
     /// Activate and make default (switch)
     Switch,

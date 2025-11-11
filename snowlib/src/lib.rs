@@ -17,9 +17,10 @@ pub use deploy::{ActivationMode, DeployResult, Deployer};
 pub use error::{Result, SnowError};
 pub use nix::ops::{NixOps, SystemNixOps};
 pub use nix::{DeployTarget, Host, HostMetadata, SnowContext, StorePath};
-pub use push::{PushOptions, PushResults};
+pub use push::{BlockedHost, DeploymentMode, DeploymentPlan, PushOptions, PushResults};
 
 // Re-export specific implementations
+pub use deploy::reboot::{RebootCheck, RebootDetectionConfig, RebootDetector, RebootReason};
 pub use deploy::ssh::SshDeployer;
 
 #[cfg(debug_assertions)]
@@ -32,4 +33,4 @@ pub use nix::ops::mock::MockNixOps;
 
 // Convenience re-exports of main functions
 pub use nix::{build_host, get_host_metadata, list_hosts};
-pub use push::push_parallel;
+pub use push::{create_deployment_plans, push_parallel};

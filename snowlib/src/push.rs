@@ -3,8 +3,41 @@ use rayon::prelude::*;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use crate::deploy::reboot::{RebootCheck, RebootDetector};
 use crate::deploy::{ActivationMode, DeployResult, Deployer};
 use crate::nix::{DeployTarget, HostMetadata, StorePath};
+
+/// Deployment mode requested by the user
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DeploymentMode {
+    /// Auto mode - detect reboot need and choose appropriate activation mode
+    Auto,
+    /// Force immediate activation (switch mode)
+    Switch,
+    /// Set for next boot only
+    Boot,
+    /// Test activation (non-persistent)
+    Test,
+    /// Dry run - preview only
+    DryRun,
+}
+
+/// A deployment plan for a single host
+#[derive(Debug, Clone)]
+pub struct DeploymentPlan {
+    pub metadata: HostMetadata,
+    pub target: DeployTarget,
+    pub store_path: StorePath,
+    pub activation_mode: ActivationMode,
+    pub reboot_check: Option<RebootCheck>,
+}
+
+/// A host that was blocked from deployment
+#[derive(Debug, Clone)]
+pub struct BlockedHost {
+    pub hostname: String,
+    pub reason: String,
+}
 
 /// Options for push operations
 #[derive(Debug, Clone)]
@@ -89,6 +122,117 @@ pub fn push_parallel(
     });
 
     Ok(PushResults { results })
+}
+
+/// Strategy for handling a host deployment
+enum ActivationStrategy {
+    /// Deploy with the given activation mode and optional reboot check
+    Deploy(ActivationMode, Option<RebootCheck>),
+    /// Block deployment with the given reason
+    Block(String),
+}
+
+/// Determine the activation strategy for a single host
+fn determine_activation_strategy(
+    target: &DeployTarget,
+    store_path: &StorePath,
+    detector: &RebootDetector,
+    mode: DeploymentMode,
+    force: bool,
+) -> Result<ActivationStrategy> {
+    match mode {
+        DeploymentMode::DryRun => Ok(ActivationStrategy::Deploy(
+            ActivationMode::DryActivate,
+            None,
+        )),
+        DeploymentMode::Test => Ok(ActivationStrategy::Deploy(ActivationMode::Test, None)),
+        DeploymentMode::Boot => Ok(ActivationStrategy::Deploy(ActivationMode::Boot, None)),
+        DeploymentMode::Switch => handle_switch_mode(target, store_path, detector, force),
+        DeploymentMode::Auto => handle_auto_mode(target, store_path, detector),
+    }
+}
+
+/// Handle switch mode: force immediate activation with safety checks
+fn handle_switch_mode(
+    target: &DeployTarget,
+    store_path: &StorePath,
+    detector: &RebootDetector,
+    force: bool,
+) -> Result<ActivationStrategy> {
+    let check = detector.check_reboot_required(target, store_path)?;
+
+    if check.required && !force {
+        // Reboot required but --force not set - block this host
+        let reason = check
+            .reason
+            .as_ref()
+            .map(|r| r.to_string())
+            .unwrap_or_else(|| "unknown".to_string());
+        Ok(ActivationStrategy::Block(reason))
+    } else {
+        Ok(ActivationStrategy::Deploy(
+            ActivationMode::Switch,
+            Some(check),
+        ))
+    }
+}
+
+/// Handle auto mode: detect reboot requirement and choose activation mode
+fn handle_auto_mode(
+    target: &DeployTarget,
+    store_path: &StorePath,
+    detector: &RebootDetector,
+) -> Result<ActivationStrategy> {
+    let check = detector.check_reboot_required(target, store_path)?;
+
+    let activation = if check.required {
+        ActivationMode::Boot
+    } else {
+        ActivationMode::Switch
+    };
+
+    Ok(ActivationStrategy::Deploy(activation, Some(check)))
+}
+
+/// Create deployment plans with reboot detection
+///
+/// This function determines the appropriate activation mode for each host based on:
+/// - User-requested deployment mode
+/// - Reboot detection results
+/// - Force flag
+///
+/// Returns (plans, blocked_hosts) where blocked_hosts contains hosts that were
+/// blocked by safety checks (e.g., --switch without --force when reboot required)
+pub fn create_deployment_plans(
+    hosts: Vec<(HostMetadata, DeployTarget, StorePath)>,
+    detector: &RebootDetector,
+    mode: DeploymentMode,
+    force: bool,
+) -> Result<(Vec<DeploymentPlan>, Vec<BlockedHost>)> {
+    let mut plans = Vec::new();
+    let mut blocked = Vec::new();
+
+    for (metadata, target, store_path) in hosts {
+        match determine_activation_strategy(&target, &store_path, detector, mode, force)? {
+            ActivationStrategy::Deploy(activation_mode, reboot_check) => {
+                plans.push(DeploymentPlan {
+                    metadata,
+                    target,
+                    store_path,
+                    activation_mode,
+                    reboot_check,
+                });
+            }
+            ActivationStrategy::Block(reason) => {
+                blocked.push(BlockedHost {
+                    hostname: metadata.name.clone(),
+                    reason,
+                });
+            }
+        }
+    }
+
+    Ok((plans, blocked))
 }
 
 /// Push hosts grouped by phase, sequential phases but parallel within each phase
@@ -359,5 +503,124 @@ mod tests {
             "Error message should include the source error. Got: {}",
             deploy_result.message
         );
+    }
+
+    // Tests for create_deployment_plans
+    use crate::deploy::reboot::{RebootDetectionConfig, RebootDetector};
+
+    #[test]
+    fn test_create_deployment_plans_auto_mode_no_reboot() {
+        // Create a detector that will never detect reboot needed
+        // This simulates the edge case where:
+        // - No kernel/initrd/init changes
+        // - No critical services to restart (empty list)
+        // - /run/nixos/dry-activation-restart-list won't exist on remote
+        // This configuration was causing "No such file or directory" errors
+        // before we added the file existence check in check_critical_services()
+        let config = RebootDetectionConfig {
+            critical_services: vec![],
+            check_kernel: false,
+            check_initrd: false,
+            check_init: false,
+        };
+        let detector = RebootDetector::new(config);
+
+        let hosts = vec![make_host("test", None)];
+
+        let (plans, blocked) =
+            create_deployment_plans(hosts, &detector, DeploymentMode::Auto, false).unwrap();
+
+        assert_eq!(plans.len(), 1);
+        assert_eq!(blocked.len(), 0);
+        // Should use Switch mode since no reboot is required
+        assert_eq!(plans[0].activation_mode, ActivationMode::Switch);
+        // Reboot check should indicate no reboot needed
+        assert!(plans[0].reboot_check.is_some());
+        assert!(!plans[0].reboot_check.as_ref().unwrap().required);
+    }
+
+    #[test]
+    fn test_create_deployment_plans_dry_run() {
+        let detector = RebootDetector::default();
+        let hosts = vec![make_host("test", None)];
+
+        let (plans, blocked) =
+            create_deployment_plans(hosts, &detector, DeploymentMode::DryRun, false).unwrap();
+
+        assert_eq!(plans.len(), 1);
+        assert_eq!(blocked.len(), 0);
+        assert_eq!(plans[0].activation_mode, ActivationMode::DryActivate);
+        assert!(plans[0].reboot_check.is_none());
+    }
+
+    #[test]
+    fn test_create_deployment_plans_boot_mode() {
+        let detector = RebootDetector::default();
+        let hosts = vec![make_host("test", None)];
+
+        let (plans, blocked) =
+            create_deployment_plans(hosts, &detector, DeploymentMode::Boot, false).unwrap();
+
+        assert_eq!(plans.len(), 1);
+        assert_eq!(blocked.len(), 0);
+        assert_eq!(plans[0].activation_mode, ActivationMode::Boot);
+        assert!(plans[0].reboot_check.is_none());
+    }
+
+    #[test]
+    fn test_create_deployment_plans_test_mode() {
+        let detector = RebootDetector::default();
+        let hosts = vec![make_host("test", None)];
+
+        let (plans, blocked) =
+            create_deployment_plans(hosts, &detector, DeploymentMode::Test, false).unwrap();
+
+        assert_eq!(plans.len(), 1);
+        assert_eq!(blocked.len(), 0);
+        assert_eq!(plans[0].activation_mode, ActivationMode::Test);
+        assert!(plans[0].reboot_check.is_none());
+    }
+
+    #[test]
+    fn test_create_deployment_plans_switch_with_force() {
+        // In reality, reboot would be detected, but with force flag it should still use Switch
+        let detector = RebootDetector::default();
+        let hosts = vec![make_host("test", None)];
+
+        let (plans, blocked) =
+            create_deployment_plans(hosts, &detector, DeploymentMode::Switch, true).unwrap();
+
+        assert_eq!(plans.len(), 1);
+        assert_eq!(blocked.len(), 0);
+        // Force flag causes switch mode even if reboot detected
+        assert_eq!(plans[0].activation_mode, ActivationMode::Switch);
+    }
+
+    #[test]
+    fn test_create_deployment_plans_multiple_hosts_mixed_results() {
+        // Create a detector that will never detect reboot needed
+        let config = RebootDetectionConfig {
+            critical_services: vec![],
+            check_kernel: false,
+            check_initrd: false,
+            check_init: false,
+        };
+        let detector = RebootDetector::new(config);
+
+        let hosts = vec![
+            make_host("host1", None),
+            make_host("host2", None),
+            make_host("host3", None),
+        ];
+
+        let (plans, blocked) =
+            create_deployment_plans(hosts, &detector, DeploymentMode::Auto, false).unwrap();
+
+        assert_eq!(plans.len(), 3);
+        assert_eq!(blocked.len(), 0);
+        // All should use switch mode since no reboot detected
+        for plan in plans {
+            assert_eq!(plan.activation_mode, ActivationMode::Switch);
+        }
     }
 }
