@@ -258,6 +258,9 @@ impl RebootDetector {
     fn build_ssh_command(&self, target: &DeployTarget, command: &str) -> Command {
         let mut cmd = Command::new("ssh");
 
+        // Disable interactive prompts - will error instead of prompting
+        cmd.arg("-o").arg("BatchMode=yes");
+
         if let Some(port) = target.port {
             cmd.arg("-p").arg(port.to_string());
         }

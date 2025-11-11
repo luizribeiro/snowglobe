@@ -43,6 +43,9 @@ impl SshDeployer {
     fn ssh_command(&self, target: &DeployTarget, args: &[&str]) -> Command {
         let mut cmd = Command::new("ssh");
 
+        // Disable interactive prompts - will error instead of prompting
+        cmd.arg("-o").arg("BatchMode=yes");
+
         if let Some(port) = target.port {
             cmd.arg("-p").arg(port.to_string());
         }
@@ -59,6 +62,9 @@ impl Deployer for SshDeployer {
 
         let mut cmd = Command::new("nix");
         cmd.args(["copy", "--to", &ssh_target, store_path.as_str()]);
+
+        // Configure SSH to disable interactive prompts for nix copy
+        cmd.env("NIX_SSHOPTS", "-o BatchMode=yes");
 
         let success = if self.quiet {
             // Quiet mode: capture output
