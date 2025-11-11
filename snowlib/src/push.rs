@@ -136,45 +136,7 @@ pub fn push_by_phase(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    // Mock deployer for testing
-    struct MockDeployer {
-        should_fail: Vec<String>, // List of hostnames that should fail
-    }
-
-    impl Deployer for MockDeployer {
-        fn copy_closure(&self, _target: &DeployTarget, _store_path: &StorePath) -> Result<()> {
-            Ok(())
-        }
-
-        fn activate(
-            &self,
-            _target: &DeployTarget,
-            _store_path: &StorePath,
-            _mode: ActivationMode,
-        ) -> Result<()> {
-            Ok(())
-        }
-
-        fn deploy(
-            &self,
-            target: &DeployTarget,
-            _store_path: &StorePath,
-            _mode: ActivationMode,
-        ) -> Result<DeployResult> {
-            if self.should_fail.contains(&target.hostname) {
-                Ok(DeployResult::failure(format!(
-                    "Mock failure for {}",
-                    target.hostname
-                )))
-            } else {
-                Ok(DeployResult::success(format!(
-                    "Mock success for {}",
-                    target.hostname
-                )))
-            }
-        }
-    }
+    use crate::deploy::mock::MockDeployer;
 
     fn make_host(name: &str, phase: Option<&str>) -> (HostMetadata, DeployTarget, StorePath) {
         let metadata = HostMetadata {
@@ -226,9 +188,7 @@ mod tests {
 
     #[test]
     fn test_push_parallel_all_success() {
-        let deployer = MockDeployer {
-            should_fail: vec![],
-        };
+        let deployer = MockDeployer::new();
 
         let hosts = vec![make_host("host1", None), make_host("host2", None)];
 
@@ -240,9 +200,7 @@ mod tests {
 
     #[test]
     fn test_push_parallel_with_failure() {
-        let deployer = MockDeployer {
-            should_fail: vec!["host2.example.com".to_string()],
-        };
+        let deployer = MockDeployer::new().with_failures(vec!["host2.example.com".to_string()]);
 
         let hosts = vec![make_host("host1", None), make_host("host2", None)];
 
@@ -264,9 +222,7 @@ mod tests {
 
     #[test]
     fn test_push_by_phase_ordering() {
-        let deployer = MockDeployer {
-            should_fail: vec![],
-        };
+        let deployer = MockDeployer::new();
 
         let hosts = vec![
             make_host("host1", Some("p3")),
@@ -286,9 +242,7 @@ mod tests {
 
     #[test]
     fn test_push_by_phase_stops_on_failure() {
-        let deployer = MockDeployer {
-            should_fail: vec!["host3.example.com".to_string()],
-        };
+        let deployer = MockDeployer::new().with_failures(vec!["host3.example.com".to_string()]);
 
         let hosts = vec![
             make_host("host1", Some("p1")),
@@ -307,9 +261,7 @@ mod tests {
 
     #[test]
     fn test_push_by_phase_default_phase() {
-        let deployer = MockDeployer {
-            should_fail: vec![],
-        };
+        let deployer = MockDeployer::new();
 
         let hosts = vec![
             make_host("host1", Some("p1")),
