@@ -36,20 +36,18 @@ impl Default for SystemNixOps {
 
 impl NixOps for SystemNixOps {
     fn get_host_metadata(&self, ctx: &SnowContext, host: &str) -> Result<HostMetadata> {
-        let config_path = format!(".#nixosConfigurations.{}.config", host);
+        let flake_ref = format!(".#nixosConfigurations.{}", host);
 
-        // Build a Nix expression that evaluates all metadata at once
-        let eval_expr = format!(
-            r#"let config = ({}).config; in {{
-          hostName = config.networking.hostName;
-          domain = config.networking.domain or "";
-          phase = config.core.pushPhase or null;
-          tags = config.core.tags or [];
-        }}"#,
-            config_path
-        );
+        // Use eval with apply, similar to list_hosts
+        let apply_expr = r#"config: {
+          hostName = config.config.networking.hostName;
+          domain = config.config.networking.domain or "";
+          phase = config.config.core.pushPhase or null;
+          tags = config.config.core.tags or [];
+        }"#;
 
-        let stdout = NixCommand::eval_expr(ctx, &eval_expr)
+        let stdout = NixCommand::eval(ctx, &flake_ref)
+            .apply(apply_expr)
             .json()
             .run()
             .map_err(|e| match e {
