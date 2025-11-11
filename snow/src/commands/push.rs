@@ -49,6 +49,43 @@ struct DeploymentResult {
 }
 
 impl PushArgs {
+    /// Create the appropriate NixOps implementation based on settings
+    fn get_nix_ops(&self) -> Result<Box<dyn snowlib::NixOps>> {
+        #[cfg(debug_assertions)]
+        {
+            if self.mock {
+                println!("⚠ Using mock deployer");
+
+                if let Some(fixture_path) = &self.mock_fixture {
+                    let path = std::path::Path::new(fixture_path);
+                    let fixture = snowlib::DeploymentFixture::from_file(path)?;
+                    return Ok(Box::new(snowlib::MockNixOps::from_fixture(fixture)));
+                } else {
+                    return Ok(Box::new(snowlib::MockNixOps::new()));
+                }
+            }
+        }
+
+        Ok(Box::new(snowlib::SystemNixOps::new()))
+    }
+
+    /// Create the appropriate Deployer implementation based on settings
+    fn get_deployer(&self) -> Result<Box<dyn snowlib::Deployer>> {
+        #[cfg(debug_assertions)]
+        {
+            if self.mock {
+                if let Some(fixture_path) = &self.mock_fixture {
+                    let path = std::path::Path::new(fixture_path);
+                    return Ok(Box::new(MockDeployer::from_file(path)?));
+                } else {
+                    return Ok(Box::new(MockDeployer::new()));
+                }
+            }
+        }
+
+        Ok(Box::new(SshDeployer::new()))
+    }
+
     pub fn run(self, ctx: &SnowContext) -> Result<()> {
         // Determine activation mode
         let activation_mode = if self.dry_run {
@@ -59,24 +96,7 @@ impl PushArgs {
             ActivationMode::Switch
         };
 
-        // Create the appropriate NixOps implementation
-        #[cfg(debug_assertions)]
-        let nix_ops: Box<dyn snowlib::NixOps> = if self.mock {
-            println!("⚠ Using mock deployer");
-
-            if let Some(fixture_path) = &self.mock_fixture {
-                let path = std::path::Path::new(fixture_path);
-                let fixture = snowlib::DeploymentFixture::from_file(path)?;
-                Box::new(snowlib::MockNixOps::from_fixture(fixture))
-            } else {
-                Box::new(snowlib::MockNixOps::new())
-            }
-        } else {
-            Box::new(snowlib::SystemNixOps::new())
-        };
-
-        #[cfg(not(debug_assertions))]
-        let nix_ops: Box<dyn snowlib::NixOps> = Box::new(snowlib::SystemNixOps::new());
+        let nix_ops = self.get_nix_ops()?;
 
         // UNIFIED CODE PATH: Build all hosts (same for mock and real)
         println!("→ Building configurations...");
@@ -97,21 +117,7 @@ impl PushArgs {
 
         println!("✓ Built {} configuration(s)", self.hosts.len());
 
-        // Create deployer (already determined by fixture in nix_ops)
-        #[cfg(debug_assertions)]
-        let deployer: Box<dyn snowlib::Deployer> = if self.mock {
-            if let Some(fixture_path) = &self.mock_fixture {
-                let path = std::path::Path::new(fixture_path);
-                Box::new(MockDeployer::from_file(path)?)
-            } else {
-                Box::new(MockDeployer::new())
-            }
-        } else {
-            Box::new(SshDeployer::new())
-        };
-
-        #[cfg(not(debug_assertions))]
-        let deployer: Box<dyn snowlib::Deployer> = Box::new(SshDeployer::new());
+        let deployer = self.get_deployer()?;
 
         // UNIFIED CODE PATH: Deploy to all hosts (same for mock and real)
         println!("\n→ Deploying...");
