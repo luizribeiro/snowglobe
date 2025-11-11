@@ -10,7 +10,7 @@ use snowlib::MockDeployer;
 /// Deploy configurations to hosts
 #[derive(Debug, Args)]
 pub struct PushArgs {
-    /// Hosts to push (one or more)
+    /// Hosts to push (defaults to all hosts if not specified)
     pub hosts: Vec<String>,
 
     /// Dry run - show what would change without activating
@@ -49,6 +49,40 @@ struct DeploymentResult {
 }
 
 impl PushArgs {
+    /// Resolve and validate the hosts to push
+    ///
+    /// If no hosts are provided, returns all hosts from the flake.
+    /// If hosts are provided, validates they exist in the flake.
+    fn resolve_hosts(&self, ctx: &SnowContext) -> Result<Vec<String>> {
+        if self.hosts.is_empty() {
+            // No hosts specified, push all hosts
+            let all_hosts = snowlib::list_hosts(ctx, None)?;
+            Ok(all_hosts.iter().map(|h| h.name.clone()).collect())
+        } else {
+            // Validate that all provided hosts exist in the flake
+            let all_hosts = snowlib::list_hosts(ctx, None)?;
+            let valid_hosts: std::collections::HashSet<String> =
+                all_hosts.iter().map(|h| h.name.clone()).collect();
+
+            let invalid_hosts: Vec<String> = self
+                .hosts
+                .iter()
+                .filter(|h| !valid_hosts.contains(*h))
+                .cloned()
+                .collect();
+
+            if !invalid_hosts.is_empty() {
+                return Err(snowlib::error::FlakeError::InvalidHosts {
+                    invalid_hosts: invalid_hosts.join(", "),
+                    available_hosts: valid_hosts.iter().cloned().collect::<Vec<_>>().join(", "),
+                }
+                .into());
+            }
+
+            Ok(self.hosts.clone())
+        }
+    }
+
     /// Create the appropriate NixOps implementation based on settings
     fn get_nix_ops(&self) -> Result<Box<dyn snowlib::NixOps>> {
         #[cfg(debug_assertions)]
@@ -97,12 +131,13 @@ impl PushArgs {
         };
 
         let nix_ops = self.get_nix_ops()?;
+        let hosts = self.resolve_hosts(ctx)?;
 
         // UNIFIED CODE PATH: Build all hosts (same for mock and real)
         println!("→ Building configurations...");
 
         let mut host_data = Vec::new();
-        for host in &self.hosts {
+        for host in &hosts {
             let metadata = nix_ops.get_host_metadata(ctx, host)?;
             let store_path = nix_ops.build_host(ctx, host)?;
 
@@ -115,7 +150,7 @@ impl PushArgs {
             host_data.push((metadata, target, store_path));
         }
 
-        println!("✓ Built {} configuration(s)", self.hosts.len());
+        println!("✓ Built {} configuration(s)", hosts.len());
 
         let deployer = self.get_deployer()?;
 

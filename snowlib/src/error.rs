@@ -110,6 +110,16 @@ pub enum FlakeError {
     )]
     #[diagnostic(code(snow::flake::invalid_path))]
     InvalidPath { path: PathBuf },
+
+    #[error("Invalid host(s): {invalid_hosts}\nAvailable hosts: {available_hosts}")]
+    #[diagnostic(
+        code(snow::flake::invalid_hosts),
+        help("Check your flake's nixosConfigurations for the list of available hosts.\nYou can run 'snow list' to see all configured hosts.")
+    )]
+    InvalidHosts {
+        invalid_hosts: String,
+        available_hosts: String,
+    },
 }
 
 /// Errors related to deployment operations
