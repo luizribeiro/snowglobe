@@ -7,6 +7,10 @@ pub fn fixtures_dir() -> PathBuf {
 }
 
 /// Create a snow command configured to use the test fixtures
+///
+/// Note: Uses deprecated cargo_bin for compatibility with unit tests.
+/// Integration tests should use cargo_bin_cmd! directly.
+#[allow(deprecated)]
 pub fn snow_cmd() -> Command {
     let mut cmd = Command::cargo_bin("snow").unwrap();
     cmd.arg("-f").arg(fixtures_dir());

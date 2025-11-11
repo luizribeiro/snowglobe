@@ -14,6 +14,7 @@
     clippy = {
       enable = true;
       settings.denyWarnings = true;
+      settings.allTargets = true;
     };
     cargo-test = {
       enable = true;

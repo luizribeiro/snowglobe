@@ -2,7 +2,7 @@ use assert_cmd::Command;
 use predicates::prelude::*;
 
 fn snow_cmd() -> Command {
-    Command::cargo_bin("snow").unwrap()
+    assert_cmd::cargo::cargo_bin_cmd!("snow")
 }
 
 #[test]
