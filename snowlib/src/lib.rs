@@ -16,7 +16,7 @@ pub mod push;
 pub use deploy::{ActivationMode, DeployResult, Deployer};
 pub use error::{Result, SnowError};
 pub use nix::ops::{NixOps, SystemNixOps};
-pub use nix::{DeployTarget, Host, HostMetadata, SnowContext, StorePath};
+pub use nix::{DeployTarget, Host, HostMetadata, RebootPolicy, SnowContext, StorePath};
 pub use push::{BlockedHost, DeploymentMode, DeploymentPlan, PushOptions, PushResults};
 
 // Re-export specific implementations

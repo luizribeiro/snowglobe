@@ -380,7 +380,7 @@ impl PushArgs {
     /// Reboots hosts that:
     /// - Deployed successfully
     /// - Used boot activation mode
-    /// - Require reboot (kernel/initrd/init/critical service changes)
+    /// - Require reboot (as determined by deployment planning, which respects reboot policies)
     fn handle_auto_reboots(
         &self,
         deployment_plans: &[DeploymentPlan],

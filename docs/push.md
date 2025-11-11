@@ -5,6 +5,7 @@ The `push` command is the primary deployment mechanism in Snowglobe. It builds N
 ## Table of Contents
 
 - [Basic Usage](#basic-usage)
+- [Reboot Policies](#reboot-policies)
 - [Activation Modes](#activation-modes)
 - [Reboot Detection & Handling](#reboot-detection--handling)
 - [Command Reference](#command-reference)
@@ -27,6 +28,101 @@ snow push hydrogen --user deploy
 
 # Control parallelism
 snow push --concurrency 5
+```
+
+---
+
+## Reboot Policies
+
+Snowglobe supports per-host reboot policies that can be configured in your NixOS configuration to control how deployments handle reboots. This allows you to define different reboot behaviors for different types of hosts (e.g., always reboot production hosts, never reboot development hosts).
+
+### Configuring Reboot Policy
+
+Set the `core.rebootPolicy` option in your NixOS configuration:
+
+```nix
+{
+  # In your host configuration
+  config.core.rebootPolicy = "auto";  # or "never" or "always"
+}
+```
+
+### Available Policies
+
+#### `auto` (Default)
+Automatically detects if a reboot is required and reboots only when necessary.
+
+**Behavior:**
+- Runs reboot detection (checks kernel, initrd, init, and critical services)
+- Uses `boot` mode + automatic reboot if changes require it
+- Uses `switch` mode for immediate activation if safe
+
+**Use for:** Most hosts, especially production servers with regular updates
+
+#### `never`
+Never automatically reboots, even if kernel or critical services changed.
+
+**Behavior:**
+- Always uses `boot` mode (sets config for next boot)
+- Never triggers automatic reboot
+- Requires manual reboot by administrator
+
+**Use for:**
+- Development/testing hosts where stability is more important than updates
+- Hosts with special maintenance windows
+- Systems that require coordinated reboots with external services
+
+#### `always`
+Always reboots after deployment, regardless of what changed.
+
+**Behavior:**
+- Always uses `boot` mode
+- Always triggers automatic reboot after deployment
+- Ensures the new configuration is running immediately
+
+**Use for:**
+- Production hosts requiring guaranteed activation
+- Stateless systems that can reboot freely
+- Hosts with critical security updates that must be applied immediately
+
+### Policy Override Behavior
+
+Reboot policies override command-line flags:
+
+```bash
+# Host has rebootPolicy = "never"
+snow push myhost --switch
+# → Will use boot mode (policy overrides --switch)
+
+# Host has rebootPolicy = "always"
+snow push myhost --switch
+# → Will use boot mode and reboot (policy overrides --switch)
+
+# Host has rebootPolicy = "auto"
+snow push myhost --switch
+# → Will use switch mode (respects --switch flag)
+```
+
+### Example Configuration
+
+```nix
+# In your flake or host configuration
+{
+  # Production database server - never auto-reboot
+  hosts.db-prod = {
+    config.core.rebootPolicy = "never";
+  };
+
+  # Stateless web server - always reboot to ensure fresh state
+  hosts.web-frontend = {
+    config.core.rebootPolicy = "always";
+  };
+
+  # Standard server - use automatic detection
+  hosts.app-server = {
+    config.core.rebootPolicy = "auto";  # or omit (auto is default)
+  };
+}
 ```
 
 ---

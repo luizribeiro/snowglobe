@@ -54,6 +54,8 @@ pub enum RebootReason {
     InitChanged,
     /// A critical service would be restarted
     CriticalService(String),
+    /// Reboot required by host's reboot policy
+    Policy,
 }
 
 impl std::fmt::Display for RebootReason {
@@ -63,6 +65,7 @@ impl std::fmt::Display for RebootReason {
             RebootReason::InitrdChanged => write!(f, "initrd changed"),
             RebootReason::InitChanged => write!(f, "init changed"),
             RebootReason::CriticalService(service) => write!(f, "critical service: {}", service),
+            RebootReason::Policy => write!(f, "reboot policy"),
         }
     }
 }

@@ -1,5 +1,6 @@
 use crate::error::Result;
 use crate::nix::{HostMetadata, NixCommand, SnowContext, StorePath};
+use std::str::FromStr;
 
 #[cfg(debug_assertions)]
 pub mod mock;
@@ -44,6 +45,7 @@ impl NixOps for SystemNixOps {
           domain = config.config.networking.domain or "";
           phase = config.config.core.pushPhase or null;
           tags = config.config.core.tags or [];
+          rebootPolicy = config.config.core.rebootPolicy or "auto";
         }"#;
 
         let stdout = NixCommand::eval(ctx, &flake_ref)
@@ -67,6 +69,8 @@ impl NixOps for SystemNixOps {
             domain: String,
             phase: Option<String>,
             tags: Vec<String>,
+            #[serde(rename = "rebootPolicy")]
+            reboot_policy: String,
         }
 
         let meta: MetadataJson = serde_json::from_slice(&stdout).map_err(|e| {
@@ -82,11 +86,14 @@ impl NixOps for SystemNixOps {
             format!("{}.{}", meta.hostname, meta.domain)
         };
 
+        let reboot_policy = crate::nix::RebootPolicy::from_str(&meta.reboot_policy)?;
+
         Ok(HostMetadata {
             name: host.to_string(),
             phase: meta.phase,
             tags: meta.tags,
             fqdn,
+            reboot_policy,
         })
     }
 

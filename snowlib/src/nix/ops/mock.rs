@@ -52,6 +52,7 @@ impl NixOps for MockNixOps {
                 phase: meta_fix.phase.clone(),
                 tags: meta_fix.tags.clone(),
                 fqdn: meta_fix.fqdn.clone(),
+                reboot_policy: crate::nix::RebootPolicy::Auto,
             })
         } else {
             // Default mock metadata
@@ -60,6 +61,7 @@ impl NixOps for MockNixOps {
                 phase: Some("production".to_string()),
                 tags: vec![],
                 fqdn: format!("{}.example.com", host),
+                reboot_policy: crate::nix::RebootPolicy::Auto,
             })
         }
     }

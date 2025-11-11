@@ -134,6 +134,7 @@ enum ActivationStrategy {
 
 /// Determine the activation strategy for a single host
 fn determine_activation_strategy(
+    metadata: &HostMetadata,
     target: &DeployTarget,
     store_path: &StorePath,
     detector: &RebootDetector,
@@ -147,18 +148,44 @@ fn determine_activation_strategy(
         )),
         DeploymentMode::Test => Ok(ActivationStrategy::Deploy(ActivationMode::Test, None)),
         DeploymentMode::Boot => Ok(ActivationStrategy::Deploy(ActivationMode::Boot, None)),
-        DeploymentMode::Switch => handle_switch_mode(target, store_path, detector, force),
-        DeploymentMode::Auto => handle_auto_mode(target, store_path, detector),
+        DeploymentMode::Switch => handle_switch_mode(metadata, target, store_path, detector, force),
+        DeploymentMode::Auto => handle_auto_mode(metadata, target, store_path, detector),
     }
 }
 
 /// Handle switch mode: force immediate activation with safety checks
 fn handle_switch_mode(
+    metadata: &HostMetadata,
     target: &DeployTarget,
     store_path: &StorePath,
     detector: &RebootDetector,
     force: bool,
 ) -> Result<ActivationStrategy> {
+    use crate::nix::RebootPolicy;
+
+    // Check reboot policy - 'never' and 'always' policies override switch mode
+    match metadata.reboot_policy {
+        RebootPolicy::Never => {
+            // Never policy: use boot mode without reboot
+            return Ok(ActivationStrategy::Deploy(
+                ActivationMode::Boot,
+                Some(RebootCheck::not_required()),
+            ));
+        }
+        RebootPolicy::Always => {
+            // Always policy: use boot mode and will reboot
+            return Ok(ActivationStrategy::Deploy(
+                ActivationMode::Boot,
+                Some(RebootCheck::required(
+                    crate::deploy::reboot::RebootReason::Policy,
+                )),
+            ));
+        }
+        RebootPolicy::Auto => {
+            // Continue with normal switch mode logic
+        }
+    }
+
     let check = detector.check_reboot_required(target, store_path)?;
 
     if check.required && !force {
@@ -179,10 +206,36 @@ fn handle_switch_mode(
 
 /// Handle auto mode: detect reboot requirement and choose activation mode
 fn handle_auto_mode(
+    metadata: &HostMetadata,
     target: &DeployTarget,
     store_path: &StorePath,
     detector: &RebootDetector,
 ) -> Result<ActivationStrategy> {
+    use crate::nix::RebootPolicy;
+
+    // Check reboot policy
+    match metadata.reboot_policy {
+        RebootPolicy::Never => {
+            // Never policy: always use boot mode, never reboot
+            return Ok(ActivationStrategy::Deploy(
+                ActivationMode::Boot,
+                Some(RebootCheck::not_required()),
+            ));
+        }
+        RebootPolicy::Always => {
+            // Always policy: always use boot mode and always reboot
+            return Ok(ActivationStrategy::Deploy(
+                ActivationMode::Boot,
+                Some(RebootCheck::required(
+                    crate::deploy::reboot::RebootReason::Policy,
+                )),
+            ));
+        }
+        RebootPolicy::Auto => {
+            // Continue with automatic detection
+        }
+    }
+
     let check = detector.check_reboot_required(target, store_path)?;
 
     let activation = if check.required {
@@ -213,7 +266,8 @@ pub fn create_deployment_plans(
     let mut blocked = Vec::new();
 
     for (metadata, target, store_path) in hosts {
-        match determine_activation_strategy(&target, &store_path, detector, mode, force)? {
+        match determine_activation_strategy(&metadata, &target, &store_path, detector, mode, force)?
+        {
             ActivationStrategy::Deploy(activation_mode, reboot_check) => {
                 plans.push(DeploymentPlan {
                     metadata,
@@ -291,12 +345,17 @@ mod tests {
     use super::*;
     use crate::deploy::mock::MockDeployer;
 
-    fn make_host(name: &str, phase: Option<&str>) -> (HostMetadata, DeployTarget, StorePath) {
+    fn make_host(
+        name: &str,
+        phase: Option<&str>,
+        reboot_policy: crate::nix::RebootPolicy,
+    ) -> (HostMetadata, DeployTarget, StorePath) {
         let metadata = HostMetadata {
             name: name.to_string(),
             phase: phase.map(|s| s.to_string()),
             tags: vec![],
             fqdn: format!("{}.example.com", name),
+            reboot_policy,
         };
 
         let target = DeployTarget {
@@ -343,7 +402,10 @@ mod tests {
     fn test_push_parallel_all_success() {
         let deployer = MockDeployer::new();
 
-        let hosts = vec![make_host("host1", None), make_host("host2", None)];
+        let hosts = vec![
+            make_host("host1", None, crate::nix::RebootPolicy::Auto),
+            make_host("host2", None, crate::nix::RebootPolicy::Auto),
+        ];
 
         let results = push_parallel(&deployer, hosts, &PushOptions::default()).unwrap();
 
@@ -355,7 +417,10 @@ mod tests {
     fn test_push_parallel_with_failure() {
         let deployer = MockDeployer::new().with_failures(vec!["host2.example.com".to_string()]);
 
-        let hosts = vec![make_host("host1", None), make_host("host2", None)];
+        let hosts = vec![
+            make_host("host1", None, crate::nix::RebootPolicy::Auto),
+            make_host("host2", None, crate::nix::RebootPolicy::Auto),
+        ];
 
         let results = push_parallel(&deployer, hosts, &PushOptions::default()).unwrap();
 
@@ -378,9 +443,9 @@ mod tests {
         let deployer = MockDeployer::new();
 
         let hosts = vec![
-            make_host("host1", Some("p3")),
-            make_host("host2", Some("p1")),
-            make_host("host3", Some("p2")),
+            make_host("host1", Some("p3"), crate::nix::RebootPolicy::Auto),
+            make_host("host2", Some("p1"), crate::nix::RebootPolicy::Auto),
+            make_host("host3", Some("p2"), crate::nix::RebootPolicy::Auto),
         ];
 
         let results = push_by_phase(&deployer, hosts, &PushOptions::default()).unwrap();
@@ -398,9 +463,9 @@ mod tests {
         let deployer = MockDeployer::new().with_failures(vec!["host3.example.com".to_string()]);
 
         let hosts = vec![
-            make_host("host1", Some("p1")),
-            make_host("host2", Some("p3")),
-            make_host("host3", Some("p2")), // This will fail
+            make_host("host1", Some("p1"), crate::nix::RebootPolicy::Auto),
+            make_host("host2", Some("p3"), crate::nix::RebootPolicy::Auto),
+            make_host("host3", Some("p2"), crate::nix::RebootPolicy::Auto), // This will fail
         ];
 
         let results = push_by_phase(&deployer, hosts, &PushOptions::default()).unwrap();
@@ -417,8 +482,8 @@ mod tests {
         let deployer = MockDeployer::new();
 
         let hosts = vec![
-            make_host("host1", Some("p1")),
-            make_host("host2", None), // No phase specified
+            make_host("host1", Some("p1"), crate::nix::RebootPolicy::Auto),
+            make_host("host2", None, crate::nix::RebootPolicy::Auto), // No phase specified
         ];
 
         let results = push_by_phase(&deployer, hosts, &PushOptions::default()).unwrap();
@@ -433,7 +498,7 @@ mod tests {
         // Test that when deployment fails, the error message includes the full error chain
         let deployer = MockDeployer::new().with_failures(vec!["fail.example.com".to_string()]);
 
-        let hosts = vec![make_host("fail", None)];
+        let hosts = vec![make_host("fail", None, crate::nix::RebootPolicy::Auto)];
 
         let results = push_parallel(&deployer, hosts, &PushOptions::default()).unwrap();
 
@@ -476,7 +541,7 @@ mod tests {
         };
 
         let deployer = MockDeployer::from_fixture(fixture);
-        let hosts = vec![make_host("test", None)];
+        let hosts = vec![make_host("test", None, crate::nix::RebootPolicy::Auto)];
 
         let results = push_parallel(&deployer, hosts, &PushOptions::default()).unwrap();
 
@@ -525,7 +590,7 @@ mod tests {
         };
         let detector = RebootDetector::new(config);
 
-        let hosts = vec![make_host("test", None)];
+        let hosts = vec![make_host("test", None, crate::nix::RebootPolicy::Auto)];
 
         let (plans, blocked) =
             create_deployment_plans(hosts, &detector, DeploymentMode::Auto, false).unwrap();
@@ -542,7 +607,7 @@ mod tests {
     #[test]
     fn test_create_deployment_plans_dry_run() {
         let detector = RebootDetector::default();
-        let hosts = vec![make_host("test", None)];
+        let hosts = vec![make_host("test", None, crate::nix::RebootPolicy::Auto)];
 
         let (plans, blocked) =
             create_deployment_plans(hosts, &detector, DeploymentMode::DryRun, false).unwrap();
@@ -556,7 +621,7 @@ mod tests {
     #[test]
     fn test_create_deployment_plans_boot_mode() {
         let detector = RebootDetector::default();
-        let hosts = vec![make_host("test", None)];
+        let hosts = vec![make_host("test", None, crate::nix::RebootPolicy::Auto)];
 
         let (plans, blocked) =
             create_deployment_plans(hosts, &detector, DeploymentMode::Boot, false).unwrap();
@@ -570,7 +635,7 @@ mod tests {
     #[test]
     fn test_create_deployment_plans_test_mode() {
         let detector = RebootDetector::default();
-        let hosts = vec![make_host("test", None)];
+        let hosts = vec![make_host("test", None, crate::nix::RebootPolicy::Auto)];
 
         let (plans, blocked) =
             create_deployment_plans(hosts, &detector, DeploymentMode::Test, false).unwrap();
@@ -585,7 +650,7 @@ mod tests {
     fn test_create_deployment_plans_switch_with_force() {
         // In reality, reboot would be detected, but with force flag it should still use Switch
         let detector = RebootDetector::default();
-        let hosts = vec![make_host("test", None)];
+        let hosts = vec![make_host("test", None, crate::nix::RebootPolicy::Auto)];
 
         let (plans, blocked) =
             create_deployment_plans(hosts, &detector, DeploymentMode::Switch, true).unwrap();
@@ -608,9 +673,9 @@ mod tests {
         let detector = RebootDetector::new(config);
 
         let hosts = vec![
-            make_host("host1", None),
-            make_host("host2", None),
-            make_host("host3", None),
+            make_host("host1", None, crate::nix::RebootPolicy::Auto),
+            make_host("host2", None, crate::nix::RebootPolicy::Auto),
+            make_host("host3", None, crate::nix::RebootPolicy::Auto),
         ];
 
         let (plans, blocked) =
@@ -622,5 +687,120 @@ mod tests {
         for plan in plans {
             assert_eq!(plan.activation_mode, ActivationMode::Switch);
         }
+    }
+
+    #[test]
+    fn test_reboot_policy_never_uses_boot_mode() {
+        let config = RebootDetectionConfig {
+            critical_services: vec![],
+            check_kernel: false,
+            check_initrd: false,
+            check_init: false,
+        };
+        let detector = RebootDetector::new(config);
+
+        let hosts = vec![make_host("host1", None, crate::nix::RebootPolicy::Never)];
+
+        let (plans, blocked) =
+            create_deployment_plans(hosts, &detector, DeploymentMode::Auto, false).unwrap();
+
+        assert_eq!(plans.len(), 1);
+        assert_eq!(blocked.len(), 0);
+        // Should use boot mode due to 'never' policy
+        assert_eq!(plans[0].activation_mode, ActivationMode::Boot);
+        // Should indicate no reboot required
+        assert!(plans[0].reboot_check.is_some());
+        assert!(!plans[0].reboot_check.as_ref().unwrap().required);
+    }
+
+    #[test]
+    fn test_reboot_policy_always_uses_boot_mode_with_reboot() {
+        let config = RebootDetectionConfig {
+            critical_services: vec![],
+            check_kernel: false,
+            check_initrd: false,
+            check_init: false,
+        };
+        let detector = RebootDetector::new(config);
+
+        let hosts = vec![make_host("host1", None, crate::nix::RebootPolicy::Always)];
+
+        let (plans, blocked) =
+            create_deployment_plans(hosts, &detector, DeploymentMode::Auto, false).unwrap();
+
+        assert_eq!(plans.len(), 1);
+        assert_eq!(blocked.len(), 0);
+        // Should use boot mode due to 'always' policy
+        assert_eq!(plans[0].activation_mode, ActivationMode::Boot);
+        // Should indicate reboot required
+        assert!(plans[0].reboot_check.is_some());
+        assert!(plans[0].reboot_check.as_ref().unwrap().required);
+    }
+
+    #[test]
+    fn test_reboot_policy_auto_uses_detection() {
+        let config = RebootDetectionConfig {
+            critical_services: vec![],
+            check_kernel: false,
+            check_initrd: false,
+            check_init: false,
+        };
+        let detector = RebootDetector::new(config);
+
+        let hosts = vec![make_host("host1", None, crate::nix::RebootPolicy::Auto)];
+
+        let (plans, blocked) =
+            create_deployment_plans(hosts, &detector, DeploymentMode::Auto, false).unwrap();
+
+        assert_eq!(plans.len(), 1);
+        assert_eq!(blocked.len(), 0);
+        // Should use switch mode (no reboot detected)
+        assert_eq!(plans[0].activation_mode, ActivationMode::Switch);
+        assert!(plans[0].reboot_check.is_some());
+        assert!(!plans[0].reboot_check.as_ref().unwrap().required);
+    }
+
+    #[test]
+    fn test_reboot_policy_never_overrides_switch_mode() {
+        let config = RebootDetectionConfig {
+            critical_services: vec![],
+            check_kernel: false,
+            check_initrd: false,
+            check_init: false,
+        };
+        let detector = RebootDetector::new(config);
+
+        let hosts = vec![make_host("host1", None, crate::nix::RebootPolicy::Never)];
+
+        let (plans, blocked) =
+            create_deployment_plans(hosts, &detector, DeploymentMode::Switch, false).unwrap();
+
+        assert_eq!(plans.len(), 1);
+        assert_eq!(blocked.len(), 0);
+        // Should use boot mode despite switch flag (policy overrides)
+        assert_eq!(plans[0].activation_mode, ActivationMode::Boot);
+        assert!(!plans[0].reboot_check.as_ref().unwrap().required);
+    }
+
+    #[test]
+    fn test_reboot_policy_always_overrides_switch_mode() {
+        let config = RebootDetectionConfig {
+            critical_services: vec![],
+            check_kernel: false,
+            check_initrd: false,
+            check_init: false,
+        };
+        let detector = RebootDetector::new(config);
+
+        let hosts = vec![make_host("host1", None, crate::nix::RebootPolicy::Always)];
+
+        let (plans, blocked) =
+            create_deployment_plans(hosts, &detector, DeploymentMode::Switch, false).unwrap();
+
+        assert_eq!(plans.len(), 1);
+        assert_eq!(blocked.len(), 0);
+        // Should use boot mode despite switch flag (policy overrides)
+        assert_eq!(plans[0].activation_mode, ActivationMode::Boot);
+        assert!(plans[0].reboot_check.as_ref().unwrap().required);
     }
 }
