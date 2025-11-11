@@ -1,21 +1,10 @@
 {
   "name": "Network failure during copy",
   "description": "SSH connection fails during closure copy",
-  "hosts": [
-    {
-      "hostname": "hydrogen.example.com",
-      "copy_closure": {
-        "success": false,
-        "stdout": "copying 42 paths to ssh://root@hydrogen.example.com...\n",
-        "stderr": "error: ssh: connect to host hydrogen.example.com port 22: Connection refused\n",
-        "duration_ms": 5000
-      },
-      "activate": {
-        "success": false,
-        "stdout": "",
-        "stderr": "error: copy_closure failed, skipping activation\n",
-        "duration_ms": 0
-      }
+  "failures": {
+    "hydrogen": {
+      "phase": "copy_closure",
+      "error": "ssh: connect to host hydrogen.example.com port 22: Connection refused"
     }
-  ]
+  }
 }

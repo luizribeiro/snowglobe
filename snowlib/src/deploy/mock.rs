@@ -11,24 +11,12 @@ use std::time::Duration;
 ///
 /// Can operate in two modes:
 /// 1. Simple mode (no fixture): Always succeeds with configurable delays
-/// 2. Fixture mode: Replays recorded scenarios with realistic output and timing
-#[derive(Debug, Clone)]
+/// 2. Fixture mode: Auto-generates realistic output, only fails hosts specified in fixture
+#[derive(Debug, Clone, Default)]
 pub struct MockDeployer {
-    fixtures: Option<HashMap<String, HostFixture>>,
-    /// Milliseconds to sleep during operations when not using fixtures
-    delay_ms: u64,
-    /// List of hostnames that should fail when not using fixtures
+    fixture: Option<DeploymentFixture>,
+    /// List of hostnames that should fail when not using fixtures (simple mode)
     should_fail: Vec<String>,
-}
-
-impl Default for MockDeployer {
-    fn default() -> Self {
-        Self {
-            fixtures: None,
-            delay_ms: 100,
-            should_fail: vec![],
-        }
-    }
 }
 
 impl MockDeployer {
@@ -39,21 +27,8 @@ impl MockDeployer {
 
     /// Create from a DeploymentFixture (useful for tests)
     pub fn from_fixture(fixture: DeploymentFixture) -> Self {
-        let mut fixtures: HashMap<String, HostFixture> = HashMap::new();
-
-        for host in fixture.hosts {
-            // Index by hostname
-            fixtures.insert(host.hostname.clone(), host.clone());
-
-            // Also index by FQDN if metadata is present
-            if let Some(ref metadata) = host.metadata {
-                fixtures.insert(metadata.fqdn.clone(), host);
-            }
-        }
-
         Self {
-            fixtures: Some(fixtures),
-            delay_ms: 100,
+            fixture: Some(fixture),
             should_fail: vec![],
         }
     }
@@ -64,59 +39,93 @@ impl MockDeployer {
         Ok(Self::from_fixture(fixture))
     }
 
-    /// Set delay for simple mode (when not using fixtures)
-    pub fn with_delay(mut self, ms: u64) -> Self {
-        self.delay_ms = ms;
-        self
-    }
-
     /// Set failures for simple mode (when not using fixtures)
     pub fn with_failures(mut self, hostnames: Vec<String>) -> Self {
         self.should_fail = hostnames;
         self
     }
 
-    /// Get fixture for a specific hostname
-    fn get_fixture(&self, hostname: &str) -> Option<&HostFixture> {
-        self.fixtures.as_ref()?.get(hostname)
+    /// Generate realistic stdout for copy_closure operation
+    fn generate_copy_closure_output(&self, hostname: &str) -> String {
+        use rand::Rng;
+        let mut rng = rand::thread_rng();
+        let num_paths = rng.gen_range(10..50);
+        format!(
+            "copying {} paths to ssh://root@{}...\n",
+            num_paths, hostname
+        )
     }
 
-    /// Simulate an operation with output and timing
-    fn simulate_operation(&self, op: &OperationFixture) -> Result<()> {
-        // Simulate work with delay
-        thread::sleep(Duration::from_millis(op.duration_ms));
-
-        // Print output (simulates real command output)
-        if !op.stdout.is_empty() {
-            print!("{}", op.stdout);
+    /// Generate realistic stdout for activate operation
+    fn generate_activate_output(&self, success: bool) -> String {
+        if success {
+            use rand::Rng;
+            let mut rng = rand::thread_rng();
+            let messages = [
+                "activation successful\n",
+                "reloading services...\nactivation complete\n",
+                "updating system profile...\nactivation successful\n",
+            ];
+            messages[rng.gen_range(0..messages.len())].to_string()
+        } else {
+            "starting services...\n".to_string()
         }
-        if !op.stderr.is_empty() {
-            eprint!("{}", op.stderr);
-        }
+    }
 
-        if !op.success {
-            return Err(crate::error::DeployError::Failed {
-                host: "fixture".to_string(),
-                source: std::io::Error::other("Operation failed (from fixture)"),
+    /// Check if a host should fail and at which phase
+    fn should_fail_at(&self, hostname: &str, phase: &str) -> (bool, Option<String>) {
+        if let Some(fixture) = &self.fixture {
+            // Try exact match first
+            if let Some(failure_spec) = fixture.failures.get(hostname) {
+                if failure_spec.phase == phase {
+                    let error = failure_spec
+                        .error
+                        .clone()
+                        .unwrap_or_else(|| "Operation failed".to_string());
+                    return (true, Some(error));
+                }
             }
-            .into());
-        }
 
-        Ok(())
+            // Try hostname without domain (e.g., "nitrogen.example.com" -> "nitrogen")
+            let short_hostname = hostname.split('.').next().unwrap_or(hostname);
+            if let Some(failure_spec) = fixture.failures.get(short_hostname) {
+                if failure_spec.phase == phase {
+                    let error = failure_spec
+                        .error
+                        .clone()
+                        .unwrap_or_else(|| "Operation failed".to_string());
+                    return (true, Some(error));
+                }
+            }
+        }
+        (false, None)
     }
 }
 
 impl Deployer for MockDeployer {
     fn copy_closure(&self, target: &DeployTarget, _store_path: &StorePath) -> Result<()> {
-        // If we have a fixture for this host, use it
-        if let Some(fixture) = self.get_fixture(&target.hostname) {
-            return self.simulate_operation(&fixture.copy_closure);
+        // Realistic delay (1-2 seconds)
+        thread::sleep(Duration::from_millis(1000));
+
+        // Generate realistic output
+        print!("{}", self.generate_copy_closure_output(&target.hostname));
+
+        // Check if this host should fail at copy_closure
+        let (should_fail, error_msg) = self.should_fail_at(&target.hostname, "copy_closure");
+
+        if should_fail {
+            if let Some(error) = error_msg {
+                eprintln!("error: {}", error);
+            }
+            return Err(crate::error::DeployError::Failed {
+                host: target.hostname.clone(),
+                source: std::io::Error::other("Copy closure failed"),
+            }
+            .into());
         }
 
-        // Otherwise, use simple mode
-        thread::sleep(Duration::from_millis(self.delay_ms));
-
-        if self.should_fail.contains(&target.hostname) {
+        // Simple mode fallback for backward compatibility
+        if self.fixture.is_none() && self.should_fail.contains(&target.hostname) {
             return Err(crate::error::DeployError::Failed {
                 host: target.hostname.clone(),
                 source: std::io::Error::other("Mock: copy_closure failed"),
@@ -133,15 +142,28 @@ impl Deployer for MockDeployer {
         _store_path: &StorePath,
         _mode: ActivationMode,
     ) -> Result<()> {
-        // If we have a fixture for this host, use it
-        if let Some(fixture) = self.get_fixture(&target.hostname) {
-            return self.simulate_operation(&fixture.activate);
+        // Check if this host should fail at activate
+        let (should_fail, error_msg) = self.should_fail_at(&target.hostname, "activate");
+
+        // Realistic delay (500ms-1s)
+        thread::sleep(Duration::from_millis(500));
+
+        // Generate realistic output
+        print!("{}", self.generate_activate_output(!should_fail));
+
+        if should_fail {
+            if let Some(error) = error_msg {
+                eprintln!("error: {}", error);
+            }
+            return Err(crate::error::DeployError::Failed {
+                host: target.hostname.clone(),
+                source: std::io::Error::other("Activation failed"),
+            }
+            .into());
         }
 
-        // Otherwise, use simple mode
-        thread::sleep(Duration::from_millis(self.delay_ms));
-
-        if self.should_fail.contains(&target.hostname) {
+        // Simple mode fallback for backward compatibility
+        if self.fixture.is_none() && self.should_fail.contains(&target.hostname) {
             return Err(crate::error::DeployError::Failed {
                 host: target.hostname.clone(),
                 source: std::io::Error::other("Mock: activation failed"),
@@ -153,15 +175,30 @@ impl Deployer for MockDeployer {
     }
 }
 
+/// Simplified deployment failure specification
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FailureSpec {
+    /// Which phase fails: "copy_closure" or "activate"
+    pub phase: String,
+    /// Error message to display
+    #[serde(default)]
+    pub error: Option<String>,
+}
+
 /// Fixture for a complete deployment scenario
 ///
-/// Represents a recorded deployment scenario with multiple hosts.
-/// Can be serialized to/from JSON for testing.
+/// Simplified format that only specifies failures.
+/// All hosts succeed by default with auto-generated realistic output.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeploymentFixture {
     pub name: String,
     #[serde(default)]
     pub description: Option<String>,
+    /// Map of hostname to failure spec (only for hosts that should fail)
+    #[serde(default)]
+    pub failures: HashMap<String, FailureSpec>,
+    /// Legacy format support - will be removed
+    #[serde(default)]
     pub hosts: Vec<HostFixture>,
 }
 
@@ -315,6 +352,7 @@ mod tests {
         let fixture = DeploymentFixture {
             name: "Test".to_string(),
             description: None,
+            failures: HashMap::new(),
             hosts: vec![HostFixture {
                 hostname: "test.example.com".to_string(),
                 metadata: None,
@@ -350,10 +388,11 @@ mod tests {
 
     #[test]
     fn test_mock_deployer_fixture_fallback() {
-        // When a host is not in the fixture, it falls back to simple mode
+        // When a host is not in the fixture, succeeds with auto-generated output
         let fixture = DeploymentFixture {
             name: "Test".to_string(),
             description: None,
+            failures: HashMap::new(),
             hosts: vec![],
         };
 

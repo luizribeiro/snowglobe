@@ -21,18 +21,13 @@ pub struct PushArgs {
     #[arg(long)]
     pub boot: bool,
 
-    /// Maximum number of hosts to push in parallel
-    #[arg(long, default_value = "3")]
-    pub concurrency: usize,
+    /// Maximum number of hosts to push in parallel (must be at least 1)
+    #[arg(long, default_value = "3", value_parser = clap::value_parser!(u32).range(1..))]
+    pub concurrency: u32,
 
     #[cfg(debug_assertions)]
-    /// Use mock deployer instead of real SSH (debug builds only)
+    /// Path to fixture file for mock deployer (debug builds only)
     #[arg(long, hide = true)]
-    pub mock: bool,
-
-    #[cfg(debug_assertions)]
-    /// Path to fixture file for mock deployer (requires --mock)
-    #[arg(long, requires = "mock", hide = true)]
     pub mock_fixture: Option<String>,
 }
 
@@ -54,13 +49,13 @@ impl PushArgs {
     /// If no hosts are provided, returns all hosts from the flake.
     /// If hosts are provided, validates they exist in the flake.
     fn resolve_hosts(&self, ctx: &SnowContext) -> Result<Vec<String>> {
+        let all_hosts = snowlib::list_hosts(ctx, None)?;
+
         if self.hosts.is_empty() {
             // No hosts specified, push all hosts
-            let all_hosts = snowlib::list_hosts(ctx, None)?;
             Ok(all_hosts.iter().map(|h| h.name.clone()).collect())
         } else {
             // Validate that all provided hosts exist in the flake
-            let all_hosts = snowlib::list_hosts(ctx, None)?;
             let valid_hosts: std::collections::HashSet<String> =
                 all_hosts.iter().map(|h| h.name.clone()).collect();
 
@@ -87,16 +82,11 @@ impl PushArgs {
     fn get_nix_ops(&self) -> Result<Box<dyn snowlib::NixOps>> {
         #[cfg(debug_assertions)]
         {
-            if self.mock {
+            if let Some(fixture_path) = &self.mock_fixture {
                 println!("⚠ Using mock deployer");
-
-                if let Some(fixture_path) = &self.mock_fixture {
-                    let path = std::path::Path::new(fixture_path);
-                    let fixture = snowlib::DeploymentFixture::from_file(path)?;
-                    return Ok(Box::new(snowlib::MockNixOps::from_fixture(fixture)));
-                } else {
-                    return Ok(Box::new(snowlib::MockNixOps::new()));
-                }
+                let path = std::path::Path::new(fixture_path);
+                let fixture = snowlib::DeploymentFixture::from_file(path)?;
+                return Ok(Box::new(snowlib::MockNixOps::from_fixture(fixture)));
             }
         }
 
@@ -107,13 +97,9 @@ impl PushArgs {
     fn get_deployer(&self) -> Result<Box<dyn snowlib::Deployer>> {
         #[cfg(debug_assertions)]
         {
-            if self.mock {
-                if let Some(fixture_path) = &self.mock_fixture {
-                    let path = std::path::Path::new(fixture_path);
-                    return Ok(Box::new(MockDeployer::from_file(path)?));
-                } else {
-                    return Ok(Box::new(MockDeployer::new()));
-                }
+            if let Some(fixture_path) = &self.mock_fixture {
+                let path = std::path::Path::new(fixture_path);
+                return Ok(Box::new(MockDeployer::from_file(path)?));
             }
         }
 
@@ -121,6 +107,20 @@ impl PushArgs {
     }
 
     pub fn run(self, ctx: &SnowContext) -> Result<()> {
+        // When using --mock-fixture, use the mock flake instead of the real one
+        #[cfg(debug_assertions)]
+        let mock_ctx;
+        #[cfg(debug_assertions)]
+        let ctx = if self.mock_fixture.is_some() {
+            // Use the mock flake bundled with the test fixtures
+            let mock_flake_path =
+                std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+            mock_ctx = SnowContext::new(Some(mock_flake_path.to_str().unwrap()))?;
+            &mock_ctx
+        } else {
+            ctx
+        };
+
         // Determine activation mode
         let activation_mode = if self.dry_run {
             ActivationMode::DryActivate
@@ -159,7 +159,7 @@ impl PushArgs {
 
         let opts = PushOptions {
             activation_mode,
-            concurrency: self.concurrency,
+            concurrency: self.concurrency as usize,
         };
 
         let results = push_parallel(deployer.as_ref(), host_data, &opts)?;
@@ -239,6 +239,7 @@ mod tests {
         let fixture = DeploymentFixture {
             name: "Test deployment".to_string(),
             description: Some("Test scenario".to_string()),
+            failures: std::collections::HashMap::new(),
             hosts: vec![HostFixture {
                 hostname: "hydrogen.example.com".to_string(),
                 metadata: None,

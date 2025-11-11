@@ -1,17 +1,20 @@
 {
-  description = "Test flake for snow list command";
+  description = "Test flake for snow CLI and mock testing";
 
   outputs = { self, ... }: {
     nixosConfigurations = {
       hydrogen = {
         config = {
-          # Standard NixOS options
           services.openssh.enable = true;
           services.postgresql.enable = true;
           services.nginx.enable = true;
           networking.hostName = "hydrogen";
           networking.domain = "example.com";
           nixpkgs.hostPlatform = "x86_64-linux";
+
+          # For mock testing
+          core.pushPhase = "production";
+          core.tags = [ "web" "frontend" ];
         };
       };
 
@@ -23,6 +26,10 @@
           networking.hostName = "nitrogen";
           networking.domain = "example.com";
           nixpkgs.hostPlatform = "aarch64-linux";
+
+          # For mock testing
+          core.pushPhase = "production";
+          core.tags = [ "database" ];
         };
       };
 

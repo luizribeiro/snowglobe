@@ -16,3 +16,6 @@ Cargo.lock
 # Environment variables
 .env
 .env.local
+# Test fixture git repo metadata
+/snow/tests/fixtures/.git/
+/snow/tests/fixtures/flake.lock
