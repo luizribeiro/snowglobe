@@ -9,12 +9,12 @@
     pkgs.cargo-audit
   ];
 
-  pre-commit.hooks = {
+  git-hooks.hooks = {
     rustfmt.enable = true;
     clippy = {
       enable = true;
       settings.denyWarnings = true;
-      settings.allTargets = true;
+      entry = "cargo clippy --workspace --all-targets -- -D warnings";
     };
     cargo-test = {
       enable = true;
