@@ -118,7 +118,7 @@ mod tests {
     fn test_get_destination_default() {
         let deployer = SshDeployer::new();
         let target = DeployTarget {
-            user: "root".to_string(),
+            user: Some("root".to_string()),
             hostname: "hydrogen.example.com".to_string(),
             port: None,
         };
@@ -133,7 +133,7 @@ mod tests {
     fn test_get_destination_with_user() {
         let deployer = SshDeployer::with_user("deploy");
         let target = DeployTarget {
-            user: "root".to_string(),
+            user: Some("root".to_string()),
             hostname: "hydrogen.example.com".to_string(),
             port: None,
         };

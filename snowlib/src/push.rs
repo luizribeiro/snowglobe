@@ -72,7 +72,16 @@ pub fn push_parallel(
                 let deployer = Arc::clone(&deployer);
                 let result = deployer
                     .deploy(&target, &store_path, opts.activation_mode)
-                    .unwrap_or_else(|e| DeployResult::failure(e.to_string()));
+                    .unwrap_or_else(|e| {
+                        // Format the full error chain to include source errors
+                        let mut error_msg = e.to_string();
+                        let mut source = std::error::Error::source(&e);
+                        while let Some(err) = source {
+                            error_msg.push_str(&format!("\n  Caused by: {}", err));
+                            source = std::error::Error::source(err);
+                        }
+                        DeployResult::failure(error_msg)
+                    });
 
                 (metadata.name, result)
             })
@@ -147,7 +156,7 @@ mod tests {
         };
 
         let target = DeployTarget {
-            user: "root".to_string(),
+            user: Some("root".to_string()),
             hostname: format!("{}.example.com", name),
             port: None,
         };
@@ -273,5 +282,82 @@ mod tests {
         // Both should succeed (default phase sorts after p1)
         assert_eq!(results.results.len(), 2);
         assert!(results.all_succeeded());
+    }
+
+    #[test]
+    fn test_push_parallel_error_message_includes_source() {
+        // Test that when deployment fails, the error message includes the full error chain
+        let deployer = MockDeployer::new().with_failures(vec!["fail.example.com".to_string()]);
+
+        let hosts = vec![make_host("fail", None)];
+
+        let results = push_parallel(&deployer, hosts, &PushOptions::default()).unwrap();
+
+        assert_eq!(results.failure_count(), 1);
+
+        // Verify the error message includes the source error
+        let (_, deploy_result) = &results.results[0];
+        assert!(!deploy_result.success);
+        assert!(
+            deploy_result.message.contains("Caused by:"),
+            "Error message should include 'Caused by:' to show the error chain. Got: {}",
+            deploy_result.message
+        );
+        assert!(
+            deploy_result.message.contains("copy_closure failed"),
+            "Error message should include the source error details. Got: {}",
+            deploy_result.message
+        );
+    }
+
+    #[test]
+    fn test_push_parallel_error_message_format() {
+        // Test the specific format of error messages with the full chain
+        use std::collections::HashMap;
+
+        let mut failures = HashMap::new();
+        failures.insert(
+            "test.example.com".to_string(),
+            crate::deploy::mock::FailureSpec {
+                phase: "activate".to_string(),
+                error: Some("systemd service failed to start".to_string()),
+            },
+        );
+
+        let fixture = crate::deploy::mock::DeploymentFixture {
+            name: "Test error formatting".to_string(),
+            description: None,
+            failures,
+            hosts: vec![],
+        };
+
+        let deployer = MockDeployer::from_fixture(fixture);
+        let hosts = vec![make_host("test", None)];
+
+        let results = push_parallel(&deployer, hosts, &PushOptions::default()).unwrap();
+
+        assert_eq!(results.failure_count(), 1);
+
+        let (_, deploy_result) = &results.results[0];
+        assert!(!deploy_result.success);
+
+        // The error message should be structured as:
+        // "Failed to deploy to host 'test.example.com'"
+        //   Caused by: Activation failed
+        assert!(
+            deploy_result.message.contains("Failed to deploy"),
+            "Error message should start with main error. Got: {}",
+            deploy_result.message
+        );
+        assert!(
+            deploy_result.message.contains("Caused by:"),
+            "Error message should include 'Caused by:' separator. Got: {}",
+            deploy_result.message
+        );
+        assert!(
+            deploy_result.message.contains("Activation failed"),
+            "Error message should include the source error. Got: {}",
+            deploy_result.message
+        );
     }
 }

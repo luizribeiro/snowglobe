@@ -296,7 +296,7 @@ mod tests {
     fn test_mock_deployer_success() {
         let deployer = MockDeployer::new();
         let target = DeployTarget {
-            user: "root".to_string(),
+            user: Some("root".to_string()),
             hostname: "test.example.com".to_string(),
             port: None,
         };
@@ -313,7 +313,7 @@ mod tests {
         let deployer = MockDeployer::new().with_failures(vec!["fail.example.com".to_string()]);
 
         let target = DeployTarget {
-            user: "root".to_string(),
+            user: Some("root".to_string()),
             hostname: "fail.example.com".to_string(),
             port: None,
         };
@@ -378,7 +378,7 @@ mod tests {
 
         let deployer = MockDeployer::from_fixture(fixture);
         let target = DeployTarget {
-            user: "root".to_string(),
+            user: Some("root".to_string()),
             hostname: "test.example.com".to_string(),
             port: None,
         };
@@ -402,7 +402,7 @@ mod tests {
 
         let deployer = MockDeployer::from_fixture(fixture);
         let target = DeployTarget {
-            user: "root".to_string(),
+            user: Some("root".to_string()),
             hostname: "missing.example.com".to_string(),
             port: None,
         };

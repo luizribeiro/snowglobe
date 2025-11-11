@@ -21,6 +21,10 @@ pub struct PushArgs {
     #[arg(long)]
     pub boot: bool,
 
+    /// SSH user to use for deployment (defaults to SSH config or current user)
+    #[arg(long)]
+    pub user: Option<String>,
+
     /// Maximum number of hosts to push in parallel (must be at least 1)
     #[arg(long, default_value = "3", value_parser = clap::value_parser!(u32).range(1..))]
     pub concurrency: u32,
@@ -142,7 +146,7 @@ impl PushArgs {
             let store_path = nix_ops.build_host(ctx, host)?;
 
             let target = DeployTarget {
-                user: "root".to_string(),
+                user: self.user.clone(),
                 hostname: metadata.fqdn.clone(),
                 port: None,
             };
@@ -208,7 +212,7 @@ mod tests {
     fn test_mock_deployer_success() {
         let deployer = MockDeployer::new();
         let target = DeployTarget {
-            user: "root".to_string(),
+            user: Some("root".to_string()),
             hostname: "test.example.com".to_string(),
             port: None,
         };
@@ -225,7 +229,7 @@ mod tests {
         let deployer = MockDeployer::new().with_failures(vec!["fail.example.com".to_string()]);
 
         let target = DeployTarget {
-            user: "root".to_string(),
+            user: Some("root".to_string()),
             hostname: "fail.example.com".to_string(),
             port: None,
         };
@@ -261,7 +265,7 @@ mod tests {
 
         let deployer = MockDeployer::from_fixture(fixture);
         let target = DeployTarget {
-            user: "root".to_string(),
+            user: Some("root".to_string()),
             hostname: "hydrogen.example.com".to_string(),
             port: None,
         };
@@ -284,7 +288,7 @@ mod tests {
 
         // Test with hydrogen
         let target = DeployTarget {
-            user: "root".to_string(),
+            user: Some("root".to_string()),
             hostname: "hydrogen.example.com".to_string(),
             port: None,
         };
@@ -307,7 +311,7 @@ mod tests {
 
         // Hydrogen should succeed
         let target_hydrogen = DeployTarget {
-            user: "root".to_string(),
+            user: Some("root".to_string()),
             hostname: "hydrogen.example.com".to_string(),
             port: None,
         };
@@ -320,7 +324,7 @@ mod tests {
 
         // Nitrogen should fail on activation
         let target_nitrogen = DeployTarget {
-            user: "root".to_string(),
+            user: Some("root".to_string()),
             hostname: "nitrogen.example.com".to_string(),
             port: None,
         };
