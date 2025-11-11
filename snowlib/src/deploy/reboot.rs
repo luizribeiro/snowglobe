@@ -2,6 +2,22 @@ use crate::error::{DeployError, Result};
 use crate::nix::{DeployTarget, StorePath};
 use std::process::Command;
 
+/// Trait for reboot detection and execution operations
+///
+/// This trait allows for testability by enabling mock implementations
+/// that don't require actual SSH connections.
+pub trait RebootOps: Send + Sync {
+    /// Check if a deployment requires a reboot
+    fn check_reboot_required(
+        &self,
+        target: &DeployTarget,
+        new_system: &StorePath,
+    ) -> Result<RebootCheck>;
+
+    /// Reboot a host and wait for it to come back online
+    fn reboot_and_wait(&self, target: &DeployTarget) -> Result<()>;
+}
+
 /// Default critical services that require a reboot when restarted
 const DEFAULT_CRITICAL_SERVICES: &[&str] = &[
     "audit.service",
@@ -373,6 +389,20 @@ impl RebootDetector {
 impl Default for RebootDetector {
     fn default() -> Self {
         Self::with_defaults()
+    }
+}
+
+impl RebootOps for RebootDetector {
+    fn check_reboot_required(
+        &self,
+        target: &DeployTarget,
+        new_system: &StorePath,
+    ) -> Result<RebootCheck> {
+        self.check_reboot_required(target, new_system)
+    }
+
+    fn reboot_and_wait(&self, target: &DeployTarget) -> Result<()> {
+        self.reboot_and_wait(target)
     }
 }
 

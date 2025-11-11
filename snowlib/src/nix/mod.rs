@@ -34,6 +34,14 @@ impl SnowContext {
     pub fn flake_root(&self) -> &Path {
         &self.flake_root
     }
+
+    /// Create a test context using the fixture directory
+    #[cfg(test)]
+    pub fn test_context() -> Self {
+        let fixture_path =
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+        Self::new(Some(fixture_path.to_str().unwrap())).unwrap()
+    }
 }
 
 /// Builder for constructing and executing Nix commands

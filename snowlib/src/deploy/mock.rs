@@ -1,3 +1,4 @@
+use crate::deploy::reboot::{RebootCheck, RebootOps, RebootReason};
 use crate::deploy::{ActivationMode, Deployer};
 use crate::error::Result;
 use crate::nix::{DeployTarget, StorePath};
@@ -15,8 +16,12 @@ use std::time::Duration;
 #[derive(Debug, Clone, Default)]
 pub struct MockDeployer {
     fixture: Option<DeploymentFixture>,
-    /// List of hostnames that should fail when not using fixtures (simple mode)
+    /// List of hostnames that should fail when not using fixtures (simple mode) - both copy and activate
     should_fail: Vec<String>,
+    /// List of hostnames that should fail during copy only
+    copy_failures: Vec<String>,
+    /// List of hostnames that should fail during activate only
+    activate_failures: Vec<String>,
 }
 
 impl MockDeployer {
@@ -30,6 +35,8 @@ impl MockDeployer {
         Self {
             fixture: Some(fixture),
             should_fail: vec![],
+            copy_failures: vec![],
+            activate_failures: vec![],
         }
     }
 
@@ -39,9 +46,21 @@ impl MockDeployer {
         Ok(Self::from_fixture(fixture))
     }
 
-    /// Set failures for simple mode (when not using fixtures)
+    /// Set failures for simple mode (when not using fixtures) - fails during both copy and activate
     pub fn with_failures(mut self, hostnames: Vec<String>) -> Self {
         self.should_fail = hostnames;
+        self
+    }
+
+    /// Set copy failures for simple mode (when not using fixtures)
+    pub fn with_copy_failures(mut self, hostnames: Vec<String>) -> Self {
+        self.copy_failures = hostnames;
+        self
+    }
+
+    /// Set activate failures for simple mode (when not using fixtures)
+    pub fn with_activate_failures(mut self, hostnames: Vec<String>) -> Self {
+        self.activate_failures = hostnames;
         self
     }
 
@@ -135,6 +154,15 @@ impl Deployer for MockDeployer {
             .into());
         }
 
+        // Check copy_failures list
+        if self.copy_failures.contains(&target.hostname) {
+            return Err(crate::error::DeployError::Failed {
+                host: target.hostname.clone(),
+                source: std::io::Error::other("Mock: copy_closure failed"),
+            }
+            .into());
+        }
+
         Ok(())
     }
 
@@ -168,6 +196,15 @@ impl Deployer for MockDeployer {
 
         // Simple mode fallback for backward compatibility
         if self.fixture.is_none() && self.should_fail.contains(&target.hostname) {
+            return Err(crate::error::DeployError::Failed {
+                host: target.hostname.clone(),
+                source: std::io::Error::other("Mock: activation failed"),
+            }
+            .into());
+        }
+
+        // Check activate_failures list
+        if self.activate_failures.contains(&target.hostname) {
             return Err(crate::error::DeployError::Failed {
                 host: target.hostname.clone(),
                 source: std::io::Error::other("Mock: activation failed"),
@@ -286,6 +323,88 @@ pub struct OperationFixture {
     #[serde(default)]
     pub stderr: String,
     pub duration_ms: u64,
+}
+
+/// Mock reboot operations for testing
+///
+/// Simulates reboot detection and execution without requiring SSH connections.
+/// Allows configuring which hosts require reboot and which hosts fail during reboot.
+#[derive(Debug, Clone, Default)]
+pub struct MockRebootOps {
+    /// Hosts that require reboot (hostname -> reason)
+    reboot_required: HashMap<String, RebootReason>,
+    /// Hosts that should fail during reboot execution
+    reboot_failures: Vec<String>,
+}
+
+impl MockRebootOps {
+    /// Create a new MockRebootOps with no reboot requirements
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Configure hosts that require reboot
+    pub fn with_reboot_required(mut self, hosts: HashMap<String, RebootReason>) -> Self {
+        self.reboot_required = hosts;
+        self
+    }
+
+    /// Configure hosts that should fail during reboot
+    pub fn with_reboot_failures(mut self, hostnames: Vec<String>) -> Self {
+        self.reboot_failures = hostnames;
+        self
+    }
+
+    /// Check if a hostname requires reboot (tries both full and short hostname)
+    fn check_hostname(&self, hostname: &str) -> Option<RebootReason> {
+        // Try exact match first
+        if let Some(reason) = self.reboot_required.get(hostname) {
+            return Some(reason.clone());
+        }
+
+        // Try short hostname
+        let short = hostname.split('.').next().unwrap_or(hostname);
+        self.reboot_required.get(short).cloned()
+    }
+
+    /// Check if a hostname should fail reboot
+    fn should_fail_reboot(&self, hostname: &str) -> bool {
+        self.reboot_failures.contains(&hostname.to_string()) || {
+            let short = hostname.split('.').next().unwrap_or(hostname);
+            self.reboot_failures.contains(&short.to_string())
+        }
+    }
+}
+
+impl RebootOps for MockRebootOps {
+    fn check_reboot_required(
+        &self,
+        target: &DeployTarget,
+        _new_system: &StorePath,
+    ) -> Result<RebootCheck> {
+        if let Some(reason) = self.check_hostname(&target.hostname) {
+            Ok(RebootCheck::required(reason))
+        } else {
+            Ok(RebootCheck::not_required())
+        }
+    }
+
+    fn reboot_and_wait(&self, target: &DeployTarget) -> Result<()> {
+        // Simulate reboot delay
+        if !cfg!(debug_assertions) {
+            thread::sleep(Duration::from_millis(100));
+        }
+
+        if self.should_fail_reboot(&target.hostname) {
+            return Err(crate::error::DeployError::Failed {
+                host: target.hostname.clone(),
+                source: std::io::Error::other("Mock: reboot failed"),
+            }
+            .into());
+        }
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]

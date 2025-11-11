@@ -2,6 +2,7 @@ use clap::Parser;
 use miette::{IntoDiagnostic, Result};
 
 mod commands;
+mod observer;
 
 #[cfg(test)]
 mod test_utils;

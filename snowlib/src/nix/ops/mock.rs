@@ -12,19 +12,30 @@ use std::time::Duration;
 #[derive(Debug, Clone)]
 pub struct MockNixOps {
     fixture: Option<DeploymentFixture>,
+    build_failures: Vec<String>,
 }
 
 impl MockNixOps {
     /// Create a new MockNixOps with no fixture (uses defaults)
     pub fn new() -> Self {
-        Self { fixture: None }
+        Self {
+            fixture: None,
+            build_failures: Vec::new(),
+        }
     }
 
     /// Create a MockNixOps from a deployment fixture
     pub fn from_fixture(fixture: DeploymentFixture) -> Self {
         Self {
             fixture: Some(fixture),
+            build_failures: Vec::new(),
         }
+    }
+
+    /// Configure hosts that should fail during build
+    pub fn with_build_failures(mut self, failures: Vec<String>) -> Self {
+        self.build_failures = failures;
+        self
     }
 
     /// Get metadata fixture for a host
@@ -67,6 +78,16 @@ impl NixOps for MockNixOps {
     }
 
     fn build_host(&self, _ctx: &SnowContext, host: &str, _quiet: bool) -> Result<StorePath> {
+        // Check if this host should fail
+        if self.build_failures.contains(&host.to_string()) {
+            return Err(crate::error::NixError::BuildFailed {
+                host: host.to_string(),
+                stderr: "Mock build failure".to_string(),
+                source: std::io::Error::other("Build failed (mock)"),
+            }
+            .into());
+        }
+
         if let Some(build_fix) = self.get_build_fixture(host) {
             // Simulate build timing (only in release builds for production CLI)
             print!("Building {}... ", host);
