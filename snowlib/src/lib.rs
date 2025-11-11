@@ -24,8 +24,7 @@ pub use deploy::ssh::SshDeployer;
 
 #[cfg(debug_assertions)]
 pub use deploy::mock::{
-    BuildFixture, DeploymentFixture, FixtureDeployer, HostFixture, MetadataFixture, MockDeployer,
-    OperationFixture,
+    BuildFixture, DeploymentFixture, HostFixture, MetadataFixture, MockDeployer, OperationFixture,
 };
 
 #[cfg(debug_assertions)]

@@ -5,7 +5,7 @@ use snowlib::{
 use tabled::{Table, Tabled};
 
 #[cfg(debug_assertions)]
-use snowlib::{FixtureDeployer, MockDeployer};
+use snowlib::MockDeployer;
 
 /// Deploy configurations to hosts
 #[derive(Debug, Args)]
@@ -102,8 +102,7 @@ impl PushArgs {
         let deployer: Box<dyn snowlib::Deployer> = if self.mock {
             if let Some(fixture_path) = &self.mock_fixture {
                 let path = std::path::Path::new(fixture_path);
-                let fixture = snowlib::DeploymentFixture::from_file(path)?;
-                Box::new(FixtureDeployer::from_fixture(fixture))
+                Box::new(MockDeployer::from_file(path)?)
             } else {
                 Box::new(MockDeployer::new())
             }
@@ -162,9 +161,7 @@ impl PushArgs {
 mod tests {
     use super::*;
     use snowlib::{DeployTarget, StorePath};
-    use snowlib::{
-        Deployer, DeploymentFixture, FixtureDeployer, HostFixture, MockDeployer, OperationFixture,
-    };
+    use snowlib::{Deployer, DeploymentFixture, HostFixture, MockDeployer, OperationFixture};
 
     #[test]
     fn test_mock_deployer_success() {
@@ -197,7 +194,7 @@ mod tests {
     }
 
     #[test]
-    fn test_fixture_deployer_from_fixture() {
+    fn test_mock_deployer_from_fixture() {
         let fixture = DeploymentFixture {
             name: "Test deployment".to_string(),
             description: Some("Test scenario".to_string()),
@@ -220,7 +217,7 @@ mod tests {
             }],
         };
 
-        let deployer = FixtureDeployer::from_fixture(fixture);
+        let deployer = MockDeployer::from_fixture(fixture);
         let target = DeployTarget {
             user: "root".to_string(),
             hostname: "hydrogen.example.com".to_string(),
@@ -235,13 +232,13 @@ mod tests {
     }
 
     #[test]
-    fn test_fixture_deployer_from_file() {
+    fn test_mock_deployer_from_file() {
         use std::path::PathBuf;
 
         let fixture_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("tests/fixtures/push_scenarios/success.json");
 
-        let deployer = FixtureDeployer::from_file(&fixture_path).unwrap();
+        let deployer = MockDeployer::from_file(&fixture_path).unwrap();
 
         // Test with hydrogen
         let target = DeployTarget {
@@ -258,13 +255,13 @@ mod tests {
     }
 
     #[test]
-    fn test_fixture_deployer_partial_failure() {
+    fn test_mock_deployer_partial_failure() {
         use std::path::PathBuf;
 
         let fixture_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("tests/fixtures/push_scenarios/partial_failure.json");
 
-        let deployer = FixtureDeployer::from_file(&fixture_path).unwrap();
+        let deployer = MockDeployer::from_file(&fixture_path).unwrap();
 
         // Hydrogen should succeed
         let target_hydrogen = DeployTarget {

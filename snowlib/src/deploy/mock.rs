@@ -7,22 +7,24 @@ use std::path::Path;
 use std::thread;
 use std::time::Duration;
 
-/// Simple mock deployer for testing
+/// Mock deployer for testing
 ///
-/// Always succeeds with configurable delays and messages.
-/// Useful for basic testing and development iteration.
+/// Can operate in two modes:
+/// 1. Simple mode (no fixture): Always succeeds with configurable delays
+/// 2. Fixture mode: Replays recorded scenarios with realistic output and timing
 #[derive(Debug, Clone)]
 pub struct MockDeployer {
-    /// Milliseconds to sleep during operations (simulates network/work)
-    pub delay_ms: u64,
-
-    /// List of hostnames that should fail
-    pub should_fail: Vec<String>,
+    fixtures: Option<HashMap<String, HostFixture>>,
+    /// Milliseconds to sleep during operations when not using fixtures
+    delay_ms: u64,
+    /// List of hostnames that should fail when not using fixtures
+    should_fail: Vec<String>,
 }
 
 impl Default for MockDeployer {
     fn default() -> Self {
         Self {
+            fixtures: None,
             delay_ms: 100,
             should_fail: vec![],
         }
@@ -30,23 +32,88 @@ impl Default for MockDeployer {
 }
 
 impl MockDeployer {
+    /// Create a new MockDeployer with default behavior (always succeeds)
     pub fn new() -> Self {
         Self::default()
     }
 
+    /// Create from a DeploymentFixture (useful for tests)
+    pub fn from_fixture(fixture: DeploymentFixture) -> Self {
+        let mut fixtures: HashMap<String, HostFixture> = HashMap::new();
+
+        for host in fixture.hosts {
+            // Index by hostname
+            fixtures.insert(host.hostname.clone(), host.clone());
+
+            // Also index by FQDN if metadata is present
+            if let Some(ref metadata) = host.metadata {
+                fixtures.insert(metadata.fqdn.clone(), host);
+            }
+        }
+
+        Self {
+            fixtures: Some(fixtures),
+            delay_ms: 100,
+            should_fail: vec![],
+        }
+    }
+
+    /// Load a fixture from a JSON file
+    pub fn from_file(path: &Path) -> Result<Self> {
+        let fixture = DeploymentFixture::from_file(path)?;
+        Ok(Self::from_fixture(fixture))
+    }
+
+    /// Set delay for simple mode (when not using fixtures)
     pub fn with_delay(mut self, ms: u64) -> Self {
         self.delay_ms = ms;
         self
     }
 
+    /// Set failures for simple mode (when not using fixtures)
     pub fn with_failures(mut self, hostnames: Vec<String>) -> Self {
         self.should_fail = hostnames;
         self
+    }
+
+    /// Get fixture for a specific hostname
+    fn get_fixture(&self, hostname: &str) -> Option<&HostFixture> {
+        self.fixtures.as_ref()?.get(hostname)
+    }
+
+    /// Simulate an operation with output and timing
+    fn simulate_operation(&self, op: &OperationFixture) -> Result<()> {
+        // Simulate work with delay
+        thread::sleep(Duration::from_millis(op.duration_ms));
+
+        // Print output (simulates real command output)
+        if !op.stdout.is_empty() {
+            print!("{}", op.stdout);
+        }
+        if !op.stderr.is_empty() {
+            eprint!("{}", op.stderr);
+        }
+
+        if !op.success {
+            return Err(crate::error::DeployError::Failed {
+                host: "fixture".to_string(),
+                source: std::io::Error::other("Operation failed (from fixture)"),
+            }
+            .into());
+        }
+
+        Ok(())
     }
 }
 
 impl Deployer for MockDeployer {
     fn copy_closure(&self, target: &DeployTarget, _store_path: &StorePath) -> Result<()> {
+        // If we have a fixture for this host, use it
+        if let Some(fixture) = self.get_fixture(&target.hostname) {
+            return self.simulate_operation(&fixture.copy_closure);
+        }
+
+        // Otherwise, use simple mode
         thread::sleep(Duration::from_millis(self.delay_ms));
 
         if self.should_fail.contains(&target.hostname) {
@@ -66,6 +133,12 @@ impl Deployer for MockDeployer {
         _store_path: &StorePath,
         _mode: ActivationMode,
     ) -> Result<()> {
+        // If we have a fixture for this host, use it
+        if let Some(fixture) = self.get_fixture(&target.hostname) {
+            return self.simulate_operation(&fixture.activate);
+        }
+
+        // Otherwise, use simple mode
         thread::sleep(Duration::from_millis(self.delay_ms));
 
         if self.should_fail.contains(&target.hostname) {
@@ -174,97 +247,6 @@ pub struct OperationFixture {
     pub duration_ms: u64,
 }
 
-/// Deployer that replays recorded deployment scenarios from JSON fixtures
-///
-/// Useful for testing complex deployment scenarios with realistic
-/// output, timing, and error conditions.
-#[derive(Debug, Clone)]
-pub struct FixtureDeployer {
-    fixtures: HashMap<String, HostFixture>,
-}
-
-impl FixtureDeployer {
-    /// Load a fixture from a JSON file
-    pub fn from_file(path: &Path) -> Result<Self> {
-        let contents = std::fs::read_to_string(path)
-            .map_err(|e| crate::error::IoError::CurrentDir { source: e })?;
-
-        let fixture: DeploymentFixture = serde_json::from_str(&contents)
-            .map_err(|e| crate::error::IoError::JsonSerialize { source: e })?;
-
-        Ok(Self::from_fixture(fixture))
-    }
-
-    /// Create from a DeploymentFixture directly (useful for tests)
-    pub fn from_fixture(fixture: DeploymentFixture) -> Self {
-        let mut fixtures: HashMap<String, HostFixture> = HashMap::new();
-
-        for host in fixture.hosts {
-            // Index by hostname
-            fixtures.insert(host.hostname.clone(), host.clone());
-
-            // Also index by FQDN if metadata is present
-            if let Some(ref metadata) = host.metadata {
-                fixtures.insert(metadata.fqdn.clone(), host);
-            }
-        }
-
-        Self { fixtures }
-    }
-
-    /// Get fixture for a specific hostname
-    fn get_fixture(&self, hostname: &str) -> Result<&HostFixture> {
-        self.fixtures.get(hostname).ok_or_else(|| {
-            crate::error::DeployError::Failed {
-                host: hostname.to_string(),
-                source: std::io::Error::other(format!("No fixture found for host: {}", hostname)),
-            }
-            .into()
-        })
-    }
-
-    /// Simulate an operation with output and timing
-    fn simulate_operation(&self, op: &OperationFixture) -> Result<()> {
-        // Simulate work with delay
-        thread::sleep(Duration::from_millis(op.duration_ms));
-
-        // Print output (simulates real command output)
-        if !op.stdout.is_empty() {
-            print!("{}", op.stdout);
-        }
-        if !op.stderr.is_empty() {
-            eprint!("{}", op.stderr);
-        }
-
-        if !op.success {
-            return Err(crate::error::DeployError::Failed {
-                host: "fixture".to_string(),
-                source: std::io::Error::other("Operation failed (from fixture)"),
-            }
-            .into());
-        }
-
-        Ok(())
-    }
-}
-
-impl Deployer for FixtureDeployer {
-    fn copy_closure(&self, target: &DeployTarget, _store_path: &StorePath) -> Result<()> {
-        let fixture = self.get_fixture(&target.hostname)?;
-        self.simulate_operation(&fixture.copy_closure)
-    }
-
-    fn activate(
-        &self,
-        target: &DeployTarget,
-        _store_path: &StorePath,
-        _mode: ActivationMode,
-    ) -> Result<()> {
-        let fixture = self.get_fixture(&target.hostname)?;
-        self.simulate_operation(&fixture.activate)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -329,7 +311,7 @@ mod tests {
     }
 
     #[test]
-    fn test_fixture_deployer_success() {
+    fn test_mock_deployer_with_fixture() {
         let fixture = DeploymentFixture {
             name: "Test".to_string(),
             description: None,
@@ -352,7 +334,7 @@ mod tests {
             }],
         };
 
-        let deployer = FixtureDeployer::from_fixture(fixture);
+        let deployer = MockDeployer::from_fixture(fixture);
         let target = DeployTarget {
             user: "root".to_string(),
             hostname: "test.example.com".to_string(),
@@ -367,14 +349,15 @@ mod tests {
     }
 
     #[test]
-    fn test_fixture_deployer_missing_host() {
+    fn test_mock_deployer_fixture_fallback() {
+        // When a host is not in the fixture, it falls back to simple mode
         let fixture = DeploymentFixture {
             name: "Test".to_string(),
             description: None,
             hosts: vec![],
         };
 
-        let deployer = FixtureDeployer::from_fixture(fixture);
+        let deployer = MockDeployer::from_fixture(fixture);
         let target = DeployTarget {
             user: "root".to_string(),
             hostname: "missing.example.com".to_string(),
@@ -382,6 +365,7 @@ mod tests {
         };
         let store_path = StorePath::new("/nix/store/test".to_string());
 
-        assert!(deployer.copy_closure(&target, &store_path).is_err());
+        // Should succeed (falls back to simple mode)
+        assert!(deployer.copy_closure(&target, &store_path).is_ok());
     }
 }
