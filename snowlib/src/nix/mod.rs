@@ -1,3 +1,5 @@
+pub mod ops;
+
 use crate::error::{FlakeError, IoError, NixError, Result};
 use serde::Deserialize;
 use std::env;
@@ -282,97 +284,20 @@ pub fn list_hosts(ctx: &SnowContext, filter_expr: Option<&str>) -> Result<Vec<Ho
     parse_host_names(&stdout)
 }
 
-/// Internal struct for deserializing metadata JSON from Nix
-#[derive(Debug, Deserialize)]
-struct MetadataJson {
-    #[serde(rename = "hostName")]
-    hostname: String,
-    domain: String,
-    phase: Option<String>,
-    tags: Vec<String>,
-}
-
-/// Get metadata for a specific host
+/// Get metadata for a host from its NixOS configuration
 ///
-/// Fetches all metadata in a single Nix eval for efficiency
+/// Convenience function that uses SystemNixOps under the hood.
 pub fn get_host_metadata(ctx: &SnowContext, host: &str) -> Result<HostMetadata> {
-    let config_path = format!(".#nixosConfigurations.{}.config", host);
-
-    // Build a Nix expression that evaluates all metadata at once
-    let eval_expr = format!(
-        r#"let config = ({}).config; in {{
-          hostName = config.networking.hostName;
-          domain = config.networking.domain or "";
-          phase = config.core.pushPhase or null;
-          tags = config.core.tags or [];
-        }}"#,
-        config_path
-    );
-
-    let stdout = NixCommand::eval_expr(ctx, &eval_expr)
-        .json()
-        .run()
-        .map_err(|e| match e {
-            crate::error::SnowError::Nix(nix_err) => {
-                crate::error::SnowError::Nix(NixError::MetadataFailed {
-                    host: host.to_string(),
-                    source: Box::new(nix_err),
-                })
-            }
-            other => other,
-        })?;
-
-    let meta: MetadataJson =
-        serde_json::from_slice(&stdout).map_err(|e| NixError::OutputParseFailed {
-            output: String::from_utf8_lossy(&stdout).to_string(),
-            source: e,
-        })?;
-
-    let fqdn = if meta.domain.is_empty() {
-        meta.hostname.clone()
-    } else {
-        format!("{}.{}", meta.hostname, meta.domain)
-    };
-
-    Ok(HostMetadata {
-        name: host.to_string(),
-        phase: meta.phase,
-        tags: meta.tags,
-        fqdn,
-    })
+    use ops::{NixOps, SystemNixOps};
+    SystemNixOps::new().get_host_metadata(ctx, host)
 }
 
 /// Build a host configuration and return the store path
+///
+/// Convenience function that uses SystemNixOps under the hood.
 pub fn build_host(ctx: &SnowContext, host: &str) -> Result<StorePath> {
-    let target = format!(
-        ".#nixosConfigurations.{}.config.system.build.toplevel",
-        host
-    );
-
-    let stdout = NixCommand::build(ctx, &target)
-        .no_link()
-        .print_out_paths()
-        .run()
-        .map_err(|e| match e {
-            crate::error::SnowError::Nix(NixError::EvalFailed { stderr, source }) => {
-                crate::error::SnowError::Nix(NixError::BuildFailed {
-                    host: host.to_string(),
-                    stderr,
-                    source,
-                })
-            }
-            other => other,
-        })?;
-
-    let path = String::from_utf8(stdout)
-        .map_err(|e| NixError::EvalFailed {
-            stderr: format!("Non-UTF8 build path: {:?}", e.as_bytes()),
-            source: std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid UTF-8"),
-        })?
-        .trim()
-        .to_string();
-
-    Ok(StorePath::new(path))
+    use ops::{NixOps, SystemNixOps};
+    SystemNixOps::new().build_host(ctx, host)
 }
 
 #[cfg(test)]

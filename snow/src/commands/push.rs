@@ -1,7 +1,6 @@
 use clap::Args;
 use snowlib::{
-    build_host, get_host_metadata, push_parallel, ActivationMode, DeployTarget, PushOptions,
-    Result, SnowContext, SshDeployer, StorePath,
+    push_parallel, ActivationMode, DeployTarget, PushOptions, Result, SnowContext, SshDeployer,
 };
 use tabled::{Table, Tabled};
 
@@ -60,154 +59,62 @@ impl PushArgs {
             ActivationMode::Switch
         };
 
-        // Load fixture if using mock mode with fixture file
+        // Create the appropriate NixOps implementation
         #[cfg(debug_assertions)]
-        let fixture = if self.mock && self.mock_fixture.is_some() {
-            let path = std::path::Path::new(self.mock_fixture.as_ref().unwrap());
-            Some(snowlib::DeploymentFixture::from_file(path)?)
-        } else {
-            None
-        };
-
-        // Skip building when using mock mode
-        #[cfg(debug_assertions)]
-        let host_data = if self.mock {
+        let nix_ops: Box<dyn snowlib::NixOps> = if self.mock {
             println!("⚠ Using mock deployer");
 
-            // Process each host
-            let mut results = Vec::new();
-            for host in &self.hosts {
-                // Get metadata from fixture or create fake
-                let metadata = if let Some(ref fix) = fixture {
-                    if let Some(meta_fix) = fix.get_metadata(host) {
-                        snowlib::HostMetadata {
-                            name: host.clone(),
-                            phase: meta_fix.phase.clone(),
-                            tags: meta_fix.tags.clone(),
-                            fqdn: meta_fix.fqdn.clone(),
-                        }
-                    } else {
-                        snowlib::HostMetadata {
-                            name: host.clone(),
-                            phase: Some("production".to_string()),
-                            tags: vec![],
-                            fqdn: format!("{}.example.com", host),
-                        }
-                    }
-                } else {
-                    snowlib::HostMetadata {
-                        name: host.clone(),
-                        phase: Some("production".to_string()),
-                        tags: vec![],
-                        fqdn: format!("{}.example.com", host),
-                    }
-                };
-
-                // Simulate build phase
-                if let Some(ref fix) = fixture {
-                    if let Some(build_fix) = fix.get_build(host) {
-                        use std::thread;
-                        use std::time::Duration;
-
-                        print!("Building {}... ", host);
-                        thread::sleep(Duration::from_millis(build_fix.duration_ms));
-
-                        if !build_fix.stdout.is_empty() {
-                            print!("{}", build_fix.stdout);
-                        }
-                        if !build_fix.stderr.is_empty() {
-                            eprint!("{}", build_fix.stderr);
-                        }
-
-                        if !build_fix.success {
-                            println!("✗ Build failed");
-                            return Err(snowlib::error::NixError::BuildFailed {
-                                host: host.clone(),
-                                stderr: build_fix.stderr.clone(),
-                                source: std::io::Error::other("Build failed (from fixture)"),
-                            }
-                            .into());
-                        }
-                        println!("✓");
-                    }
-                }
-
-                // Get store path from fixture or create fake
-                let store_path = if let Some(ref fix) = fixture {
-                    if let Some(build_fix) = fix.get_build(host) {
-                        if let Some(ref sp) = build_fix.store_path {
-                            StorePath::new(sp.clone())
-                        } else {
-                            StorePath::new(format!("/nix/store/mock-{}", host))
-                        }
-                    } else {
-                        StorePath::new(format!("/nix/store/mock-{}", host))
-                    }
-                } else {
-                    StorePath::new(format!("/nix/store/mock-{}", host))
-                };
-
-                let target = DeployTarget {
-                    user: "root".to_string(),
-                    hostname: metadata.fqdn.clone(),
-                    port: None,
-                };
-
-                results.push((metadata, target, store_path));
+            if let Some(fixture_path) = &self.mock_fixture {
+                let path = std::path::Path::new(fixture_path);
+                let fixture = snowlib::DeploymentFixture::from_file(path)?;
+                Box::new(snowlib::MockNixOps::from_fixture(fixture))
+            } else {
+                Box::new(snowlib::MockNixOps::new())
             }
-            results
         } else {
-            println!("→ Building configurations...");
-
-            // Build all hosts and gather metadata
-            // TODO: Build all hosts in parallel with single `nix build` command for better performance
-            let mut host_data = Vec::new();
-
-            for host in &self.hosts {
-                let metadata = get_host_metadata(ctx, host)?;
-
-                let store_path = build_host(ctx, host)?;
-
-                let target = DeployTarget {
-                    user: "root".to_string(),
-                    hostname: metadata.fqdn.clone(),
-                    port: None,
-                };
-
-                host_data.push((metadata, target, store_path));
-            }
-
-            println!("✓ Built {} configuration(s)", self.hosts.len());
-            host_data
+            Box::new(snowlib::SystemNixOps::new())
         };
 
         #[cfg(not(debug_assertions))]
-        let host_data = {
-            println!("→ Building configurations...");
+        let nix_ops: Box<dyn snowlib::NixOps> = Box::new(snowlib::SystemNixOps::new());
 
-            // Build all hosts and gather metadata
-            // TODO: Build all hosts in parallel with single `nix build` command for better performance
-            let mut host_data = Vec::new();
+        // UNIFIED CODE PATH: Build all hosts (same for mock and real)
+        println!("→ Building configurations...");
 
-            for host in &self.hosts {
-                let metadata = get_host_metadata(ctx, host)?;
+        let mut host_data = Vec::new();
+        for host in &self.hosts {
+            let metadata = nix_ops.get_host_metadata(ctx, host)?;
+            let store_path = nix_ops.build_host(ctx, host)?;
 
-                let store_path = build_host(ctx, host)?;
+            let target = DeployTarget {
+                user: "root".to_string(),
+                hostname: metadata.fqdn.clone(),
+                port: None,
+            };
 
-                let target = DeployTarget {
-                    user: "root".to_string(),
-                    hostname: metadata.fqdn.clone(),
-                    port: None,
-                };
+            host_data.push((metadata, target, store_path));
+        }
 
-                host_data.push((metadata, target, store_path));
+        println!("✓ Built {} configuration(s)", self.hosts.len());
+
+        // Create deployer (already determined by fixture in nix_ops)
+        #[cfg(debug_assertions)]
+        let deployer: Box<dyn snowlib::Deployer> = if self.mock {
+            if let Some(fixture_path) = &self.mock_fixture {
+                let path = std::path::Path::new(fixture_path);
+                let fixture = snowlib::DeploymentFixture::from_file(path)?;
+                Box::new(FixtureDeployer::from_fixture(fixture))
+            } else {
+                Box::new(MockDeployer::new())
             }
-
-            println!("✓ Built {} configuration(s)", self.hosts.len());
-            host_data
+        } else {
+            Box::new(SshDeployer::new())
         };
 
-        // Deploy
+        #[cfg(not(debug_assertions))]
+        let deployer: Box<dyn snowlib::Deployer> = Box::new(SshDeployer::new());
+
+        // UNIFIED CODE PATH: Deploy to all hosts (same for mock and real)
         println!("\n→ Deploying...");
 
         let opts = PushOptions {
@@ -215,25 +122,7 @@ impl PushArgs {
             concurrency: self.concurrency,
         };
 
-        #[cfg(debug_assertions)]
-        let results = if self.mock {
-            // Create appropriate mock deployer
-            let deployer: Box<dyn snowlib::Deployer> = if let Some(fix) = fixture {
-                Box::new(FixtureDeployer::from_fixture(fix))
-            } else {
-                Box::new(MockDeployer::new())
-            };
-            push_parallel(deployer.as_ref(), host_data, &opts)?
-        } else {
-            let deployer = SshDeployer::new();
-            push_parallel(&deployer, host_data, &opts)?
-        };
-
-        #[cfg(not(debug_assertions))]
-        let results = {
-            let deployer = SshDeployer::new();
-            push_parallel(&deployer, host_data, &opts)?
-        };
+        let results = push_parallel(deployer.as_ref(), host_data, &opts)?;
 
         // Format results
         let table_data: Vec<DeploymentResult> = results

@@ -15,6 +15,7 @@ pub mod push;
 // Re-export commonly used types
 pub use deploy::{ActivationMode, DeployResult, Deployer};
 pub use error::{Result, SnowError};
+pub use nix::ops::{NixOps, SystemNixOps};
 pub use nix::{DeployTarget, Host, HostMetadata, SnowContext, StorePath};
 pub use push::{PushOptions, PushResults};
 
@@ -26,6 +27,9 @@ pub use deploy::mock::{
     BuildFixture, DeploymentFixture, FixtureDeployer, HostFixture, MetadataFixture, MockDeployer,
     OperationFixture,
 };
+
+#[cfg(debug_assertions)]
+pub use nix::ops::mock::MockNixOps;
 
 // Convenience re-exports of main functions
 pub use nix::{build_host, get_host_metadata, list_hosts};
