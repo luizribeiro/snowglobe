@@ -66,9 +66,11 @@ impl NixOps for MockNixOps {
 
     fn build_host(&self, _ctx: &SnowContext, host: &str) -> Result<StorePath> {
         if let Some(build_fix) = self.get_build_fixture(host) {
-            // Simulate build timing
+            // Simulate build timing (only when not running tests)
             print!("Building {}... ", host);
-            thread::sleep(Duration::from_millis(build_fix.duration_ms));
+            if !cfg!(test) {
+                thread::sleep(Duration::from_millis(build_fix.duration_ms));
+            }
 
             // Print output
             if !build_fix.stdout.is_empty() {

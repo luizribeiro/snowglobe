@@ -104,8 +104,10 @@ impl MockDeployer {
 
 impl Deployer for MockDeployer {
     fn copy_closure(&self, target: &DeployTarget, _store_path: &StorePath) -> Result<()> {
-        // Realistic delay (1-2 seconds)
-        thread::sleep(Duration::from_millis(1000));
+        // Realistic delay (only when not running tests)
+        if !cfg!(test) {
+            thread::sleep(Duration::from_millis(1000));
+        }
 
         // Generate realistic output
         print!("{}", self.generate_copy_closure_output(&target.hostname));
@@ -145,8 +147,10 @@ impl Deployer for MockDeployer {
         // Check if this host should fail at activate
         let (should_fail, error_msg) = self.should_fail_at(&target.hostname, "activate");
 
-        // Realistic delay (500ms-1s)
-        thread::sleep(Duration::from_millis(500));
+        // Realistic delay (only when not running tests)
+        if !cfg!(test) {
+            thread::sleep(Duration::from_millis(500));
+        }
 
         // Generate realistic output
         print!("{}", self.generate_activate_output(!should_fail));
