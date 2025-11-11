@@ -64,7 +64,7 @@ impl NixOps for MockNixOps {
         }
     }
 
-    fn build_host(&self, _ctx: &SnowContext, host: &str) -> Result<StorePath> {
+    fn build_host(&self, _ctx: &SnowContext, host: &str, _quiet: bool) -> Result<StorePath> {
         if let Some(build_fix) = self.get_build_fixture(host) {
             // Simulate build timing (only in release builds for production CLI)
             print!("Building {}... ", host);

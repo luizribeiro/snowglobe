@@ -12,7 +12,7 @@ pub trait NixOps: Send + Sync {
     fn get_host_metadata(&self, ctx: &SnowContext, host: &str) -> Result<HostMetadata>;
 
     /// Build a host's NixOS configuration and return the store path
-    fn build_host(&self, ctx: &SnowContext, host: &str) -> Result<StorePath>;
+    fn build_host(&self, ctx: &SnowContext, host: &str, quiet: bool) -> Result<StorePath>;
 }
 
 /// System implementation of NixOps that executes real Nix commands
@@ -90,7 +90,7 @@ impl NixOps for SystemNixOps {
         })
     }
 
-    fn build_host(&self, ctx: &SnowContext, host: &str) -> Result<StorePath> {
+    fn build_host(&self, ctx: &SnowContext, host: &str, quiet: bool) -> Result<StorePath> {
         let target = format!(
             ".#nixosConfigurations.{}.config.system.build.toplevel",
             host
@@ -99,6 +99,7 @@ impl NixOps for SystemNixOps {
         let stdout = NixCommand::build(ctx, &target)
             .no_link()
             .print_out_paths()
+            .quiet(quiet)
             .run()
             .map_err(|e| match e {
                 crate::error::SnowError::Nix(crate::error::NixError::EvalFailed {

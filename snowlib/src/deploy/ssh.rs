@@ -8,17 +8,26 @@ use crate::nix::{DeployTarget, StorePath};
 pub struct SshDeployer {
     /// Optional SSH user (defaults to root in target)
     pub ssh_user: Option<String>,
+    /// Quiet mode - suppress subprocess output
+    pub quiet: bool,
 }
 
 impl SshDeployer {
     pub fn new() -> Self {
-        Self { ssh_user: None }
+        Self {
+            ssh_user: None,
+            quiet: false,
+        }
     }
 
-    pub fn with_user(user: impl Into<String>) -> Self {
-        Self {
-            ssh_user: Some(user.into()),
-        }
+    pub fn with_user(mut self, user: impl Into<String>) -> Self {
+        self.ssh_user = Some(user.into());
+        self
+    }
+
+    pub fn with_quiet(mut self, quiet: bool) -> Self {
+        self.quiet = quiet;
+        self
     }
 
     /// Get the effective SSH destination
@@ -48,19 +57,44 @@ impl Deployer for SshDeployer {
     fn copy_closure(&self, target: &DeployTarget, store_path: &StorePath) -> Result<()> {
         let ssh_target = format!("ssh://{}", self.get_destination(target));
 
-        let output = Command::new("nix")
-            .args(["copy", "--to", &ssh_target, store_path.as_str()])
-            .output()
-            .map_err(|e| DeployError::Failed {
+        let mut cmd = Command::new("nix");
+        cmd.args(["copy", "--to", &ssh_target, store_path.as_str()]);
+
+        let success = if self.quiet {
+            // Quiet mode: capture output
+            let output = cmd.output().map_err(|e| DeployError::Failed {
                 host: target.hostname.clone(),
                 source: e,
             })?;
+            if !output.status.success() {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                return Err(DeployError::Failed {
+                    host: target.hostname.clone(),
+                    source: std::io::Error::other(format!("nix copy failed: {}", stderr)),
+                }
+                .into());
+            }
+            output.status.success()
+        } else {
+            // Verbose mode: show output
+            let status = cmd.status().map_err(|e| DeployError::Failed {
+                host: target.hostname.clone(),
+                source: e,
+            })?;
+            if !status.success() {
+                return Err(DeployError::Failed {
+                    host: target.hostname.clone(),
+                    source: std::io::Error::other("nix copy failed (see output above)"),
+                }
+                .into());
+            }
+            status.success()
+        };
 
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
+        if !success {
             return Err(DeployError::Failed {
                 host: target.hostname.clone(),
-                source: std::io::Error::other(format!("nix copy failed: {}", stderr)),
+                source: std::io::Error::other("nix copy failed"),
             }
             .into());
         }
@@ -86,16 +120,41 @@ impl Deployer for SshDeployer {
 
         let mut cmd = self.ssh_command(target, &["sudo", &switch_to_configuration, mode_arg]);
 
-        let output = cmd.output().map_err(|e| DeployError::SshFailed {
-            destination: self.get_destination(target),
-            source: e,
-        })?;
+        let success = if self.quiet {
+            // Quiet mode: capture output
+            let output = cmd.output().map_err(|e| DeployError::SshFailed {
+                destination: self.get_destination(target),
+                source: e,
+            })?;
+            if !output.status.success() {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                return Err(DeployError::Failed {
+                    host: target.hostname.clone(),
+                    source: std::io::Error::other(format!("Activation failed: {}", stderr)),
+                }
+                .into());
+            }
+            output.status.success()
+        } else {
+            // Verbose mode: show output
+            let status = cmd.status().map_err(|e| DeployError::SshFailed {
+                destination: self.get_destination(target),
+                source: e,
+            })?;
+            if !status.success() {
+                return Err(DeployError::Failed {
+                    host: target.hostname.clone(),
+                    source: std::io::Error::other("Activation failed (see output above)"),
+                }
+                .into());
+            }
+            status.success()
+        };
 
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
+        if !success {
             return Err(DeployError::Failed {
                 host: target.hostname.clone(),
-                source: std::io::Error::other(format!("Activation failed: {}", stderr)),
+                source: std::io::Error::other("Activation failed"),
             }
             .into());
         }
@@ -131,7 +190,7 @@ mod tests {
 
     #[test]
     fn test_get_destination_with_user() {
-        let deployer = SshDeployer::with_user("deploy");
+        let deployer = SshDeployer::new().with_user("deploy");
         let target = DeployTarget {
             user: Some("root".to_string()),
             hostname: "hydrogen.example.com".to_string(),

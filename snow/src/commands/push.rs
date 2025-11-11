@@ -21,6 +21,10 @@ pub struct PushArgs {
     #[arg(long)]
     pub boot: bool,
 
+    /// Quiet mode - suppress subprocess output, only show summary
+    #[arg(short, long)]
+    pub quiet: bool,
+
     /// SSH user to use for deployment (defaults to SSH config or current user)
     #[arg(long)]
     pub user: Option<String>,
@@ -107,7 +111,7 @@ impl PushArgs {
             }
         }
 
-        Ok(Box::new(SshDeployer::new()))
+        Ok(Box::new(SshDeployer::new().with_quiet(self.quiet)))
     }
 
     pub fn run(self, ctx: &SnowContext) -> Result<()> {
@@ -143,7 +147,7 @@ impl PushArgs {
         let mut host_data = Vec::new();
         for host in &hosts {
             let metadata = nix_ops.get_host_metadata(ctx, host)?;
-            let store_path = nix_ops.build_host(ctx, host)?;
+            let store_path = nix_ops.build_host(ctx, host, self.quiet)?;
 
             let target = DeployTarget {
                 user: self.user.clone(),

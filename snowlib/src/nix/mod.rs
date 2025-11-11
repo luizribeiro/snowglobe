@@ -44,6 +44,7 @@ impl SnowContext {
 struct NixCommand {
     cmd: Command,
     ctx: SnowContext,
+    quiet: bool,
 }
 
 impl NixCommand {
@@ -52,6 +53,7 @@ impl NixCommand {
         Self {
             cmd: Command::new("nix"),
             ctx: ctx.clone(),
+            quiet: true, // Default to quiet mode
         }
     }
 
@@ -93,24 +95,81 @@ impl NixCommand {
         self
     }
 
+    /// Set quiet mode (suppress output)
+    fn quiet(mut self, quiet: bool) -> Self {
+        self.quiet = quiet;
+        self
+    }
+
     /// Execute the command and return stdout on success
     fn run(mut self) -> Result<Vec<u8>> {
-        let output = self
-            .cmd
-            .current_dir(self.ctx.flake_root())
-            .output()
-            .map_err(|e| NixError::CommandFailed { source: e })?;
+        if self.quiet {
+            // Quiet mode: capture all output
+            let output = self
+                .cmd
+                .current_dir(self.ctx.flake_root())
+                .output()
+                .map_err(|e| NixError::CommandFailed { source: e })?;
 
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-            return Err(NixError::EvalFailed {
-                stderr,
-                source: std::io::Error::other("nix command exited with non-zero status"),
+            if !output.status.success() {
+                let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+                return Err(NixError::EvalFailed {
+                    stderr,
+                    source: std::io::Error::other("nix command exited with non-zero status"),
+                }
+                .into());
             }
-            .into());
-        }
 
-        Ok(output.stdout)
+            Ok(output.stdout)
+        } else {
+            // Verbose mode: show output in real-time
+            use std::io::Read;
+            use std::process::Stdio;
+
+            let mut child = self
+                .cmd
+                .current_dir(self.ctx.flake_root())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::inherit())
+                .spawn()
+                .map_err(|e| NixError::CommandFailed { source: e })?;
+
+            // Read stdout while showing it in real-time
+            let mut stdout = Vec::new();
+            if let Some(mut child_stdout) = child.stdout.take() {
+                let mut buffer = [0u8; 4096];
+                loop {
+                    match child_stdout.read(&mut buffer) {
+                        Ok(0) => break, // EOF
+                        Ok(n) => {
+                            // Write to our stdout
+                            use std::io::Write;
+                            std::io::stdout().write_all(&buffer[..n]).ok();
+                            // Store for return value
+                            stdout.extend_from_slice(&buffer[..n]);
+                        }
+                        Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+                        Err(e) => {
+                            return Err(NixError::CommandFailed { source: e }.into());
+                        }
+                    }
+                }
+            }
+
+            let status = child
+                .wait()
+                .map_err(|e| NixError::CommandFailed { source: e })?;
+
+            if !status.success() {
+                return Err(NixError::EvalFailed {
+                    stderr: "nix command failed (see output above)".to_string(),
+                    source: std::io::Error::other("nix command exited with non-zero status"),
+                }
+                .into());
+            }
+
+            Ok(stdout)
+        }
     }
 }
 
@@ -298,9 +357,9 @@ pub fn get_host_metadata(ctx: &SnowContext, host: &str) -> Result<HostMetadata> 
 /// Build a host configuration and return the store path
 ///
 /// Convenience function that uses SystemNixOps under the hood.
-pub fn build_host(ctx: &SnowContext, host: &str) -> Result<StorePath> {
+pub fn build_host(ctx: &SnowContext, host: &str, quiet: bool) -> Result<StorePath> {
     use ops::{NixOps, SystemNixOps};
-    SystemNixOps::new().build_host(ctx, host)
+    SystemNixOps::new().build_host(ctx, host, quiet)
 }
 
 #[cfg(test)]
@@ -720,7 +779,7 @@ mod tests {
         let fixture_path = PathBuf::from(manifest_dir).join("tests/fixtures");
         let ctx = SnowContext::new(Some(fixture_path.to_str().unwrap())).unwrap();
 
-        let result = build_host(&ctx, "hydrogen");
+        let result = build_host(&ctx, "hydrogen", false);
         assert!(
             result.is_ok(),
             "build_host should succeed: {:?}",
@@ -740,13 +799,13 @@ mod tests {
         let ctx = SnowContext::new(Some(fixture_path.to_str().unwrap())).unwrap();
 
         // Test multiple hosts to ensure the path formatting works correctly
-        let nitrogen_result = build_host(&ctx, "nitrogen");
+        let nitrogen_result = build_host(&ctx, "nitrogen", false);
         assert!(nitrogen_result.is_ok());
         let nitrogen_path = nitrogen_result.unwrap();
         assert!(nitrogen_path.as_str().starts_with("/nix/store/"));
         assert!(nitrogen_path.as_str().contains("test-nitrogen-toplevel"));
 
-        let oxygen_result = build_host(&ctx, "oxygen");
+        let oxygen_result = build_host(&ctx, "oxygen", false);
         assert!(oxygen_result.is_ok());
         let oxygen_path = oxygen_result.unwrap();
         assert!(oxygen_path.as_str().starts_with("/nix/store/"));
@@ -759,7 +818,7 @@ mod tests {
         let fixture_path = PathBuf::from(manifest_dir).join("tests/fixtures");
         let ctx = SnowContext::new(Some(fixture_path.to_str().unwrap())).unwrap();
 
-        let result = build_host(&ctx, "nonexistent");
+        let result = build_host(&ctx, "nonexistent", false);
         assert!(result.is_err());
 
         let err_msg = result.unwrap_err().to_string();
