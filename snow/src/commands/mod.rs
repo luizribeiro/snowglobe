@@ -16,7 +16,7 @@ pub enum Commands {
 }
 
 impl Commands {
-    pub fn run(self, ctx: &snowlib::SnowContext) -> snowlib::Result<()> {
+    pub fn run(self, ctx: &snowlib::Flake) -> snowlib::Result<()> {
         match self {
             Commands::Status(args) => args.run(ctx),
             Commands::List(args) => args.run(ctx),

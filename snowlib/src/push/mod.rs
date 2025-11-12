@@ -34,7 +34,7 @@ use crate::backends::deploy::DeployBackend;
 use crate::backends::nix::NixBackend;
 use crate::backends::reboot::RebootBackend;
 use crate::error::Result;
-use crate::nix::{HostMetadata, SnowContext};
+use crate::nix::{Flake, HostMetadata};
 use crate::observer::PushObserver;
 use std::collections::HashMap;
 
@@ -65,12 +65,12 @@ use std::collections::HashMap;
 /// # Example
 ///
 /// ```no_run
-/// use snowlib::{push, PushConfiguration, SnowContext, SystemNixBackend, SshDeployBackend, SystemRebootBackend};
+/// use snowlib::{push, PushConfiguration, Flake, SystemNixBackend, SshDeployBackend, SystemRebootBackend};
 /// use snowlib::observer::NoopObserver;
 /// use snowlib::nix::HostMetadata;
 ///
 /// # fn example(hosts: Vec<HostMetadata>) -> snowlib::Result<()> {
-/// let ctx = SnowContext::new(None)?;
+/// let ctx = Flake::new(None)?;
 /// let nix_backend = SystemNixBackend::new();
 /// let deploy_backend = SshDeployBackend::new();
 /// let reboot_backend = SystemRebootBackend::default();
@@ -82,7 +82,7 @@ use std::collections::HashMap;
 /// # }
 /// ```
 pub fn push(
-    ctx: &SnowContext,
+    ctx: &Flake,
     nix_backend: &dyn NixBackend,
     deploy_backend: &dyn DeployBackend,
     reboot_backend: &dyn RebootBackend,
@@ -163,7 +163,7 @@ pub fn push(
 fn execute_phase(
     phase: &str,
     phase_hosts: &[HostMetadata],
-    ctx: &SnowContext,
+    ctx: &Flake,
     nix_backend: &dyn NixBackend,
     deploy_backend: &dyn DeployBackend,
     reboot_backend: &dyn RebootBackend,
@@ -284,7 +284,7 @@ mod tests {
     use super::*;
     use crate::backends::deploy::{ActivationMode, DeployResult, DeployTarget};
     use crate::backends::mock::{MockDeployBackend, MockNixBackend};
-    use crate::nix::{HostMetadata, SnowContext, StorePath};
+    use crate::nix::{Flake, HostMetadata, StorePath};
 
     /// Helper to create just HostMetadata for push tests
     fn make_host_metadata(
@@ -901,7 +901,7 @@ mod tests {
     #[test]
     fn test_push_with_multiple_phases() {
         // Test that phases execute in lexicographic order (p1 before p2)
-        let ctx = SnowContext::test_context();
+        let ctx = Flake::test_context();
         let nix_backend = MockNixBackend::new();
         let deployer = MockDeployBackend::new();
         let reboot_config = crate::backends::reboot::RebootDetectionConfig {
@@ -966,7 +966,7 @@ mod tests {
     #[test]
     fn test_push_stops_on_phase_failure() {
         // Test that when phase p1 fails, phase p2 never starts
-        let ctx = SnowContext::test_context();
+        let ctx = Flake::test_context();
         let nix_backend = MockNixBackend::new();
         let deployer =
             MockDeployBackend::new().with_activate_failures(vec!["host1.example.com".to_string()]);
@@ -1162,7 +1162,7 @@ mod tests {
     #[test]
     fn test_push_error_message_includes_source() {
         // Test that when deployment fails, the error message includes the full error chain
-        let ctx = SnowContext::test_context();
+        let ctx = Flake::test_context();
         let nix_backend = MockNixBackend::new();
         let deployer =
             MockDeployBackend::new().with_activate_failures(vec!["fail.example.com".to_string()]);
@@ -1256,7 +1256,7 @@ mod tests {
             hosts: vec![],
         };
 
-        let ctx = SnowContext::test_context();
+        let ctx = Flake::test_context();
         let nix_backend = MockNixBackend::new();
         let deployer = MockDeployBackend::from_fixture(fixture);
         let reboot_config = crate::backends::reboot::RebootDetectionConfig {
@@ -1333,7 +1333,7 @@ mod tests {
     #[test]
     fn test_push_full_workflow_single_phase_success() {
         // Test the complete workflow: build → copy → plan → activate for a single phase
-        let ctx = SnowContext::test_context();
+        let ctx = Flake::test_context();
         let nix_backend = MockNixBackend::new();
         let deployer = MockDeployBackend::new();
         let reboot_detector = SystemRebootBackend::default();
@@ -1410,7 +1410,7 @@ mod tests {
     #[test]
     fn test_push_full_workflow_multi_phase_success() {
         // Test multiple phases deploying sequentially with all steps
-        let ctx = SnowContext::test_context();
+        let ctx = Flake::test_context();
         let nix_backend = MockNixBackend::new();
         let deployer = MockDeployBackend::new();
         let reboot_detector = SystemRebootBackend::default();
@@ -1479,7 +1479,7 @@ mod tests {
     #[test]
     fn test_push_build_failure_stops_deployment() {
         // Build fails for one host, should stop immediately with no copy/activate
-        let ctx = SnowContext::test_context();
+        let ctx = Flake::test_context();
         let nix_backend = MockNixBackend::new().with_build_failures(vec!["fail-host".to_string()]);
         let deployer = MockDeployBackend::new();
         let reboot_detector = SystemRebootBackend::default();
@@ -1537,7 +1537,7 @@ mod tests {
     #[test]
     fn test_push_copy_failure_stops_deployment() {
         // Copy fails for one host after successful build
-        let ctx = SnowContext::test_context();
+        let ctx = Flake::test_context();
         let nix_backend = MockNixBackend::new();
         let deployer =
             MockDeployBackend::new().with_copy_failures(vec!["fail-copy.example.com".to_string()]);
@@ -1601,7 +1601,7 @@ mod tests {
     #[test]
     fn test_push_copy_observer_hooks_called() {
         // Verify copy observer hooks fire in correct order
-        let ctx = SnowContext::test_context();
+        let ctx = Flake::test_context();
         let nix_backend = MockNixBackend::new();
         let deployer = MockDeployBackend::new();
         let reboot_detector = SystemRebootBackend::default();
@@ -1672,7 +1672,7 @@ mod tests {
     #[test]
     fn test_push_build_observer_hooks_called() {
         // Verify build observer hooks fire in correct order
-        let ctx = SnowContext::test_context();
+        let ctx = Flake::test_context();
         let nix_backend = MockNixBackend::new();
         let deployer = MockDeployBackend::new();
         let reboot_detector = SystemRebootBackend::default();
@@ -1749,7 +1749,7 @@ mod tests {
     #[test]
     fn test_push_build_partial_failure() {
         // Build fails for host 2 of 2 in a phase
-        let ctx = SnowContext::test_context();
+        let ctx = Flake::test_context();
         let nix_backend = MockNixBackend::new().with_build_failures(vec!["host2".to_string()]);
         let deployer = MockDeployBackend::new();
         let reboot_detector = SystemRebootBackend::default();
@@ -1809,7 +1809,7 @@ mod tests {
     #[test]
     fn test_push_ignore_phases_flag() {
         // Test that ignore_phases groups all hosts into "_all" phase
-        let ctx = SnowContext::test_context();
+        let ctx = Flake::test_context();
         let nix_backend = MockNixBackend::new();
         let deployer = MockDeployBackend::new();
         let reboot_detector = SystemRebootBackend::default();
@@ -1870,7 +1870,7 @@ mod tests {
     #[test]
     fn test_push_phase_failure_stops_next_phase() {
         // Phase 1 activation fails, Phase 2 should never start
-        let ctx = SnowContext::test_context();
+        let ctx = Flake::test_context();
         let nix_backend = MockNixBackend::new();
         let deployer = MockDeployBackend::new()
             .with_activate_failures(vec!["phase1-host.example.com".to_string()]);
@@ -1941,7 +1941,7 @@ mod tests {
     #[test]
     fn test_push_reboot_execution_success() {
         // Test that reboot is executed when required and observer hooks are called
-        let ctx = SnowContext::test_context();
+        let ctx = Flake::test_context();
         let nix_backend = MockNixBackend::new();
         let deployer = MockDeployBackend::new();
 
@@ -2023,7 +2023,7 @@ mod tests {
     #[test]
     fn test_push_reboot_execution_failure() {
         // Test that reboot failures are properly handled and reported
-        let ctx = SnowContext::test_context();
+        let ctx = Flake::test_context();
         let nix_backend = MockNixBackend::new();
         let deployer = MockDeployBackend::new();
 
@@ -2101,7 +2101,7 @@ mod tests {
     #[test]
     fn test_push_no_reboot_when_not_required() {
         // Test that reboot hooks are NOT called when reboot is not required
-        let ctx = SnowContext::test_context();
+        let ctx = Flake::test_context();
         let nix_backend = MockNixBackend::new();
         let deployer = MockDeployBackend::new();
 
@@ -2162,7 +2162,7 @@ mod tests {
     #[test]
     fn test_push_reboot_with_boot_mode() {
         // Test explicit Boot mode with reboot required
-        let ctx = SnowContext::test_context();
+        let ctx = Flake::test_context();
         let nix_backend = MockNixBackend::new();
         let deployer = MockDeployBackend::new();
 
@@ -2220,7 +2220,7 @@ mod tests {
     #[test]
     fn test_push_reboot_policy_always() {
         // Test that RebootPolicy::Always forces reboot even if not detected
-        let ctx = SnowContext::test_context();
+        let ctx = Flake::test_context();
         let nix_backend = MockNixBackend::new();
         let deployer = MockDeployBackend::new();
 
@@ -2275,7 +2275,7 @@ mod tests {
     #[test]
     fn test_push_reboot_policy_never() {
         // Test that RebootPolicy::Never prevents reboot even if detected
-        let ctx = SnowContext::test_context();
+        let ctx = Flake::test_context();
         let nix_backend = MockNixBackend::new();
         let deployer = MockDeployBackend::new();
 
@@ -2336,7 +2336,7 @@ mod tests {
     #[test]
     fn test_push_no_reboot_flag_overrides_always_policy() {
         // Test that allow_reboot=false prevents reboot even with RebootPolicy::Always
-        let ctx = SnowContext::test_context();
+        let ctx = Flake::test_context();
         let nix_backend = MockNixBackend::new();
         let deployer = MockDeployBackend::new();
 
@@ -2391,7 +2391,7 @@ mod tests {
     #[test]
     fn test_push_no_reboot_flag_with_detected_reboot() {
         // Test that allow_reboot=false prevents reboot even when detection says it's needed
-        let ctx = SnowContext::test_context();
+        let ctx = Flake::test_context();
         let nix_backend = MockNixBackend::new();
         let deployer = MockDeployBackend::new();
 

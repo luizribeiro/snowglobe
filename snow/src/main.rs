@@ -27,7 +27,7 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
 
     // Create context with flake root
-    let ctx = snowlib::SnowContext::new(cli.flake_path.as_deref()).into_diagnostic()?;
+    let ctx = snowlib::Flake::new(cli.flake_path.as_deref()).into_diagnostic()?;
 
     cli.command.run(&ctx).into_diagnostic()
 }

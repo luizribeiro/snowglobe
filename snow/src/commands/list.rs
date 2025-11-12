@@ -1,5 +1,5 @@
 use clap::Args;
-use snowlib::{Result, SnowContext};
+use snowlib::{Flake, Result};
 
 /// List hostnames from nixosConfigurations
 #[derive(Debug, Args)]
@@ -15,7 +15,7 @@ pub struct ListArgs {
 }
 
 impl ListArgs {
-    pub fn run(self, ctx: &SnowContext) -> Result<()> {
+    pub fn run(self, ctx: &Flake) -> Result<()> {
         let nix_backend = crate::backend_factory::create_nix_backend(
             #[cfg(debug_assertions)]
             &self.mock_fixture,

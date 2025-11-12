@@ -19,7 +19,7 @@ pub use backends::deploy::{
 pub use backends::nix::{NixBackend, SystemNixBackend};
 pub use backends::reboot::SystemRebootBackend;
 pub use error::Result;
-pub use nix::{SnowContext, StorePath};
+pub use nix::{Flake, StorePath};
 pub use observer::PushObserver;
 pub use push::{push, DeploymentMode, PushConfiguration, PushResults};
 

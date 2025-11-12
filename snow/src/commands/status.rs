@@ -1,6 +1,6 @@
 use clap::Args;
 use serde::Serialize;
-use snowlib::{Result, SnowContext};
+use snowlib::{Flake, Result};
 use tabled::{Table, Tabled};
 
 /// Show cluster status
@@ -30,7 +30,7 @@ struct HostStatus {
 }
 
 impl StatusArgs {
-    pub fn run(self, ctx: &SnowContext) -> Result<()> {
+    pub fn run(self, ctx: &Flake) -> Result<()> {
         let nix_backend = crate::backend_factory::create_nix_backend(
             #[cfg(debug_assertions)]
             &self.mock_fixture,

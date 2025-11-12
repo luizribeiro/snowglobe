@@ -1,7 +1,7 @@
 mod observer;
 
 use clap::Args;
-use snowlib::{DeploymentMode, PushResults, Result, SnowContext};
+use snowlib::{DeploymentMode, Flake, PushResults, Result};
 use tabled::{Table, Tabled};
 
 // Used in tests
@@ -130,7 +130,7 @@ impl PushArgs {
     /// If hosts are provided, validates they exist in the flake.
     fn resolve_hosts(
         &self,
-        ctx: &SnowContext,
+        ctx: &Flake,
         nix_backend: &dyn snowlib::NixBackend,
     ) -> Result<Vec<String>> {
         let all_hosts = nix_backend.list_hosts(ctx, None)?;
@@ -197,7 +197,7 @@ impl PushArgs {
     /// - Create backend implementations and observer
     /// - Call snowlib::push()
     /// - Print results table
-    pub fn run(self, ctx: &SnowContext) -> Result<()> {
+    pub fn run(self, ctx: &Flake) -> Result<()> {
         // Validate flag combinations
         self.validate()?;
 
@@ -209,7 +209,7 @@ impl PushArgs {
             // Use the mock flake bundled with the test fixtures
             let mock_flake_path =
                 std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
-            mock_ctx = SnowContext::new(Some(mock_flake_path.to_str().unwrap()))?;
+            mock_ctx = Flake::new(Some(mock_flake_path.to_str().unwrap()))?;
             &mock_ctx
         } else {
             ctx

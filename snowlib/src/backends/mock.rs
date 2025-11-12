@@ -2,7 +2,7 @@ use crate::backends::deploy::{ActivationMode, DeployBackend, DeployTarget};
 use crate::backends::nix::NixBackend;
 use crate::backends::reboot::{RebootBackend, RebootCheck, RebootReason};
 use crate::error::Result;
-use crate::nix::{HostMetadata, SnowContext, StorePath};
+use crate::nix::{Flake, HostMetadata, StorePath};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
@@ -66,7 +66,7 @@ impl Default for MockNixBackend {
 impl NixBackend for MockNixBackend {
     fn list_hosts(
         &self,
-        _ctx: &SnowContext,
+        _ctx: &Flake,
         _filter_expr: Option<&str>,
     ) -> Result<Vec<crate::nix::Host>> {
         // Note: filter_expr is ignored in mock - would require evaluating Nix expressions
@@ -86,7 +86,7 @@ impl NixBackend for MockNixBackend {
         }
     }
 
-    fn get_host_metadata(&self, _ctx: &SnowContext, host: &str) -> Result<HostMetadata> {
+    fn get_host_metadata(&self, _ctx: &Flake, host: &str) -> Result<HostMetadata> {
         if let Some(meta_fix) = self.get_metadata_fixture(host) {
             Ok(HostMetadata {
                 name: host.to_string(),
@@ -107,7 +107,7 @@ impl NixBackend for MockNixBackend {
         }
     }
 
-    fn build_host(&self, _ctx: &SnowContext, host: &str, _quiet: bool) -> Result<StorePath> {
+    fn build_host(&self, _ctx: &Flake, host: &str, _quiet: bool) -> Result<StorePath> {
         // Check if this host should fail
         if self.build_failures.contains(&host.to_string()) {
             return Err(crate::error::NixError::BuildFailed {

@@ -1,5 +1,5 @@
 use crate::error::{NixError, Result};
-use crate::nix::{Host, HostMetadata, NixCommand, SnowContext, StorePath};
+use crate::nix::{Flake, Host, HostMetadata, NixCommand, StorePath};
 use std::str::FromStr;
 
 /// Parse hostnames from nix JSON output
@@ -23,13 +23,13 @@ pub trait NixBackend: Send + Sync {
     ///
     /// If filter_expr is provided, it should be a Nix expression that takes a config and returns a boolean.
     /// Example: "config: config.features.backup.enable or false"
-    fn list_hosts(&self, ctx: &SnowContext, filter_expr: Option<&str>) -> Result<Vec<Host>>;
+    fn list_hosts(&self, ctx: &Flake, filter_expr: Option<&str>) -> Result<Vec<Host>>;
 
     /// Get metadata for a host from its NixOS configuration
-    fn get_host_metadata(&self, ctx: &SnowContext, host: &str) -> Result<HostMetadata>;
+    fn get_host_metadata(&self, ctx: &Flake, host: &str) -> Result<HostMetadata>;
 
     /// Build a host's NixOS configuration and return the store path
-    fn build_host(&self, ctx: &SnowContext, host: &str, quiet: bool) -> Result<StorePath>;
+    fn build_host(&self, ctx: &Flake, host: &str, quiet: bool) -> Result<StorePath>;
 }
 
 /// System implementation of NixBackend that executes real Nix commands
@@ -52,7 +52,7 @@ impl Default for SystemNixBackend {
 }
 
 impl NixBackend for SystemNixBackend {
-    fn list_hosts(&self, ctx: &SnowContext, filter_expr: Option<&str>) -> Result<Vec<Host>> {
+    fn list_hosts(&self, ctx: &Flake, filter_expr: Option<&str>) -> Result<Vec<Host>> {
         let apply_arg = if let Some(expr) = filter_expr {
             // Build a filter expression similar to find-hosts in justfile
             format!(
@@ -78,7 +78,7 @@ impl NixBackend for SystemNixBackend {
         parse_hostnames(&stdout)
     }
 
-    fn get_host_metadata(&self, ctx: &SnowContext, host: &str) -> Result<HostMetadata> {
+    fn get_host_metadata(&self, ctx: &Flake, host: &str) -> Result<HostMetadata> {
         let flake_ref = format!(".#nixosConfigurations.{}", host);
 
         // Use eval with apply, similar to list_hosts
@@ -139,7 +139,7 @@ impl NixBackend for SystemNixBackend {
         })
     }
 
-    fn build_host(&self, ctx: &SnowContext, host: &str, quiet: bool) -> Result<StorePath> {
+    fn build_host(&self, ctx: &Flake, host: &str, quiet: bool) -> Result<StorePath> {
         let target = format!(
             ".#nixosConfigurations.{}.config.system.build.toplevel",
             host

@@ -4,16 +4,16 @@ use crate::error::{FlakeError, IoError, Result};
 use std::env;
 use std::path::{Path, PathBuf};
 
-/// Immutable context for snowglobe operations
+/// Immutable context representing a Nix flake
 ///
-/// Holds the flake root directory and can be extended with additional
-/// state in the future (e.g., configuration, cached data, etc.)
+/// Holds the flake root directory and provides methods for flake discovery
+/// and validation.
 #[derive(Debug, Clone)]
-pub struct SnowContext {
+pub struct Flake {
     flake_root: PathBuf,
 }
 
-impl SnowContext {
+impl Flake {
     /// Create a new context from an optional flake path
     ///
     /// If flake_path is provided, validates and uses it. Otherwise searches
@@ -166,45 +166,45 @@ mod tests {
     }
 
     #[test]
-    fn test_snow_context_with_valid_path() {
+    fn test_flake_with_valid_path() {
         let temp_dir = tempfile::tempdir().unwrap();
         let flake_file = temp_dir.path().join("flake.nix");
         fs::write(&flake_file, "# test flake").unwrap();
 
         let path_str = temp_dir.path().to_str().unwrap();
-        let result = SnowContext::new(Some(path_str));
+        let result = Flake::new(Some(path_str));
 
         assert!(result.is_ok());
         assert_eq!(result.unwrap().flake_root(), temp_dir.path());
     }
 
     #[test]
-    fn test_snow_context_with_nonexistent_path() {
-        let result = SnowContext::new(Some("/nonexistent/path"));
+    fn test_flake_with_nonexistent_path() {
+        let result = Flake::new(Some("/nonexistent/path"));
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
         assert!(err_msg.contains("does not exist"));
     }
 
     #[test]
-    fn test_snow_context_with_path_missing_flake() {
+    fn test_flake_with_path_missing_flake() {
         let temp_dir = tempfile::tempdir().unwrap();
         let path_str = temp_dir.path().to_str().unwrap();
 
-        let result = SnowContext::new(Some(path_str));
+        let result = Flake::new(Some(path_str));
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
         assert!(err_msg.contains("No flake.nix found"));
     }
 
     #[test]
-    fn test_snow_context_with_flake_nix_file_path() {
+    fn test_flake_with_flake_nix_file_path() {
         let temp_dir = tempfile::tempdir().unwrap();
         let flake_file = temp_dir.path().join("flake.nix");
         fs::write(&flake_file, "# test flake").unwrap();
 
         let file_path_str = flake_file.to_str().unwrap();
-        let result = SnowContext::new(Some(file_path_str));
+        let result = Flake::new(Some(file_path_str));
 
         assert!(result.is_ok());
         assert_eq!(result.unwrap().flake_root(), temp_dir.path());

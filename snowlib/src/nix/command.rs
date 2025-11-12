@@ -4,26 +4,26 @@
 //! commands with proper error handling and output management.
 
 use crate::error::{NixError, Result};
-use crate::nix::SnowContext;
+use crate::nix::Flake;
 use std::process::Command;
 
 /// Builder for constructing and executing Nix commands
 ///
 /// Provides a fluent API for building nix command invocations with
-/// proper error handling. Initialized with a SnowContext and allows
+/// proper error handling. Initialized with a Flake and allows
 /// chaining operations.
 ///
 /// This is an internal implementation detail and should not be used outside
 /// the nix module. Use the public functions like `list_hosts()` instead.
 pub(crate) struct NixCommand {
     cmd: Command,
-    ctx: SnowContext,
+    ctx: Flake,
     quiet: bool,
 }
 
 impl NixCommand {
     /// Create a new nix command builder with a context (private)
-    fn new(ctx: &SnowContext) -> Self {
+    fn new(ctx: &Flake) -> Self {
         Self {
             cmd: Command::new("nix"),
             ctx: ctx.clone(),
@@ -32,14 +32,14 @@ impl NixCommand {
     }
 
     /// Start building a `nix eval` command for a flake attribute
-    pub(crate) fn eval(ctx: &SnowContext, attr: impl AsRef<str>) -> Self {
+    pub(crate) fn eval(ctx: &Flake, attr: impl AsRef<str>) -> Self {
         let mut builder = Self::new(ctx);
         builder.cmd.args(["eval", attr.as_ref()]);
         builder
     }
 
     /// Start building a `nix build` command
-    pub(crate) fn build(ctx: &SnowContext, target: impl AsRef<str>) -> Self {
+    pub(crate) fn build(ctx: &Flake, target: impl AsRef<str>) -> Self {
         let mut builder = Self::new(ctx);
         builder.cmd.args(["build", target.as_ref()]);
         builder

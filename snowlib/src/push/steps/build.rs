@@ -1,7 +1,7 @@
 use crate::backends::deploy::DeployTarget;
 use crate::backends::nix::NixBackend;
 use crate::error::Result;
-use crate::nix::{HostMetadata, SnowContext, StorePath};
+use crate::nix::{Flake, HostMetadata, StorePath};
 use crate::observer::PushObserver;
 use crate::push::config::PushConfiguration;
 use crate::push::step::{Step, StepResult};
@@ -22,7 +22,7 @@ pub struct BuildOutput {
 
 /// Build step - builds NixOS configurations for hosts
 pub struct BuildStep<'a> {
-    pub ctx: &'a SnowContext,
+    pub ctx: &'a Flake,
     pub nix_backend: &'a dyn NixBackend,
     pub config: &'a PushConfiguration,
 }
