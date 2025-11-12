@@ -24,7 +24,7 @@ impl CliObserver {
 }
 
 impl DeploymentObserver for CliObserver {
-    fn on_build_phase_start(&self, phase: &str, hosts: &[String]) -> Result<()> {
+    fn on_build_step_start(&self, phase: &str, hosts: &[String]) -> Result<()> {
         // Don't print "default" or "_all" phase explicitly
         if phase == "default" || phase == "_all" {
             println!("\n→ Building configurations for {} host(s)...", hosts.len());
@@ -57,7 +57,7 @@ impl DeploymentObserver for CliObserver {
         Ok(())
     }
 
-    fn on_copy_phase_start(&self, phase: &str, hosts: &[String]) -> Result<()> {
+    fn on_copy_step_start(&self, phase: &str, hosts: &[String]) -> Result<()> {
         // Don't print "default" or "_all" phase explicitly
         if phase == "default" || phase == "_all" {
             println!("\n→ Copying closures to {} host(s)...", hosts.len());

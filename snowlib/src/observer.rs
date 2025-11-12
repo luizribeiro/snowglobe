@@ -36,14 +36,14 @@ use crate::error::Result;
 /// Methods return `Result<()>` to allow observers to signal errors and
 /// potentially abort deployment.
 pub trait DeploymentObserver: Send + Sync {
-    /// Called when starting to build configurations for a phase
+    /// Called when starting the build step for a phase
     ///
-    /// This is called once per phase, before building begins for any host.
+    /// This is called once per phase at the start of the build step, before building begins for any host.
     ///
     /// # Arguments
     /// - `phase`: The phase name
     /// - `hosts`: Names of all hosts in this phase
-    fn on_build_phase_start(&self, _phase: &str, _hosts: &[String]) -> Result<()> {
+    fn on_build_step_start(&self, _phase: &str, _hosts: &[String]) -> Result<()> {
         Ok(())
     }
 
@@ -64,14 +64,14 @@ pub trait DeploymentObserver: Send + Sync {
         Ok(())
     }
 
-    /// Called when starting to copy closures for a phase
+    /// Called when starting the copy step for a phase
     ///
-    /// This is called once per phase, before copying begins for any host.
+    /// This is called once per phase at the start of the copy step, before copying begins for any host.
     ///
     /// # Arguments
     /// - `phase`: The phase name
     /// - `hosts`: Names of all hosts in this phase
-    fn on_copy_phase_start(&self, _phase: &str, _hosts: &[String]) -> Result<()> {
+    fn on_copy_step_start(&self, _phase: &str, _hosts: &[String]) -> Result<()> {
         Ok(())
     }
 
@@ -189,9 +189,9 @@ impl CompositeObserver {
 }
 
 impl DeploymentObserver for CompositeObserver {
-    fn on_build_phase_start(&self, phase: &str, hosts: &[String]) -> Result<()> {
+    fn on_build_step_start(&self, phase: &str, hosts: &[String]) -> Result<()> {
         for observer in &self.observers {
-            observer.on_build_phase_start(phase, hosts)?;
+            observer.on_build_step_start(phase, hosts)?;
         }
         Ok(())
     }
@@ -210,9 +210,9 @@ impl DeploymentObserver for CompositeObserver {
         Ok(())
     }
 
-    fn on_copy_phase_start(&self, phase: &str, hosts: &[String]) -> Result<()> {
+    fn on_copy_step_start(&self, phase: &str, hosts: &[String]) -> Result<()> {
         for observer in &self.observers {
-            observer.on_copy_phase_start(phase, hosts)?;
+            observer.on_copy_step_start(phase, hosts)?;
         }
         Ok(())
     }

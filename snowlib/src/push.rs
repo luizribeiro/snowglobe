@@ -184,7 +184,7 @@ pub fn push(
         let host_names: Vec<String> = phase_hosts.iter().map(|h| h.name.clone()).collect();
 
         // STEP 1: Build configurations for this phase
-        observer.on_build_phase_start(&phase, &host_names)?;
+        observer.on_build_step_start(&phase, &host_names)?;
 
         let mut phase_host_data = Vec::new();
         for mut host in phase_hosts {
@@ -215,7 +215,7 @@ pub fn push(
         }
 
         // STEP 2: Copy closures for this phase
-        observer.on_copy_phase_start(&phase, &host_names)?;
+        observer.on_copy_step_start(&phase, &host_names)?;
 
         for (metadata, target, store_path) in &phase_host_data {
             observer.on_copy_start(&metadata.name)?;
@@ -991,12 +991,11 @@ mod tests {
     }
 
     impl DeploymentObserver for TestObserver {
-        fn on_build_phase_start(&self, phase: &str, hosts: &[String]) -> crate::error::Result<()> {
-            self.events.lock().unwrap().push(format!(
-                "build_phase_start:{}:{}",
-                phase,
-                hosts.len()
-            ));
+        fn on_build_step_start(&self, phase: &str, hosts: &[String]) -> crate::error::Result<()> {
+            self.events
+                .lock()
+                .unwrap()
+                .push(format!("build_step_start:{}:{}", phase, hosts.len()));
             Ok(())
         }
 
@@ -1017,11 +1016,11 @@ mod tests {
             Ok(())
         }
 
-        fn on_copy_phase_start(&self, phase: &str, hosts: &[String]) -> crate::error::Result<()> {
+        fn on_copy_step_start(&self, phase: &str, hosts: &[String]) -> crate::error::Result<()> {
             self.events
                 .lock()
                 .unwrap()
-                .push(format!("copy_phase_start:{}:{}", phase, hosts.len()));
+                .push(format!("copy_step_start:{}:{}", phase, hosts.len()));
             Ok(())
         }
 
@@ -1562,15 +1561,15 @@ mod tests {
         // Verify observer events fired in correct order
         let events = observer.get_events();
 
-        // Build phase events
-        assert!(events.contains(&"build_phase_start:web:2".to_string()));
+        // Build step events
+        assert!(events.contains(&"build_step_start:web:2".to_string()));
         assert!(events.contains(&"build_start:web1".to_string()));
         assert!(events.contains(&"build_complete:web1:ok".to_string()));
         assert!(events.contains(&"build_start:web2".to_string()));
         assert!(events.contains(&"build_complete:web2:ok".to_string()));
 
-        // Copy phase events
-        assert!(events.contains(&"copy_phase_start:web:2".to_string()));
+        // Copy step events
+        assert!(events.contains(&"copy_step_start:web:2".to_string()));
         assert!(events.contains(&"copy_start:web1".to_string()));
         assert!(events.contains(&"copy_complete:web1:ok".to_string()));
         assert!(events.contains(&"copy_start:web2".to_string()));
@@ -1639,7 +1638,7 @@ mod tests {
         // Database phase should complete before web phase starts
         let db_phase_start = events
             .iter()
-            .position(|e| e == "build_phase_start:database:1")
+            .position(|e| e == "build_step_start:database:1")
             .expect("database build should start");
         let db_phase_complete = events
             .iter()
@@ -1647,7 +1646,7 @@ mod tests {
             .expect("database activation should complete");
         let web_phase_start = events
             .iter()
-            .position(|e| e == "build_phase_start:web:1")
+            .position(|e| e == "build_step_start:web:1")
             .expect("web build should start");
 
         assert!(db_phase_start < db_phase_complete);
@@ -1697,7 +1696,7 @@ mod tests {
         let events = observer.get_events();
 
         // Build events should be present
-        assert!(events.contains(&"build_phase_start:default:1".to_string()));
+        assert!(events.contains(&"build_step_start:default:1".to_string()));
         assert!(events.contains(&"build_start:fail-host".to_string()));
         assert!(events.contains(&"build_complete:fail-host:fail".to_string()));
 
@@ -1813,10 +1812,10 @@ mod tests {
 
         let events = observer.get_events();
 
-        // Verify copy sequence: phase_start → copy_start → copy_complete
+        // Verify copy sequence: copy_step_start → copy_start → copy_complete
         let copy_phase_idx = events
             .iter()
-            .position(|e| e == "copy_phase_start:p1:2")
+            .position(|e| e == "copy_step_start:p1:2")
             .unwrap();
         let copy1_start_idx = events.iter().position(|e| e == "copy_start:host1").unwrap();
         let copy1_complete_idx = events
@@ -1884,10 +1883,10 @@ mod tests {
 
         let events = observer.get_events();
 
-        // Verify build sequence: phase_start → build_start → build_complete
+        // Verify build sequence: build_step_start → build_start → build_complete
         let build_phase_idx = events
             .iter()
-            .position(|e| e == "build_phase_start:p1:2")
+            .position(|e| e == "build_step_start:p1:2")
             .unwrap();
         let build1_start_idx = events
             .iter()
@@ -2024,8 +2023,8 @@ mod tests {
         let events = observer.get_events();
 
         // Both hosts should be in "_all" phase
-        assert!(events.contains(&"build_phase_start:_all:2".to_string()));
-        assert!(events.contains(&"copy_phase_start:_all:2".to_string()));
+        assert!(events.contains(&"build_step_start:_all:2".to_string()));
+        assert!(events.contains(&"copy_step_start:_all:2".to_string()));
         assert!(events.contains(&"phase_start:_all:2".to_string()));
 
         // Should NOT have separate database/web phases

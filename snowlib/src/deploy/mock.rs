@@ -297,7 +297,7 @@ pub struct MetadataFixture {
     pub tags: Vec<String>,
 }
 
-/// Fixture for build phase
+/// Fixture for build step
 ///
 /// Mocks the result of build_host
 #[derive(Debug, Clone, Serialize, Deserialize)]
