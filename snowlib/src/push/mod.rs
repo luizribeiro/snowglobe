@@ -280,8 +280,8 @@ fn sorted_phases(by_phase: &HashMap<String, Vec<HostMetadata>>) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::deploy::mock::MockDeployer;
-    use crate::deploy::{ActivationMode, DeployResult};
+    use crate::backends::deploy::{ActivationMode, DeployResult};
+    use crate::backends::mock::MockDeployBackend;
     use crate::nix::ops::mock::MockNixOps;
     use crate::nix::{DeployTarget, HostMetadata, SnowContext, StorePath};
 
@@ -421,7 +421,7 @@ mod tests {
     }
 
     // Tests for create_deployment_plans
-    use crate::deploy::reboot::{RebootDetectionConfig, RebootDetector};
+    use crate::backends::reboot::{RebootDetectionConfig, SystemRebootBackend};
 
     #[test]
     fn test_create_deployment_plans_auto_mode_no_reboot() {
@@ -438,7 +438,7 @@ mod tests {
             check_initrd: false,
             check_init: false,
         };
-        let detector = RebootDetector::new(config);
+        let detector = SystemRebootBackend::new(config);
 
         let hosts = vec![make_host("test", None, crate::nix::RebootPolicy::Auto)];
 
@@ -456,7 +456,7 @@ mod tests {
 
     #[test]
     fn test_create_deployment_plans_dry_run() {
-        let detector = RebootDetector::default();
+        let detector = SystemRebootBackend::default();
         let hosts = vec![make_host("test", None, crate::nix::RebootPolicy::Auto)];
 
         let (plans, blocked) =
@@ -470,7 +470,7 @@ mod tests {
 
     #[test]
     fn test_create_deployment_plans_boot_mode() {
-        let detector = RebootDetector::default();
+        let detector = SystemRebootBackend::default();
         let hosts = vec![make_host("test", None, crate::nix::RebootPolicy::Auto)];
 
         let (plans, blocked) =
@@ -484,7 +484,7 @@ mod tests {
 
     #[test]
     fn test_create_deployment_plans_test_mode() {
-        let detector = RebootDetector::default();
+        let detector = SystemRebootBackend::default();
         let hosts = vec![make_host("test", None, crate::nix::RebootPolicy::Auto)];
 
         let (plans, blocked) =
@@ -499,7 +499,7 @@ mod tests {
     #[test]
     fn test_create_deployment_plans_switch_with_force() {
         // In reality, reboot would be detected, but with force flag it should still use Switch
-        let detector = RebootDetector::default();
+        let detector = SystemRebootBackend::default();
         let hosts = vec![make_host("test", None, crate::nix::RebootPolicy::Auto)];
 
         let (plans, blocked) =
@@ -520,7 +520,7 @@ mod tests {
             check_initrd: false,
             check_init: false,
         };
-        let detector = RebootDetector::new(config);
+        let detector = SystemRebootBackend::new(config);
 
         let hosts = vec![
             make_host("host1", None, crate::nix::RebootPolicy::Auto),
@@ -547,7 +547,7 @@ mod tests {
             check_initrd: false,
             check_init: false,
         };
-        let detector = RebootDetector::new(config);
+        let detector = SystemRebootBackend::new(config);
 
         let hosts = vec![make_host("host1", None, crate::nix::RebootPolicy::Never)];
 
@@ -571,7 +571,7 @@ mod tests {
             check_initrd: false,
             check_init: false,
         };
-        let detector = RebootDetector::new(config);
+        let detector = SystemRebootBackend::new(config);
 
         let hosts = vec![make_host("host1", None, crate::nix::RebootPolicy::Always)];
 
@@ -595,7 +595,7 @@ mod tests {
             check_initrd: false,
             check_init: false,
         };
-        let detector = RebootDetector::new(config);
+        let detector = SystemRebootBackend::new(config);
 
         let hosts = vec![make_host("host1", None, crate::nix::RebootPolicy::Auto)];
 
@@ -618,7 +618,7 @@ mod tests {
             check_initrd: false,
             check_init: false,
         };
-        let detector = RebootDetector::new(config);
+        let detector = SystemRebootBackend::new(config);
 
         let hosts = vec![make_host("host1", None, crate::nix::RebootPolicy::Never)];
 
@@ -640,7 +640,7 @@ mod tests {
             check_initrd: false,
             check_init: false,
         };
-        let detector = RebootDetector::new(config);
+        let detector = SystemRebootBackend::new(config);
 
         let hosts = vec![make_host("host1", None, crate::nix::RebootPolicy::Always)];
 
@@ -842,7 +842,7 @@ mod tests {
 
     #[test]
     fn test_push_with_single_phase() {
-        let deployer = MockDeployer::new();
+        let deployer = MockDeployBackend::new();
         let observer = TestObserver::new();
 
         let plans = vec![
@@ -902,14 +902,14 @@ mod tests {
         // Test that phases execute in lexicographic order (p1 before p2)
         let ctx = SnowContext::test_context();
         let nix_ops = MockNixOps::new();
-        let deployer = MockDeployer::new();
-        let reboot_config = crate::deploy::reboot::RebootDetectionConfig {
+        let deployer = MockDeployBackend::new();
+        let reboot_config = crate::backends::reboot::RebootDetectionConfig {
             critical_services: vec![],
             check_kernel: false,
             check_initrd: false,
             check_init: false,
         };
-        let reboot_detector = crate::deploy::reboot::RebootDetector::new(reboot_config);
+        let reboot_detector = crate::backends::reboot::SystemRebootBackend::new(reboot_config);
         let observer = TestObserver::new();
 
         // Note: hosts are intentionally out of order to test sorting
@@ -968,14 +968,14 @@ mod tests {
         let ctx = SnowContext::test_context();
         let nix_ops = MockNixOps::new();
         let deployer =
-            MockDeployer::new().with_activate_failures(vec!["host1.example.com".to_string()]);
-        let reboot_config = crate::deploy::reboot::RebootDetectionConfig {
+            MockDeployBackend::new().with_activate_failures(vec!["host1.example.com".to_string()]);
+        let reboot_config = crate::backends::reboot::RebootDetectionConfig {
             critical_services: vec![],
             check_kernel: false,
             check_initrd: false,
             check_init: false,
         };
-        let reboot_detector = crate::deploy::reboot::RebootDetector::new(reboot_config);
+        let reboot_detector = crate::backends::reboot::SystemRebootBackend::new(reboot_config);
         let observer = TestObserver::new();
 
         let hosts = vec![
@@ -1036,7 +1036,7 @@ mod tests {
 
     #[test]
     fn test_push_with_noop_observer() {
-        let deployer = MockDeployer::new();
+        let deployer = MockDeployBackend::new();
         let observer = NoopObserver;
 
         let plans = vec![PushPlan {
@@ -1063,7 +1063,7 @@ mod tests {
 
     #[test]
     fn test_push_with_default_phase() {
-        let deployer = MockDeployer::new();
+        let deployer = MockDeployBackend::new();
         let observer = TestObserver::new();
 
         let plans = vec![PushPlan {
@@ -1095,7 +1095,8 @@ mod tests {
     #[test]
     fn test_push_with_partial_failure_in_phase() {
         // Test that when one host fails in a phase, we still get results for all hosts in that phase
-        let deployer = MockDeployer::new().with_failures(vec!["host2.example.com".to_string()]);
+        let deployer =
+            MockDeployBackend::new().with_failures(vec!["host2.example.com".to_string()]);
         let observer = TestObserver::new();
 
         let plans = vec![
@@ -1163,16 +1164,16 @@ mod tests {
         let ctx = SnowContext::test_context();
         let nix_ops = MockNixOps::new();
         let deployer =
-            MockDeployer::new().with_activate_failures(vec!["fail.example.com".to_string()]);
+            MockDeployBackend::new().with_activate_failures(vec!["fail.example.com".to_string()]);
 
         // Use a reboot detector that won't require reboots (empty config)
-        let reboot_config = crate::deploy::reboot::RebootDetectionConfig {
+        let reboot_config = crate::backends::reboot::RebootDetectionConfig {
             critical_services: vec![],
             check_kernel: false,
             check_initrd: false,
             check_init: false,
         };
-        let reboot_detector = crate::deploy::reboot::RebootDetector::new(reboot_config);
+        let reboot_detector = crate::backends::reboot::SystemRebootBackend::new(reboot_config);
         let observer = crate::observer::NoopObserver;
 
         let hosts = vec![HostMetadata {
@@ -1241,13 +1242,13 @@ mod tests {
         let mut failures = HashMap::new();
         failures.insert(
             "test.example.com".to_string(),
-            crate::deploy::mock::FailureSpec {
+            crate::backends::mock::FailureSpec {
                 phase: "activate".to_string(),
                 error: Some("systemd service failed to start".to_string()),
             },
         );
 
-        let fixture = crate::deploy::mock::DeploymentFixture {
+        let fixture = crate::backends::mock::DeploymentFixture {
             name: "Test error formatting".to_string(),
             description: None,
             failures,
@@ -1256,14 +1257,14 @@ mod tests {
 
         let ctx = SnowContext::test_context();
         let nix_ops = MockNixOps::new();
-        let deployer = MockDeployer::from_fixture(fixture);
-        let reboot_config = crate::deploy::reboot::RebootDetectionConfig {
+        let deployer = MockDeployBackend::from_fixture(fixture);
+        let reboot_config = crate::backends::reboot::RebootDetectionConfig {
             critical_services: vec![],
             check_kernel: false,
             check_initrd: false,
             check_init: false,
         };
-        let reboot_detector = crate::deploy::reboot::RebootDetector::new(reboot_config);
+        let reboot_detector = crate::backends::reboot::SystemRebootBackend::new(reboot_config);
         let observer = crate::observer::NoopObserver;
 
         let hosts = vec![HostMetadata {
@@ -1333,8 +1334,8 @@ mod tests {
         // Test the complete workflow: build → copy → plan → activate for a single phase
         let ctx = SnowContext::test_context();
         let nix_ops = MockNixOps::new();
-        let deployer = MockDeployer::new();
-        let reboot_detector = RebootDetector::default();
+        let deployer = MockDeployBackend::new();
+        let reboot_detector = SystemRebootBackend::default();
         let observer = TestObserver::new();
 
         let hosts = vec![
@@ -1410,8 +1411,8 @@ mod tests {
         // Test multiple phases deploying sequentially with all steps
         let ctx = SnowContext::test_context();
         let nix_ops = MockNixOps::new();
-        let deployer = MockDeployer::new();
-        let reboot_detector = RebootDetector::default();
+        let deployer = MockDeployBackend::new();
+        let reboot_detector = SystemRebootBackend::default();
         let observer = TestObserver::new();
 
         let hosts = vec![
@@ -1479,8 +1480,8 @@ mod tests {
         // Build fails for one host, should stop immediately with no copy/activate
         let ctx = SnowContext::test_context();
         let nix_ops = MockNixOps::new().with_build_failures(vec!["fail-host".to_string()]);
-        let deployer = MockDeployer::new();
-        let reboot_detector = RebootDetector::default();
+        let deployer = MockDeployBackend::new();
+        let reboot_detector = SystemRebootBackend::default();
         let observer = TestObserver::new();
 
         let hosts = vec![HostMetadata {
@@ -1538,8 +1539,8 @@ mod tests {
         let ctx = SnowContext::test_context();
         let nix_ops = MockNixOps::new();
         let deployer =
-            MockDeployer::new().with_copy_failures(vec!["fail-copy.example.com".to_string()]);
-        let reboot_detector = RebootDetector::default();
+            MockDeployBackend::new().with_copy_failures(vec!["fail-copy.example.com".to_string()]);
+        let reboot_detector = SystemRebootBackend::default();
         let observer = TestObserver::new();
 
         let hosts = vec![HostMetadata {
@@ -1601,8 +1602,8 @@ mod tests {
         // Verify copy observer hooks fire in correct order
         let ctx = SnowContext::test_context();
         let nix_ops = MockNixOps::new();
-        let deployer = MockDeployer::new();
-        let reboot_detector = RebootDetector::default();
+        let deployer = MockDeployBackend::new();
+        let reboot_detector = SystemRebootBackend::default();
         let observer = TestObserver::new();
 
         let hosts = vec![
@@ -1672,8 +1673,8 @@ mod tests {
         // Verify build observer hooks fire in correct order
         let ctx = SnowContext::test_context();
         let nix_ops = MockNixOps::new();
-        let deployer = MockDeployer::new();
-        let reboot_detector = RebootDetector::default();
+        let deployer = MockDeployBackend::new();
+        let reboot_detector = SystemRebootBackend::default();
         let observer = TestObserver::new();
 
         let hosts = vec![
@@ -1749,8 +1750,8 @@ mod tests {
         // Build fails for host 2 of 2 in a phase
         let ctx = SnowContext::test_context();
         let nix_ops = MockNixOps::new().with_build_failures(vec!["host2".to_string()]);
-        let deployer = MockDeployer::new();
-        let reboot_detector = RebootDetector::default();
+        let deployer = MockDeployBackend::new();
+        let reboot_detector = SystemRebootBackend::default();
         let observer = TestObserver::new();
 
         let hosts = vec![
@@ -1809,8 +1810,8 @@ mod tests {
         // Test that ignore_phases groups all hosts into "_all" phase
         let ctx = SnowContext::test_context();
         let nix_ops = MockNixOps::new();
-        let deployer = MockDeployer::new();
-        let reboot_detector = RebootDetector::default();
+        let deployer = MockDeployBackend::new();
+        let reboot_detector = SystemRebootBackend::default();
         let observer = TestObserver::new();
 
         let hosts = vec![
@@ -1870,9 +1871,9 @@ mod tests {
         // Phase 1 activation fails, Phase 2 should never start
         let ctx = SnowContext::test_context();
         let nix_ops = MockNixOps::new();
-        let deployer =
-            MockDeployer::new().with_activate_failures(vec!["phase1-host.example.com".to_string()]);
-        let reboot_detector = RebootDetector::default();
+        let deployer = MockDeployBackend::new()
+            .with_activate_failures(vec!["phase1-host.example.com".to_string()]);
+        let reboot_detector = SystemRebootBackend::default();
         let observer = TestObserver::new();
 
         let hosts = vec![
@@ -1941,17 +1942,17 @@ mod tests {
         // Test that reboot is executed when required and observer hooks are called
         let ctx = SnowContext::test_context();
         let nix_ops = MockNixOps::new();
-        let deployer = MockDeployer::new();
+        let deployer = MockDeployBackend::new();
 
         // Configure reboot detection to require reboot
-        use crate::deploy::mock::MockRebootOps;
-        use crate::deploy::reboot::RebootReason;
+        use crate::backends::mock::MockRebootBackend;
+        use crate::backends::reboot::RebootReason;
         let mut reboot_required = std::collections::HashMap::new();
         reboot_required.insert(
             "reboot-host.example.com".to_string(),
             RebootReason::KernelChanged,
         );
-        let reboot_ops = MockRebootOps::new().with_reboot_required(reboot_required.clone());
+        let reboot_ops = MockRebootBackend::new().with_reboot_required(reboot_required.clone());
 
         let observer = TestObserver::new();
 
@@ -2023,17 +2024,17 @@ mod tests {
         // Test that reboot failures are properly handled and reported
         let ctx = SnowContext::test_context();
         let nix_ops = MockNixOps::new();
-        let deployer = MockDeployer::new();
+        let deployer = MockDeployBackend::new();
 
         // Configure reboot to be required but fail during execution
-        use crate::deploy::mock::MockRebootOps;
-        use crate::deploy::reboot::RebootReason;
+        use crate::backends::mock::MockRebootBackend;
+        use crate::backends::reboot::RebootReason;
         let mut reboot_required = std::collections::HashMap::new();
         reboot_required.insert(
             "fail-reboot.example.com".to_string(),
             RebootReason::InitrdChanged,
         );
-        let reboot_ops = MockRebootOps::new()
+        let reboot_ops = MockRebootBackend::new()
             .with_reboot_required(reboot_required)
             .with_reboot_failures(vec!["fail-reboot.example.com".to_string()]);
 
@@ -2101,11 +2102,11 @@ mod tests {
         // Test that reboot hooks are NOT called when reboot is not required
         let ctx = SnowContext::test_context();
         let nix_ops = MockNixOps::new();
-        let deployer = MockDeployer::new();
+        let deployer = MockDeployBackend::new();
 
         // No reboot required (empty HashMap)
-        use crate::deploy::mock::MockRebootOps;
-        let reboot_ops = MockRebootOps::new();
+        use crate::backends::mock::MockRebootBackend;
+        let reboot_ops = MockRebootBackend::new();
 
         let observer = TestObserver::new();
 
@@ -2162,17 +2163,17 @@ mod tests {
         // Test explicit Boot mode with reboot required
         let ctx = SnowContext::test_context();
         let nix_ops = MockNixOps::new();
-        let deployer = MockDeployer::new();
+        let deployer = MockDeployBackend::new();
 
         // Configure reboot required
-        use crate::deploy::mock::MockRebootOps;
-        use crate::deploy::reboot::RebootReason;
+        use crate::backends::mock::MockRebootBackend;
+        use crate::backends::reboot::RebootReason;
         let mut reboot_required = std::collections::HashMap::new();
         reboot_required.insert(
             "boot-host.example.com".to_string(),
             RebootReason::InitChanged,
         );
-        let reboot_ops = MockRebootOps::new().with_reboot_required(reboot_required);
+        let reboot_ops = MockRebootBackend::new().with_reboot_required(reboot_required);
 
         let observer = TestObserver::new();
 
@@ -2220,11 +2221,11 @@ mod tests {
         // Test that RebootPolicy::Always forces reboot even if not detected
         let ctx = SnowContext::test_context();
         let nix_ops = MockNixOps::new();
-        let deployer = MockDeployer::new();
+        let deployer = MockDeployBackend::new();
 
         // No reboot detected, but policy is Always
-        use crate::deploy::mock::MockRebootOps;
-        let reboot_ops = MockRebootOps::new(); // Empty - no reboot required
+        use crate::backends::mock::MockRebootBackend;
+        let reboot_ops = MockRebootBackend::new(); // Empty - no reboot required
 
         let observer = TestObserver::new();
 
@@ -2275,17 +2276,17 @@ mod tests {
         // Test that RebootPolicy::Never prevents reboot even if detected
         let ctx = SnowContext::test_context();
         let nix_ops = MockNixOps::new();
-        let deployer = MockDeployer::new();
+        let deployer = MockDeployBackend::new();
 
         // Reboot required but policy is Never
-        use crate::deploy::mock::MockRebootOps;
-        use crate::deploy::reboot::RebootReason;
+        use crate::backends::mock::MockRebootBackend;
+        use crate::backends::reboot::RebootReason;
         let mut reboot_required = std::collections::HashMap::new();
         reboot_required.insert(
             "never-reboot.example.com".to_string(),
             RebootReason::KernelChanged,
         );
-        let reboot_ops = MockRebootOps::new().with_reboot_required(reboot_required);
+        let reboot_ops = MockRebootBackend::new().with_reboot_required(reboot_required);
 
         let observer = TestObserver::new();
 
@@ -2336,11 +2337,11 @@ mod tests {
         // Test that allow_reboot=false prevents reboot even with RebootPolicy::Always
         let ctx = SnowContext::test_context();
         let nix_ops = MockNixOps::new();
-        let deployer = MockDeployer::new();
+        let deployer = MockDeployBackend::new();
 
         // Policy is Always, but user says --no-reboot
-        use crate::deploy::mock::MockRebootOps;
-        let reboot_ops = MockRebootOps::new();
+        use crate::backends::mock::MockRebootBackend;
+        let reboot_ops = MockRebootBackend::new();
 
         let observer = TestObserver::new();
 
@@ -2391,17 +2392,17 @@ mod tests {
         // Test that allow_reboot=false prevents reboot even when detection says it's needed
         let ctx = SnowContext::test_context();
         let nix_ops = MockNixOps::new();
-        let deployer = MockDeployer::new();
+        let deployer = MockDeployBackend::new();
 
         // Reboot detected as required but user says --no-reboot
-        use crate::deploy::mock::MockRebootOps;
-        use crate::deploy::reboot::RebootReason;
+        use crate::backends::mock::MockRebootBackend;
+        use crate::backends::reboot::RebootReason;
         let mut reboot_required = std::collections::HashMap::new();
         reboot_required.insert(
             "needs-reboot.example.com".to_string(),
             RebootReason::KernelChanged,
         );
-        let reboot_ops = MockRebootOps::new().with_reboot_required(reboot_required);
+        let reboot_ops = MockRebootBackend::new().with_reboot_required(reboot_required);
 
         let observer = TestObserver::new();
 

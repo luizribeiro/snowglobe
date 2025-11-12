@@ -1,5 +1,5 @@
-use crate::deploy::reboot::RebootCheck;
-use crate::deploy::{ActivationMode, DeployResult};
+use crate::backends::deploy::{ActivationMode, DeployResult};
+use crate::backends::reboot::RebootCheck;
 use crate::nix::{DeployTarget, HostMetadata, StorePath};
 
 /// A push deployment plan for a single host

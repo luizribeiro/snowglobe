@@ -8,7 +8,6 @@
 //! and contains no terminal-specific I/O.
 
 pub mod backends;
-pub mod deploy;
 pub mod error;
 pub mod nix;
 pub mod observer;

@@ -25,7 +25,7 @@
 //! }
 //! ```
 
-use crate::deploy::{ActivationMode, DeployResult};
+use crate::backends::deploy::{ActivationMode, DeployResult};
 use crate::error::Result;
 
 /// Observer trait for push deployment lifecycle events
