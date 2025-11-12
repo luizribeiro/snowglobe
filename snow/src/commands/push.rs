@@ -31,10 +31,6 @@ pub struct PushArgs {
     #[arg(long)]
     pub test: bool,
 
-    /// Automatically reboot hosts after boot-mode deployment (enabled by default)
-    #[arg(long, default_value = "true")]
-    pub reboot: bool,
-
     /// Never automatically reboot (even if reboot is required)
     #[arg(long)]
     pub no_reboot: bool,
@@ -98,15 +94,6 @@ impl PushArgs {
                 source: std::io::Error::other(
                     "Cannot use multiple activation modes (--dry-run, --switch, --boot, --test)",
                 ),
-            }
-            .into());
-        }
-
-        // Check for conflicting reboot flags
-        if self.reboot && self.no_reboot {
-            return Err(snowlib::error::DeployError::Failed {
-                host: "validation".to_string(),
-                source: std::io::Error::other("Cannot use both --reboot and --no-reboot"),
             }
             .into());
         }
@@ -287,6 +274,7 @@ impl PushArgs {
             ignore_phases: self.ignore_phases,
             quiet: self.quiet,
             ssh_user: self.user.clone(),
+            allow_reboot: !self.no_reboot, // Invert: no_reboot=true means allow_reboot=false
         };
 
         // Execute the push - snowlib handles everything!
@@ -458,30 +446,7 @@ mod tests {
             switch: true,
             boot: false,
             test: false,
-            reboot: true,
             no_reboot: false,
-            force: false,
-            quiet: false,
-            user: None,
-            concurrency: 3,
-            ignore_phases: false,
-            #[cfg(debug_assertions)]
-            mock_fixture: None,
-        };
-
-        assert!(args.validate().is_err());
-    }
-
-    #[test]
-    fn test_validate_conflicting_reboot_flags() {
-        let args = PushArgs {
-            hosts: vec![],
-            dry_run: false,
-            switch: false,
-            boot: false,
-            test: false,
-            reboot: true,
-            no_reboot: true,
             force: false,
             quiet: false,
             user: None,
@@ -502,7 +467,6 @@ mod tests {
             switch: false,
             boot: false,
             test: false,
-            reboot: true,
             no_reboot: false,
             force: true,
             quiet: false,
@@ -524,7 +488,6 @@ mod tests {
             switch: false,
             boot: false,
             test: false,
-            reboot: true,
             no_reboot: false,
             force: false,
             quiet: false,
@@ -546,7 +509,6 @@ mod tests {
             switch: false,
             boot: false,
             test: false,
-            reboot: true,
             no_reboot: false,
             force: false,
             quiet: false,
@@ -568,7 +530,6 @@ mod tests {
             switch: true,
             boot: false,
             test: false,
-            reboot: true,
             no_reboot: false,
             force: false,
             quiet: false,

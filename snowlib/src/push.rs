@@ -24,6 +24,8 @@ pub struct PushConfiguration {
     pub quiet: bool,
     /// SSH user for deployment (if None, uses SSH config default)
     pub ssh_user: Option<String>,
+    /// Allow automatic reboots (false = never reboot, overrides policy/detection)
+    pub allow_reboot: bool,
 }
 
 impl Default for PushConfiguration {
@@ -35,6 +37,7 @@ impl Default for PushConfiguration {
             ignore_phases: false,
             quiet: false,
             ssh_user: None,
+            allow_reboot: true, // Allow reboots by default
         }
     }
 }
@@ -251,7 +254,7 @@ pub fn push(
         let phase_success = phase_results.all_succeeded();
 
         // STEP 5: Reboot hosts in this phase that need it
-        if phase_success {
+        if phase_success && config.allow_reboot {
             for plan in &plans {
                 // Should reboot if using Boot mode AND either:
                 // 1. Reboot check says reboot is required (Auto mode with detected reboot)
@@ -1538,6 +1541,7 @@ mod tests {
             ignore_phases: false,
             quiet: false,
             ssh_user: None,
+            allow_reboot: true,
         };
 
         let results = push(
@@ -1614,6 +1618,7 @@ mod tests {
             ignore_phases: false,
             quiet: false,
             ssh_user: None,
+            allow_reboot: true,
         };
 
         let results = push(
@@ -1673,6 +1678,7 @@ mod tests {
             ignore_phases: false,
             quiet: false,
             ssh_user: None,
+            allow_reboot: true,
         };
 
         let result = push(
@@ -1727,6 +1733,7 @@ mod tests {
             ignore_phases: false,
             quiet: false,
             ssh_user: None,
+            allow_reboot: true,
         };
 
         let result = push(
@@ -1790,6 +1797,7 @@ mod tests {
             ignore_phases: false,
             quiet: false,
             ssh_user: None,
+            allow_reboot: true,
         };
 
         push(
@@ -1860,6 +1868,7 @@ mod tests {
             ignore_phases: false,
             quiet: false,
             ssh_user: None,
+            allow_reboot: true,
         };
 
         push(
@@ -1936,6 +1945,7 @@ mod tests {
             ignore_phases: false,
             quiet: false,
             ssh_user: None,
+            allow_reboot: true,
         };
 
         let result = push(
@@ -1995,6 +2005,7 @@ mod tests {
             ignore_phases: true, // Ignore phase ordering
             quiet: false,
             ssh_user: None,
+            allow_reboot: true,
         };
 
         let results = push(
@@ -2056,6 +2067,7 @@ mod tests {
             ignore_phases: false,
             quiet: false,
             ssh_user: None,
+            allow_reboot: true,
         };
 
         let results = push(
@@ -2114,6 +2126,7 @@ mod tests {
             ignore_phases: false,
             quiet: false,
             ssh_user: None,
+            allow_reboot: true,
         };
 
         let results = push(
@@ -2197,6 +2210,7 @@ mod tests {
             ignore_phases: false,
             quiet: false,
             ssh_user: None,
+            allow_reboot: true,
         };
 
         let results = push(
@@ -2266,6 +2280,7 @@ mod tests {
             ignore_phases: false,
             quiet: false,
             ssh_user: None,
+            allow_reboot: true,
         };
 
         let results = push(
@@ -2332,6 +2347,7 @@ mod tests {
             ignore_phases: false,
             quiet: false,
             ssh_user: None,
+            allow_reboot: true,
         };
 
         let results = push(
@@ -2383,6 +2399,7 @@ mod tests {
             ignore_phases: false,
             quiet: false,
             ssh_user: None,
+            allow_reboot: true,
         };
 
         let results = push(
@@ -2443,6 +2460,7 @@ mod tests {
             ignore_phases: false,
             quiet: false,
             ssh_user: None,
+            allow_reboot: true,
         };
 
         let results = push(
@@ -2468,6 +2486,122 @@ mod tests {
         assert!(!events.iter().any(|e| e.contains("reboot_complete")));
 
         // Should still have deployed successfully
+        assert!(events.iter().any(|e| e.starts_with("deploy_complete")));
+    }
+
+    #[test]
+    fn test_push_no_reboot_flag_overrides_always_policy() {
+        // Test that allow_reboot=false prevents reboot even with RebootPolicy::Always
+        let ctx = SnowContext::test_context();
+        let nix_ops = MockNixOps::new();
+        let deployer = MockDeployer::new();
+
+        // Policy is Always, but user says --no-reboot
+        use crate::deploy::mock::MockRebootOps;
+        let reboot_ops = MockRebootOps::new();
+
+        let observer = TestObserver::new();
+
+        let hosts = vec![make_host_metadata(
+            "always-reboot",
+            Some("default"),
+            crate::nix::RebootPolicy::Always, // Policy says always reboot
+        )];
+
+        let config = PushConfiguration {
+            mode: DeploymentMode::Auto,
+            force: false,
+            concurrency: 1,
+            ignore_phases: false,
+            quiet: false,
+            ssh_user: None,
+            allow_reboot: false, // User says --no-reboot
+        };
+
+        let results = push(
+            &ctx,
+            &nix_ops,
+            &deployer,
+            &reboot_ops,
+            hosts,
+            &config,
+            &observer,
+        )
+        .unwrap();
+
+        // Should succeed
+        assert!(results.all_succeeded());
+
+        // Check that reboot was NOT executed despite policy
+        let events = observer.get_events();
+        assert!(
+            !events.iter().any(|e| e.contains("reboot_start")),
+            "allow_reboot=false should prevent reboot even with RebootPolicy::Always"
+        );
+        assert!(!events.iter().any(|e| e.contains("reboot_complete")));
+
+        // Should still have deployed successfully
+        assert!(events.iter().any(|e| e.starts_with("deploy_complete")));
+    }
+
+    #[test]
+    fn test_push_no_reboot_flag_with_detected_reboot() {
+        // Test that allow_reboot=false prevents reboot even when detection says it's needed
+        let ctx = SnowContext::test_context();
+        let nix_ops = MockNixOps::new();
+        let deployer = MockDeployer::new();
+
+        // Reboot detected as required but user says --no-reboot
+        use crate::deploy::mock::MockRebootOps;
+        use crate::deploy::reboot::RebootReason;
+        let mut reboot_required = std::collections::HashMap::new();
+        reboot_required.insert(
+            "needs-reboot.example.com".to_string(),
+            RebootReason::KernelChanged,
+        );
+        let reboot_ops = MockRebootOps::new().with_reboot_required(reboot_required);
+
+        let observer = TestObserver::new();
+
+        let hosts = vec![make_host_metadata(
+            "needs-reboot",
+            Some("default"),
+            crate::nix::RebootPolicy::Auto, // Auto policy
+        )];
+
+        let config = PushConfiguration {
+            mode: DeploymentMode::Auto,
+            force: false,
+            concurrency: 1,
+            ignore_phases: false,
+            quiet: false,
+            ssh_user: None,
+            allow_reboot: false, // User says --no-reboot
+        };
+
+        let results = push(
+            &ctx,
+            &nix_ops,
+            &deployer,
+            &reboot_ops,
+            hosts,
+            &config,
+            &observer,
+        )
+        .unwrap();
+
+        // Should succeed (uses Boot mode but doesn't reboot)
+        assert!(results.all_succeeded());
+
+        // Check that reboot was NOT executed despite detection
+        let events = observer.get_events();
+        assert!(
+            !events.iter().any(|e| e.contains("reboot_start")),
+            "allow_reboot=false should prevent reboot even when detection says reboot needed"
+        );
+        assert!(!events.iter().any(|e| e.contains("reboot_complete")));
+
+        // Should still have deployed successfully (Boot mode without reboot)
         assert!(events.iter().any(|e| e.starts_with("deploy_complete")));
     }
 }
