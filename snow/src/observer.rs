@@ -24,6 +24,43 @@ impl CliObserver {
 }
 
 impl DeploymentObserver for CliObserver {
+    // ========================================
+    // Phase lifecycle
+    // ========================================
+
+    fn on_phase_start(&self, phase: &str, hosts: &[String]) -> Result<()> {
+        // Don't print "default" or "_all" phase explicitly
+        if phase == "default" || phase == "_all" {
+            println!("\n→ Starting deployment for {} host(s)...", hosts.len());
+        } else {
+            println!(
+                "\n→ Starting phase '{}' ({} host(s))...",
+                phase,
+                hosts.len()
+            );
+        }
+        Ok(())
+    }
+
+    fn on_phase_complete(&self, phase: &str, success: bool) -> Result<()> {
+        if success {
+            if phase == "default" {
+                println!("✓ Phase completed successfully");
+            } else {
+                println!("✓ Phase '{}' completed successfully", phase);
+            }
+        } else if phase == "default" {
+            eprintln!("✗ Phase failed, stopping deployment");
+        } else {
+            eprintln!("✗ Phase '{}' failed, stopping deployment", phase);
+        }
+        Ok(())
+    }
+
+    // ========================================
+    // Step 1: Build configurations
+    // ========================================
+
     fn on_build_step_start(&self, phase: &str, hosts: &[String]) -> Result<()> {
         // Don't print "default" or "_all" phase explicitly
         if phase == "default" || phase == "_all" {
@@ -56,6 +93,10 @@ impl DeploymentObserver for CliObserver {
         }
         Ok(())
     }
+
+    // ========================================
+    // Step 2: Copy closures to hosts
+    // ========================================
 
     fn on_copy_step_start(&self, phase: &str, hosts: &[String]) -> Result<()> {
         // Don't print "default" or "_all" phase explicitly
@@ -90,19 +131,9 @@ impl DeploymentObserver for CliObserver {
         Ok(())
     }
 
-    fn on_phase_start(&self, phase: &str, hosts: &[String]) -> Result<()> {
-        // Don't print "default" or "_all" phase explicitly
-        if phase == "default" || phase == "_all" {
-            println!("\n→ Activating {} host(s)...", hosts.len());
-        } else {
-            println!(
-                "\n→ Activating phase '{}' ({} host(s))...",
-                phase,
-                hosts.len()
-            );
-        }
-        Ok(())
-    }
+    // ========================================
+    // Step 3: Activate configurations
+    // ========================================
 
     fn on_deploy_start(&self, hostname: &str, _mode: ActivationMode) -> Result<()> {
         if !self.quiet {
@@ -125,20 +156,9 @@ impl DeploymentObserver for CliObserver {
         Ok(())
     }
 
-    fn on_phase_complete(&self, phase: &str, success: bool) -> Result<()> {
-        if success {
-            if phase == "default" {
-                println!("✓ Phase completed successfully");
-            } else {
-                println!("✓ Phase '{}' completed successfully", phase);
-            }
-        } else if phase == "default" {
-            eprintln!("✗ Phase failed, stopping deployment");
-        } else {
-            eprintln!("✗ Phase '{}' failed, stopping deployment", phase);
-        }
-        Ok(())
-    }
+    // ========================================
+    // Step 4: Reboot hosts (if needed)
+    // ========================================
 
     fn on_reboot_start(&self, hostname: &str) -> Result<()> {
         print!("  Rebooting {}...", hostname);
