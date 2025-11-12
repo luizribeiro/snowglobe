@@ -190,7 +190,7 @@ impl PushArgs {
     /// Orchestrates the entire deployment process by delegating to snowlib's `push()` function.
     /// The CLI's only responsibilities are:
     /// - Parse command-line arguments
-    /// - Create necessary components (NixOps, Deployer, RebootDetector, Observer)
+    /// - Create backend implementations and observer
     /// - Call snowlib::push()
     /// - Print results table
     pub fn run(self, ctx: &SnowContext) -> Result<()> {

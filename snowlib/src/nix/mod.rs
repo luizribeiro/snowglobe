@@ -1,13 +1,3 @@
-// Backward compatibility re-exports for ops module
-pub mod ops {
-    pub use crate::backends::nix::{NixBackend as NixOps, SystemNixBackend as SystemNixOps};
-
-    #[cfg(debug_assertions)]
-    pub mod mock {
-        pub use crate::backends::mock::MockNixBackend as MockNixOps;
-    }
-}
-
 use crate::error::{FlakeError, IoError, NixError, Result};
 use serde::Deserialize;
 use std::env;
@@ -402,18 +392,18 @@ pub fn list_hosts(ctx: &SnowContext, filter_expr: Option<&str>) -> Result<Vec<Ho
 
 /// Get metadata for a host from its NixOS configuration
 ///
-/// Convenience function that uses SystemNixOps under the hood.
+/// Convenience function that uses SystemNixBackend under the hood.
 pub fn get_host_metadata(ctx: &SnowContext, host: &str) -> Result<HostMetadata> {
-    use ops::{NixOps, SystemNixOps};
-    SystemNixOps::new().get_host_metadata(ctx, host)
+    use crate::backends::nix::{NixBackend, SystemNixBackend};
+    SystemNixBackend::new().get_host_metadata(ctx, host)
 }
 
 /// Build a host configuration and return the store path
 ///
-/// Convenience function that uses SystemNixOps under the hood.
+/// Convenience function that uses SystemNixBackend under the hood.
 pub fn build_host(ctx: &SnowContext, host: &str, quiet: bool) -> Result<StorePath> {
-    use ops::{NixOps, SystemNixOps};
-    SystemNixOps::new().build_host(ctx, host, quiet)
+    use crate::backends::nix::{NixBackend, SystemNixBackend};
+    SystemNixBackend::new().build_host(ctx, host, quiet)
 }
 
 #[cfg(test)]

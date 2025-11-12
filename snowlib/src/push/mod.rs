@@ -281,8 +281,7 @@ fn sorted_phases(by_phase: &HashMap<String, Vec<HostMetadata>>) -> Vec<String> {
 mod tests {
     use super::*;
     use crate::backends::deploy::{ActivationMode, DeployResult};
-    use crate::backends::mock::MockDeployBackend;
-    use crate::nix::ops::mock::MockNixOps;
+    use crate::backends::mock::{MockDeployBackend, MockNixBackend};
     use crate::nix::{DeployTarget, HostMetadata, SnowContext, StorePath};
 
     /// Helper to create just HostMetadata for push tests
@@ -901,7 +900,7 @@ mod tests {
     fn test_push_with_multiple_phases() {
         // Test that phases execute in lexicographic order (p1 before p2)
         let ctx = SnowContext::test_context();
-        let nix_ops = MockNixOps::new();
+        let nix_ops = MockNixBackend::new();
         let deployer = MockDeployBackend::new();
         let reboot_config = crate::backends::reboot::RebootDetectionConfig {
             critical_services: vec![],
@@ -966,7 +965,7 @@ mod tests {
     fn test_push_stops_on_phase_failure() {
         // Test that when phase p1 fails, phase p2 never starts
         let ctx = SnowContext::test_context();
-        let nix_ops = MockNixOps::new();
+        let nix_ops = MockNixBackend::new();
         let deployer =
             MockDeployBackend::new().with_activate_failures(vec!["host1.example.com".to_string()]);
         let reboot_config = crate::backends::reboot::RebootDetectionConfig {
@@ -1162,7 +1161,7 @@ mod tests {
     fn test_push_error_message_includes_source() {
         // Test that when deployment fails, the error message includes the full error chain
         let ctx = SnowContext::test_context();
-        let nix_ops = MockNixOps::new();
+        let nix_ops = MockNixBackend::new();
         let deployer =
             MockDeployBackend::new().with_activate_failures(vec!["fail.example.com".to_string()]);
 
@@ -1256,7 +1255,7 @@ mod tests {
         };
 
         let ctx = SnowContext::test_context();
-        let nix_ops = MockNixOps::new();
+        let nix_ops = MockNixBackend::new();
         let deployer = MockDeployBackend::from_fixture(fixture);
         let reboot_config = crate::backends::reboot::RebootDetectionConfig {
             critical_services: vec![],
@@ -1333,7 +1332,7 @@ mod tests {
     fn test_push_full_workflow_single_phase_success() {
         // Test the complete workflow: build → copy → plan → activate for a single phase
         let ctx = SnowContext::test_context();
-        let nix_ops = MockNixOps::new();
+        let nix_ops = MockNixBackend::new();
         let deployer = MockDeployBackend::new();
         let reboot_detector = SystemRebootBackend::default();
         let observer = TestObserver::new();
@@ -1410,7 +1409,7 @@ mod tests {
     fn test_push_full_workflow_multi_phase_success() {
         // Test multiple phases deploying sequentially with all steps
         let ctx = SnowContext::test_context();
-        let nix_ops = MockNixOps::new();
+        let nix_ops = MockNixBackend::new();
         let deployer = MockDeployBackend::new();
         let reboot_detector = SystemRebootBackend::default();
         let observer = TestObserver::new();
@@ -1479,7 +1478,7 @@ mod tests {
     fn test_push_build_failure_stops_deployment() {
         // Build fails for one host, should stop immediately with no copy/activate
         let ctx = SnowContext::test_context();
-        let nix_ops = MockNixOps::new().with_build_failures(vec!["fail-host".to_string()]);
+        let nix_ops = MockNixBackend::new().with_build_failures(vec!["fail-host".to_string()]);
         let deployer = MockDeployBackend::new();
         let reboot_detector = SystemRebootBackend::default();
         let observer = TestObserver::new();
@@ -1537,7 +1536,7 @@ mod tests {
     fn test_push_copy_failure_stops_deployment() {
         // Copy fails for one host after successful build
         let ctx = SnowContext::test_context();
-        let nix_ops = MockNixOps::new();
+        let nix_ops = MockNixBackend::new();
         let deployer =
             MockDeployBackend::new().with_copy_failures(vec!["fail-copy.example.com".to_string()]);
         let reboot_detector = SystemRebootBackend::default();
@@ -1601,7 +1600,7 @@ mod tests {
     fn test_push_copy_observer_hooks_called() {
         // Verify copy observer hooks fire in correct order
         let ctx = SnowContext::test_context();
-        let nix_ops = MockNixOps::new();
+        let nix_ops = MockNixBackend::new();
         let deployer = MockDeployBackend::new();
         let reboot_detector = SystemRebootBackend::default();
         let observer = TestObserver::new();
@@ -1672,7 +1671,7 @@ mod tests {
     fn test_push_build_observer_hooks_called() {
         // Verify build observer hooks fire in correct order
         let ctx = SnowContext::test_context();
-        let nix_ops = MockNixOps::new();
+        let nix_ops = MockNixBackend::new();
         let deployer = MockDeployBackend::new();
         let reboot_detector = SystemRebootBackend::default();
         let observer = TestObserver::new();
@@ -1749,7 +1748,7 @@ mod tests {
     fn test_push_build_partial_failure() {
         // Build fails for host 2 of 2 in a phase
         let ctx = SnowContext::test_context();
-        let nix_ops = MockNixOps::new().with_build_failures(vec!["host2".to_string()]);
+        let nix_ops = MockNixBackend::new().with_build_failures(vec!["host2".to_string()]);
         let deployer = MockDeployBackend::new();
         let reboot_detector = SystemRebootBackend::default();
         let observer = TestObserver::new();
@@ -1809,7 +1808,7 @@ mod tests {
     fn test_push_ignore_phases_flag() {
         // Test that ignore_phases groups all hosts into "_all" phase
         let ctx = SnowContext::test_context();
-        let nix_ops = MockNixOps::new();
+        let nix_ops = MockNixBackend::new();
         let deployer = MockDeployBackend::new();
         let reboot_detector = SystemRebootBackend::default();
         let observer = TestObserver::new();
@@ -1870,7 +1869,7 @@ mod tests {
     fn test_push_phase_failure_stops_next_phase() {
         // Phase 1 activation fails, Phase 2 should never start
         let ctx = SnowContext::test_context();
-        let nix_ops = MockNixOps::new();
+        let nix_ops = MockNixBackend::new();
         let deployer = MockDeployBackend::new()
             .with_activate_failures(vec!["phase1-host.example.com".to_string()]);
         let reboot_detector = SystemRebootBackend::default();
@@ -1941,7 +1940,7 @@ mod tests {
     fn test_push_reboot_execution_success() {
         // Test that reboot is executed when required and observer hooks are called
         let ctx = SnowContext::test_context();
-        let nix_ops = MockNixOps::new();
+        let nix_ops = MockNixBackend::new();
         let deployer = MockDeployBackend::new();
 
         // Configure reboot detection to require reboot
@@ -2023,7 +2022,7 @@ mod tests {
     fn test_push_reboot_execution_failure() {
         // Test that reboot failures are properly handled and reported
         let ctx = SnowContext::test_context();
-        let nix_ops = MockNixOps::new();
+        let nix_ops = MockNixBackend::new();
         let deployer = MockDeployBackend::new();
 
         // Configure reboot to be required but fail during execution
@@ -2101,7 +2100,7 @@ mod tests {
     fn test_push_no_reboot_when_not_required() {
         // Test that reboot hooks are NOT called when reboot is not required
         let ctx = SnowContext::test_context();
-        let nix_ops = MockNixOps::new();
+        let nix_ops = MockNixBackend::new();
         let deployer = MockDeployBackend::new();
 
         // No reboot required (empty HashMap)
@@ -2162,7 +2161,7 @@ mod tests {
     fn test_push_reboot_with_boot_mode() {
         // Test explicit Boot mode with reboot required
         let ctx = SnowContext::test_context();
-        let nix_ops = MockNixOps::new();
+        let nix_ops = MockNixBackend::new();
         let deployer = MockDeployBackend::new();
 
         // Configure reboot required
@@ -2220,7 +2219,7 @@ mod tests {
     fn test_push_reboot_policy_always() {
         // Test that RebootPolicy::Always forces reboot even if not detected
         let ctx = SnowContext::test_context();
-        let nix_ops = MockNixOps::new();
+        let nix_ops = MockNixBackend::new();
         let deployer = MockDeployBackend::new();
 
         // No reboot detected, but policy is Always
@@ -2275,7 +2274,7 @@ mod tests {
     fn test_push_reboot_policy_never() {
         // Test that RebootPolicy::Never prevents reboot even if detected
         let ctx = SnowContext::test_context();
-        let nix_ops = MockNixOps::new();
+        let nix_ops = MockNixBackend::new();
         let deployer = MockDeployBackend::new();
 
         // Reboot required but policy is Never
@@ -2336,7 +2335,7 @@ mod tests {
     fn test_push_no_reboot_flag_overrides_always_policy() {
         // Test that allow_reboot=false prevents reboot even with RebootPolicy::Always
         let ctx = SnowContext::test_context();
-        let nix_ops = MockNixOps::new();
+        let nix_ops = MockNixBackend::new();
         let deployer = MockDeployBackend::new();
 
         // Policy is Always, but user says --no-reboot
@@ -2391,7 +2390,7 @@ mod tests {
     fn test_push_no_reboot_flag_with_detected_reboot() {
         // Test that allow_reboot=false prevents reboot even when detection says it's needed
         let ctx = SnowContext::test_context();
-        let nix_ops = MockNixOps::new();
+        let nix_ops = MockNixBackend::new();
         let deployer = MockDeployBackend::new();
 
         // Reboot detected as required but user says --no-reboot
