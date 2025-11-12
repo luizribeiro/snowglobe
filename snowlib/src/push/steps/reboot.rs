@@ -56,10 +56,21 @@ impl<'a> Step for RebootStep<'a> {
             .map(|input| input.plan.metadata.name.clone())
             .collect();
 
-        // Notify observer of reboot step start (only if there are hosts to reboot)
-        if !hosts_needing_reboot.is_empty() {
-            observer.on_reboot_step_start(phase, &hosts_needing_reboot)?;
+        // Early return if no hosts need reboot - just pass through deploy results
+        if hosts_needing_reboot.is_empty() {
+            return Ok(inputs
+                .into_iter()
+                .map(|input| {
+                    StepResult::success(RebootOutput {
+                        hostname: input.plan.metadata.name.clone(),
+                        result: input.deploy_result,
+                    })
+                })
+                .collect());
         }
+
+        // Notify observer of reboot step start
+        observer.on_reboot_step_start(phase, &hosts_needing_reboot)?;
 
         let mut results = Vec::new();
         let mut all_reboots_succeeded = true;
@@ -96,10 +107,8 @@ impl<'a> Step for RebootStep<'a> {
             results.push(StepResult::success(RebootOutput { hostname, result }));
         }
 
-        // Notify observer of reboot step completion (only if there were hosts to reboot)
-        if !hosts_needing_reboot.is_empty() {
-            observer.on_reboot_step_complete(phase, all_reboots_succeeded)?;
-        }
+        // Notify observer of reboot step completion
+        observer.on_reboot_step_complete(phase, all_reboots_succeeded)?;
 
         Ok(results)
     }
