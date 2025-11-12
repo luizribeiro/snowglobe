@@ -94,7 +94,7 @@ fn determine_activation_strategy(
     metadata: &HostMetadata,
     target: &DeployTarget,
     store_path: &StorePath,
-    reboot_ops: &dyn RebootBackend,
+    reboot_backend: &dyn RebootBackend,
     mode: DeploymentMode,
     force: bool,
 ) -> Result<ActivationStrategy> {
@@ -106,9 +106,9 @@ fn determine_activation_strategy(
         DeploymentMode::Test => Ok(ActivationStrategy::Deploy(ActivationMode::Test, None)),
         DeploymentMode::Boot => Ok(ActivationStrategy::Deploy(ActivationMode::Boot, None)),
         DeploymentMode::Switch => {
-            handle_switch_mode(metadata, target, store_path, reboot_ops, force)
+            handle_switch_mode(metadata, target, store_path, reboot_backend, force)
         }
-        DeploymentMode::Auto => handle_auto_mode(metadata, target, store_path, reboot_ops),
+        DeploymentMode::Auto => handle_auto_mode(metadata, target, store_path, reboot_backend),
     }
 }
 
@@ -117,7 +117,7 @@ fn handle_switch_mode(
     metadata: &HostMetadata,
     target: &DeployTarget,
     store_path: &StorePath,
-    reboot_ops: &dyn RebootBackend,
+    reboot_backend: &dyn RebootBackend,
     force: bool,
 ) -> Result<ActivationStrategy> {
     // Check reboot policy - 'never' and 'always' policies override switch mode
@@ -143,7 +143,7 @@ fn handle_switch_mode(
         }
     }
 
-    let check = reboot_ops.check_reboot_required(target, store_path)?;
+    let check = reboot_backend.check_reboot_required(target, store_path)?;
 
     if check.required && !force {
         // Reboot required but --force not set - block this host
@@ -166,7 +166,7 @@ fn handle_auto_mode(
     metadata: &HostMetadata,
     target: &DeployTarget,
     store_path: &StorePath,
-    reboot_ops: &dyn RebootBackend,
+    reboot_backend: &dyn RebootBackend,
 ) -> Result<ActivationStrategy> {
     // Check reboot policy
     match metadata.reboot_policy {
@@ -191,7 +191,7 @@ fn handle_auto_mode(
         }
     }
 
-    let check = reboot_ops.check_reboot_required(target, store_path)?;
+    let check = reboot_backend.check_reboot_required(target, store_path)?;
 
     let activation = if check.required {
         ActivationMode::Boot
@@ -213,7 +213,7 @@ fn handle_auto_mode(
 /// blocked by safety checks (e.g., --switch without --force when reboot required)
 pub fn create_deployment_plans(
     hosts: Vec<(HostMetadata, DeployTarget, StorePath)>,
-    reboot_ops: &dyn RebootBackend,
+    reboot_backend: &dyn RebootBackend,
     mode: DeploymentMode,
     force: bool,
 ) -> Result<(Vec<PushPlan>, Vec<BlockedHost>)> {
@@ -225,7 +225,7 @@ pub fn create_deployment_plans(
             &metadata,
             &target,
             &store_path,
-            reboot_ops,
+            reboot_backend,
             mode,
             force,
         )? {
