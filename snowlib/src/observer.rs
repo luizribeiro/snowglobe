@@ -233,7 +233,7 @@ impl PushObserver for NoopObserver {}
 /// # Example
 ///
 /// ```
-/// use snowlib::{CompositeObserver, NoopObserver};
+/// use snowlib::observer::{CompositeObserver, NoopObserver};
 ///
 /// let observer1 = NoopObserver;
 /// let observer2 = NoopObserver;

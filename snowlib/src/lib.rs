@@ -13,24 +13,17 @@ pub mod nix;
 pub mod observer;
 pub mod push;
 
-// Re-export commonly used types
 pub use backends::deploy::{
     ActivationMode, DeployBackend, DeployResult, DeployTarget, SshDeployBackend,
 };
 pub use backends::nix::{NixBackend, SystemNixBackend};
-pub use backends::reboot::{
-    RebootBackend, RebootCheck, RebootDetectionConfig, RebootReason, SystemRebootBackend,
-};
-pub use error::{Result, SnowError};
-pub use nix::{Host, HostMetadata, RebootPolicy, SnowContext, StorePath};
-pub use observer::{CompositeObserver, NoopObserver, PushObserver};
-pub use push::{BlockedHost, DeploymentMode, PushConfiguration, PushPlan, PushResults};
+pub use backends::reboot::SystemRebootBackend;
+pub use error::Result;
+pub use nix::{SnowContext, StorePath};
+pub use observer::PushObserver;
+pub use push::{push, DeploymentMode, PushConfiguration, PushResults};
 
 #[cfg(debug_assertions)]
 pub use backends::mock::{
-    BuildFixture, DeploymentFixture, HostFixture, MetadataFixture, MockDeployBackend,
-    MockNixBackend, MockRebootBackend, OperationFixture,
+    DeploymentFixture, HostFixture, MockDeployBackend, MockNixBackend, OperationFixture,
 };
-
-// Re-export main functions
-pub use push::{create_deployment_plans, push};

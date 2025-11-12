@@ -65,9 +65,11 @@ use std::collections::HashMap;
 /// # Example
 ///
 /// ```no_run
-/// use snowlib::{push, PushConfiguration, SnowContext, SystemNixBackend, SshDeployBackend, SystemRebootBackend, NoopObserver};
+/// use snowlib::{push, PushConfiguration, SnowContext, SystemNixBackend, SshDeployBackend, SystemRebootBackend};
+/// use snowlib::observer::NoopObserver;
+/// use snowlib::nix::HostMetadata;
 ///
-/// # fn example(hosts: Vec<snowlib::HostMetadata>) -> snowlib::Result<()> {
+/// # fn example(hosts: Vec<HostMetadata>) -> snowlib::Result<()> {
 /// let ctx = SnowContext::new(None)?;
 /// let nix_backend = SystemNixBackend::new();
 /// let deploy_backend = SshDeployBackend::new();
