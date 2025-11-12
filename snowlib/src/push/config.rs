@@ -1,0 +1,47 @@
+/// Configuration for push operations
+#[derive(Debug, Clone)]
+pub struct PushConfiguration {
+    /// Deployment mode (auto, switch, boot, test, dry-run)
+    pub mode: DeploymentMode,
+    /// Force deployment even when reboot is detected in switch mode
+    pub force: bool,
+    /// Maximum number of parallel deployments within a phase
+    pub concurrency: usize,
+    /// Ignore push phases and deploy all hosts in parallel
+    pub ignore_phases: bool,
+    /// Suppress build output
+    pub quiet: bool,
+    /// SSH user for deployment (if None, uses SSH config default)
+    pub ssh_user: Option<String>,
+    /// Allow automatic reboots (false = never reboot, overrides policy/detection)
+    pub allow_reboot: bool,
+}
+
+impl Default for PushConfiguration {
+    fn default() -> Self {
+        Self {
+            mode: DeploymentMode::Auto,
+            force: false,
+            concurrency: 3,
+            ignore_phases: false,
+            quiet: false,
+            ssh_user: None,
+            allow_reboot: true, // Allow reboots by default
+        }
+    }
+}
+
+/// Deployment mode requested by the user
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DeploymentMode {
+    /// Auto mode - detect reboot need and choose appropriate activation mode
+    Auto,
+    /// Force immediate activation (switch mode)
+    Switch,
+    /// Set for next boot only
+    Boot,
+    /// Test activation (non-persistent)
+    Test,
+    /// Dry run - preview only
+    DryRun,
+}

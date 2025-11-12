@@ -1,114 +1,42 @@
+//! Push deployment orchestration
+//!
+//! This module provides the main `push()` function for deploying NixOS configurations
+//! to remote hosts. The deployment process is organized as a pipeline of steps:
+//!
+//! 1. **Build**: Builds NixOS configurations for each host
+//! 2. **Copy**: Copies closures to remote hosts
+//! 3. **Planning**: Creates deployment plans with reboot detection
+//! 4. **Activate**: Activates configurations on remote hosts
+//! 5. **Reboot**: Reboots hosts that require it
+//!
+//! Each step is implemented as a separate module under `steps/` and implements
+//! the `Step` trait defined in `step.rs`.
+
+mod config;
+mod results;
+mod step;
+pub mod steps;
+
+// Re-export public types
+pub use config::{DeploymentMode, PushConfiguration};
+pub use results::{BlockedHost, DeploymentPlan, PushResults};
+pub use step::{Step, StepResult};
+pub use steps::{
+    ActivateInput, ActivateOutput, ActivateStep, BuildInput, BuildOutput, BuildStep, CopyInput,
+    CopyOutput, CopyStep, PlanningInput, PlanningOutput, PlanningStep, RebootInput, RebootOutput,
+    RebootStep,
+};
+
+// Re-export create_deployment_plans for backward compatibility and testing
+pub use steps::plan::create_deployment_plans;
+
+use crate::deploy::reboot::RebootOps;
+use crate::deploy::Deployer;
 use crate::error::Result;
-use crate::observer::DeploymentObserver;
-use rayon::prelude::*;
-use std::collections::HashMap;
-use std::sync::Arc;
-
-use crate::deploy::reboot::{RebootCheck, RebootOps};
-use crate::deploy::{ActivationMode, DeployResult, Deployer};
 use crate::nix::ops::NixOps;
-use crate::nix::{DeployTarget, HostMetadata, SnowContext, StorePath};
-
-/// Configuration for push operations
-#[derive(Debug, Clone)]
-pub struct PushConfiguration {
-    /// Deployment mode (auto, switch, boot, test, dry-run)
-    pub mode: DeploymentMode,
-    /// Force deployment even when reboot is detected in switch mode
-    pub force: bool,
-    /// Maximum number of parallel deployments within a phase
-    pub concurrency: usize,
-    /// Ignore push phases and deploy all hosts in parallel
-    pub ignore_phases: bool,
-    /// Suppress build output
-    pub quiet: bool,
-    /// SSH user for deployment (if None, uses SSH config default)
-    pub ssh_user: Option<String>,
-    /// Allow automatic reboots (false = never reboot, overrides policy/detection)
-    pub allow_reboot: bool,
-}
-
-impl Default for PushConfiguration {
-    fn default() -> Self {
-        Self {
-            mode: DeploymentMode::Auto,
-            force: false,
-            concurrency: 3,
-            ignore_phases: false,
-            quiet: false,
-            ssh_user: None,
-            allow_reboot: true, // Allow reboots by default
-        }
-    }
-}
-
-/// Deployment mode requested by the user
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DeploymentMode {
-    /// Auto mode - detect reboot need and choose appropriate activation mode
-    Auto,
-    /// Force immediate activation (switch mode)
-    Switch,
-    /// Set for next boot only
-    Boot,
-    /// Test activation (non-persistent)
-    Test,
-    /// Dry run - preview only
-    DryRun,
-}
-
-/// A deployment plan for a single host
-#[derive(Debug, Clone)]
-pub struct DeploymentPlan {
-    pub metadata: HostMetadata,
-    pub target: DeployTarget,
-    pub store_path: StorePath,
-    pub activation_mode: ActivationMode,
-    pub reboot_check: Option<RebootCheck>,
-}
-
-/// A host that was blocked from deployment
-#[derive(Debug, Clone)]
-pub struct BlockedHost {
-    pub hostname: String,
-    pub reason: String,
-}
-
-/// Options for push operations (internal use only)
-#[derive(Debug, Clone)]
-struct PushOptions {
-    activation_mode: ActivationMode,
-    concurrency: usize,
-}
-
-impl Default for PushOptions {
-    fn default() -> Self {
-        Self {
-            activation_mode: ActivationMode::Switch,
-            concurrency: 3,
-        }
-    }
-}
-
-/// Result of pushing multiple hosts
-#[derive(Debug)]
-pub struct PushResults {
-    pub results: Vec<(String, DeployResult)>, // (hostname, result)
-}
-
-impl PushResults {
-    pub fn success_count(&self) -> usize {
-        self.results.iter().filter(|(_, r)| r.success).count()
-    }
-
-    pub fn failure_count(&self) -> usize {
-        self.results.iter().filter(|(_, r)| !r.success).count()
-    }
-
-    pub fn all_succeeded(&self) -> bool {
-        self.results.iter().all(|(_, r)| r.success)
-    }
-}
+use crate::nix::{HostMetadata, SnowContext};
+use crate::observer::DeploymentObserver;
+use std::collections::HashMap;
 
 /// Main push orchestration function - handles complete deployment workflow
 ///
@@ -161,10 +89,123 @@ pub fn push(
     observer: &dyn DeploymentObserver,
 ) -> Result<PushResults> {
     // Group hosts by phase
+    let by_phase = group_by_phase(hosts, config.ignore_phases);
+    let phases = sorted_phases(&by_phase);
+
+    let mut all_results = Vec::new();
+
+    // Execute each phase sequentially
+    for phase in phases {
+        let phase_hosts = by_phase.get(&phase).unwrap();
+
+        // Execute step pipeline
+        // Step 1: Build
+        let build_inputs: Vec<BuildInput> = phase_hosts
+            .iter()
+            .map(|h| BuildInput {
+                metadata: h.clone(),
+            })
+            .collect();
+        let build_step = BuildStep {
+            ctx,
+            nix_ops,
+            config,
+        };
+        let build_outputs = execute_step(&build_step, &phase, build_inputs, observer)?;
+
+        // Step 2: Copy
+        let copy_step = CopyStep { deployer };
+        let copy_outputs = execute_step(&copy_step, &phase, build_outputs, observer)?;
+
+        // Step 3: Planning
+        let plan_step = PlanningStep {
+            reboot_ops,
+            mode: config.mode,
+            force: config.force,
+        };
+        let planning_outputs = execute_step(&plan_step, &phase, copy_outputs, observer)?;
+
+        // Step 4: Activate
+        let activate_inputs: Vec<ActivateInput> = planning_outputs
+            .into_iter()
+            .map(|p| ActivateInput { plan: p.plan })
+            .collect();
+        let activate_step = ActivateStep {
+            deployer,
+            concurrency: config.concurrency,
+        };
+        let activate_outputs = execute_step(&activate_step, &phase, activate_inputs, observer)?;
+
+        // Step 5: Reboot
+        let reboot_inputs: Vec<RebootInput> = activate_outputs
+            .into_iter()
+            .map(|a| RebootInput {
+                plan: a.plan,
+                deploy_result: a.result,
+            })
+            .collect();
+        let reboot_step = RebootStep {
+            reboot_ops,
+            allow_reboot: config.allow_reboot,
+        };
+        let reboot_outputs = execute_step(&reboot_step, &phase, reboot_inputs, observer)?;
+
+        // Collect results from reboot step
+        let phase_results: Vec<(String, crate::deploy::DeployResult)> = reboot_outputs
+            .into_iter()
+            .map(|r| (r.hostname, r.result))
+            .collect();
+
+        // Check if phase succeeded
+        let phase_success = phase_results.iter().all(|(_, r)| r.success);
+
+        all_results.extend(phase_results);
+
+        // If this phase failed, stop deployment
+        if !phase_success {
+            return Ok(PushResults {
+                results: all_results,
+            });
+        }
+    }
+
+    Ok(PushResults {
+        results: all_results,
+    })
+}
+
+/// Helper function to execute a step and handle failures
+fn execute_step<S: Step>(
+    step: &S,
+    phase: &str,
+    inputs: Vec<S::Input>,
+    observer: &dyn DeploymentObserver,
+) -> Result<Vec<S::Output>> {
+    let results = step.execute_batch(phase, inputs, observer)?;
+
+    // Check for failures and collect successes
+    let mut outputs = Vec::new();
+    for result in results {
+        match result {
+            StepResult::Success(output) => outputs.push(output),
+            StepResult::Failed { error, .. } => {
+                // Early exit on first failure
+                return Err(error);
+            }
+        }
+    }
+    Ok(outputs)
+}
+
+/// Group hosts by phase
+fn group_by_phase(
+    hosts: Vec<HostMetadata>,
+    ignore_phases: bool,
+) -> HashMap<String, Vec<HostMetadata>> {
     let mut by_phase: HashMap<String, Vec<HostMetadata>> = HashMap::new();
 
     for host in hosts {
-        let phase = if config.ignore_phases {
+        let phase = if ignore_phases {
             "_all".to_string()
         } else {
             host.phase.clone().unwrap_or_else(|| "default".to_string())
@@ -172,505 +213,23 @@ pub fn push(
         by_phase.entry(phase).or_default().push(host);
     }
 
-    // Sort phases lexicographically
+    by_phase
+}
+
+/// Get sorted list of phases
+fn sorted_phases(by_phase: &HashMap<String, Vec<HostMetadata>>) -> Vec<String> {
     let mut phases: Vec<String> = by_phase.keys().cloned().collect();
     phases.sort();
-
-    let mut all_results = Vec::new();
-
-    // Execute each phase sequentially
-    for phase in phases {
-        let phase_hosts = by_phase.remove(&phase).unwrap();
-        let host_names: Vec<String> = phase_hosts.iter().map(|h| h.name.clone()).collect();
-
-        // STEP 1: Build configurations for this phase
-        observer.on_build_step_start(&phase, &host_names)?;
-
-        let mut phase_host_data = Vec::new();
-        for mut host in phase_hosts {
-            observer.on_build_start(&host.name)?;
-
-            match nix_ops.build_host(ctx, &host.name, config.quiet) {
-                Ok(store_path) => {
-                    observer.on_build_complete(&host.name, true)?;
-
-                    // Create deployment target
-                    let target = DeployTarget {
-                        user: config.ssh_user.clone(),
-                        hostname: host.fqdn.clone(),
-                        port: None,
-                    };
-
-                    // Ensure the metadata reflects the current phase we're processing
-                    // (important for ignore_phases mode where all hosts are grouped into "_all")
-                    host.phase = Some(phase.clone());
-
-                    phase_host_data.push((host, target, store_path));
-                }
-                Err(e) => {
-                    observer.on_build_complete(&host.name, false)?;
-                    return Err(e);
-                }
-            }
-        }
-
-        // STEP 2: Copy closures for this phase
-        observer.on_copy_step_start(&phase, &host_names)?;
-
-        for (metadata, target, store_path) in &phase_host_data {
-            observer.on_copy_start(&metadata.name)?;
-
-            match deployer.copy_closure(target, store_path) {
-                Ok(_) => {
-                    observer.on_copy_complete(&metadata.name, true)?;
-                }
-                Err(e) => {
-                    observer.on_copy_complete(&metadata.name, false)?;
-                    return Err(e);
-                }
-            }
-        }
-
-        // STEP 3: Create deployment plans with reboot detection
-        let (plans, blocked) =
-            create_deployment_plans(phase_host_data, reboot_ops, config.mode, config.force)?;
-
-        // Check for blocked hosts
-        if !blocked.is_empty() {
-            // For now, treat blocked hosts as deployment failures
-            // TODO: Better error handling for blocked hosts
-            return Err(crate::error::SnowError::Deploy(
-                crate::error::DeployError::Failed {
-                    host: blocked[0].hostname.clone(),
-                    source: std::io::Error::other(blocked[0].reason.clone()),
-                },
-            ));
-        }
-
-        // STEP 4: Activate configurations for this phase
-        let mut phase_results =
-            activate_by_phase(deployer, plans.clone(), config.concurrency, observer)?;
-
-        let phase_success = phase_results.all_succeeded();
-
-        // STEP 5: Reboot hosts in this phase that need it
-        if phase_success && config.allow_reboot {
-            for plan in &plans {
-                // Should reboot if using Boot mode AND either:
-                // 1. Reboot check says reboot is required (Auto mode with detected reboot)
-                // 2. No reboot check exists (explicit Boot mode)
-                let should_reboot = plan.activation_mode == ActivationMode::Boot
-                    && (plan.reboot_check.is_none()
-                        || plan
-                            .reboot_check
-                            .as_ref()
-                            .map(|c| c.required)
-                            .unwrap_or(false));
-
-                if should_reboot {
-                    observer.on_reboot_start(&plan.metadata.name)?;
-
-                    match reboot_ops.reboot_and_wait(&plan.target) {
-                        Ok(_) => {
-                            observer.on_reboot_complete(&plan.metadata.name, true)?;
-
-                            // Update the result message
-                            if let Some((_, result)) = phase_results
-                                .results
-                                .iter_mut()
-                                .find(|(h, _)| h == &plan.metadata.name)
-                            {
-                                result.message = "Deployed & Rebooted".to_string();
-                            }
-                        }
-                        Err(e) => {
-                            observer.on_reboot_complete(&plan.metadata.name, false)?;
-
-                            // Update the result to show reboot failure
-                            if let Some((_, result)) = phase_results
-                                .results
-                                .iter_mut()
-                                .find(|(h, _)| h == &plan.metadata.name)
-                            {
-                                result.success = false;
-                                result.message = format!("Deployed but reboot failed: {}", e);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        all_results.extend(phase_results.results);
-
-        // If this phase failed, stop deployment
-        if !phase_success {
-            return Ok(PushResults {
-                results: all_results,
-            });
-        }
-    }
-
-    Ok(PushResults {
-        results: all_results,
-    })
-}
-
-/// Activate hosts by phase with observer notifications
-///
-/// Internal function that handles the activation step of deployment.
-/// Hosts are grouped by phase and activated sequentially, with parallel
-/// activation within each phase.
-///
-/// # Arguments
-///
-/// - `deployer`: The deployer implementation (SSH, mock, etc.)
-/// - `plans`: Deployment plans with activation modes already determined
-/// - `concurrency`: Maximum number of parallel deployments within a phase
-/// - `observer`: Observer to receive lifecycle events
-///
-/// # Note
-///
-/// This is an internal function. Use `push()` for the full deployment workflow.
-fn activate_by_phase(
-    deployer: &dyn Deployer,
-    plans: Vec<DeploymentPlan>,
-    concurrency: usize,
-    observer: &dyn DeploymentObserver,
-) -> Result<PushResults> {
-    // Group plans by phase
-    let mut by_phase: HashMap<String, Vec<DeploymentPlan>> = HashMap::new();
-
-    for plan in plans {
-        let phase = plan
-            .metadata
-            .phase
-            .clone()
-            .unwrap_or_else(|| "default".to_string());
-        by_phase.entry(phase).or_default().push(plan);
-    }
-
-    // Sort phases lexicographically
-    let mut phases: Vec<String> = by_phase.keys().cloned().collect();
-    phases.sort();
-
-    let mut all_results = Vec::new();
-
-    // Execute each phase sequentially
-    for phase in phases {
-        let phase_plans = by_phase.remove(&phase).unwrap();
-
-        // Collect host names for observer notification
-        let host_names: Vec<String> = phase_plans
-            .iter()
-            .map(|p| p.metadata.name.clone())
-            .collect();
-
-        // Notify observer of phase start
-        observer.on_phase_start(&phase, &host_names)?;
-
-        // Within each phase, group by activation mode
-        let mut by_mode: HashMap<ActivationMode, Vec<DeploymentPlan>> = HashMap::new();
-        for plan in phase_plans {
-            by_mode.entry(plan.activation_mode).or_default().push(plan);
-        }
-
-        let mut phase_success = true;
-
-        // Deploy each activation mode group in parallel
-        for (mode, mode_plans) in by_mode {
-            let host_data: Vec<_> = mode_plans
-                .iter()
-                .map(|plan| {
-                    (
-                        plan.metadata.clone(),
-                        plan.target.clone(),
-                        plan.store_path.clone(),
-                    )
-                })
-                .collect();
-
-            let opts = PushOptions {
-                activation_mode: mode,
-                concurrency,
-            };
-
-            let mode_results =
-                activate_parallel_with_observer(deployer, host_data, &opts, observer)?;
-
-            // If any deployment in this mode group failed, mark phase as failed
-            if !mode_results.all_succeeded() {
-                phase_success = false;
-            }
-
-            all_results.extend(mode_results.results);
-        }
-
-        // Notify observer of phase completion
-        observer.on_phase_complete(&phase, phase_success)?;
-
-        // If this phase failed, stop deployment
-        if !phase_success {
-            return Ok(PushResults {
-                results: all_results,
-            });
-        }
-    }
-
-    Ok(PushResults {
-        results: all_results,
-    })
-}
-
-/// Activate hosts in parallel with concurrency limit (with observer notifications)
-///
-/// Internal function used by `activate_by_phase()`. Activates hosts in parallel and emits
-/// observer events for each deployment.
-fn activate_parallel_with_observer(
-    deployer: &dyn Deployer,
-    hosts: Vec<(HostMetadata, DeployTarget, StorePath)>,
-    opts: &PushOptions,
-    observer: &dyn DeploymentObserver,
-) -> Result<PushResults> {
-    let deployer = Arc::new(deployer);
-    let observer = Arc::new(observer);
-
-    let pool = rayon::ThreadPoolBuilder::new()
-        .num_threads(opts.concurrency)
-        .build()
-        .map_err(|e| {
-            crate::error::SnowError::Deploy(crate::error::DeployError::Failed {
-                host: "thread pool".to_string(),
-                source: std::io::Error::other(e.to_string()),
-            })
-        })?;
-
-    let results: Vec<(String, DeployResult)> = pool.install(|| {
-        hosts
-            .into_par_iter()
-            .map(|(metadata, target, store_path)| {
-                let hostname = metadata.name.clone();
-                let deployer = Arc::clone(&deployer);
-                let observer = Arc::clone(&observer);
-
-                // Notify observer of deployment start
-                if let Err(e) = observer.on_deploy_start(&hostname, opts.activation_mode) {
-                    return (
-                        hostname,
-                        DeployResult::failure(format!("Observer error: {}", e)),
-                    );
-                }
-
-                // Perform deployment
-                let result = deployer
-                    .deploy(&target, &store_path, opts.activation_mode)
-                    .unwrap_or_else(|e| {
-                        let mut error_msg = e.to_string();
-                        let mut source = std::error::Error::source(&e);
-                        while let Some(err) = source {
-                            error_msg.push_str(&format!("\n  Caused by: {}", err));
-                            source = std::error::Error::source(err);
-                        }
-                        DeployResult::failure(error_msg)
-                    });
-
-                // Notify observer of deployment completion
-                if let Err(e) = observer.on_deploy_complete(&hostname, &result) {
-                    // If observer fails, we still return the deployment result
-                    // but log the observer error in the result message
-                    let mut modified_result = result.clone();
-                    modified_result.message =
-                        format!("{}\nObserver error: {}", modified_result.message, e);
-                    return (hostname, modified_result);
-                }
-
-                (hostname, result)
-            })
-            .collect()
-    });
-
-    Ok(PushResults { results })
-}
-
-/// Strategy for handling a host deployment
-enum ActivationStrategy {
-    /// Deploy with the given activation mode and optional reboot check
-    Deploy(ActivationMode, Option<RebootCheck>),
-    /// Block deployment with the given reason
-    Block(String),
-}
-
-/// Determine the activation strategy for a single host
-fn determine_activation_strategy(
-    metadata: &HostMetadata,
-    target: &DeployTarget,
-    store_path: &StorePath,
-    reboot_ops: &dyn RebootOps,
-    mode: DeploymentMode,
-    force: bool,
-) -> Result<ActivationStrategy> {
-    match mode {
-        DeploymentMode::DryRun => Ok(ActivationStrategy::Deploy(
-            ActivationMode::DryActivate,
-            None,
-        )),
-        DeploymentMode::Test => Ok(ActivationStrategy::Deploy(ActivationMode::Test, None)),
-        DeploymentMode::Boot => Ok(ActivationStrategy::Deploy(ActivationMode::Boot, None)),
-        DeploymentMode::Switch => {
-            handle_switch_mode(metadata, target, store_path, reboot_ops, force)
-        }
-        DeploymentMode::Auto => handle_auto_mode(metadata, target, store_path, reboot_ops),
-    }
-}
-
-/// Handle switch mode: force immediate activation with safety checks
-fn handle_switch_mode(
-    metadata: &HostMetadata,
-    target: &DeployTarget,
-    store_path: &StorePath,
-    reboot_ops: &dyn RebootOps,
-    force: bool,
-) -> Result<ActivationStrategy> {
-    use crate::nix::RebootPolicy;
-
-    // Check reboot policy - 'never' and 'always' policies override switch mode
-    match metadata.reboot_policy {
-        RebootPolicy::Never => {
-            // Never policy: use boot mode without reboot
-            return Ok(ActivationStrategy::Deploy(
-                ActivationMode::Boot,
-                Some(RebootCheck::not_required()),
-            ));
-        }
-        RebootPolicy::Always => {
-            // Always policy: use boot mode and will reboot
-            return Ok(ActivationStrategy::Deploy(
-                ActivationMode::Boot,
-                Some(RebootCheck::required(
-                    crate::deploy::reboot::RebootReason::Policy,
-                )),
-            ));
-        }
-        RebootPolicy::Auto => {
-            // Continue with normal switch mode logic
-        }
-    }
-
-    let check = reboot_ops.check_reboot_required(target, store_path)?;
-
-    if check.required && !force {
-        // Reboot required but --force not set - block this host
-        let reason = check
-            .reason
-            .as_ref()
-            .map(|r| r.to_string())
-            .unwrap_or_else(|| "unknown".to_string());
-        Ok(ActivationStrategy::Block(reason))
-    } else {
-        Ok(ActivationStrategy::Deploy(
-            ActivationMode::Switch,
-            Some(check),
-        ))
-    }
-}
-
-/// Handle auto mode: detect reboot requirement and choose activation mode
-fn handle_auto_mode(
-    metadata: &HostMetadata,
-    target: &DeployTarget,
-    store_path: &StorePath,
-    reboot_ops: &dyn RebootOps,
-) -> Result<ActivationStrategy> {
-    use crate::nix::RebootPolicy;
-
-    // Check reboot policy
-    match metadata.reboot_policy {
-        RebootPolicy::Never => {
-            // Never policy: always use boot mode, never reboot
-            return Ok(ActivationStrategy::Deploy(
-                ActivationMode::Boot,
-                Some(RebootCheck::not_required()),
-            ));
-        }
-        RebootPolicy::Always => {
-            // Always policy: always use boot mode and always reboot
-            return Ok(ActivationStrategy::Deploy(
-                ActivationMode::Boot,
-                Some(RebootCheck::required(
-                    crate::deploy::reboot::RebootReason::Policy,
-                )),
-            ));
-        }
-        RebootPolicy::Auto => {
-            // Continue with automatic detection
-        }
-    }
-
-    let check = reboot_ops.check_reboot_required(target, store_path)?;
-
-    let activation = if check.required {
-        ActivationMode::Boot
-    } else {
-        ActivationMode::Switch
-    };
-
-    Ok(ActivationStrategy::Deploy(activation, Some(check)))
-}
-
-/// Create deployment plans with reboot detection
-///
-/// This function determines the appropriate activation mode for each host based on:
-/// - User-requested deployment mode
-/// - Reboot detection results
-/// - Force flag
-///
-/// Returns (plans, blocked_hosts) where blocked_hosts contains hosts that were
-/// blocked by safety checks (e.g., --switch without --force when reboot required)
-pub fn create_deployment_plans(
-    hosts: Vec<(HostMetadata, DeployTarget, StorePath)>,
-    reboot_ops: &dyn RebootOps,
-    mode: DeploymentMode,
-    force: bool,
-) -> Result<(Vec<DeploymentPlan>, Vec<BlockedHost>)> {
-    let mut plans = Vec::new();
-    let mut blocked = Vec::new();
-
-    for (metadata, target, store_path) in hosts {
-        match determine_activation_strategy(
-            &metadata,
-            &target,
-            &store_path,
-            reboot_ops,
-            mode,
-            force,
-        )? {
-            ActivationStrategy::Deploy(activation_mode, reboot_check) => {
-                plans.push(DeploymentPlan {
-                    metadata,
-                    target,
-                    store_path,
-                    activation_mode,
-                    reboot_check,
-                });
-            }
-            ActivationStrategy::Block(reason) => {
-                blocked.push(BlockedHost {
-                    hostname: metadata.name.clone(),
-                    reason,
-                });
-            }
-        }
-    }
-
-    Ok((plans, blocked))
+    phases
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::deploy::mock::MockDeployer;
+    use crate::deploy::{ActivationMode, DeployResult};
     use crate::nix::ops::mock::MockNixOps;
-    use crate::nix::SnowContext;
+    use crate::nix::{DeployTarget, HostMetadata, SnowContext, StorePath};
 
     /// Helper to create just HostMetadata for push tests
     fn make_host_metadata(
@@ -704,6 +263,64 @@ mod tests {
         let store_path = StorePath::new(format!("/nix/store/fake-{}", name));
 
         (metadata, target, store_path)
+    }
+
+    /// Helper function to activate hosts using ActivateStep (replaces old activate_plans_for_test)
+    fn activate_plans_for_test(
+        deployer: &dyn crate::deploy::Deployer,
+        plans: Vec<DeploymentPlan>,
+        concurrency: usize,
+        observer: &dyn crate::observer::DeploymentObserver,
+    ) -> Result<PushResults> {
+        // Get the phase from the first plan (all plans in tests have the same phase)
+        let phase = plans
+            .first()
+            .and_then(|p| p.metadata.phase.as_ref())
+            .cloned()
+            .unwrap_or_else(|| "default".to_string());
+
+        // Convert plans to ActivateInput
+        let inputs: Vec<ActivateInput> = plans
+            .into_iter()
+            .map(|plan| ActivateInput { plan })
+            .collect();
+
+        // Create ActivateStep and execute
+        let step = ActivateStep {
+            deployer,
+            concurrency,
+        };
+
+        // Execute and handle potential error (ActivateStep returns error on phase failure)
+        let results_or_err = step.execute_batch(&phase, inputs, observer);
+
+        // Convert StepResults to PushResults format
+        // Even if there's an error, we might have partial results we want to return
+        let mut push_results = Vec::new();
+
+        match results_or_err {
+            Ok(results) => {
+                for result in results {
+                    match result {
+                        StepResult::Success(output) => {
+                            push_results.push((output.hostname, output.result));
+                        }
+                        StepResult::Failed { hostname, error } => {
+                            // In case of failure, create a DeployResult with error
+                            push_results.push((hostname, DeployResult::failure(error.to_string())));
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                // On error, return the error - tests that expect failures will handle this
+                return Err(e);
+            }
+        }
+
+        Ok(PushResults {
+            results: push_results,
+        })
     }
 
     #[test]
@@ -1143,7 +760,7 @@ mod tests {
             },
         ];
 
-        let results = activate_by_phase(&deployer, plans, 2, &observer).unwrap();
+        let results = activate_plans_for_test(&deployer, plans, 2, &observer).unwrap();
 
         assert_eq!(results.success_count(), 2);
         assert_eq!(results.failure_count(), 0);
@@ -1160,47 +777,57 @@ mod tests {
 
     #[test]
     fn test_push_with_multiple_phases() {
+        // Test that phases execute in lexicographic order (p1 before p2)
+        let ctx = SnowContext::test_context();
+        let nix_ops = MockNixOps::new();
         let deployer = MockDeployer::new();
+        let reboot_config = crate::deploy::reboot::RebootDetectionConfig {
+            critical_services: vec![],
+            check_kernel: false,
+            check_initrd: false,
+            check_init: false,
+        };
+        let reboot_detector = crate::deploy::reboot::RebootDetector::new(reboot_config);
         let observer = TestObserver::new();
 
-        let plans = vec![
-            DeploymentPlan {
-                metadata: HostMetadata {
-                    name: "host3".to_string(),
-                    phase: Some("p2".to_string()),
-                    tags: vec![],
-                    fqdn: "host3.example.com".to_string(),
-                    reboot_policy: crate::nix::RebootPolicy::Auto,
-                },
-                target: DeployTarget {
-                    user: Some("root".to_string()),
-                    hostname: "host3.example.com".to_string(),
-                    port: None,
-                },
-                store_path: StorePath::new("/nix/store/fake-host3".to_string()),
-                activation_mode: ActivationMode::Switch,
-                reboot_check: None,
+        // Note: hosts are intentionally out of order to test sorting
+        let hosts = vec![
+            HostMetadata {
+                name: "host3".to_string(),
+                fqdn: "host3.example.com".to_string(),
+                phase: Some("p2".to_string()),
+                tags: vec![],
+                reboot_policy: crate::nix::RebootPolicy::Auto,
             },
-            DeploymentPlan {
-                metadata: HostMetadata {
-                    name: "host1".to_string(),
-                    phase: Some("p1".to_string()),
-                    tags: vec![],
-                    fqdn: "host1.example.com".to_string(),
-                    reboot_policy: crate::nix::RebootPolicy::Auto,
-                },
-                target: DeployTarget {
-                    user: Some("root".to_string()),
-                    hostname: "host1.example.com".to_string(),
-                    port: None,
-                },
-                store_path: StorePath::new("/nix/store/fake-host1".to_string()),
-                activation_mode: ActivationMode::Switch,
-                reboot_check: None,
+            HostMetadata {
+                name: "host1".to_string(),
+                fqdn: "host1.example.com".to_string(),
+                phase: Some("p1".to_string()),
+                tags: vec![],
+                reboot_policy: crate::nix::RebootPolicy::Auto,
             },
         ];
 
-        let results = activate_by_phase(&deployer, plans, 2, &observer).unwrap();
+        let config = PushConfiguration {
+            mode: DeploymentMode::Switch,
+            force: false,
+            concurrency: 2,
+            ignore_phases: false,
+            quiet: false,
+            ssh_user: None,
+            allow_reboot: true,
+        };
+
+        let results = push(
+            &ctx,
+            &nix_ops,
+            &deployer,
+            &reboot_detector,
+            hosts,
+            &config,
+            &observer,
+        )
+        .unwrap();
 
         assert_eq!(results.success_count(), 2);
 
@@ -1215,57 +842,74 @@ mod tests {
 
     #[test]
     fn test_push_stops_on_phase_failure() {
-        let deployer = MockDeployer::new().with_failures(vec!["host1.example.com".to_string()]);
+        // Test that when phase p1 fails, phase p2 never starts
+        let ctx = SnowContext::test_context();
+        let nix_ops = MockNixOps::new();
+        let deployer =
+            MockDeployer::new().with_activate_failures(vec!["host1.example.com".to_string()]);
+        let reboot_config = crate::deploy::reboot::RebootDetectionConfig {
+            critical_services: vec![],
+            check_kernel: false,
+            check_initrd: false,
+            check_init: false,
+        };
+        let reboot_detector = crate::deploy::reboot::RebootDetector::new(reboot_config);
         let observer = TestObserver::new();
 
-        let plans = vec![
-            DeploymentPlan {
-                metadata: HostMetadata {
-                    name: "host1".to_string(),
-                    phase: Some("p1".to_string()),
-                    tags: vec![],
-                    fqdn: "host1.example.com".to_string(),
-                    reboot_policy: crate::nix::RebootPolicy::Auto,
-                },
-                target: DeployTarget {
-                    user: Some("root".to_string()),
-                    hostname: "host1.example.com".to_string(),
-                    port: None,
-                },
-                store_path: StorePath::new("/nix/store/fake-host1".to_string()),
-                activation_mode: ActivationMode::Switch,
-                reboot_check: None,
+        let hosts = vec![
+            HostMetadata {
+                name: "host1".to_string(),
+                fqdn: "host1.example.com".to_string(),
+                phase: Some("p1".to_string()),
+                tags: vec![],
+                reboot_policy: crate::nix::RebootPolicy::Auto,
             },
-            DeploymentPlan {
-                metadata: HostMetadata {
-                    name: "host2".to_string(),
-                    phase: Some("p2".to_string()),
-                    tags: vec![],
-                    fqdn: "host2.example.com".to_string(),
-                    reboot_policy: crate::nix::RebootPolicy::Auto,
-                },
-                target: DeployTarget {
-                    user: Some("root".to_string()),
-                    hostname: "host2.example.com".to_string(),
-                    port: None,
-                },
-                store_path: StorePath::new("/nix/store/fake-host2".to_string()),
-                activation_mode: ActivationMode::Switch,
-                reboot_check: None,
+            HostMetadata {
+                name: "host2".to_string(),
+                fqdn: "host2.example.com".to_string(),
+                phase: Some("p2".to_string()),
+                tags: vec![],
+                reboot_policy: crate::nix::RebootPolicy::Auto,
             },
         ];
 
-        let results = activate_by_phase(&deployer, plans, 2, &observer).unwrap();
+        let config = PushConfiguration {
+            mode: DeploymentMode::Switch,
+            force: false,
+            concurrency: 2,
+            ignore_phases: false,
+            quiet: false,
+            ssh_user: None,
+            allow_reboot: true,
+        };
 
-        // Only p1 should have run (and failed), p2 should not have run
-        assert_eq!(results.results.len(), 1);
-        assert_eq!(results.success_count(), 0);
-        assert_eq!(results.failure_count(), 1);
+        // When activation fails, push() returns Err
+        let result = push(
+            &ctx,
+            &nix_ops,
+            &deployer,
+            &reboot_detector,
+            hosts,
+            &config,
+            &observer,
+        );
 
-        // Check that p2 never started
+        // Push should fail due to phase p1 activation failure
+        assert!(
+            result.is_err(),
+            "Push should return error when activation fails"
+        );
+
         let events = observer.get_events();
-        assert!(!events.iter().any(|e| e.contains("p2")));
+
+        // Phase p1 should have completed (with failure)
         assert!(events.contains(&"phase_complete:p1:failed".to_string()));
+
+        // Phase p2 should never start (no build, copy, or deploy events for host2)
+        assert!(
+            !events.iter().any(|e| e.contains("host2")),
+            "Phase p2 should not have started after p1 failure"
+        );
     }
 
     #[test]
@@ -1291,7 +935,7 @@ mod tests {
             reboot_check: None,
         }];
 
-        let results = activate_by_phase(&deployer, plans, 1, &observer).unwrap();
+        let results = activate_plans_for_test(&deployer, plans, 1, &observer).unwrap();
         assert_eq!(results.success_count(), 1);
     }
 
@@ -1318,7 +962,7 @@ mod tests {
             reboot_check: None,
         }];
 
-        let results = activate_by_phase(&deployer, plans, 1, &observer).unwrap();
+        let results = activate_plans_for_test(&deployer, plans, 1, &observer).unwrap();
         assert_eq!(results.success_count(), 1);
 
         // Should use "default" phase
@@ -1369,7 +1013,7 @@ mod tests {
             },
         ];
 
-        let results = activate_by_phase(&deployer, plans, 2, &observer).unwrap();
+        let results = activate_plans_for_test(&deployer, plans, 2, &observer).unwrap();
 
         // Both hosts should have results
         assert_eq!(results.results.len(), 2);
@@ -1394,43 +1038,76 @@ mod tests {
     #[test]
     fn test_push_error_message_includes_source() {
         // Test that when deployment fails, the error message includes the full error chain
-        let deployer = MockDeployer::new().with_failures(vec!["fail.example.com".to_string()]);
-        let observer = NoopObserver;
+        let ctx = SnowContext::test_context();
+        let nix_ops = MockNixOps::new();
+        let deployer =
+            MockDeployer::new().with_activate_failures(vec!["fail.example.com".to_string()]);
 
-        let plans = vec![DeploymentPlan {
-            metadata: HostMetadata {
-                name: "fail".to_string(),
-                phase: Some("p1".to_string()),
-                tags: vec![],
-                fqdn: "fail.example.com".to_string(),
-                reboot_policy: crate::nix::RebootPolicy::Auto,
-            },
-            target: DeployTarget {
-                user: Some("root".to_string()),
-                hostname: "fail.example.com".to_string(),
-                port: None,
-            },
-            store_path: StorePath::new("/nix/store/fake-fail".to_string()),
-            activation_mode: ActivationMode::Switch,
-            reboot_check: None,
+        // Use a reboot detector that won't require reboots (empty config)
+        let reboot_config = crate::deploy::reboot::RebootDetectionConfig {
+            critical_services: vec![],
+            check_kernel: false,
+            check_initrd: false,
+            check_init: false,
+        };
+        let reboot_detector = crate::deploy::reboot::RebootDetector::new(reboot_config);
+        let observer = crate::observer::NoopObserver;
+
+        let hosts = vec![HostMetadata {
+            name: "fail".to_string(),
+            fqdn: "fail.example.com".to_string(),
+            phase: Some("p1".to_string()),
+            tags: vec![],
+            reboot_policy: crate::nix::RebootPolicy::Auto,
         }];
 
-        let results = activate_by_phase(&deployer, plans, 1, &observer).unwrap();
+        let config = PushConfiguration {
+            mode: DeploymentMode::Switch,
+            force: false,
+            concurrency: 1,
+            ignore_phases: false,
+            quiet: false,
+            ssh_user: None,
+            allow_reboot: true,
+        };
 
-        assert_eq!(results.failure_count(), 1);
+        // When activation fails, push() returns Err
+        let result = push(
+            &ctx,
+            &nix_ops,
+            &deployer,
+            &reboot_detector,
+            hosts,
+            &config,
+            &observer,
+        );
 
-        // Verify the error message includes the source error
-        let (_, deploy_result) = &results.results[0];
-        assert!(!deploy_result.success);
+        // Push should fail due to activation failure
         assert!(
-            deploy_result.message.contains("Caused by:"),
-            "Error message should include 'Caused by:' to show the error chain. Got: {}",
-            deploy_result.message
+            result.is_err(),
+            "Push should return error when activation fails"
+        );
+
+        // Verify the error message includes the source error chain
+        let error = result.unwrap_err();
+
+        // Build full error message including source chain
+        let mut full_error = error.to_string();
+        let mut source = std::error::Error::source(&error);
+        while let Some(err) = source {
+            full_error.push_str(&format!("\n  Caused by: {}", err));
+            source = std::error::Error::source(err);
+        }
+
+        assert!(
+            full_error.contains("fail"),
+            "Error message should include the failed host name. Got: {}",
+            full_error
         );
         assert!(
-            deploy_result.message.contains("copy_closure failed"),
-            "Error message should include the source error details. Got: {}",
-            deploy_result.message
+            full_error.contains("activation failed"),
+            "Error message should include 'activation failed'. Got: {}",
+            full_error
         );
     }
 
@@ -1455,51 +1132,73 @@ mod tests {
             hosts: vec![],
         };
 
+        let ctx = SnowContext::test_context();
+        let nix_ops = MockNixOps::new();
         let deployer = MockDeployer::from_fixture(fixture);
-        let observer = NoopObserver;
+        let reboot_config = crate::deploy::reboot::RebootDetectionConfig {
+            critical_services: vec![],
+            check_kernel: false,
+            check_initrd: false,
+            check_init: false,
+        };
+        let reboot_detector = crate::deploy::reboot::RebootDetector::new(reboot_config);
+        let observer = crate::observer::NoopObserver;
 
-        let plans = vec![DeploymentPlan {
-            metadata: HostMetadata {
-                name: "test".to_string(),
-                phase: Some("p1".to_string()),
-                tags: vec![],
-                fqdn: "test.example.com".to_string(),
-                reboot_policy: crate::nix::RebootPolicy::Auto,
-            },
-            target: DeployTarget {
-                user: Some("root".to_string()),
-                hostname: "test.example.com".to_string(),
-                port: None,
-            },
-            store_path: StorePath::new("/nix/store/fake-test".to_string()),
-            activation_mode: ActivationMode::Switch,
-            reboot_check: None,
+        let hosts = vec![HostMetadata {
+            name: "test".to_string(),
+            fqdn: "test.example.com".to_string(),
+            phase: Some("p1".to_string()),
+            tags: vec![],
+            reboot_policy: crate::nix::RebootPolicy::Auto,
         }];
 
-        let results = activate_by_phase(&deployer, plans, 1, &observer).unwrap();
+        let config = PushConfiguration {
+            mode: DeploymentMode::Switch,
+            force: false,
+            concurrency: 1,
+            ignore_phases: false,
+            quiet: false,
+            ssh_user: None,
+            allow_reboot: true,
+        };
 
-        assert_eq!(results.failure_count(), 1);
+        // When activation fails, push() returns Err
+        let result = push(
+            &ctx,
+            &nix_ops,
+            &deployer,
+            &reboot_detector,
+            hosts,
+            &config,
+            &observer,
+        );
 
-        let (_, deploy_result) = &results.results[0];
-        assert!(!deploy_result.success);
-
-        // The error message should be structured as:
-        // "Failed to deploy to host 'test.example.com'"
-        //   Caused by: Activation failed
+        // Push should fail due to activation failure
         assert!(
-            deploy_result.message.contains("Failed to deploy"),
-            "Error message should start with main error. Got: {}",
-            deploy_result.message
+            result.is_err(),
+            "Push should return error when activation fails"
+        );
+
+        // Verify the error message includes expected details
+        let error = result.unwrap_err();
+
+        // Build full error message including source chain
+        let mut full_error = error.to_string();
+        let mut source = std::error::Error::source(&error);
+        while let Some(err) = source {
+            full_error.push_str(&format!("\n  Caused by: {}", err));
+            source = std::error::Error::source(err);
+        }
+
+        assert!(
+            full_error.contains("test"),
+            "Error message should include the failed host name. Got: {}",
+            full_error
         );
         assert!(
-            deploy_result.message.contains("Caused by:"),
-            "Error message should include 'Caused by:' separator. Got: {}",
-            deploy_result.message
-        );
-        assert!(
-            deploy_result.message.contains("Activation failed"),
-            "Error message should include the source error. Got: {}",
-            deploy_result.message
+            full_error.contains("systemd service failed to start"),
+            "Error message should include the specific error details. Got: {}",
+            full_error
         );
     }
 
@@ -2069,7 +1768,8 @@ mod tests {
             allow_reboot: true,
         };
 
-        let results = push(
+        // When activation fails, push() returns Err but observer events still fire
+        let result = push(
             &ctx,
             &nix_ops,
             &deployer,
@@ -2077,20 +1777,29 @@ mod tests {
             hosts,
             &config,
             &observer,
-        )
-        .unwrap();
+        );
 
-        // Phase1 should fail, Phase2 should not run
-        assert_eq!(results.success_count(), 0);
-        assert_eq!(results.failure_count(), 1);
+        // Push should fail due to phase1 activation failure
+        assert!(
+            result.is_err(),
+            "Push should return error when activation fails"
+        );
 
         let events = observer.get_events();
 
-        // Phase1 should have all events
+        // Phase1 should have all events (build, copy, deploy)
         assert!(events.iter().any(|e| e.contains("phase1")));
+        assert!(events.iter().any(|e| e.contains("phase1-host")));
 
         // Phase2 should have NO events (build, copy, or activate)
-        assert!(!events.iter().any(|e| e.contains("phase2")));
+        assert!(
+            !events.iter().any(|e| e.contains("phase2")),
+            "Phase2 should not start after phase1 failure"
+        );
+        assert!(
+            !events.iter().any(|e| e.contains("phase2-host")),
+            "Phase2 host should not be processed"
+        );
     }
 
     #[test]

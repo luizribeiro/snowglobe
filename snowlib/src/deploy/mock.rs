@@ -184,12 +184,15 @@ impl Deployer for MockDeployer {
         print!("{}", self.generate_activate_output(!should_fail));
 
         if should_fail {
-            if let Some(error) = error_msg {
+            let error_text = if let Some(error) = error_msg.as_ref() {
                 eprintln!("error: {}", error);
-            }
+                error.clone()
+            } else {
+                "Activation failed".to_string()
+            };
             return Err(crate::error::DeployError::Failed {
                 host: target.hostname.clone(),
-                source: std::io::Error::other("Activation failed"),
+                source: std::io::Error::other(error_text),
             }
             .into());
         }
