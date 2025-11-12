@@ -130,10 +130,10 @@ impl PushArgs {
     /// If hosts are provided, validates they exist in the flake.
     fn resolve_hosts(
         &self,
-        ctx: &Flake,
+        flake: &Flake,
         nix_backend: &dyn snowlib::NixBackend,
     ) -> Result<Vec<String>> {
-        let all_hosts = nix_backend.list_hosts(ctx, None)?;
+        let all_hosts = nix_backend.list_hosts(flake, None)?;
 
         if self.hosts.is_empty() {
             // No hosts specified, push all hosts
@@ -197,22 +197,22 @@ impl PushArgs {
     /// - Create backend implementations and observer
     /// - Call snowlib::push()
     /// - Print results table
-    pub fn run(self, ctx: &Flake) -> Result<()> {
+    pub fn run(self, flake: &Flake) -> Result<()> {
         // Validate flag combinations
         self.validate()?;
 
         // When using --mock-fixture, use the mock flake instead of the real one
         #[cfg(debug_assertions)]
-        let mock_ctx;
+        let mock_flake;
         #[cfg(debug_assertions)]
-        let ctx = if self.mock_fixture.is_some() {
+        let flake = if self.mock_fixture.is_some() {
             // Use the mock flake bundled with the test fixtures
             let mock_flake_path =
                 std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
-            mock_ctx = Flake::new(Some(mock_flake_path.to_str().unwrap()))?;
-            &mock_ctx
+            mock_flake = Flake::new(Some(mock_flake_path.to_str().unwrap()))?;
+            &mock_flake
         } else {
-            ctx
+            flake
         };
 
         // Create backend implementations
@@ -229,10 +229,10 @@ impl PushArgs {
         let observer = observer::CliObserver::new(self.quiet);
 
         // Resolve hosts and get metadata
-        let hostnames = self.resolve_hosts(ctx, nix_backend.as_ref())?;
+        let hostnames = self.resolve_hosts(flake, nix_backend.as_ref())?;
         let mut hosts = Vec::new();
         for name in hostnames {
-            let metadata = nix_backend.get_host_metadata(ctx, &name)?;
+            let metadata = nix_backend.get_host_metadata(flake, &name)?;
             hosts.push(metadata);
         }
 
@@ -256,7 +256,7 @@ impl PushArgs {
         );
 
         // Execute the push - snowlib handles everything!
-        let results = snowlib::push(ctx, &push_ctx, hosts, &observer)?;
+        let results = snowlib::push(flake, &push_ctx, hosts, &observer)?;
 
         // Print results table
         self.print_results_table(&results)?;

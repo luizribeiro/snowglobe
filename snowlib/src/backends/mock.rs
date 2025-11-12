@@ -86,7 +86,7 @@ impl NixBackend for MockNixBackend {
         }
     }
 
-    fn get_host_metadata(&self, _ctx: &Flake, host: &str) -> Result<HostMetadata> {
+    fn get_host_metadata(&self, _flake: &Flake, host: &str) -> Result<HostMetadata> {
         if let Some(meta_fix) = self.get_metadata_fixture(host) {
             Ok(HostMetadata {
                 name: host.to_string(),
@@ -107,7 +107,7 @@ impl NixBackend for MockNixBackend {
         }
     }
 
-    fn build_host(&self, _ctx: &Flake, host: &str, _quiet: bool) -> Result<StorePath> {
+    fn build_host(&self, _flake: &Flake, host: &str, _quiet: bool) -> Result<StorePath> {
         // Check if this host should fail
         if self.build_failures.contains(&host.to_string()) {
             return Err(crate::error::NixError::BuildFailed {

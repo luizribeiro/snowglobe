@@ -17,30 +17,30 @@ use std::process::Command;
 /// the nix module. Use the public functions like `list_hosts()` instead.
 pub(crate) struct NixCommand {
     cmd: Command,
-    ctx: Flake,
+    flake: Flake,
     quiet: bool,
 }
 
 impl NixCommand {
-    /// Create a new nix command builder with a context (private)
-    fn new(ctx: &Flake) -> Self {
+    /// Create a new nix command builder with a flake (private)
+    fn new(flake: &Flake) -> Self {
         Self {
             cmd: Command::new("nix"),
-            ctx: ctx.clone(),
+            flake: flake.clone(),
             quiet: true, // Default to quiet mode
         }
     }
 
     /// Start building a `nix eval` command for a flake attribute
-    pub(crate) fn eval(ctx: &Flake, attr: impl AsRef<str>) -> Self {
-        let mut builder = Self::new(ctx);
+    pub(crate) fn eval(flake: &Flake, attr: impl AsRef<str>) -> Self {
+        let mut builder = Self::new(flake);
         builder.cmd.args(["eval", attr.as_ref()]);
         builder
     }
 
     /// Start building a `nix build` command
-    pub(crate) fn build(ctx: &Flake, target: impl AsRef<str>) -> Self {
-        let mut builder = Self::new(ctx);
+    pub(crate) fn build(flake: &Flake, target: impl AsRef<str>) -> Self {
+        let mut builder = Self::new(flake);
         builder.cmd.args(["build", target.as_ref()]);
         builder
     }
@@ -81,7 +81,7 @@ impl NixCommand {
             // Quiet mode: capture all output
             let output = self
                 .cmd
-                .current_dir(self.ctx.flake_root())
+                .current_dir(self.flake.flake_root())
                 .output()
                 .map_err(|e| NixError::CommandFailed { source: e })?;
 
@@ -102,7 +102,7 @@ impl NixCommand {
 
             let mut child = self
                 .cmd
-                .current_dir(self.ctx.flake_root())
+                .current_dir(self.flake.flake_root())
                 .stdout(Stdio::piped())
                 .stderr(Stdio::inherit())
                 .spawn()

@@ -26,8 +26,8 @@ fn main() -> Result<()> {
     miette::set_panic_hook();
     let cli = Cli::parse();
 
-    // Create context with flake root
-    let ctx = snowlib::Flake::new(cli.flake_path.as_deref()).into_diagnostic()?;
+    // Create flake context
+    let flake = snowlib::Flake::new(cli.flake_path.as_deref()).into_diagnostic()?;
 
-    cli.command.run(&ctx).into_diagnostic()
+    cli.command.run(&flake).into_diagnostic()
 }

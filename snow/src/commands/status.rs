@@ -30,13 +30,13 @@ struct HostStatus {
 }
 
 impl StatusArgs {
-    pub fn run(self, ctx: &Flake) -> Result<()> {
+    pub fn run(self, flake: &Flake) -> Result<()> {
         let nix_backend = crate::backend_factory::create_nix_backend(
             #[cfg(debug_assertions)]
             &self.mock_fixture,
         )?;
 
-        let hosts = nix_backend.list_hosts(ctx, self.filter.as_deref())?;
+        let hosts = nix_backend.list_hosts(flake, self.filter.as_deref())?;
 
         let statuses: Vec<HostStatus> = hosts
             .into_iter()

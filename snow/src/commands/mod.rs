@@ -16,11 +16,11 @@ pub enum Commands {
 }
 
 impl Commands {
-    pub fn run(self, ctx: &snowlib::Flake) -> snowlib::Result<()> {
+    pub fn run(self, flake: &snowlib::Flake) -> snowlib::Result<()> {
         match self {
-            Commands::Status(args) => args.run(ctx),
-            Commands::List(args) => args.run(ctx),
-            Commands::Push(args) => args.run(ctx),
+            Commands::Status(args) => args.run(flake),
+            Commands::List(args) => args.run(flake),
+            Commands::Push(args) => args.run(flake),
         }
     }
 }

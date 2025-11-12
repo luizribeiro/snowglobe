@@ -879,7 +879,7 @@ mod tests {
     #[test]
     fn test_push_with_multiple_phases() {
         // Test that phases execute in lexicographic order (p1 before p2)
-        let ctx = Flake::test_context();
+        let flake = Flake::test_context();
         let nix_backend = MockNixBackend::new();
         let deployer = MockDeployBackend::new();
         let reboot_config = crate::backends::reboot::RebootDetectionConfig {
@@ -921,7 +921,7 @@ mod tests {
 
         let results = {
             let push_ctx = PushContext::new(&nix_backend, &deployer, &reboot_detector, &config);
-            push(&ctx, &push_ctx, hosts, &observer)
+            push(&flake, &push_ctx, hosts, &observer)
         }
         .unwrap();
 
@@ -939,7 +939,7 @@ mod tests {
     #[test]
     fn test_push_stops_on_phase_failure() {
         // Test that when phase p1 fails, phase p2 never starts
-        let ctx = Flake::test_context();
+        let flake = Flake::test_context();
         let nix_backend = MockNixBackend::new();
         let deployer =
             MockDeployBackend::new().with_activate_failures(vec!["host1.example.com".to_string()]);
@@ -982,7 +982,7 @@ mod tests {
         // When activation fails, push() returns Err
         let result = {
             let push_ctx = PushContext::new(&nix_backend, &deployer, &reboot_detector, &config);
-            push(&ctx, &push_ctx, hosts, &observer)
+            push(&flake, &push_ctx, hosts, &observer)
         };
 
         // Push should fail due to phase p1 activation failure
@@ -1130,7 +1130,7 @@ mod tests {
     #[test]
     fn test_push_error_message_includes_source() {
         // Test that when deployment fails, the error message includes the full error chain
-        let ctx = Flake::test_context();
+        let flake = Flake::test_context();
         let nix_backend = MockNixBackend::new();
         let deployer =
             MockDeployBackend::new().with_activate_failures(vec!["fail.example.com".to_string()]);
@@ -1166,7 +1166,7 @@ mod tests {
         // When activation fails, push() returns Err
         let result = {
             let push_ctx = PushContext::new(&nix_backend, &deployer, &reboot_detector, &config);
-            push(&ctx, &push_ctx, hosts, &observer)
+            push(&flake, &push_ctx, hosts, &observer)
         };
 
         // Push should fail due to activation failure
@@ -1219,7 +1219,7 @@ mod tests {
             hosts: vec![],
         };
 
-        let ctx = Flake::test_context();
+        let flake = Flake::test_context();
         let nix_backend = MockNixBackend::new();
         let deployer = MockDeployBackend::from_fixture(fixture);
         let reboot_config = crate::backends::reboot::RebootDetectionConfig {
@@ -1252,7 +1252,7 @@ mod tests {
         // When activation fails, push() returns Err
         let result = {
             let push_ctx = PushContext::new(&nix_backend, &deployer, &reboot_detector, &config);
-            push(&ctx, &push_ctx, hosts, &observer)
+            push(&flake, &push_ctx, hosts, &observer)
         };
 
         // Push should fail due to activation failure
@@ -1291,7 +1291,7 @@ mod tests {
     #[test]
     fn test_push_full_workflow_single_phase_success() {
         // Test the complete workflow: build → copy → plan → activate for a single phase
-        let ctx = Flake::test_context();
+        let flake = Flake::test_context();
         let nix_backend = MockNixBackend::new();
         let deployer = MockDeployBackend::new();
         let reboot_detector = SystemRebootBackend::default();
@@ -1326,7 +1326,7 @@ mod tests {
 
         let results = {
             let push_ctx = PushContext::new(&nix_backend, &deployer, &reboot_detector, &config);
-            push(&ctx, &push_ctx, hosts, &observer)
+            push(&flake, &push_ctx, hosts, &observer)
         }
         .unwrap();
 
@@ -1363,7 +1363,7 @@ mod tests {
     #[test]
     fn test_push_full_workflow_multi_phase_success() {
         // Test multiple phases deploying sequentially with all steps
-        let ctx = Flake::test_context();
+        let flake = Flake::test_context();
         let nix_backend = MockNixBackend::new();
         let deployer = MockDeployBackend::new();
         let reboot_detector = SystemRebootBackend::default();
@@ -1398,7 +1398,7 @@ mod tests {
 
         let results = {
             let push_ctx = PushContext::new(&nix_backend, &deployer, &reboot_detector, &config);
-            push(&ctx, &push_ctx, hosts, &observer)
+            push(&flake, &push_ctx, hosts, &observer)
         }
         .unwrap();
 
@@ -1427,7 +1427,7 @@ mod tests {
     #[test]
     fn test_push_build_failure_stops_deployment() {
         // Build fails for one host, should stop immediately with no copy/activate
-        let ctx = Flake::test_context();
+        let flake = Flake::test_context();
         let nix_backend = MockNixBackend::new().with_build_failures(vec!["fail-host".to_string()]);
         let deployer = MockDeployBackend::new();
         let reboot_detector = SystemRebootBackend::default();
@@ -1453,7 +1453,7 @@ mod tests {
 
         let result = {
             let push_ctx = PushContext::new(&nix_backend, &deployer, &reboot_detector, &config);
-            push(&ctx, &push_ctx, hosts, &observer)
+            push(&flake, &push_ctx, hosts, &observer)
         };
 
         // Should fail during build
@@ -1480,7 +1480,7 @@ mod tests {
     #[test]
     fn test_push_copy_failure_stops_deployment() {
         // Copy fails for one host after successful build
-        let ctx = Flake::test_context();
+        let flake = Flake::test_context();
         let nix_backend = MockNixBackend::new();
         let deployer =
             MockDeployBackend::new().with_copy_failures(vec!["fail-copy.example.com".to_string()]);
@@ -1507,7 +1507,7 @@ mod tests {
 
         let result = {
             let push_ctx = PushContext::new(&nix_backend, &deployer, &reboot_detector, &config);
-            push(&ctx, &push_ctx, hosts, &observer)
+            push(&flake, &push_ctx, hosts, &observer)
         };
 
         // Should fail during copy
@@ -1539,7 +1539,7 @@ mod tests {
     #[test]
     fn test_push_copy_observer_hooks_called() {
         // Verify copy observer hooks fire in correct order
-        let ctx = Flake::test_context();
+        let flake = Flake::test_context();
         let nix_backend = MockNixBackend::new();
         let deployer = MockDeployBackend::new();
         let reboot_detector = SystemRebootBackend::default();
@@ -1574,7 +1574,7 @@ mod tests {
 
         {
             let push_ctx = PushContext::new(&nix_backend, &deployer, &reboot_detector, &config);
-            push(&ctx, &push_ctx, hosts, &observer)
+            push(&flake, &push_ctx, hosts, &observer)
         }
         .unwrap();
 
@@ -1605,7 +1605,7 @@ mod tests {
     #[test]
     fn test_push_build_observer_hooks_called() {
         // Verify build observer hooks fire in correct order
-        let ctx = Flake::test_context();
+        let flake = Flake::test_context();
         let nix_backend = MockNixBackend::new();
         let deployer = MockDeployBackend::new();
         let reboot_detector = SystemRebootBackend::default();
@@ -1640,7 +1640,7 @@ mod tests {
 
         {
             let push_ctx = PushContext::new(&nix_backend, &deployer, &reboot_detector, &config);
-            push(&ctx, &push_ctx, hosts, &observer)
+            push(&flake, &push_ctx, hosts, &observer)
         }
         .unwrap();
 
@@ -1677,7 +1677,7 @@ mod tests {
     #[test]
     fn test_push_build_partial_failure() {
         // Build fails for host 2 of 2 in a phase
-        let ctx = Flake::test_context();
+        let flake = Flake::test_context();
         let nix_backend = MockNixBackend::new().with_build_failures(vec!["host2".to_string()]);
         let deployer = MockDeployBackend::new();
         let reboot_detector = SystemRebootBackend::default();
@@ -1712,7 +1712,7 @@ mod tests {
 
         let result = {
             let push_ctx = PushContext::new(&nix_backend, &deployer, &reboot_detector, &config);
-            push(&ctx, &push_ctx, hosts, &observer)
+            push(&flake, &push_ctx, hosts, &observer)
         };
 
         assert!(result.is_err());
@@ -1732,7 +1732,7 @@ mod tests {
     #[test]
     fn test_push_ignore_phases_flag() {
         // Test that ignore_phases groups all hosts into "_all" phase
-        let ctx = Flake::test_context();
+        let flake = Flake::test_context();
         let nix_backend = MockNixBackend::new();
         let deployer = MockDeployBackend::new();
         let reboot_detector = SystemRebootBackend::default();
@@ -1767,7 +1767,7 @@ mod tests {
 
         let results = {
             let push_ctx = PushContext::new(&nix_backend, &deployer, &reboot_detector, &config);
-            push(&ctx, &push_ctx, hosts, &observer)
+            push(&flake, &push_ctx, hosts, &observer)
         }
         .unwrap();
 
@@ -1788,7 +1788,7 @@ mod tests {
     #[test]
     fn test_push_phase_failure_stops_next_phase() {
         // Phase 1 activation fails, Phase 2 should never start
-        let ctx = Flake::test_context();
+        let flake = Flake::test_context();
         let nix_backend = MockNixBackend::new();
         let deployer = MockDeployBackend::new()
             .with_activate_failures(vec!["phase1-host.example.com".to_string()]);
@@ -1825,7 +1825,7 @@ mod tests {
         // When activation fails, push() returns Err but observer events still fire
         let result = {
             let push_ctx = PushContext::new(&nix_backend, &deployer, &reboot_detector, &config);
-            push(&ctx, &push_ctx, hosts, &observer)
+            push(&flake, &push_ctx, hosts, &observer)
         };
 
         // Push should fail due to phase1 activation failure
@@ -1854,7 +1854,7 @@ mod tests {
     #[test]
     fn test_push_reboot_execution_success() {
         // Test that reboot is executed when required and observer hooks are called
-        let ctx = Flake::test_context();
+        let flake = Flake::test_context();
         let nix_backend = MockNixBackend::new();
         let deployer = MockDeployBackend::new();
 
@@ -1888,7 +1888,7 @@ mod tests {
 
         let results = {
             let push_ctx = PushContext::new(&nix_backend, &deployer, &reboot_backend, &config);
-            push(&ctx, &push_ctx, hosts, &observer)
+            push(&flake, &push_ctx, hosts, &observer)
         }
         .unwrap();
 
@@ -1931,7 +1931,7 @@ mod tests {
     #[test]
     fn test_push_reboot_execution_failure() {
         // Test that reboot failures are properly handled and reported
-        let ctx = Flake::test_context();
+        let flake = Flake::test_context();
         let nix_backend = MockNixBackend::new();
         let deployer = MockDeployBackend::new();
 
@@ -1967,7 +1967,7 @@ mod tests {
 
         let results = {
             let push_ctx = PushContext::new(&nix_backend, &deployer, &reboot_backend, &config);
-            push(&ctx, &push_ctx, hosts, &observer)
+            push(&flake, &push_ctx, hosts, &observer)
         }
         .unwrap();
 
@@ -2004,7 +2004,7 @@ mod tests {
     #[test]
     fn test_push_no_reboot_when_not_required() {
         // Test that reboot hooks are NOT called when reboot is not required
-        let ctx = Flake::test_context();
+        let flake = Flake::test_context();
         let nix_backend = MockNixBackend::new();
         let deployer = MockDeployBackend::new();
 
@@ -2032,7 +2032,7 @@ mod tests {
 
         let results = {
             let push_ctx = PushContext::new(&nix_backend, &deployer, &reboot_backend, &config);
-            push(&ctx, &push_ctx, hosts, &observer)
+            push(&flake, &push_ctx, hosts, &observer)
         }
         .unwrap();
 
@@ -2060,7 +2060,7 @@ mod tests {
     #[test]
     fn test_push_reboot_with_boot_mode() {
         // Test explicit Boot mode with reboot required
-        let ctx = Flake::test_context();
+        let flake = Flake::test_context();
         let nix_backend = MockNixBackend::new();
         let deployer = MockDeployBackend::new();
 
@@ -2094,7 +2094,7 @@ mod tests {
 
         let results = {
             let push_ctx = PushContext::new(&nix_backend, &deployer, &reboot_backend, &config);
-            push(&ctx, &push_ctx, hosts, &observer)
+            push(&flake, &push_ctx, hosts, &observer)
         }
         .unwrap();
 
@@ -2113,7 +2113,7 @@ mod tests {
     #[test]
     fn test_push_reboot_policy_always() {
         // Test that RebootPolicy::Always forces reboot even if not detected
-        let ctx = Flake::test_context();
+        let flake = Flake::test_context();
         let nix_backend = MockNixBackend::new();
         let deployer = MockDeployBackend::new();
 
@@ -2141,7 +2141,7 @@ mod tests {
 
         let results = {
             let push_ctx = PushContext::new(&nix_backend, &deployer, &reboot_backend, &config);
-            push(&ctx, &push_ctx, hosts, &observer)
+            push(&flake, &push_ctx, hosts, &observer)
         }
         .unwrap();
 
@@ -2163,7 +2163,7 @@ mod tests {
     #[test]
     fn test_push_reboot_policy_never() {
         // Test that RebootPolicy::Never prevents reboot even if detected
-        let ctx = Flake::test_context();
+        let flake = Flake::test_context();
         let nix_backend = MockNixBackend::new();
         let deployer = MockDeployBackend::new();
 
@@ -2197,7 +2197,7 @@ mod tests {
 
         let results = {
             let push_ctx = PushContext::new(&nix_backend, &deployer, &reboot_backend, &config);
-            push(&ctx, &push_ctx, hosts, &observer)
+            push(&flake, &push_ctx, hosts, &observer)
         }
         .unwrap();
 
@@ -2219,7 +2219,7 @@ mod tests {
     #[test]
     fn test_push_no_reboot_flag_overrides_always_policy() {
         // Test that allow_reboot=false prevents reboot even with RebootPolicy::Always
-        let ctx = Flake::test_context();
+        let flake = Flake::test_context();
         let nix_backend = MockNixBackend::new();
         let deployer = MockDeployBackend::new();
 
@@ -2247,7 +2247,7 @@ mod tests {
 
         let results = {
             let push_ctx = PushContext::new(&nix_backend, &deployer, &reboot_backend, &config);
-            push(&ctx, &push_ctx, hosts, &observer)
+            push(&flake, &push_ctx, hosts, &observer)
         }
         .unwrap();
 
@@ -2269,7 +2269,7 @@ mod tests {
     #[test]
     fn test_push_no_reboot_flag_with_detected_reboot() {
         // Test that allow_reboot=false prevents reboot even when detection says it's needed
-        let ctx = Flake::test_context();
+        let flake = Flake::test_context();
         let nix_backend = MockNixBackend::new();
         let deployer = MockDeployBackend::new();
 
@@ -2303,7 +2303,7 @@ mod tests {
 
         let results = {
             let push_ctx = PushContext::new(&nix_backend, &deployer, &reboot_backend, &config);
-            push(&ctx, &push_ctx, hosts, &observer)
+            push(&flake, &push_ctx, hosts, &observer)
         }
         .unwrap();
 
