@@ -30,10 +30,10 @@ pub use steps::{
 // Re-export create_deployment_plans for backward compatibility and testing
 pub use steps::plan::create_deployment_plans;
 
-use crate::deploy::reboot::RebootOps;
-use crate::deploy::Deployer;
+use crate::backends::deploy::DeployBackend;
+use crate::backends::nix::NixBackend;
+use crate::backends::reboot::RebootBackend;
 use crate::error::Result;
-use crate::nix::ops::NixOps;
 use crate::nix::{HostMetadata, SnowContext};
 use crate::observer::PushObserver;
 use std::collections::HashMap;
@@ -55,9 +55,9 @@ use std::collections::HashMap;
 /// # Arguments
 ///
 /// - `ctx`: Nix context (flake root)
-/// - `nix_ops`: Nix operations interface (for building)
-/// - `deployer`: Deployer implementation (for copying and activation)
-/// - `reboot_detector`: Reboot detection and execution
+/// - `nix_backend`: Nix backend implementation (for building)
+/// - `deploy_backend`: Deployment backend implementation (for copying and activation)
+/// - `reboot_backend`: Reboot backend implementation (detection and execution)
 /// - `hosts`: List of hosts to deploy
 /// - `config`: Push configuration (mode, concurrency, etc.)
 /// - `observer`: Observer to receive lifecycle events
@@ -65,25 +65,25 @@ use std::collections::HashMap;
 /// # Example
 ///
 /// ```no_run
-/// use snowlib::{push, PushConfiguration, SnowContext, SystemNixOps, SshDeployer, RebootOps, NoopObserver};
+/// use snowlib::{push, PushConfiguration, SnowContext, SystemNixBackend, SshDeployBackend, SystemRebootBackend, NoopObserver};
 ///
 /// # fn example(hosts: Vec<snowlib::HostMetadata>) -> snowlib::Result<()> {
 /// let ctx = SnowContext::new(None)?;
-/// let nix_ops = SystemNixOps::new();
-/// let deployer = SshDeployer::new();
-/// let reboot_ops: &dyn RebootOps = &snowlib::deploy::reboot::RebootDetector::default();
+/// let nix_backend = SystemNixBackend::new();
+/// let deploy_backend = SshDeployBackend::new();
+/// let reboot_backend = SystemRebootBackend::default();
 /// let config = PushConfiguration::default();
 /// let observer = NoopObserver;
 ///
-/// let results = push(&ctx, &nix_ops, &deployer, reboot_ops, hosts, &config, &observer)?;
+/// let results = push(&ctx, &nix_backend, &deploy_backend, &reboot_backend, hosts, &config, &observer)?;
 /// # Ok(())
 /// # }
 /// ```
 pub fn push(
     ctx: &SnowContext,
-    nix_ops: &dyn NixOps,
-    deployer: &dyn Deployer,
-    reboot_ops: &dyn RebootOps,
+    nix_backend: &dyn NixBackend,
+    deploy_backend: &dyn DeployBackend,
+    reboot_backend: &dyn RebootBackend,
     hosts: Vec<HostMetadata>,
     config: &PushConfiguration,
     observer: &dyn PushObserver,
@@ -109,9 +109,9 @@ pub fn push(
             &phase,
             phase_hosts,
             ctx,
-            nix_ops,
-            deployer,
-            reboot_ops,
+            nix_backend,
+            deploy_backend,
+            reboot_backend,
             config,
             observer,
         );
@@ -162,12 +162,12 @@ fn execute_phase(
     phase: &str,
     phase_hosts: &[HostMetadata],
     ctx: &SnowContext,
-    nix_ops: &dyn NixOps,
-    deployer: &dyn Deployer,
-    reboot_ops: &dyn RebootOps,
+    nix_backend: &dyn NixBackend,
+    deploy_backend: &dyn DeployBackend,
+    reboot_backend: &dyn RebootBackend,
     config: &PushConfiguration,
     observer: &dyn PushObserver,
-) -> Result<Vec<(String, crate::deploy::DeployResult)>> {
+) -> Result<Vec<(String, crate::backends::deploy::DeployResult)>> {
     // Step 1: Build
     let build_inputs: Vec<BuildInput> = phase_hosts
         .iter()
@@ -177,18 +177,18 @@ fn execute_phase(
         .collect();
     let build_step = BuildStep {
         ctx,
-        nix_ops,
+        nix_backend,
         config,
     };
     let build_outputs = execute_step(&build_step, phase, build_inputs, observer)?;
 
     // Step 2: Copy
-    let copy_step = CopyStep { deployer };
+    let copy_step = CopyStep { deploy_backend };
     let copy_outputs = execute_step(&copy_step, phase, build_outputs, observer)?;
 
     // Step 3: Planning
     let plan_step = PlanningStep {
-        reboot_ops,
+        reboot_backend,
         mode: config.mode,
         force: config.force,
     };
@@ -200,7 +200,7 @@ fn execute_phase(
         .map(|p| ActivateInput { plan: p.plan })
         .collect();
     let activate_step = ActivateStep {
-        deployer,
+        deploy_backend,
         concurrency: config.concurrency,
     };
     let activate_outputs = execute_step(&activate_step, phase, activate_inputs, observer)?;
@@ -214,13 +214,13 @@ fn execute_phase(
         })
         .collect();
     let reboot_step = RebootStep {
-        reboot_ops,
+        reboot_backend,
         allow_reboot: config.allow_reboot,
     };
     let reboot_outputs = execute_step(&reboot_step, phase, reboot_inputs, observer)?;
 
     // Collect results from reboot step
-    let phase_results: Vec<(String, crate::deploy::DeployResult)> = reboot_outputs
+    let phase_results: Vec<(String, crate::backends::deploy::DeployResult)> = reboot_outputs
         .into_iter()
         .map(|r| (r.hostname, r.result))
         .collect();
@@ -321,7 +321,7 @@ mod tests {
 
     /// Helper function to activate hosts using ActivateStep (replaces old activate_plans_for_test)
     fn activate_plans_for_test(
-        deployer: &dyn crate::deploy::Deployer,
+        deploy_backend: &dyn crate::backends::deploy::DeployBackend,
         plans: Vec<PushPlan>,
         concurrency: usize,
         observer: &dyn crate::observer::PushObserver,
@@ -347,7 +347,7 @@ mod tests {
 
         // Create ActivateStep and execute
         let step = ActivateStep {
-            deployer,
+            deploy_backend,
             concurrency,
         };
 

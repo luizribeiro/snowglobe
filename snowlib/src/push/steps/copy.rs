@@ -1,4 +1,4 @@
-use crate::deploy::Deployer;
+use crate::backends::deploy::DeployBackend;
 use crate::error::Result;
 use crate::observer::PushObserver;
 use crate::push::step::{Step, StepResult};
@@ -12,7 +12,7 @@ pub type CopyOutput = BuildOutput;
 
 /// Copy step - copies closures to remote hosts
 pub struct CopyStep<'a> {
-    pub deployer: &'a dyn Deployer,
+    pub deploy_backend: &'a dyn DeployBackend,
 }
 
 impl<'a> Step for CopyStep<'a> {
@@ -46,7 +46,10 @@ impl<'a> Step for CopyStep<'a> {
             observer.on_copy_start(&hostname)?;
 
             // Copy closure to remote host
-            match self.deployer.copy_closure(&input.target, &input.store_path) {
+            match self
+                .deploy_backend
+                .copy_closure(&input.target, &input.store_path)
+            {
                 Ok(_) => {
                     // Notify success
                     observer.on_copy_complete(&hostname, true)?;

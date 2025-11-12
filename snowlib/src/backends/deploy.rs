@@ -1,18 +1,83 @@
 use crate::error::{DeployError, Result};
+use crate::nix::{DeployTarget, StorePath};
 use std::process::Command;
 
-use super::{ActivationMode, Deployer};
-use crate::nix::{DeployTarget, StorePath};
+/// Activation mode for NixOS configuration
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ActivationMode {
+    /// Activate and make default (switch)
+    Switch,
+    /// Only set for next boot
+    Boot,
+    /// Test activation without making permanent
+    Test,
+    /// Dry run - show what would change
+    DryActivate,
+}
+
+/// Result of a deployment operation
+#[derive(Debug, Clone)]
+pub struct DeployResult {
+    pub success: bool,
+    pub message: String,
+}
+
+impl DeployResult {
+    pub fn success(message: impl Into<String>) -> Self {
+        Self {
+            success: true,
+            message: message.into(),
+        }
+    }
+
+    pub fn failure(message: impl Into<String>) -> Self {
+        Self {
+            success: false,
+            message: message.into(),
+        }
+    }
+}
+
+/// Trait for deployment backend implementations
+///
+/// Implementations must be Send + Sync to support parallel deployments
+pub trait DeployBackend: Send + Sync {
+    /// Copy a nix closure to the target host
+    fn copy_closure(&self, target: &DeployTarget, store_path: &StorePath) -> Result<()>;
+
+    /// Activate a configuration on the target host
+    fn activate(
+        &self,
+        target: &DeployTarget,
+        store_path: &StorePath,
+        mode: ActivationMode,
+    ) -> Result<()>;
+
+    /// Deploy (copy + activate) in one operation
+    fn deploy(
+        &self,
+        target: &DeployTarget,
+        store_path: &StorePath,
+        mode: ActivationMode,
+    ) -> Result<DeployResult> {
+        self.copy_closure(target, store_path)?;
+        self.activate(target, store_path, mode)?;
+        Ok(DeployResult::success(format!(
+            "Deployed successfully to {}",
+            target.hostname
+        )))
+    }
+}
 
 /// SSH-based deployer using subprocess commands (MVP implementation)
-pub struct SshDeployer {
+pub struct SshDeployBackend {
     /// Optional SSH user (defaults to root in target)
     pub ssh_user: Option<String>,
     /// Quiet mode - suppress subprocess output
     pub quiet: bool,
 }
 
-impl SshDeployer {
+impl SshDeployBackend {
     pub fn new() -> Self {
         Self {
             ssh_user: None,
@@ -56,7 +121,7 @@ impl SshDeployer {
     }
 }
 
-impl Deployer for SshDeployer {
+impl DeployBackend for SshDeployBackend {
     fn copy_closure(&self, target: &DeployTarget, store_path: &StorePath) -> Result<()> {
         let ssh_target = format!("ssh://{}", self.get_destination(target));
 
@@ -165,7 +230,7 @@ impl Deployer for SshDeployer {
     }
 }
 
-impl Default for SshDeployer {
+impl Default for SshDeployBackend {
     fn default() -> Self {
         Self::new()
     }
@@ -177,7 +242,7 @@ mod tests {
 
     #[test]
     fn test_get_destination_default() {
-        let deployer = SshDeployer::new();
+        let deployer = SshDeployBackend::new();
         let target = DeployTarget {
             user: Some("root".to_string()),
             hostname: "hydrogen.example.com".to_string(),
@@ -192,7 +257,7 @@ mod tests {
 
     #[test]
     fn test_get_destination_with_user() {
-        let deployer = SshDeployer::new().with_user("deploy");
+        let deployer = SshDeployBackend::new().with_user("deploy");
         let target = DeployTarget {
             user: Some("root".to_string()),
             hostname: "hydrogen.example.com".to_string(),
@@ -207,7 +272,7 @@ mod tests {
 
     #[test]
     fn test_copy_closure_error_includes_stderr() {
-        let deployer = SshDeployer::new();
+        let deployer = SshDeployBackend::new();
         let target = DeployTarget {
             user: Some("root".to_string()),
             hostname: "nonexistent.invalid".to_string(),
@@ -232,7 +297,7 @@ mod tests {
 
     #[test]
     fn test_copy_closure_quiet_mode_captures_stderr() {
-        let deployer = SshDeployer::new().with_quiet(true);
+        let deployer = SshDeployBackend::new().with_quiet(true);
         let target = DeployTarget {
             user: Some("root".to_string()),
             hostname: "nonexistent.invalid".to_string(),
@@ -257,7 +322,7 @@ mod tests {
 
     #[test]
     fn test_activate_error_includes_stderr() {
-        let deployer = SshDeployer::new();
+        let deployer = SshDeployBackend::new();
         let target = DeployTarget {
             user: Some("root".to_string()),
             hostname: "nonexistent.invalid".to_string(),
@@ -284,7 +349,7 @@ mod tests {
 
     #[test]
     fn test_ssh_command_has_batch_mode() {
-        let deployer = SshDeployer::new();
+        let deployer = SshDeployBackend::new();
         let target = DeployTarget {
             user: Some("root".to_string()),
             hostname: "example.com".to_string(),

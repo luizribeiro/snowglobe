@@ -1,12 +1,143 @@
-use crate::deploy::reboot::{RebootCheck, RebootOps, RebootReason};
-use crate::deploy::{ActivationMode, Deployer};
+use crate::backends::deploy::{ActivationMode, DeployBackend};
+use crate::backends::nix::NixBackend;
+use crate::backends::reboot::{RebootBackend, RebootCheck, RebootReason};
 use crate::error::Result;
-use crate::nix::{DeployTarget, StorePath};
+use crate::nix::{DeployTarget, HostMetadata, SnowContext, StorePath};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
 use std::thread;
 use std::time::Duration;
+
+// ============================================================================
+// MockNixBackend
+// ============================================================================
+
+/// Mock implementation of NixBackend that uses fixtures instead of real Nix commands
+///
+/// This allows testing the entire deployment pipeline without requiring Nix infrastructure.
+/// Fixtures can specify custom metadata, build successes/failures, timing, and output.
+#[derive(Debug, Clone)]
+pub struct MockNixBackend {
+    fixture: Option<DeploymentFixture>,
+    build_failures: Vec<String>,
+}
+
+impl MockNixBackend {
+    /// Create a new MockNixBackend with no fixture (uses defaults)
+    pub fn new() -> Self {
+        Self {
+            fixture: None,
+            build_failures: Vec::new(),
+        }
+    }
+
+    /// Create a MockNixBackend from a deployment fixture
+    pub fn from_fixture(fixture: DeploymentFixture) -> Self {
+        Self {
+            fixture: Some(fixture),
+            build_failures: Vec::new(),
+        }
+    }
+
+    /// Configure hosts that should fail during build
+    pub fn with_build_failures(mut self, failures: Vec<String>) -> Self {
+        self.build_failures = failures;
+        self
+    }
+
+    /// Get metadata fixture for a host
+    fn get_metadata_fixture(&self, host: &str) -> Option<&MetadataFixture> {
+        self.fixture.as_ref()?.get_metadata(host)
+    }
+
+    /// Get build fixture for a host
+    fn get_build_fixture(&self, host: &str) -> Option<&BuildFixture> {
+        self.fixture.as_ref()?.get_build(host)
+    }
+}
+
+impl Default for MockNixBackend {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl NixBackend for MockNixBackend {
+    fn get_host_metadata(&self, _ctx: &SnowContext, host: &str) -> Result<HostMetadata> {
+        if let Some(meta_fix) = self.get_metadata_fixture(host) {
+            Ok(HostMetadata {
+                name: host.to_string(),
+                phase: meta_fix.phase.clone(),
+                tags: meta_fix.tags.clone(),
+                fqdn: meta_fix.fqdn.clone(),
+                reboot_policy: crate::nix::RebootPolicy::Auto,
+            })
+        } else {
+            // Default mock metadata
+            Ok(HostMetadata {
+                name: host.to_string(),
+                phase: Some("production".to_string()),
+                tags: vec![],
+                fqdn: format!("{}.example.com", host),
+                reboot_policy: crate::nix::RebootPolicy::Auto,
+            })
+        }
+    }
+
+    fn build_host(&self, _ctx: &SnowContext, host: &str, _quiet: bool) -> Result<StorePath> {
+        // Check if this host should fail
+        if self.build_failures.contains(&host.to_string()) {
+            return Err(crate::error::NixError::BuildFailed {
+                host: host.to_string(),
+                stderr: "Mock build failure".to_string(),
+                source: std::io::Error::other("Build failed (mock)"),
+            }
+            .into());
+        }
+
+        if let Some(build_fix) = self.get_build_fixture(host) {
+            // Simulate build timing (only in release builds for production CLI)
+            print!("Building {}... ", host);
+            if !cfg!(debug_assertions) {
+                thread::sleep(Duration::from_millis(build_fix.duration_ms));
+            }
+
+            // Print output
+            if !build_fix.stdout.is_empty() {
+                print!("{}", build_fix.stdout);
+            }
+            if !build_fix.stderr.is_empty() {
+                eprint!("{}", build_fix.stderr);
+            }
+
+            if build_fix.success {
+                println!("✓");
+                // Use store path from fixture or generate fake one
+                let store_path = build_fix
+                    .store_path
+                    .clone()
+                    .unwrap_or_else(|| format!("/nix/store/mock-{}", host));
+                Ok(StorePath::new(store_path))
+            } else {
+                println!("✗ Build failed");
+                Err(crate::error::NixError::BuildFailed {
+                    host: host.to_string(),
+                    stderr: build_fix.stderr.clone(),
+                    source: std::io::Error::other("Build failed (from fixture)"),
+                }
+                .into())
+            }
+        } else {
+            // No build fixture - just create a fake store path
+            Ok(StorePath::new(format!("/nix/store/mock-{}", host)))
+        }
+    }
+}
+
+// ============================================================================
+// MockDeployBackend
+// ============================================================================
 
 /// Mock deployer for testing
 ///
@@ -14,7 +145,7 @@ use std::time::Duration;
 /// 1. Simple mode (no fixture): Always succeeds with configurable delays
 /// 2. Fixture mode: Auto-generates realistic output, only fails hosts specified in fixture
 #[derive(Debug, Clone, Default)]
-pub struct MockDeployer {
+pub struct MockDeployBackend {
     fixture: Option<DeploymentFixture>,
     /// List of hostnames that should fail when not using fixtures (simple mode) - both copy and activate
     should_fail: Vec<String>,
@@ -24,8 +155,8 @@ pub struct MockDeployer {
     activate_failures: Vec<String>,
 }
 
-impl MockDeployer {
-    /// Create a new MockDeployer with default behavior (always succeeds)
+impl MockDeployBackend {
+    /// Create a new MockDeployBackend with default behavior (always succeeds)
     pub fn new() -> Self {
         Self::default()
     }
@@ -121,7 +252,7 @@ impl MockDeployer {
     }
 }
 
-impl Deployer for MockDeployer {
+impl DeployBackend for MockDeployBackend {
     fn copy_closure(&self, target: &DeployTarget, _store_path: &StorePath) -> Result<()> {
         // Realistic delay (only in release builds for production CLI)
         if !cfg!(debug_assertions) {
@@ -218,6 +349,96 @@ impl Deployer for MockDeployer {
         Ok(())
     }
 }
+
+// ============================================================================
+// MockRebootBackend
+// ============================================================================
+
+/// Mock reboot operations for testing
+///
+/// Simulates reboot detection and execution without requiring SSH connections.
+/// Allows configuring which hosts require reboot and which hosts fail during reboot.
+#[derive(Debug, Clone, Default)]
+pub struct MockRebootBackend {
+    /// Hosts that require reboot (hostname -> reason)
+    reboot_required: HashMap<String, RebootReason>,
+    /// Hosts that should fail during reboot execution
+    reboot_failures: Vec<String>,
+}
+
+impl MockRebootBackend {
+    /// Create a new MockRebootBackend with no reboot requirements
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Configure hosts that require reboot
+    pub fn with_reboot_required(mut self, hosts: HashMap<String, RebootReason>) -> Self {
+        self.reboot_required = hosts;
+        self
+    }
+
+    /// Configure hosts that should fail during reboot
+    pub fn with_reboot_failures(mut self, hostnames: Vec<String>) -> Self {
+        self.reboot_failures = hostnames;
+        self
+    }
+
+    /// Check if a hostname requires reboot (tries both full and short hostname)
+    fn check_hostname(&self, hostname: &str) -> Option<RebootReason> {
+        // Try exact match first
+        if let Some(reason) = self.reboot_required.get(hostname) {
+            return Some(reason.clone());
+        }
+
+        // Try short hostname
+        let short = hostname.split('.').next().unwrap_or(hostname);
+        self.reboot_required.get(short).cloned()
+    }
+
+    /// Check if a hostname should fail reboot
+    fn should_fail_reboot(&self, hostname: &str) -> bool {
+        self.reboot_failures.contains(&hostname.to_string()) || {
+            let short = hostname.split('.').next().unwrap_or(hostname);
+            self.reboot_failures.contains(&short.to_string())
+        }
+    }
+}
+
+impl RebootBackend for MockRebootBackend {
+    fn check_reboot_required(
+        &self,
+        target: &DeployTarget,
+        _new_system: &StorePath,
+    ) -> Result<RebootCheck> {
+        if let Some(reason) = self.check_hostname(&target.hostname) {
+            Ok(RebootCheck::required(reason))
+        } else {
+            Ok(RebootCheck::not_required())
+        }
+    }
+
+    fn reboot_and_wait(&self, target: &DeployTarget) -> Result<()> {
+        // Simulate reboot delay
+        if !cfg!(debug_assertions) {
+            thread::sleep(Duration::from_millis(100));
+        }
+
+        if self.should_fail_reboot(&target.hostname) {
+            return Err(crate::error::DeployError::Failed {
+                host: target.hostname.clone(),
+                source: std::io::Error::other("Mock: reboot failed"),
+            }
+            .into());
+        }
+
+        Ok(())
+    }
+}
+
+// ============================================================================
+// Fixture Types (shared across all mocks)
+// ============================================================================
 
 /// Simplified deployment failure specification
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -328,95 +549,13 @@ pub struct OperationFixture {
     pub duration_ms: u64,
 }
 
-/// Mock reboot operations for testing
-///
-/// Simulates reboot detection and execution without requiring SSH connections.
-/// Allows configuring which hosts require reboot and which hosts fail during reboot.
-#[derive(Debug, Clone, Default)]
-pub struct MockRebootOps {
-    /// Hosts that require reboot (hostname -> reason)
-    reboot_required: HashMap<String, RebootReason>,
-    /// Hosts that should fail during reboot execution
-    reboot_failures: Vec<String>,
-}
-
-impl MockRebootOps {
-    /// Create a new MockRebootOps with no reboot requirements
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Configure hosts that require reboot
-    pub fn with_reboot_required(mut self, hosts: HashMap<String, RebootReason>) -> Self {
-        self.reboot_required = hosts;
-        self
-    }
-
-    /// Configure hosts that should fail during reboot
-    pub fn with_reboot_failures(mut self, hostnames: Vec<String>) -> Self {
-        self.reboot_failures = hostnames;
-        self
-    }
-
-    /// Check if a hostname requires reboot (tries both full and short hostname)
-    fn check_hostname(&self, hostname: &str) -> Option<RebootReason> {
-        // Try exact match first
-        if let Some(reason) = self.reboot_required.get(hostname) {
-            return Some(reason.clone());
-        }
-
-        // Try short hostname
-        let short = hostname.split('.').next().unwrap_or(hostname);
-        self.reboot_required.get(short).cloned()
-    }
-
-    /// Check if a hostname should fail reboot
-    fn should_fail_reboot(&self, hostname: &str) -> bool {
-        self.reboot_failures.contains(&hostname.to_string()) || {
-            let short = hostname.split('.').next().unwrap_or(hostname);
-            self.reboot_failures.contains(&short.to_string())
-        }
-    }
-}
-
-impl RebootOps for MockRebootOps {
-    fn check_reboot_required(
-        &self,
-        target: &DeployTarget,
-        _new_system: &StorePath,
-    ) -> Result<RebootCheck> {
-        if let Some(reason) = self.check_hostname(&target.hostname) {
-            Ok(RebootCheck::required(reason))
-        } else {
-            Ok(RebootCheck::not_required())
-        }
-    }
-
-    fn reboot_and_wait(&self, target: &DeployTarget) -> Result<()> {
-        // Simulate reboot delay
-        if !cfg!(debug_assertions) {
-            thread::sleep(Duration::from_millis(100));
-        }
-
-        if self.should_fail_reboot(&target.hostname) {
-            return Err(crate::error::DeployError::Failed {
-                host: target.hostname.clone(),
-                source: std::io::Error::other("Mock: reboot failed"),
-            }
-            .into());
-        }
-
-        Ok(())
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn test_mock_deployer_success() {
-        let deployer = MockDeployer::new();
+    fn test_mock_deploy_backend_success() {
+        let deployer = MockDeployBackend::new();
         let target = DeployTarget {
             user: Some("root".to_string()),
             hostname: "test.example.com".to_string(),
@@ -431,8 +570,8 @@ mod tests {
     }
 
     #[test]
-    fn test_mock_deployer_failure() {
-        let deployer = MockDeployer::new().with_failures(vec!["fail.example.com".to_string()]);
+    fn test_mock_deploy_backend_failure() {
+        let deployer = MockDeployBackend::new().with_failures(vec!["fail.example.com".to_string()]);
 
         let target = DeployTarget {
             user: Some("root".to_string()),
@@ -474,7 +613,7 @@ mod tests {
     }
 
     #[test]
-    fn test_mock_deployer_with_fixture() {
+    fn test_mock_deploy_backend_with_fixture() {
         let fixture = DeploymentFixture {
             name: "Test".to_string(),
             description: None,
@@ -498,7 +637,7 @@ mod tests {
             }],
         };
 
-        let deployer = MockDeployer::from_fixture(fixture);
+        let deployer = MockDeployBackend::from_fixture(fixture);
         let target = DeployTarget {
             user: Some("root".to_string()),
             hostname: "test.example.com".to_string(),
@@ -513,7 +652,7 @@ mod tests {
     }
 
     #[test]
-    fn test_mock_deployer_fixture_fallback() {
+    fn test_mock_deploy_backend_fixture_fallback() {
         // When a host is not in the fixture, succeeds with auto-generated output
         let fixture = DeploymentFixture {
             name: "Test".to_string(),
@@ -522,7 +661,7 @@ mod tests {
             hosts: vec![],
         };
 
-        let deployer = MockDeployer::from_fixture(fixture);
+        let deployer = MockDeployBackend::from_fixture(fixture);
         let target = DeployTarget {
             user: Some("root".to_string()),
             hostname: "missing.example.com".to_string(),

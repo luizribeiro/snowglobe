@@ -1,4 +1,4 @@
-use crate::deploy::{DeployResult, Deployer};
+use crate::backends::deploy::{DeployBackend, DeployResult};
 use crate::error::{DeployError, Result, SnowError};
 use crate::observer::PushObserver;
 use crate::push::results::PushPlan;
@@ -22,7 +22,7 @@ pub struct ActivateOutput {
 
 /// Activate step - activates configurations on remote hosts in parallel
 pub struct ActivateStep<'a> {
-    pub deployer: &'a dyn Deployer,
+    pub deploy_backend: &'a dyn DeployBackend,
     pub concurrency: usize,
 }
 
@@ -71,7 +71,7 @@ impl<'a> ActivateStep<'a> {
         inputs: Vec<ActivateInput>,
         observer: &dyn PushObserver,
     ) -> Result<Vec<StepResult<ActivateOutput>>> {
-        let deployer = Arc::new(self.deployer);
+        let deployer = Arc::new(self.deploy_backend);
         let observer = Arc::new(observer);
 
         // Create thread pool with concurrency limit

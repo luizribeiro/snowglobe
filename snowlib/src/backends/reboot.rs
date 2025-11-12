@@ -2,11 +2,11 @@ use crate::error::{DeployError, Result};
 use crate::nix::{DeployTarget, StorePath};
 use std::process::Command;
 
-/// Trait for reboot detection and execution operations
+/// Trait for reboot backend operations (detection and execution)
 ///
 /// This trait allows for testability by enabling mock implementations
 /// that don't require actual SSH connections.
-pub trait RebootOps: Send + Sync {
+pub trait RebootBackend: Send + Sync {
     /// Check if a deployment requires a reboot
     fn check_reboot_required(
         &self,
@@ -113,14 +113,14 @@ impl Default for RebootDetectionConfig {
     }
 }
 
-/// Reboot detection system
-pub struct RebootDetector {
+/// System reboot detection backend
+pub struct SystemRebootBackend {
     config: RebootDetectionConfig,
     ssh_user: Option<String>,
 }
 
-impl RebootDetector {
-    /// Create a new detector with the given configuration
+impl SystemRebootBackend {
+    /// Create a new backend with the given configuration
     pub fn new(config: RebootDetectionConfig) -> Self {
         Self {
             config,
@@ -128,7 +128,7 @@ impl RebootDetector {
         }
     }
 
-    /// Create a detector with default configuration
+    /// Create a backend with default configuration
     pub fn with_defaults() -> Self {
         Self::new(RebootDetectionConfig::default())
     }
@@ -386,13 +386,13 @@ impl RebootDetector {
     }
 }
 
-impl Default for RebootDetector {
+impl Default for SystemRebootBackend {
     fn default() -> Self {
         Self::with_defaults()
     }
 }
 
-impl RebootOps for RebootDetector {
+impl RebootBackend for SystemRebootBackend {
     fn check_reboot_required(
         &self,
         target: &DeployTarget,
@@ -475,30 +475,30 @@ mod tests {
     }
 
     #[test]
-    fn test_reboot_detector_with_ssh_user() {
-        let detector = RebootDetector::with_defaults().with_ssh_user("deploy");
-        assert_eq!(detector.ssh_user, Some("deploy".to_string()));
+    fn test_reboot_backend_with_ssh_user() {
+        let backend = SystemRebootBackend::with_defaults().with_ssh_user("deploy");
+        assert_eq!(backend.ssh_user, Some("deploy".to_string()));
     }
 
     #[test]
-    fn test_get_destination_with_detector_user() {
-        let detector = RebootDetector::with_defaults().with_ssh_user("deploy");
+    fn test_get_destination_with_backend_user() {
+        let backend = SystemRebootBackend::with_defaults().with_ssh_user("deploy");
         let target = DeployTarget {
             user: Some("root".to_string()),
             hostname: "hydrogen.example.com".to_string(),
             port: None,
         };
 
-        // Detector's user should override target's user
+        // Backend's user should override target's user
         assert_eq!(
-            detector.get_destination(&target),
+            backend.get_destination(&target),
             "deploy@hydrogen.example.com"
         );
     }
 
     #[test]
-    fn test_get_destination_without_detector_user() {
-        let detector = RebootDetector::with_defaults();
+    fn test_get_destination_without_backend_user() {
+        let backend = SystemRebootBackend::with_defaults();
         let target = DeployTarget {
             user: Some("root".to_string()),
             hostname: "hydrogen.example.com".to_string(),
@@ -507,7 +507,7 @@ mod tests {
 
         // Should fall back to target's ssh_destination()
         assert_eq!(
-            detector.get_destination(&target),
+            backend.get_destination(&target),
             "root@hydrogen.example.com"
         );
     }
@@ -526,13 +526,13 @@ mod tests {
             check_init: true,
         };
 
-        let detector = RebootDetector::new(config.clone());
+        let backend = SystemRebootBackend::new(config.clone());
 
         // Verify the configuration is as expected
-        assert!(detector.config.critical_services.is_empty());
-        assert!(detector.config.check_kernel);
-        assert!(detector.config.check_initrd);
-        assert!(detector.config.check_init);
+        assert!(backend.config.critical_services.is_empty());
+        assert!(backend.config.check_kernel);
+        assert!(backend.config.check_initrd);
+        assert!(backend.config.check_init);
     }
 
     #[test]
@@ -546,11 +546,11 @@ mod tests {
             check_init: false,
         };
 
-        let detector = RebootDetector::new(config);
+        let backend = SystemRebootBackend::new(config);
 
-        assert!(detector.config.critical_services.is_empty());
-        assert!(!detector.config.check_kernel);
-        assert!(!detector.config.check_initrd);
-        assert!(!detector.config.check_init);
+        assert!(backend.config.critical_services.is_empty());
+        assert!(!backend.config.check_kernel);
+        assert!(!backend.config.check_initrd);
+        assert!(!backend.config.check_init);
     }
 }

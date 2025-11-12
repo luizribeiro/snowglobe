@@ -1,75 +1,32 @@
-pub mod reboot;
-pub mod ssh;
+//! Backward compatibility re-exports for deploy module
+//!
+//! This module is deprecated. Please use `crate::backends::deploy` instead.
 
+// Re-export from backends for backward compatibility
+pub use crate::backends::deploy::{
+    ActivationMode, DeployBackend as Deployer, DeployResult, SshDeployBackend,
+};
+pub use crate::backends::reboot::{
+    RebootBackend as RebootOps, RebootCheck, RebootDetectionConfig, RebootReason,
+    SystemRebootBackend as RebootDetector,
+};
+
+// Legacy module structure for compatibility
 #[cfg(debug_assertions)]
-pub mod mock;
-
-use crate::error::Result;
-use crate::nix::{DeployTarget, StorePath};
-
-/// Activation mode for NixOS configuration
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum ActivationMode {
-    /// Activate and make default (switch)
-    Switch,
-    /// Only set for next boot
-    Boot,
-    /// Test activation without making permanent
-    Test,
-    /// Dry run - show what would change
-    DryActivate,
+pub mod mock {
+    pub use crate::backends::mock::{
+        BuildFixture, DeploymentFixture, FailureSpec, HostFixture, MetadataFixture,
+        MockDeployBackend as MockDeployer, MockRebootBackend as MockRebootOps, OperationFixture,
+    };
 }
 
-/// Result of a deployment operation
-#[derive(Debug, Clone)]
-pub struct DeployResult {
-    pub success: bool,
-    pub message: String,
+pub mod reboot {
+    pub use crate::backends::reboot::{
+        RebootBackend as RebootOps, RebootCheck, RebootDetectionConfig, RebootReason,
+        SystemRebootBackend as RebootDetector,
+    };
 }
 
-impl DeployResult {
-    pub fn success(message: impl Into<String>) -> Self {
-        Self {
-            success: true,
-            message: message.into(),
-        }
-    }
-
-    pub fn failure(message: impl Into<String>) -> Self {
-        Self {
-            success: false,
-            message: message.into(),
-        }
-    }
-}
-
-/// Trait for deployment implementations
-///
-/// Implementations must be Send + Sync to support parallel deployments
-pub trait Deployer: Send + Sync {
-    /// Copy a nix closure to the target host
-    fn copy_closure(&self, target: &DeployTarget, store_path: &StorePath) -> Result<()>;
-
-    /// Activate a configuration on the target host
-    fn activate(
-        &self,
-        target: &DeployTarget,
-        store_path: &StorePath,
-        mode: ActivationMode,
-    ) -> Result<()>;
-
-    /// Deploy (copy + activate) in one operation
-    fn deploy(
-        &self,
-        target: &DeployTarget,
-        store_path: &StorePath,
-        mode: ActivationMode,
-    ) -> Result<DeployResult> {
-        self.copy_closure(target, store_path)?;
-        self.activate(target, store_path, mode)?;
-        Ok(DeployResult::success(format!(
-            "Deployed successfully to {}",
-            target.hostname
-        )))
-    }
+pub mod ssh {
+    pub use crate::backends::deploy::SshDeployBackend as SshDeployer;
 }

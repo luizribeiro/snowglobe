@@ -1,5 +1,5 @@
-use crate::deploy::reboot::{RebootCheck, RebootOps};
-use crate::deploy::ActivationMode;
+use crate::backends::deploy::ActivationMode;
+use crate::backends::reboot::{RebootBackend, RebootCheck};
 use crate::error::{DeployError, Result, SnowError};
 use crate::nix::{DeployTarget, HostMetadata, RebootPolicy, StorePath};
 use crate::observer::PushObserver;
@@ -19,7 +19,7 @@ pub struct PlanningOutput {
 
 /// Planning step - creates deployment plans with reboot detection
 pub struct PlanningStep<'a> {
-    pub reboot_ops: &'a dyn RebootOps,
+    pub reboot_backend: &'a dyn RebootBackend,
     pub mode: DeploymentMode,
     pub force: bool,
 }
@@ -48,7 +48,7 @@ impl<'a> Step for PlanningStep<'a> {
 
         // Create deployment plans with reboot detection
         let (plans, blocked) =
-            create_deployment_plans(hosts, self.reboot_ops, self.mode, self.force)?;
+            create_deployment_plans(hosts, self.reboot_backend, self.mode, self.force)?;
 
         // Handle blocked hosts by returning them as failures
         let mut results = Vec::new();
@@ -94,7 +94,7 @@ fn determine_activation_strategy(
     metadata: &HostMetadata,
     target: &DeployTarget,
     store_path: &StorePath,
-    reboot_ops: &dyn RebootOps,
+    reboot_ops: &dyn RebootBackend,
     mode: DeploymentMode,
     force: bool,
 ) -> Result<ActivationStrategy> {
@@ -117,7 +117,7 @@ fn handle_switch_mode(
     metadata: &HostMetadata,
     target: &DeployTarget,
     store_path: &StorePath,
-    reboot_ops: &dyn RebootOps,
+    reboot_ops: &dyn RebootBackend,
     force: bool,
 ) -> Result<ActivationStrategy> {
     // Check reboot policy - 'never' and 'always' policies override switch mode
@@ -134,7 +134,7 @@ fn handle_switch_mode(
             return Ok(ActivationStrategy::Deploy(
                 ActivationMode::Boot,
                 Some(RebootCheck::required(
-                    crate::deploy::reboot::RebootReason::Policy,
+                    crate::backends::reboot::RebootReason::Policy,
                 )),
             ));
         }
@@ -166,7 +166,7 @@ fn handle_auto_mode(
     metadata: &HostMetadata,
     target: &DeployTarget,
     store_path: &StorePath,
-    reboot_ops: &dyn RebootOps,
+    reboot_ops: &dyn RebootBackend,
 ) -> Result<ActivationStrategy> {
     // Check reboot policy
     match metadata.reboot_policy {
@@ -182,7 +182,7 @@ fn handle_auto_mode(
             return Ok(ActivationStrategy::Deploy(
                 ActivationMode::Boot,
                 Some(RebootCheck::required(
-                    crate::deploy::reboot::RebootReason::Policy,
+                    crate::backends::reboot::RebootReason::Policy,
                 )),
             ));
         }
@@ -213,7 +213,7 @@ fn handle_auto_mode(
 /// blocked by safety checks (e.g., --switch without --force when reboot required)
 pub fn create_deployment_plans(
     hosts: Vec<(HostMetadata, DeployTarget, StorePath)>,
-    reboot_ops: &dyn RebootOps,
+    reboot_ops: &dyn RebootBackend,
     mode: DeploymentMode,
     force: bool,
 ) -> Result<(Vec<PushPlan>, Vec<BlockedHost>)> {

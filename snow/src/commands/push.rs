@@ -1,5 +1,7 @@
 use clap::Args;
-use snowlib::{DeploymentMode, PushResults, RebootDetector, Result, SnowContext, SshDeployer};
+use snowlib::{
+    DeploymentMode, PushResults, Result, SnowContext, SshDeployBackend, SystemRebootBackend,
+};
 use tabled::{Table, Tabled};
 
 // Used in tests
@@ -7,7 +9,7 @@ use tabled::{Table, Tabled};
 use snowlib::{ActivationMode, DeployTarget, StorePath};
 
 #[cfg(debug_assertions)]
-use snowlib::MockDeployer;
+use snowlib::MockDeployBackend;
 
 /// Deploy configurations to hosts
 #[derive(Debug, Args)]
@@ -159,37 +161,37 @@ impl PushArgs {
         }
     }
 
-    /// Create the appropriate NixOps implementation based on settings
-    fn get_nix_ops(&self) -> Result<Box<dyn snowlib::NixOps>> {
+    /// Create the appropriate NixBackend implementation based on settings
+    fn get_nix_backend(&self) -> Result<Box<dyn snowlib::NixBackend>> {
         #[cfg(debug_assertions)]
         {
             if let Some(fixture_path) = &self.mock_fixture {
                 println!("⚠ Using mock deployer");
                 let path = std::path::Path::new(fixture_path);
                 let fixture = snowlib::DeploymentFixture::from_file(path)?;
-                return Ok(Box::new(snowlib::MockNixOps::from_fixture(fixture)));
+                return Ok(Box::new(snowlib::MockNixBackend::from_fixture(fixture)));
             }
         }
 
-        Ok(Box::new(snowlib::SystemNixOps::new()))
+        Ok(Box::new(snowlib::SystemNixBackend::new()))
     }
 
-    /// Create the appropriate Deployer implementation based on settings
-    fn get_deployer(&self) -> Result<Box<dyn snowlib::Deployer>> {
+    /// Create the appropriate DeployBackend implementation based on settings
+    fn get_deploy_backend(&self) -> Result<Box<dyn snowlib::DeployBackend>> {
         #[cfg(debug_assertions)]
         {
             if let Some(fixture_path) = &self.mock_fixture {
                 let path = std::path::Path::new(fixture_path);
-                return Ok(Box::new(MockDeployer::from_file(path)?));
+                return Ok(Box::new(MockDeployBackend::from_file(path)?));
             }
         }
 
-        Ok(Box::new(SshDeployer::new().with_quiet(self.quiet)))
+        Ok(Box::new(SshDeployBackend::new().with_quiet(self.quiet)))
     }
 
-    /// Get the reboot detector with appropriate configuration
-    fn get_reboot_detector(&self) -> Result<RebootDetector> {
-        let mut detector = RebootDetector::default();
+    /// Get the reboot backend with appropriate configuration
+    fn get_reboot_backend(&self) -> Result<SystemRebootBackend> {
+        let mut detector = SystemRebootBackend::default();
 
         // Configure SSH user if specified
         if let Some(ref user) = self.user {
@@ -253,16 +255,16 @@ impl PushArgs {
         };
 
         // Get components
-        let nix_ops = self.get_nix_ops()?;
-        let deployer = self.get_deployer()?;
-        let reboot_detector = self.get_reboot_detector()?;
+        let nix_backend = self.get_nix_backend()?;
+        let deploy_backend = self.get_deploy_backend()?;
+        let reboot_backend = self.get_reboot_backend()?;
         let observer = crate::observer::CliObserver::new(self.quiet);
 
         // Resolve hosts and get metadata
         let hostnames = self.resolve_hosts(ctx)?;
         let mut hosts = Vec::new();
         for name in hostnames {
-            let metadata = nix_ops.get_host_metadata(ctx, &name)?;
+            let metadata = nix_backend.get_host_metadata(ctx, &name)?;
             hosts.push(metadata);
         }
 
@@ -280,9 +282,9 @@ impl PushArgs {
         // Execute the push - snowlib handles everything!
         let results = snowlib::push(
             ctx,
-            nix_ops.as_ref(),
-            deployer.as_ref(),
-            &reboot_detector,
+            nix_backend.as_ref(),
+            deploy_backend.as_ref(),
+            &reboot_backend,
             hosts,
             &config,
             &observer,
@@ -307,12 +309,14 @@ impl PushArgs {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use snowlib::{
+        DeployBackend, DeploymentFixture, HostFixture, MockDeployBackend, OperationFixture,
+    };
     use snowlib::{DeployTarget, StorePath};
-    use snowlib::{Deployer, DeploymentFixture, HostFixture, MockDeployer, OperationFixture};
 
     #[test]
-    fn test_mock_deployer_success() {
-        let deployer = MockDeployer::new();
+    fn test_mock_deploy_backend_success() {
+        let deployer = MockDeployBackend::new();
         let target = DeployTarget {
             user: Some("root".to_string()),
             hostname: "test.example.com".to_string(),
@@ -327,8 +331,8 @@ mod tests {
     }
 
     #[test]
-    fn test_mock_deployer_with_failure() {
-        let deployer = MockDeployer::new().with_failures(vec!["fail.example.com".to_string()]);
+    fn test_mock_deploy_backend_with_failure() {
+        let deployer = MockDeployBackend::new().with_failures(vec!["fail.example.com".to_string()]);
 
         let target = DeployTarget {
             user: Some("root".to_string()),
@@ -341,7 +345,7 @@ mod tests {
     }
 
     #[test]
-    fn test_mock_deployer_from_fixture() {
+    fn test_mock_deploy_backend_from_fixture() {
         let fixture = DeploymentFixture {
             name: "Test deployment".to_string(),
             description: Some("Test scenario".to_string()),
@@ -365,7 +369,7 @@ mod tests {
             }],
         };
 
-        let deployer = MockDeployer::from_fixture(fixture);
+        let deployer = MockDeployBackend::from_fixture(fixture);
         let target = DeployTarget {
             user: Some("root".to_string()),
             hostname: "hydrogen.example.com".to_string(),
@@ -380,13 +384,13 @@ mod tests {
     }
 
     #[test]
-    fn test_mock_deployer_from_file() {
+    fn test_mock_deploy_backend_from_file() {
         use std::path::PathBuf;
 
         let fixture_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("tests/fixtures/push_scenarios/success.json");
 
-        let deployer = MockDeployer::from_file(&fixture_path).unwrap();
+        let deployer = MockDeployBackend::from_file(&fixture_path).unwrap();
 
         // Test with hydrogen
         let target = DeployTarget {
@@ -403,13 +407,13 @@ mod tests {
     }
 
     #[test]
-    fn test_mock_deployer_partial_failure() {
+    fn test_mock_deploy_backend_partial_failure() {
         use std::path::PathBuf;
 
         let fixture_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("tests/fixtures/push_scenarios/partial_failure.json");
 
-        let deployer = MockDeployer::from_file(&fixture_path).unwrap();
+        let deployer = MockDeployBackend::from_file(&fixture_path).unwrap();
 
         // Hydrogen should succeed
         let target_hydrogen = DeployTarget {

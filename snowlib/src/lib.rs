@@ -7,6 +7,7 @@
 //! The library is designed to be used by multiple frontends (CLI, TUI, agents)
 //! and contains no terminal-specific I/O.
 
+pub mod backends;
 pub mod deploy;
 pub mod error;
 pub mod nix;
@@ -14,27 +15,21 @@ pub mod observer;
 pub mod push;
 
 // Re-export commonly used types
-pub use deploy::{ActivationMode, DeployResult, Deployer};
+pub use backends::deploy::{ActivationMode, DeployBackend, DeployResult, SshDeployBackend};
+pub use backends::nix::{NixBackend, SystemNixBackend};
+pub use backends::reboot::{
+    RebootBackend, RebootCheck, RebootDetectionConfig, RebootReason, SystemRebootBackend,
+};
 pub use error::{Result, SnowError};
-pub use nix::ops::{NixOps, SystemNixOps};
 pub use nix::{DeployTarget, Host, HostMetadata, RebootPolicy, SnowContext, StorePath};
 pub use observer::{CompositeObserver, NoopObserver, PushObserver};
 pub use push::{BlockedHost, DeploymentMode, PushConfiguration, PushPlan, PushResults};
 
-// Re-export specific implementations
-pub use deploy::reboot::{
-    RebootCheck, RebootDetectionConfig, RebootDetector, RebootOps, RebootReason,
-};
-pub use deploy::ssh::SshDeployer;
-
 #[cfg(debug_assertions)]
-pub use deploy::mock::{
-    BuildFixture, DeploymentFixture, HostFixture, MetadataFixture, MockDeployer, MockRebootOps,
-    OperationFixture,
+pub use backends::mock::{
+    BuildFixture, DeploymentFixture, HostFixture, MetadataFixture, MockDeployBackend,
+    MockNixBackend, MockRebootBackend, OperationFixture,
 };
-
-#[cfg(debug_assertions)]
-pub use nix::ops::mock::MockNixOps;
 
 // Convenience re-exports of main functions
 pub use nix::{build_host, get_host_metadata, list_hosts};

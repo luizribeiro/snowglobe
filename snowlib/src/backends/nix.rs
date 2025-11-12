@@ -2,13 +2,10 @@ use crate::error::Result;
 use crate::nix::{HostMetadata, NixCommand, SnowContext, StorePath};
 use std::str::FromStr;
 
-#[cfg(debug_assertions)]
-pub mod mock;
-
-/// Trait for Nix operations (build, metadata retrieval)
+/// Trait for Nix backend operations (evaluation, building)
 ///
 /// Allows swapping between real Nix commands and mocked versions for testing.
-pub trait NixOps: Send + Sync {
+pub trait NixBackend: Send + Sync {
     /// Get metadata for a host from its NixOS configuration
     fn get_host_metadata(&self, ctx: &SnowContext, host: &str) -> Result<HostMetadata>;
 
@@ -16,26 +13,26 @@ pub trait NixOps: Send + Sync {
     fn build_host(&self, ctx: &SnowContext, host: &str, quiet: bool) -> Result<StorePath>;
 }
 
-/// System implementation of NixOps that executes real Nix commands
+/// System implementation of NixBackend that executes real Nix commands
 ///
 /// This is the production implementation that invokes `nix eval` and `nix build`
 /// to interact with the actual Nix system.
 #[derive(Debug, Clone)]
-pub struct SystemNixOps;
+pub struct SystemNixBackend;
 
-impl SystemNixOps {
+impl SystemNixBackend {
     pub fn new() -> Self {
         Self
     }
 }
 
-impl Default for SystemNixOps {
+impl Default for SystemNixBackend {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl NixOps for SystemNixOps {
+impl NixBackend for SystemNixBackend {
     fn get_host_metadata(&self, ctx: &SnowContext, host: &str) -> Result<HostMetadata> {
         let flake_ref = format!(".#nixosConfigurations.{}", host);
 
