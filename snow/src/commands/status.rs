@@ -1,6 +1,6 @@
 use clap::Args;
 use serde::Serialize;
-use snowlib::{list_hosts, Result, SnowContext};
+use snowlib::{Result, SnowContext};
 use tabled::{Table, Tabled};
 
 /// Show cluster status
@@ -13,6 +13,11 @@ pub struct StatusArgs {
     /// Filter hosts using a Nix expression (e.g., "config: config.services.nginx.enable or false")
     #[arg(short = 'e', long)]
     pub filter: Option<String>,
+
+    #[cfg(debug_assertions)]
+    /// Path to fixture file for mock backend (debug builds only)
+    #[arg(long, hide = true)]
+    pub mock_fixture: Option<String>,
 }
 
 #[derive(Debug, Tabled, Serialize)]
@@ -26,7 +31,12 @@ struct HostStatus {
 
 impl StatusArgs {
     pub fn run(self, ctx: &SnowContext) -> Result<()> {
-        let hosts = list_hosts(ctx, self.filter.as_deref())?;
+        let nix_backend = crate::backend_factory::create_nix_backend(
+            #[cfg(debug_assertions)]
+            &self.mock_fixture,
+        )?;
+
+        let hosts = nix_backend.list_hosts(ctx, self.filter.as_deref())?;
 
         let statuses: Vec<HostStatus> = hosts
             .into_iter()

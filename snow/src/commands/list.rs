@@ -1,5 +1,5 @@
 use clap::Args;
-use snowlib::{list_hosts, Result, SnowContext};
+use snowlib::{Result, SnowContext};
 
 /// List hostnames from nixosConfigurations
 #[derive(Debug, Args)]
@@ -7,11 +7,21 @@ pub struct ListArgs {
     /// Filter hosts using a Nix expression (e.g., "config: config.services.nginx.enable or false")
     #[arg(short = 'e', long)]
     pub filter: Option<String>,
+
+    #[cfg(debug_assertions)]
+    /// Path to fixture file for mock backend (debug builds only)
+    #[arg(long, hide = true)]
+    pub mock_fixture: Option<String>,
 }
 
 impl ListArgs {
     pub fn run(self, ctx: &SnowContext) -> Result<()> {
-        let hosts = list_hosts(ctx, self.filter.as_deref())?;
+        let nix_backend = crate::backend_factory::create_nix_backend(
+            #[cfg(debug_assertions)]
+            &self.mock_fixture,
+        )?;
+
+        let hosts = nix_backend.list_hosts(ctx, self.filter.as_deref())?;
 
         for host in hosts {
             println!("{}", host.name);

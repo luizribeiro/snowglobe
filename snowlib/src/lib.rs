@@ -32,6 +32,5 @@ pub use backends::mock::{
     MockNixBackend, MockRebootBackend, OperationFixture,
 };
 
-// Convenience re-exports of main functions
-pub use nix::{build_host, get_host_metadata, list_hosts};
+// Re-export main functions
 pub use push::{create_deployment_plans, push};

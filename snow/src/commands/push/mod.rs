@@ -128,8 +128,12 @@ impl PushArgs {
     ///
     /// If no hosts are provided, returns all hosts from the flake.
     /// If hosts are provided, validates they exist in the flake.
-    fn resolve_hosts(&self, ctx: &SnowContext) -> Result<Vec<String>> {
-        let all_hosts = snowlib::list_hosts(ctx, None)?;
+    fn resolve_hosts(
+        &self,
+        ctx: &SnowContext,
+        nix_backend: &dyn snowlib::NixBackend,
+    ) -> Result<Vec<String>> {
+        let all_hosts = nix_backend.list_hosts(ctx, None)?;
 
         if self.hosts.is_empty() {
             // No hosts specified, push all hosts
@@ -225,7 +229,7 @@ impl PushArgs {
         let observer = observer::CliObserver::new(self.quiet);
 
         // Resolve hosts and get metadata
-        let hostnames = self.resolve_hosts(ctx)?;
+        let hostnames = self.resolve_hosts(ctx, nix_backend.as_ref())?;
         let mut hosts = Vec::new();
         for name in hostnames {
             let metadata = nix_backend.get_host_metadata(ctx, &name)?;
