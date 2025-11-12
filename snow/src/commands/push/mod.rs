@@ -1,3 +1,5 @@
+mod observer;
+
 use clap::Args;
 use snowlib::{DeploymentMode, PushResults, Result, SnowContext};
 use tabled::{Table, Tabled};
@@ -220,7 +222,7 @@ impl PushArgs {
             self.quiet,
         )?;
         let reboot_backend = crate::backend_factory::create_reboot_backend(self.user.as_deref())?;
-        let observer = crate::observer::CliObserver::new(self.quiet);
+        let observer = observer::CliObserver::new(self.quiet);
 
         // Resolve hosts and get metadata
         let hostnames = self.resolve_hosts(ctx)?;
