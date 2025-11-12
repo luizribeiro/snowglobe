@@ -245,39 +245,6 @@ impl StorePath {
         &self.0
     }
 }
-
-/// SSH deployment target
-#[derive(Debug, Clone)]
-pub struct DeployTarget {
-    /// Optional SSH user. If None, SSH will use default behavior (SSH config or current user)
-    pub user: Option<String>,
-    pub hostname: String,
-    pub port: Option<u16>,
-}
-
-impl DeployTarget {
-    pub fn ssh_destination(&self) -> String {
-        if let Some(ref user) = self.user {
-            format!("{}@{}", user, self.hostname)
-        } else {
-            self.hostname.clone()
-        }
-    }
-
-    pub fn ssh_url(&self) -> String {
-        let user_part = self
-            .user
-            .as_ref()
-            .map(|u| format!("{}@", u))
-            .unwrap_or_default();
-        if let Some(port) = self.port {
-            format!("ssh://{}{}:{}", user_part, self.hostname, port)
-        } else {
-            format!("ssh://{}{}", user_part, self.hostname)
-        }
-    }
-}
-
 /// Validate and resolve a flake path provided by the user
 ///
 /// The path can be either:
@@ -435,56 +402,6 @@ mod tests {
         let json = b"not valid json";
         let result = parse_hostnames(json);
         assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_deploy_target_ssh_url_with_port() {
-        let target = DeployTarget {
-            user: Some("deploy".to_string()),
-            hostname: "hydrogen.example.com".to_string(),
-            port: Some(2222),
-        };
-        assert_eq!(target.ssh_url(), "ssh://deploy@hydrogen.example.com:2222");
-    }
-
-    #[test]
-    fn test_deploy_target_ssh_destination_with_user() {
-        let target = DeployTarget {
-            user: Some("deploy".to_string()),
-            hostname: "hydrogen.example.com".to_string(),
-            port: None,
-        };
-        assert_eq!(target.ssh_destination(), "deploy@hydrogen.example.com");
-    }
-
-    #[test]
-    fn test_deploy_target_ssh_destination_without_user() {
-        let target = DeployTarget {
-            user: None,
-            hostname: "hydrogen.example.com".to_string(),
-            port: None,
-        };
-        assert_eq!(target.ssh_destination(), "hydrogen.example.com");
-    }
-
-    #[test]
-    fn test_deploy_target_ssh_url_without_user() {
-        let target = DeployTarget {
-            user: None,
-            hostname: "hydrogen.example.com".to_string(),
-            port: None,
-        };
-        assert_eq!(target.ssh_url(), "ssh://hydrogen.example.com");
-    }
-
-    #[test]
-    fn test_deploy_target_ssh_url_without_user_with_port() {
-        let target = DeployTarget {
-            user: None,
-            hostname: "hydrogen.example.com".to_string(),
-            port: Some(2222),
-        };
-        assert_eq!(target.ssh_url(), "ssh://hydrogen.example.com:2222");
     }
 
     #[test]

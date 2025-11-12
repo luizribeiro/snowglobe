@@ -1,6 +1,7 @@
+use crate::backends::deploy::DeployTarget;
 use crate::backends::nix::NixBackend;
 use crate::error::Result;
-use crate::nix::{DeployTarget, HostMetadata, SnowContext, StorePath};
+use crate::nix::{HostMetadata, SnowContext, StorePath};
 use crate::observer::PushObserver;
 use crate::push::config::PushConfiguration;
 use crate::push::step::{Step, StepResult};

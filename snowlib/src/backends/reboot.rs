@@ -1,5 +1,6 @@
+use crate::backends::deploy::DeployTarget;
 use crate::error::{DeployError, Result};
-use crate::nix::{DeployTarget, StorePath};
+use crate::nix::StorePath;
 use std::process::Command;
 
 /// Trait for reboot backend operations (detection and execution)

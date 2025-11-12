@@ -1,8 +1,8 @@
-use crate::backends::deploy::{ActivationMode, DeployBackend};
+use crate::backends::deploy::{ActivationMode, DeployBackend, DeployTarget};
 use crate::backends::nix::NixBackend;
 use crate::backends::reboot::{RebootBackend, RebootCheck, RebootReason};
 use crate::error::Result;
-use crate::nix::{DeployTarget, HostMetadata, SnowContext, StorePath};
+use crate::nix::{HostMetadata, SnowContext, StorePath};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;

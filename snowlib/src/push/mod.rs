@@ -280,9 +280,9 @@ fn sorted_phases(by_phase: &HashMap<String, Vec<HostMetadata>>) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::backends::deploy::{ActivationMode, DeployResult};
+    use crate::backends::deploy::{ActivationMode, DeployResult, DeployTarget};
     use crate::backends::mock::{MockDeployBackend, MockNixBackend};
-    use crate::nix::{DeployTarget, HostMetadata, SnowContext, StorePath};
+    use crate::nix::{HostMetadata, SnowContext, StorePath};
 
     /// Helper to create just HostMetadata for push tests
     fn make_host_metadata(

@@ -14,13 +14,15 @@ pub mod observer;
 pub mod push;
 
 // Re-export commonly used types
-pub use backends::deploy::{ActivationMode, DeployBackend, DeployResult, SshDeployBackend};
+pub use backends::deploy::{
+    ActivationMode, DeployBackend, DeployResult, DeployTarget, SshDeployBackend,
+};
 pub use backends::nix::{NixBackend, SystemNixBackend};
 pub use backends::reboot::{
     RebootBackend, RebootCheck, RebootDetectionConfig, RebootReason, SystemRebootBackend,
 };
 pub use error::{Result, SnowError};
-pub use nix::{DeployTarget, Host, HostMetadata, RebootPolicy, SnowContext, StorePath};
+pub use nix::{Host, HostMetadata, RebootPolicy, SnowContext, StorePath};
 pub use observer::{CompositeObserver, NoopObserver, PushObserver};
 pub use push::{BlockedHost, DeploymentMode, PushConfiguration, PushPlan, PushResults};
 

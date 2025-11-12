@@ -1,7 +1,7 @@
-use crate::backends::deploy::ActivationMode;
+use crate::backends::deploy::{ActivationMode, DeployTarget};
 use crate::backends::reboot::{RebootBackend, RebootCheck};
 use crate::error::{DeployError, Result, SnowError};
-use crate::nix::{DeployTarget, HostMetadata, RebootPolicy, StorePath};
+use crate::nix::{HostMetadata, RebootPolicy, StorePath};
 use crate::observer::PushObserver;
 use crate::push::config::DeploymentMode;
 use crate::push::results::{BlockedHost, PushPlan};

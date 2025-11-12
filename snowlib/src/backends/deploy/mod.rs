@@ -1,5 +1,9 @@
+mod target;
+
+pub use target::DeployTarget;
+
 use crate::error::{DeployError, Result};
-use crate::nix::{DeployTarget, StorePath};
+use crate::nix::StorePath;
 use std::process::Command;
 
 /// Activation mode for NixOS configuration
