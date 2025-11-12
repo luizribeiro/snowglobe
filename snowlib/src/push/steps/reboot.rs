@@ -1,7 +1,7 @@
 use crate::backends::deploy::{ActivationMode, DeployResult};
-use crate::backends::reboot::RebootBackend;
 use crate::error::Result;
 use crate::observer::PushObserver;
+use crate::push::context::PushContext;
 use crate::push::results::PushPlan;
 use crate::push::step::{Step, StepResult};
 
@@ -21,8 +21,7 @@ pub struct RebootOutput {
 
 /// Reboot step - reboots hosts that require it
 pub struct RebootStep<'a> {
-    pub reboot_backend: &'a dyn RebootBackend,
-    pub allow_reboot: bool,
+    pub push_ctx: &'a PushContext<'a>,
 }
 
 impl<'a> Step for RebootStep<'a> {
@@ -43,7 +42,7 @@ impl<'a> Step for RebootStep<'a> {
         let hosts_needing_reboot: Vec<String> = inputs
             .iter()
             .filter(|input| {
-                self.allow_reboot
+                self.push_ctx.config.allow_reboot
                     && input.plan.activation_mode == ActivationMode::Boot
                     && (input.plan.reboot_check.is_none()
                         || input
@@ -87,7 +86,11 @@ impl<'a> Step for RebootStep<'a> {
                 observer.on_reboot_start(&hostname)?;
 
                 // Perform reboot and wait
-                match self.reboot_backend.reboot_and_wait(&input.plan.target) {
+                match self
+                    .push_ctx
+                    .reboot_backend
+                    .reboot_and_wait(&input.plan.target)
+                {
                     Ok(_) => {
                         // Reboot succeeded
                         observer.on_reboot_complete(&hostname, true)?;

@@ -4,6 +4,7 @@ use crate::error::{DeployError, Result, SnowError};
 use crate::nix::{HostMetadata, RebootPolicy, StorePath};
 use crate::observer::PushObserver;
 use crate::push::config::DeploymentMode;
+use crate::push::context::PushContext;
 use crate::push::results::{BlockedHost, PushPlan};
 use crate::push::step::{Step, StepResult};
 use crate::push::steps::build::BuildOutput;
@@ -19,9 +20,7 @@ pub struct PlanningOutput {
 
 /// Planning step - creates deployment plans with reboot detection
 pub struct PlanningStep<'a> {
-    pub reboot_backend: &'a dyn RebootBackend,
-    pub mode: DeploymentMode,
-    pub force: bool,
+    pub push_ctx: &'a PushContext<'a>,
 }
 
 impl<'a> Step for PlanningStep<'a> {
@@ -47,8 +46,12 @@ impl<'a> Step for PlanningStep<'a> {
             .collect();
 
         // Create deployment plans with reboot detection
-        let (plans, blocked) =
-            create_deployment_plans(hosts, self.reboot_backend, self.mode, self.force)?;
+        let (plans, blocked) = create_deployment_plans(
+            hosts,
+            self.push_ctx.reboot_backend,
+            self.push_ctx.config.mode,
+            self.push_ctx.config.force,
+        )?;
 
         // Handle blocked hosts by returning them as failures
         let mut results = Vec::new();

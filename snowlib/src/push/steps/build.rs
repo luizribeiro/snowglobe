@@ -1,9 +1,8 @@
 use crate::backends::deploy::DeployTarget;
-use crate::backends::nix::NixBackend;
 use crate::error::Result;
 use crate::nix::{Flake, HostMetadata, StorePath};
 use crate::observer::PushObserver;
-use crate::push::config::PushConfiguration;
+use crate::push::context::PushContext;
 use crate::push::step::{Step, StepResult};
 
 /// Input for the Build step
@@ -22,9 +21,8 @@ pub struct BuildOutput {
 
 /// Build step - builds NixOS configurations for hosts
 pub struct BuildStep<'a> {
-    pub ctx: &'a Flake,
-    pub nix_backend: &'a dyn NixBackend,
-    pub config: &'a PushConfiguration,
+    pub flake: &'a Flake,
+    pub push_ctx: &'a PushContext<'a>,
 }
 
 impl<'a> Step for BuildStep<'a> {
@@ -58,17 +56,18 @@ impl<'a> Step for BuildStep<'a> {
             observer.on_build_start(&hostname)?;
 
             // Build the host configuration
-            match self
-                .nix_backend
-                .build_host(self.ctx, &hostname, self.config.quiet)
-            {
+            match self.push_ctx.nix_backend.build_host(
+                self.flake,
+                &hostname,
+                self.push_ctx.config.quiet,
+            ) {
                 Ok(store_path) => {
                     // Notify success
                     observer.on_build_complete(&hostname, true)?;
 
                     // Create deployment target
                     let target = DeployTarget {
-                        user: self.config.ssh_user.clone(),
+                        user: self.push_ctx.config.ssh_user.clone(),
                         hostname: input.metadata.fqdn.clone(),
                         port: None,
                     };

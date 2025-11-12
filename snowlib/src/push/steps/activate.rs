@@ -1,6 +1,7 @@
-use crate::backends::deploy::{DeployBackend, DeployResult};
+use crate::backends::deploy::DeployResult;
 use crate::error::{DeployError, Result, SnowError};
 use crate::observer::PushObserver;
+use crate::push::context::PushContext;
 use crate::push::results::PushPlan;
 use crate::push::step::{Step, StepResult};
 use rayon::prelude::*;
@@ -22,8 +23,7 @@ pub struct ActivateOutput {
 
 /// Activate step - activates configurations on remote hosts in parallel
 pub struct ActivateStep<'a> {
-    pub deploy_backend: &'a dyn DeployBackend,
-    pub concurrency: usize,
+    pub push_ctx: &'a PushContext<'a>,
 }
 
 impl<'a> Step for ActivateStep<'a> {
@@ -71,12 +71,12 @@ impl<'a> ActivateStep<'a> {
         inputs: Vec<ActivateInput>,
         observer: &dyn PushObserver,
     ) -> Result<Vec<StepResult<ActivateOutput>>> {
-        let deployer = Arc::new(self.deploy_backend);
+        let deployer = Arc::new(self.push_ctx.deploy_backend);
         let observer = Arc::new(observer);
 
         // Create thread pool with concurrency limit
         let pool = rayon::ThreadPoolBuilder::new()
-            .num_threads(self.concurrency)
+            .num_threads(self.push_ctx.config.concurrency)
             .build()
             .map_err(|e| {
                 SnowError::Deploy(DeployError::Failed {

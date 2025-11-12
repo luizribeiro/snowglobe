@@ -247,16 +247,16 @@ impl PushArgs {
             allow_reboot: !self.no_reboot, // Invert: no_reboot=true means allow_reboot=false
         };
 
-        // Execute the push - snowlib handles everything!
-        let results = snowlib::push(
-            ctx,
+        // Create push context with backends and configuration
+        let push_ctx = snowlib::PushContext::new(
             nix_backend.as_ref(),
             deploy_backend.as_ref(),
             &reboot_backend,
-            hosts,
             &config,
-            &observer,
-        )?;
+        );
+
+        // Execute the push - snowlib handles everything!
+        let results = snowlib::push(ctx, &push_ctx, hosts, &observer)?;
 
         // Print results table
         self.print_results_table(&results)?;

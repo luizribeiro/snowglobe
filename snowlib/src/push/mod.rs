@@ -13,12 +13,14 @@
 //! the `Step` trait defined in `step.rs`.
 
 mod config;
+mod context;
 mod results;
 mod step;
 pub mod steps;
 
 // Re-export public types
 pub use config::{DeploymentMode, PushConfiguration};
+pub use context::PushContext;
 pub use results::{BlockedHost, PushPlan, PushResults};
 pub use step::{Step, StepResult};
 pub use steps::{
@@ -30,9 +32,6 @@ pub use steps::{
 // Re-export create_deployment_plans for backward compatibility and testing
 pub use steps::plan::create_deployment_plans;
 
-use crate::backends::deploy::DeployBackend;
-use crate::backends::nix::NixBackend;
-use crate::backends::reboot::RebootBackend;
 use crate::error::Result;
 use crate::nix::{Flake, HostMetadata};
 use crate::observer::PushObserver;
@@ -65,33 +64,31 @@ use std::collections::HashMap;
 /// # Example
 ///
 /// ```no_run
-/// use snowlib::{push, PushConfiguration, Flake, SystemNixBackend, SshDeployBackend, SystemRebootBackend};
+/// use snowlib::{push, PushConfiguration, PushContext, Flake, SystemNixBackend, SshDeployBackend, SystemRebootBackend};
 /// use snowlib::observer::NoopObserver;
 /// use snowlib::nix::HostMetadata;
 ///
 /// # fn example(hosts: Vec<HostMetadata>) -> snowlib::Result<()> {
-/// let ctx = Flake::new(None)?;
+/// let flake = Flake::new(None)?;
 /// let nix_backend = SystemNixBackend::new();
 /// let deploy_backend = SshDeployBackend::new();
 /// let reboot_backend = SystemRebootBackend::default();
 /// let config = PushConfiguration::default();
+/// let push_ctx = PushContext::new(&nix_backend, &deploy_backend, &reboot_backend, &config);
 /// let observer = NoopObserver;
 ///
-/// let results = push(&ctx, &nix_backend, &deploy_backend, &reboot_backend, hosts, &config, &observer)?;
+/// let results = push(&flake, &push_ctx, hosts, &observer)?;
 /// # Ok(())
 /// # }
 /// ```
 pub fn push(
-    ctx: &Flake,
-    nix_backend: &dyn NixBackend,
-    deploy_backend: &dyn DeployBackend,
-    reboot_backend: &dyn RebootBackend,
+    flake: &Flake,
+    push_ctx: &PushContext,
     hosts: Vec<HostMetadata>,
-    config: &PushConfiguration,
     observer: &dyn PushObserver,
 ) -> Result<PushResults> {
     // Group hosts by phase
-    let by_phase = group_by_phase(hosts, config.ignore_phases);
+    let by_phase = group_by_phase(hosts, push_ctx.config.ignore_phases);
     let phases = sorted_phases(&by_phase);
 
     let mut all_results = Vec::new();
@@ -107,16 +104,7 @@ pub fn push(
         observer.on_phase_start(&phase, &hostnames)?;
 
         // Execute phase pipeline
-        let phase_result = execute_phase(
-            &phase,
-            phase_hosts,
-            ctx,
-            nix_backend,
-            deploy_backend,
-            reboot_backend,
-            config,
-            observer,
-        );
+        let phase_result = execute_phase(&phase, phase_hosts, flake, push_ctx, observer);
 
         // Notify observer of phase completion (always, even on failure)
         let phase_success = phase_result
@@ -159,15 +147,11 @@ pub fn push(
 /// 5. Reboot - Reboot hosts if needed
 ///
 /// Returns deployment results for all hosts in the phase.
-#[allow(clippy::too_many_arguments)]
 fn execute_phase(
     phase: &str,
     phase_hosts: &[HostMetadata],
-    ctx: &Flake,
-    nix_backend: &dyn NixBackend,
-    deploy_backend: &dyn DeployBackend,
-    reboot_backend: &dyn RebootBackend,
-    config: &PushConfiguration,
+    flake: &Flake,
+    push_ctx: &PushContext,
     observer: &dyn PushObserver,
 ) -> Result<Vec<(String, crate::backends::deploy::DeployResult)>> {
     // Step 1: Build
@@ -177,23 +161,15 @@ fn execute_phase(
             metadata: h.clone(),
         })
         .collect();
-    let build_step = BuildStep {
-        ctx,
-        nix_backend,
-        config,
-    };
+    let build_step = BuildStep { flake, push_ctx };
     let build_outputs = execute_step(&build_step, phase, build_inputs, observer)?;
 
     // Step 2: Copy
-    let copy_step = CopyStep { deploy_backend };
+    let copy_step = CopyStep { push_ctx };
     let copy_outputs = execute_step(&copy_step, phase, build_outputs, observer)?;
 
     // Step 3: Planning
-    let plan_step = PlanningStep {
-        reboot_backend,
-        mode: config.mode,
-        force: config.force,
-    };
+    let plan_step = PlanningStep { push_ctx };
     let planning_outputs = execute_step(&plan_step, phase, copy_outputs, observer)?;
 
     // Step 4: Activate
@@ -201,10 +177,7 @@ fn execute_phase(
         .into_iter()
         .map(|p| ActivateInput { plan: p.plan })
         .collect();
-    let activate_step = ActivateStep {
-        deploy_backend,
-        concurrency: config.concurrency,
-    };
+    let activate_step = ActivateStep { push_ctx };
     let activate_outputs = execute_step(&activate_step, phase, activate_inputs, observer)?;
 
     // Step 5: Reboot
@@ -215,10 +188,7 @@ fn execute_phase(
             deploy_result: a.result,
         })
         .collect();
-    let reboot_step = RebootStep {
-        reboot_backend,
-        allow_reboot: config.allow_reboot,
-    };
+    let reboot_step = RebootStep { push_ctx };
     let reboot_outputs = execute_step(&reboot_step, phase, reboot_inputs, observer)?;
 
     // Collect results from reboot step
@@ -346,10 +316,18 @@ mod tests {
             .map(|plan| ActivateInput { plan })
             .collect();
 
+        // Create minimal backends and config for PushContext (only concurrency is used)
+        let nix_backend = MockNixBackend::new();
+        let reboot_backend = SystemRebootBackend::default();
+        let config = PushConfiguration {
+            concurrency,
+            ..Default::default()
+        };
+        let push_ctx = PushContext::new(&nix_backend, deploy_backend, &reboot_backend, &config);
+
         // Create ActivateStep and execute
         let step = ActivateStep {
-            deploy_backend,
-            concurrency,
+            push_ctx: &push_ctx,
         };
 
         // Execute and handle potential error (ActivateStep returns error on phase failure)
@@ -941,15 +919,10 @@ mod tests {
             allow_reboot: true,
         };
 
-        let results = push(
-            &ctx,
-            &nix_backend,
-            &deployer,
-            &reboot_detector,
-            hosts,
-            &config,
-            &observer,
-        )
+        let results = {
+            let push_ctx = PushContext::new(&nix_backend, &deployer, &reboot_detector, &config);
+            push(&ctx, &push_ctx, hosts, &observer)
+        }
         .unwrap();
 
         assert_eq!(results.success_count(), 2);
@@ -1007,15 +980,10 @@ mod tests {
         };
 
         // When activation fails, push() returns Err
-        let result = push(
-            &ctx,
-            &nix_backend,
-            &deployer,
-            &reboot_detector,
-            hosts,
-            &config,
-            &observer,
-        );
+        let result = {
+            let push_ctx = PushContext::new(&nix_backend, &deployer, &reboot_detector, &config);
+            push(&ctx, &push_ctx, hosts, &observer)
+        };
 
         // Push should fail due to phase p1 activation failure
         assert!(
@@ -1196,15 +1164,10 @@ mod tests {
         };
 
         // When activation fails, push() returns Err
-        let result = push(
-            &ctx,
-            &nix_backend,
-            &deployer,
-            &reboot_detector,
-            hosts,
-            &config,
-            &observer,
-        );
+        let result = {
+            let push_ctx = PushContext::new(&nix_backend, &deployer, &reboot_detector, &config);
+            push(&ctx, &push_ctx, hosts, &observer)
+        };
 
         // Push should fail due to activation failure
         assert!(
@@ -1287,15 +1250,10 @@ mod tests {
         };
 
         // When activation fails, push() returns Err
-        let result = push(
-            &ctx,
-            &nix_backend,
-            &deployer,
-            &reboot_detector,
-            hosts,
-            &config,
-            &observer,
-        );
+        let result = {
+            let push_ctx = PushContext::new(&nix_backend, &deployer, &reboot_detector, &config);
+            push(&ctx, &push_ctx, hosts, &observer)
+        };
 
         // Push should fail due to activation failure
         assert!(
@@ -1366,15 +1324,10 @@ mod tests {
             allow_reboot: true,
         };
 
-        let results = push(
-            &ctx,
-            &nix_backend,
-            &deployer,
-            &reboot_detector,
-            hosts,
-            &config,
-            &observer,
-        )
+        let results = {
+            let push_ctx = PushContext::new(&nix_backend, &deployer, &reboot_detector, &config);
+            push(&ctx, &push_ctx, hosts, &observer)
+        }
         .unwrap();
 
         // Verify both hosts succeeded
@@ -1443,15 +1396,10 @@ mod tests {
             allow_reboot: true,
         };
 
-        let results = push(
-            &ctx,
-            &nix_backend,
-            &deployer,
-            &reboot_detector,
-            hosts,
-            &config,
-            &observer,
-        )
+        let results = {
+            let push_ctx = PushContext::new(&nix_backend, &deployer, &reboot_detector, &config);
+            push(&ctx, &push_ctx, hosts, &observer)
+        }
         .unwrap();
 
         assert_eq!(results.success_count(), 2);
@@ -1503,15 +1451,10 @@ mod tests {
             allow_reboot: true,
         };
 
-        let result = push(
-            &ctx,
-            &nix_backend,
-            &deployer,
-            &reboot_detector,
-            hosts,
-            &config,
-            &observer,
-        );
+        let result = {
+            let push_ctx = PushContext::new(&nix_backend, &deployer, &reboot_detector, &config);
+            push(&ctx, &push_ctx, hosts, &observer)
+        };
 
         // Should fail during build
         assert!(result.is_err());
@@ -1562,15 +1505,10 @@ mod tests {
             allow_reboot: true,
         };
 
-        let result = push(
-            &ctx,
-            &nix_backend,
-            &deployer,
-            &reboot_detector,
-            hosts,
-            &config,
-            &observer,
-        );
+        let result = {
+            let push_ctx = PushContext::new(&nix_backend, &deployer, &reboot_detector, &config);
+            push(&ctx, &push_ctx, hosts, &observer)
+        };
 
         // Should fail during copy
         assert!(result.is_err());
@@ -1634,15 +1572,10 @@ mod tests {
             allow_reboot: true,
         };
 
-        push(
-            &ctx,
-            &nix_backend,
-            &deployer,
-            &reboot_detector,
-            hosts,
-            &config,
-            &observer,
-        )
+        {
+            let push_ctx = PushContext::new(&nix_backend, &deployer, &reboot_detector, &config);
+            push(&ctx, &push_ctx, hosts, &observer)
+        }
         .unwrap();
 
         let events = observer.get_events();
@@ -1705,15 +1638,10 @@ mod tests {
             allow_reboot: true,
         };
 
-        push(
-            &ctx,
-            &nix_backend,
-            &deployer,
-            &reboot_detector,
-            hosts,
-            &config,
-            &observer,
-        )
+        {
+            let push_ctx = PushContext::new(&nix_backend, &deployer, &reboot_detector, &config);
+            push(&ctx, &push_ctx, hosts, &observer)
+        }
         .unwrap();
 
         let events = observer.get_events();
@@ -1782,15 +1710,10 @@ mod tests {
             allow_reboot: true,
         };
 
-        let result = push(
-            &ctx,
-            &nix_backend,
-            &deployer,
-            &reboot_detector,
-            hosts,
-            &config,
-            &observer,
-        );
+        let result = {
+            let push_ctx = PushContext::new(&nix_backend, &deployer, &reboot_detector, &config);
+            push(&ctx, &push_ctx, hosts, &observer)
+        };
 
         assert!(result.is_err());
 
@@ -1842,15 +1765,10 @@ mod tests {
             allow_reboot: true,
         };
 
-        let results = push(
-            &ctx,
-            &nix_backend,
-            &deployer,
-            &reboot_detector,
-            hosts,
-            &config,
-            &observer,
-        )
+        let results = {
+            let push_ctx = PushContext::new(&nix_backend, &deployer, &reboot_detector, &config);
+            push(&ctx, &push_ctx, hosts, &observer)
+        }
         .unwrap();
 
         assert_eq!(results.success_count(), 2);
@@ -1905,15 +1823,10 @@ mod tests {
         };
 
         // When activation fails, push() returns Err but observer events still fire
-        let result = push(
-            &ctx,
-            &nix_backend,
-            &deployer,
-            &reboot_detector,
-            hosts,
-            &config,
-            &observer,
-        );
+        let result = {
+            let push_ctx = PushContext::new(&nix_backend, &deployer, &reboot_detector, &config);
+            push(&ctx, &push_ctx, hosts, &observer)
+        };
 
         // Push should fail due to phase1 activation failure
         assert!(
@@ -1973,15 +1886,10 @@ mod tests {
             allow_reboot: true,
         };
 
-        let results = push(
-            &ctx,
-            &nix_backend,
-            &deployer,
-            &reboot_backend,
-            hosts,
-            &config,
-            &observer,
-        )
+        let results = {
+            let push_ctx = PushContext::new(&nix_backend, &deployer, &reboot_backend, &config);
+            push(&ctx, &push_ctx, hosts, &observer)
+        }
         .unwrap();
 
         // Should succeed
@@ -2057,15 +1965,10 @@ mod tests {
             allow_reboot: true,
         };
 
-        let results = push(
-            &ctx,
-            &nix_backend,
-            &deployer,
-            &reboot_backend,
-            hosts,
-            &config,
-            &observer,
-        )
+        let results = {
+            let push_ctx = PushContext::new(&nix_backend, &deployer, &reboot_backend, &config);
+            push(&ctx, &push_ctx, hosts, &observer)
+        }
         .unwrap();
 
         // Should report failure due to reboot failure
@@ -2127,15 +2030,10 @@ mod tests {
             allow_reboot: true,
         };
 
-        let results = push(
-            &ctx,
-            &nix_backend,
-            &deployer,
-            &reboot_backend,
-            hosts,
-            &config,
-            &observer,
-        )
+        let results = {
+            let push_ctx = PushContext::new(&nix_backend, &deployer, &reboot_backend, &config);
+            push(&ctx, &push_ctx, hosts, &observer)
+        }
         .unwrap();
 
         // Should succeed
@@ -2194,15 +2092,10 @@ mod tests {
             allow_reboot: true,
         };
 
-        let results = push(
-            &ctx,
-            &nix_backend,
-            &deployer,
-            &reboot_backend,
-            hosts,
-            &config,
-            &observer,
-        )
+        let results = {
+            let push_ctx = PushContext::new(&nix_backend, &deployer, &reboot_backend, &config);
+            push(&ctx, &push_ctx, hosts, &observer)
+        }
         .unwrap();
 
         // Should succeed
@@ -2246,15 +2139,10 @@ mod tests {
             allow_reboot: true,
         };
 
-        let results = push(
-            &ctx,
-            &nix_backend,
-            &deployer,
-            &reboot_backend,
-            hosts,
-            &config,
-            &observer,
-        )
+        let results = {
+            let push_ctx = PushContext::new(&nix_backend, &deployer, &reboot_backend, &config);
+            push(&ctx, &push_ctx, hosts, &observer)
+        }
         .unwrap();
 
         // Should succeed
@@ -2307,15 +2195,10 @@ mod tests {
             allow_reboot: true,
         };
 
-        let results = push(
-            &ctx,
-            &nix_backend,
-            &deployer,
-            &reboot_backend,
-            hosts,
-            &config,
-            &observer,
-        )
+        let results = {
+            let push_ctx = PushContext::new(&nix_backend, &deployer, &reboot_backend, &config);
+            push(&ctx, &push_ctx, hosts, &observer)
+        }
         .unwrap();
 
         // Should succeed
@@ -2362,15 +2245,10 @@ mod tests {
             allow_reboot: false, // User says --no-reboot
         };
 
-        let results = push(
-            &ctx,
-            &nix_backend,
-            &deployer,
-            &reboot_backend,
-            hosts,
-            &config,
-            &observer,
-        )
+        let results = {
+            let push_ctx = PushContext::new(&nix_backend, &deployer, &reboot_backend, &config);
+            push(&ctx, &push_ctx, hosts, &observer)
+        }
         .unwrap();
 
         // Should succeed
@@ -2423,15 +2301,10 @@ mod tests {
             allow_reboot: false, // User says --no-reboot
         };
 
-        let results = push(
-            &ctx,
-            &nix_backend,
-            &deployer,
-            &reboot_backend,
-            hosts,
-            &config,
-            &observer,
-        )
+        let results = {
+            let push_ctx = PushContext::new(&nix_backend, &deployer, &reboot_backend, &config);
+            push(&ctx, &push_ctx, hosts, &observer)
+        }
         .unwrap();
 
         // Should succeed (uses Boot mode but doesn't reboot)
