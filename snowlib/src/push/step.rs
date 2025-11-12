@@ -1,5 +1,5 @@
 use crate::error::{Result, SnowError};
-use crate::observer::DeploymentObserver;
+use crate::observer::PushObserver;
 
 /// A step in the deployment pipeline.
 ///
@@ -37,7 +37,7 @@ pub trait Step: Send + Sync {
         &self,
         phase: &str,
         inputs: Vec<Self::Input>,
-        observer: &dyn DeploymentObserver,
+        observer: &dyn PushObserver,
     ) -> Result<Vec<StepResult<Self::Output>>>;
 }
 

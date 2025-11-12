@@ -1,6 +1,6 @@
-//! CLI observer implementation for deployment progress reporting
+//! CLI observer implementation for push deployment progress reporting
 
-use snowlib::{ActivationMode, DeployResult, DeploymentObserver, Result};
+use snowlib::{ActivationMode, DeployResult, PushObserver, Result};
 use std::io::Write;
 
 /// CLI observer that prints deployment progress to stdout
@@ -23,7 +23,7 @@ impl CliObserver {
     }
 }
 
-impl DeploymentObserver for CliObserver {
+impl PushObserver for CliObserver {
     // ========================================
     // Phase lifecycle
     // ========================================

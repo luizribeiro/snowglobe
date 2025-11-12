@@ -19,7 +19,7 @@ pub mod steps;
 
 // Re-export public types
 pub use config::{DeploymentMode, PushConfiguration};
-pub use results::{BlockedHost, DeploymentPlan, PushResults};
+pub use results::{BlockedHost, PushPlan, PushResults};
 pub use step::{Step, StepResult};
 pub use steps::{
     ActivateInput, ActivateOutput, ActivateStep, BuildInput, BuildOutput, BuildStep, CopyInput,
@@ -35,7 +35,7 @@ use crate::deploy::Deployer;
 use crate::error::Result;
 use crate::nix::ops::NixOps;
 use crate::nix::{HostMetadata, SnowContext};
-use crate::observer::DeploymentObserver;
+use crate::observer::PushObserver;
 use std::collections::HashMap;
 
 /// Main push orchestration function - handles complete deployment workflow
@@ -86,7 +86,7 @@ pub fn push(
     reboot_ops: &dyn RebootOps,
     hosts: Vec<HostMetadata>,
     config: &PushConfiguration,
-    observer: &dyn DeploymentObserver,
+    observer: &dyn PushObserver,
 ) -> Result<PushResults> {
     // Group hosts by phase
     let by_phase = group_by_phase(hosts, config.ignore_phases);
@@ -202,7 +202,7 @@ fn execute_step<S: Step>(
     step: &S,
     phase: &str,
     inputs: Vec<S::Input>,
-    observer: &dyn DeploymentObserver,
+    observer: &dyn PushObserver,
 ) -> Result<Vec<S::Output>> {
     let results = step.execute_batch(phase, inputs, observer)?;
 
@@ -291,9 +291,9 @@ mod tests {
     /// Helper function to activate hosts using ActivateStep (replaces old activate_plans_for_test)
     fn activate_plans_for_test(
         deployer: &dyn crate::deploy::Deployer,
-        plans: Vec<DeploymentPlan>,
+        plans: Vec<PushPlan>,
         concurrency: usize,
-        observer: &dyn crate::observer::DeploymentObserver,
+        observer: &dyn crate::observer::PushObserver,
     ) -> Result<PushResults> {
         // Get the phase from the first plan (all plans in tests have the same phase)
         let phase = plans
@@ -624,7 +624,7 @@ mod tests {
     }
 
     // Tests for the new push() function with observer support
-    use crate::observer::{DeploymentObserver, NoopObserver};
+    use crate::observer::{NoopObserver, PushObserver};
     use std::sync::{Arc, Mutex};
 
     #[derive(Clone)]
@@ -644,7 +644,7 @@ mod tests {
         }
     }
 
-    impl DeploymentObserver for TestObserver {
+    impl PushObserver for TestObserver {
         fn on_build_step_start(&self, phase: &str, hosts: &[String]) -> crate::error::Result<()> {
             self.events
                 .lock()
@@ -815,7 +815,7 @@ mod tests {
         let observer = TestObserver::new();
 
         let plans = vec![
-            DeploymentPlan {
+            PushPlan {
                 metadata: HostMetadata {
                     name: "host1".to_string(),
                     phase: Some("p1".to_string()),
@@ -832,7 +832,7 @@ mod tests {
                 activation_mode: ActivationMode::Switch,
                 reboot_check: None,
             },
-            DeploymentPlan {
+            PushPlan {
                 metadata: HostMetadata {
                     name: "host2".to_string(),
                     phase: Some("p1".to_string()),
@@ -1008,7 +1008,7 @@ mod tests {
         let deployer = MockDeployer::new();
         let observer = NoopObserver;
 
-        let plans = vec![DeploymentPlan {
+        let plans = vec![PushPlan {
             metadata: HostMetadata {
                 name: "host1".to_string(),
                 phase: Some("p1".to_string()),
@@ -1035,7 +1035,7 @@ mod tests {
         let deployer = MockDeployer::new();
         let observer = TestObserver::new();
 
-        let plans = vec![DeploymentPlan {
+        let plans = vec![PushPlan {
             metadata: HostMetadata {
                 name: "host1".to_string(),
                 phase: None, // No phase specified
@@ -1068,7 +1068,7 @@ mod tests {
         let observer = TestObserver::new();
 
         let plans = vec![
-            DeploymentPlan {
+            PushPlan {
                 metadata: HostMetadata {
                     name: "host1".to_string(),
                     phase: Some("p1".to_string()),
@@ -1085,7 +1085,7 @@ mod tests {
                 activation_mode: ActivationMode::Switch,
                 reboot_check: None,
             },
-            DeploymentPlan {
+            PushPlan {
                 metadata: HostMetadata {
                     name: "host2".to_string(),
                     phase: Some("p1".to_string()),

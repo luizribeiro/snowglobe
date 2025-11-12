@@ -1,6 +1,6 @@
 use crate::deploy::Deployer;
 use crate::error::Result;
-use crate::observer::DeploymentObserver;
+use crate::observer::PushObserver;
 use crate::push::step::{Step, StepResult};
 use crate::push::steps::build::BuildOutput;
 
@@ -27,7 +27,7 @@ impl<'a> Step for CopyStep<'a> {
         &self,
         phase: &str,
         inputs: Vec<Self::Input>,
-        observer: &dyn DeploymentObserver,
+        observer: &dyn PushObserver,
     ) -> Result<Vec<StepResult<Self::Output>>> {
         // Collect hostnames for phase start notification
         let host_names: Vec<String> = inputs.iter().map(|i| i.metadata.name.clone()).collect();

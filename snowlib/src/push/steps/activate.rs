@@ -1,7 +1,7 @@
 use crate::deploy::{DeployResult, Deployer};
 use crate::error::{DeployError, Result, SnowError};
-use crate::observer::DeploymentObserver;
-use crate::push::results::DeploymentPlan;
+use crate::observer::PushObserver;
+use crate::push::results::PushPlan;
 use crate::push::step::{Step, StepResult};
 use rayon::prelude::*;
 use std::sync::Arc;
@@ -9,7 +9,7 @@ use std::sync::Arc;
 /// Input for the Activate step
 #[derive(Debug, Clone)]
 pub struct ActivateInput {
-    pub plan: DeploymentPlan,
+    pub plan: PushPlan,
 }
 
 /// Output from the Activate step
@@ -17,7 +17,7 @@ pub struct ActivateInput {
 pub struct ActivateOutput {
     pub hostname: String,
     pub result: DeployResult,
-    pub plan: DeploymentPlan, // Pass through for reboot step
+    pub plan: PushPlan, // Pass through for reboot step
 }
 
 /// Activate step - activates configurations on remote hosts in parallel
@@ -38,7 +38,7 @@ impl<'a> Step for ActivateStep<'a> {
         &self,
         phase: &str,
         inputs: Vec<Self::Input>,
-        observer: &dyn DeploymentObserver,
+        observer: &dyn PushObserver,
     ) -> Result<Vec<StepResult<Self::Output>>> {
         // Collect hostnames for deploy step start notification
         let host_names: Vec<String> = inputs
@@ -69,7 +69,7 @@ impl<'a> ActivateStep<'a> {
     fn activate_parallel(
         &self,
         inputs: Vec<ActivateInput>,
-        observer: &dyn DeploymentObserver,
+        observer: &dyn PushObserver,
     ) -> Result<Vec<StepResult<ActivateOutput>>> {
         let deployer = Arc::new(self.deployer);
         let observer = Arc::new(observer);

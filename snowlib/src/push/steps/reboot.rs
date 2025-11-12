@@ -1,14 +1,14 @@
 use crate::deploy::reboot::RebootOps;
 use crate::deploy::{ActivationMode, DeployResult};
 use crate::error::Result;
-use crate::observer::DeploymentObserver;
-use crate::push::results::DeploymentPlan;
+use crate::observer::PushObserver;
+use crate::push::results::PushPlan;
 use crate::push::step::{Step, StepResult};
 
 /// Input for the Reboot step
 #[derive(Debug, Clone)]
 pub struct RebootInput {
-    pub plan: DeploymentPlan,
+    pub plan: PushPlan,
     pub deploy_result: DeployResult,
 }
 
@@ -37,7 +37,7 @@ impl<'a> Step for RebootStep<'a> {
         &self,
         phase: &str,
         inputs: Vec<Self::Input>,
-        observer: &dyn DeploymentObserver,
+        observer: &dyn PushObserver,
     ) -> Result<Vec<StepResult<Self::Output>>> {
         // Determine which hosts need reboot
         let hosts_needing_reboot: Vec<String> = inputs

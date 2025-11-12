@@ -2,9 +2,9 @@ use crate::deploy::reboot::{RebootCheck, RebootOps};
 use crate::deploy::ActivationMode;
 use crate::error::{DeployError, Result, SnowError};
 use crate::nix::{DeployTarget, HostMetadata, RebootPolicy, StorePath};
-use crate::observer::DeploymentObserver;
+use crate::observer::PushObserver;
 use crate::push::config::DeploymentMode;
-use crate::push::results::{BlockedHost, DeploymentPlan};
+use crate::push::results::{BlockedHost, PushPlan};
 use crate::push::step::{Step, StepResult};
 use crate::push::steps::build::BuildOutput;
 
@@ -14,7 +14,7 @@ pub type PlanningInput = BuildOutput;
 /// Output from the Planning step
 #[derive(Debug, Clone)]
 pub struct PlanningOutput {
-    pub plan: DeploymentPlan,
+    pub plan: PushPlan,
 }
 
 /// Planning step - creates deployment plans with reboot detection
@@ -36,7 +36,7 @@ impl<'a> Step for PlanningStep<'a> {
         &self,
         _phase: &str,
         inputs: Vec<Self::Input>,
-        _observer: &dyn DeploymentObserver,
+        _observer: &dyn PushObserver,
     ) -> Result<Vec<StepResult<Self::Output>>> {
         // Planning step doesn't emit observer notifications
 
@@ -216,7 +216,7 @@ pub fn create_deployment_plans(
     reboot_ops: &dyn RebootOps,
     mode: DeploymentMode,
     force: bool,
-) -> Result<(Vec<DeploymentPlan>, Vec<BlockedHost>)> {
+) -> Result<(Vec<PushPlan>, Vec<BlockedHost>)> {
     let mut plans = Vec::new();
     let mut blocked = Vec::new();
 
@@ -230,7 +230,7 @@ pub fn create_deployment_plans(
             force,
         )? {
             ActivationStrategy::Deploy(activation_mode, reboot_check) => {
-                plans.push(DeploymentPlan {
+                plans.push(PushPlan {
                     metadata,
                     target,
                     store_path,

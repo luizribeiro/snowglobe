@@ -18,8 +18,8 @@ pub use deploy::{ActivationMode, DeployResult, Deployer};
 pub use error::{Result, SnowError};
 pub use nix::ops::{NixOps, SystemNixOps};
 pub use nix::{DeployTarget, Host, HostMetadata, RebootPolicy, SnowContext, StorePath};
-pub use observer::{CompositeObserver, DeploymentObserver, NoopObserver};
-pub use push::{BlockedHost, DeploymentMode, DeploymentPlan, PushConfiguration, PushResults};
+pub use observer::{CompositeObserver, NoopObserver, PushObserver};
+pub use push::{BlockedHost, DeploymentMode, PushConfiguration, PushPlan, PushResults};
 
 // Re-export specific implementations
 pub use deploy::reboot::{

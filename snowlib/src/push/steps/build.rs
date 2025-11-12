@@ -1,7 +1,7 @@
 use crate::error::Result;
 use crate::nix::ops::NixOps;
 use crate::nix::{DeployTarget, HostMetadata, SnowContext, StorePath};
-use crate::observer::DeploymentObserver;
+use crate::observer::PushObserver;
 use crate::push::config::PushConfiguration;
 use crate::push::step::{Step, StepResult};
 
@@ -38,7 +38,7 @@ impl<'a> Step for BuildStep<'a> {
         &self,
         phase: &str,
         inputs: Vec<Self::Input>,
-        observer: &dyn DeploymentObserver,
+        observer: &dyn PushObserver,
     ) -> Result<Vec<StepResult<Self::Output>>> {
         // Collect hostnames for phase start notification
         let host_names: Vec<String> = inputs.iter().map(|i| i.metadata.name.clone()).collect();

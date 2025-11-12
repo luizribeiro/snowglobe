@@ -2,9 +2,9 @@ use crate::deploy::reboot::RebootCheck;
 use crate::deploy::{ActivationMode, DeployResult};
 use crate::nix::{DeployTarget, HostMetadata, StorePath};
 
-/// A deployment plan for a single host
+/// A push deployment plan for a single host
 #[derive(Debug, Clone)]
-pub struct DeploymentPlan {
+pub struct PushPlan {
     pub metadata: HostMetadata,
     pub target: DeployTarget,
     pub store_path: StorePath,

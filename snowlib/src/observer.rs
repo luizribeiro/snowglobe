@@ -13,11 +13,11 @@
 //! # Example
 //!
 //! ```
-//! use snowlib::{DeploymentObserver, DeployResult, ActivationMode, Result};
+//! use snowlib::{PushObserver, DeployResult, ActivationMode, Result};
 //!
 //! struct MyObserver;
 //!
-//! impl DeploymentObserver for MyObserver {
+//! impl PushObserver for MyObserver {
 //!     fn on_phase_start(&self, phase: &str, hosts: &[String]) -> Result<()> {
 //!         println!("Starting phase {} with {} hosts", phase, hosts.len());
 //!         Ok(())
@@ -28,14 +28,14 @@
 use crate::deploy::{ActivationMode, DeployResult};
 use crate::error::Result;
 
-/// Observer trait for deployment lifecycle events
+/// Observer trait for push deployment lifecycle events
 ///
 /// All methods have default no-op implementations, so observers only need
 /// to implement the events they care about.
 ///
 /// Methods return `Result<()>` to allow observers to signal errors and
 /// potentially abort deployment.
-pub trait DeploymentObserver: Send + Sync {
+pub trait PushObserver: Send + Sync {
     /// Called when starting the build step for a phase
     ///
     /// This is called once per phase at the start of the build step, before building begins for any host.
@@ -224,7 +224,7 @@ pub trait DeploymentObserver: Send + Sync {
 #[derive(Debug, Clone, Copy, Default)]
 pub struct NoopObserver;
 
-impl DeploymentObserver for NoopObserver {}
+impl PushObserver for NoopObserver {}
 
 /// Composite observer that calls multiple observers in sequence
 ///
@@ -244,17 +244,17 @@ impl DeploymentObserver for NoopObserver {}
 /// ]);
 /// ```
 pub struct CompositeObserver {
-    observers: Vec<Box<dyn DeploymentObserver>>,
+    observers: Vec<Box<dyn PushObserver>>,
 }
 
 impl CompositeObserver {
     /// Create a new composite observer from a list of observers
-    pub fn new(observers: Vec<Box<dyn DeploymentObserver>>) -> Self {
+    pub fn new(observers: Vec<Box<dyn PushObserver>>) -> Self {
         Self { observers }
     }
 }
 
-impl DeploymentObserver for CompositeObserver {
+impl PushObserver for CompositeObserver {
     fn on_build_step_start(&self, phase: &str, hosts: &[String]) -> Result<()> {
         for observer in &self.observers {
             observer.on_build_step_start(phase, hosts)?;
@@ -402,7 +402,7 @@ mod tests {
         }
     }
 
-    impl DeploymentObserver for EventLog {
+    impl PushObserver for EventLog {
         fn on_phase_start(&self, phase: &str, hosts: &[String]) -> Result<()> {
             self.log(format!("phase_start:{}:{}", phase, hosts.len()));
             Ok(())
@@ -482,7 +482,7 @@ mod tests {
     #[test]
     fn test_observer_error_propagation() {
         struct FailingObserver;
-        impl DeploymentObserver for FailingObserver {
+        impl PushObserver for FailingObserver {
             fn on_deploy_start(&self, _hostname: &str, _mode: ActivationMode) -> Result<()> {
                 Err(crate::error::SnowError::Deploy(
                     crate::error::DeployError::Failed {
