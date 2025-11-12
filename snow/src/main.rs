@@ -1,6 +1,7 @@
 use clap::Parser;
 use miette::{IntoDiagnostic, Result};
 
+mod backend_factory;
 mod commands;
 mod observer;
 

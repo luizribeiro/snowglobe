@@ -1,15 +1,10 @@
 use clap::Args;
-use snowlib::{
-    DeploymentMode, PushResults, Result, SnowContext, SshDeployBackend, SystemRebootBackend,
-};
+use snowlib::{DeploymentMode, PushResults, Result, SnowContext};
 use tabled::{Table, Tabled};
 
 // Used in tests
 #[allow(unused_imports)]
 use snowlib::{ActivationMode, DeployTarget, StorePath};
-
-#[cfg(debug_assertions)]
-use snowlib::MockDeployBackend;
 
 /// Deploy configurations to hosts
 #[derive(Debug, Args)]
@@ -161,46 +156,6 @@ impl PushArgs {
         }
     }
 
-    /// Create the appropriate NixBackend implementation based on settings
-    fn get_nix_backend(&self) -> Result<Box<dyn snowlib::NixBackend>> {
-        #[cfg(debug_assertions)]
-        {
-            if let Some(fixture_path) = &self.mock_fixture {
-                println!("⚠ Using mock deployer");
-                let path = std::path::Path::new(fixture_path);
-                let fixture = snowlib::DeploymentFixture::from_file(path)?;
-                return Ok(Box::new(snowlib::MockNixBackend::from_fixture(fixture)));
-            }
-        }
-
-        Ok(Box::new(snowlib::SystemNixBackend::new()))
-    }
-
-    /// Create the appropriate DeployBackend implementation based on settings
-    fn get_deploy_backend(&self) -> Result<Box<dyn snowlib::DeployBackend>> {
-        #[cfg(debug_assertions)]
-        {
-            if let Some(fixture_path) = &self.mock_fixture {
-                let path = std::path::Path::new(fixture_path);
-                return Ok(Box::new(MockDeployBackend::from_file(path)?));
-            }
-        }
-
-        Ok(Box::new(SshDeployBackend::new().with_quiet(self.quiet)))
-    }
-
-    /// Get the reboot backend with appropriate configuration
-    fn get_reboot_backend(&self) -> Result<SystemRebootBackend> {
-        let mut detector = SystemRebootBackend::default();
-
-        // Configure SSH user if specified
-        if let Some(ref user) = self.user {
-            detector = detector.with_ssh_user(user);
-        }
-
-        Ok(detector)
-    }
-
     /// Print results table (simplified for new architecture)
     fn print_results_table(&self, results: &PushResults) -> Result<()> {
         let table_data: Vec<DeploymentResult> = results
@@ -254,10 +209,17 @@ impl PushArgs {
             ctx
         };
 
-        // Get components
-        let nix_backend = self.get_nix_backend()?;
-        let deploy_backend = self.get_deploy_backend()?;
-        let reboot_backend = self.get_reboot_backend()?;
+        // Create backend implementations
+        let nix_backend = crate::backend_factory::create_nix_backend(
+            #[cfg(debug_assertions)]
+            &self.mock_fixture,
+        )?;
+        let deploy_backend = crate::backend_factory::create_deploy_backend(
+            #[cfg(debug_assertions)]
+            &self.mock_fixture,
+            self.quiet,
+        )?;
+        let reboot_backend = crate::backend_factory::create_reboot_backend(self.user.as_deref())?;
         let observer = crate::observer::CliObserver::new(self.quiet);
 
         // Resolve hosts and get metadata
