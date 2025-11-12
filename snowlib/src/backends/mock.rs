@@ -64,6 +64,28 @@ impl Default for MockNixBackend {
 }
 
 impl NixBackend for MockNixBackend {
+    fn list_hosts(
+        &self,
+        _ctx: &SnowContext,
+        _filter_expr: Option<&str>,
+    ) -> Result<Vec<crate::nix::Host>> {
+        // Note: filter_expr is ignored in mock - would require evaluating Nix expressions
+        if let Some(fixture) = &self.fixture {
+            // Return hosts from fixture
+            let hosts = fixture
+                .hosts
+                .iter()
+                .map(|h| crate::nix::Host {
+                    name: h.hostname.clone(),
+                })
+                .collect();
+            Ok(hosts)
+        } else {
+            // No fixture - return empty list
+            Ok(vec![])
+        }
+    }
+
     fn get_host_metadata(&self, _ctx: &SnowContext, host: &str) -> Result<HostMetadata> {
         if let Some(meta_fix) = self.get_metadata_fixture(host) {
             Ok(HostMetadata {

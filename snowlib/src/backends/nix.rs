@@ -1,11 +1,30 @@
-use crate::error::Result;
-use crate::nix::{HostMetadata, NixCommand, SnowContext, StorePath};
+use crate::error::{NixError, Result};
+use crate::nix::{Host, HostMetadata, NixCommand, SnowContext, StorePath};
 use std::str::FromStr;
+
+/// Parse hostnames from nix JSON output
+fn parse_hostnames(json: &[u8]) -> Result<Vec<Host>> {
+    let hostnames: Vec<String> =
+        serde_json::from_slice(json).map_err(|e| NixError::OutputParseFailed {
+            output: String::from_utf8_lossy(json).to_string(),
+            source: e,
+        })?;
+
+    let hosts = hostnames.into_iter().map(|name| Host { name }).collect();
+
+    Ok(hosts)
+}
 
 /// Trait for Nix backend operations (evaluation, building)
 ///
 /// Allows swapping between real Nix commands and mocked versions for testing.
 pub trait NixBackend: Send + Sync {
+    /// List all nixosConfigurations from the flake
+    ///
+    /// If filter_expr is provided, it should be a Nix expression that takes a config and returns a boolean.
+    /// Example: "config: config.features.backup.enable or false"
+    fn list_hosts(&self, ctx: &SnowContext, filter_expr: Option<&str>) -> Result<Vec<Host>>;
+
     /// Get metadata for a host from its NixOS configuration
     fn get_host_metadata(&self, ctx: &SnowContext, host: &str) -> Result<HostMetadata>;
 
@@ -33,6 +52,32 @@ impl Default for SystemNixBackend {
 }
 
 impl NixBackend for SystemNixBackend {
+    fn list_hosts(&self, ctx: &SnowContext, filter_expr: Option<&str>) -> Result<Vec<Host>> {
+        let apply_arg = if let Some(expr) = filter_expr {
+            // Build a filter expression similar to find-hosts in justfile
+            format!(
+                r#"configs:
+  let
+    inherit (builtins) filter attrNames;
+    predicate = (
+      {}
+    );
+    matchingHosts = filter (hostname: predicate configs.${{hostname}}.config) (attrNames configs);
+  in matchingHosts"#,
+                expr
+            )
+        } else {
+            "builtins.attrNames".to_string()
+        };
+
+        let stdout = NixCommand::eval(ctx, ".#nixosConfigurations")
+            .apply(&apply_arg)
+            .json()
+            .run()?;
+
+        parse_hostnames(&stdout)
+    }
+
     fn get_host_metadata(&self, ctx: &SnowContext, host: &str) -> Result<HostMetadata> {
         let flake_ref = format!(".#nixosConfigurations.{}", host);
 
