@@ -99,10 +99,10 @@ pub fn push(
         let phase_hosts = by_phase.get(&phase).unwrap();
 
         // Collect hostnames for phase lifecycle notification
-        let host_names: Vec<String> = phase_hosts.iter().map(|h| h.name.clone()).collect();
+        let hostnames: Vec<String> = phase_hosts.iter().map(|h| h.name.clone()).collect();
 
         // Notify observer of phase start
-        observer.on_phase_start(&phase, &host_names)?;
+        observer.on_phase_start(&phase, &hostnames)?;
 
         // Execute step pipeline - handle errors to ensure phase_complete is always called
         let phase_result: Result<Vec<(String, crate::deploy::DeployResult)>> = (|| {
@@ -303,10 +303,10 @@ mod tests {
             .unwrap_or_else(|| "default".to_string());
 
         // Collect hostnames for phase lifecycle notification
-        let host_names: Vec<String> = plans.iter().map(|p| p.metadata.name.clone()).collect();
+        let hostnames: Vec<String> = plans.iter().map(|p| p.metadata.name.clone()).collect();
 
         // Notify observer of phase start
-        observer.on_phase_start(&phase, &host_names)?;
+        observer.on_phase_start(&phase, &hostnames)?;
 
         // Convert plans to ActivateInput
         let inputs: Vec<ActivateInput> = plans
@@ -1112,9 +1112,9 @@ mod tests {
         assert_eq!(results.failure_count(), 1);
 
         // Check that one succeeded and one failed
-        let host_names: Vec<&str> = results.results.iter().map(|(n, _)| n.as_str()).collect();
-        assert!(host_names.contains(&"host1"));
-        assert!(host_names.contains(&"host2"));
+        let hostnames: Vec<&str> = results.results.iter().map(|(n, _)| n.as_str()).collect();
+        assert!(hostnames.contains(&"host1"));
+        assert!(hostnames.contains(&"host2"));
 
         let host1_result = results.results.iter().find(|(n, _)| n == "host1").unwrap();
         let host2_result = results.results.iter().find(|(n, _)| n == "host2").unwrap();

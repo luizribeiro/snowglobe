@@ -41,10 +41,10 @@ impl<'a> Step for BuildStep<'a> {
         observer: &dyn PushObserver,
     ) -> Result<Vec<StepResult<Self::Output>>> {
         // Collect hostnames for phase start notification
-        let host_names: Vec<String> = inputs.iter().map(|i| i.metadata.name.clone()).collect();
+        let hostnames: Vec<String> = inputs.iter().map(|i| i.metadata.name.clone()).collect();
 
         // Notify observer of build step start
-        observer.on_build_step_start(phase, &host_names)?;
+        observer.on_build_step_start(phase, &hostnames)?;
 
         let mut results = Vec::new();
 

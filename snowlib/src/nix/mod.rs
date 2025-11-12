@@ -350,15 +350,15 @@ fn find_flake_root_from(start: &Path) -> Result<PathBuf> {
     }
 }
 
-/// Parse host names from nix JSON output
-fn parse_host_names(json: &[u8]) -> Result<Vec<Host>> {
-    let host_names: Vec<String> =
+/// Parse hostnames from nix JSON output
+fn parse_hostnames(json: &[u8]) -> Result<Vec<Host>> {
+    let hostnames: Vec<String> =
         serde_json::from_slice(json).map_err(|e| NixError::OutputParseFailed {
             output: String::from_utf8_lossy(json).to_string(),
             source: e,
         })?;
 
-    let hosts = host_names.into_iter().map(|name| Host { name }).collect();
+    let hosts = hostnames.into_iter().map(|name| Host { name }).collect();
 
     Ok(hosts)
 }
@@ -389,7 +389,7 @@ pub fn list_hosts(ctx: &SnowContext, filter_expr: Option<&str>) -> Result<Vec<Ho
         .json()
         .run()?;
 
-    parse_host_names(&stdout)
+    parse_hostnames(&stdout)
 }
 
 /// Get metadata for a host from its NixOS configuration
@@ -415,9 +415,9 @@ mod tests {
     use std::str::FromStr;
 
     #[test]
-    fn test_parse_host_names() {
+    fn test_parse_hostnames() {
         let json = br#"["hydrogen","nitrogen","oxygen"]"#;
-        let hosts = parse_host_names(json).unwrap();
+        let hosts = parse_hostnames(json).unwrap();
 
         assert_eq!(hosts.len(), 3);
         assert_eq!(hosts[0].name, "hydrogen");
@@ -428,14 +428,14 @@ mod tests {
     #[test]
     fn test_parse_empty_hosts() {
         let json = br#"[]"#;
-        let hosts = parse_host_names(json).unwrap();
+        let hosts = parse_hostnames(json).unwrap();
         assert_eq!(hosts.len(), 0);
     }
 
     #[test]
     fn test_parse_invalid_json() {
         let json = b"not valid json";
-        let result = parse_host_names(json);
+        let result = parse_hostnames(json);
         assert!(result.is_err());
     }
 
@@ -598,11 +598,11 @@ mod tests {
         let hosts = result.unwrap();
         assert_eq!(hosts.len(), 4);
 
-        let host_names: Vec<String> = hosts.iter().map(|h| h.name.clone()).collect();
-        assert!(host_names.contains(&"hydrogen".to_string()));
-        assert!(host_names.contains(&"nitrogen".to_string()));
-        assert!(host_names.contains(&"oxygen".to_string()));
-        assert!(host_names.contains(&"helium".to_string()));
+        let hostnames: Vec<String> = hosts.iter().map(|h| h.name.clone()).collect();
+        assert!(hostnames.contains(&"hydrogen".to_string()));
+        assert!(hostnames.contains(&"nitrogen".to_string()));
+        assert!(hostnames.contains(&"oxygen".to_string()));
+        assert!(hostnames.contains(&"helium".to_string()));
     }
 
     #[test]
@@ -645,9 +645,9 @@ mod tests {
         let hosts = result.unwrap();
         assert_eq!(hosts.len(), 2);
 
-        let host_names: Vec<String> = hosts.iter().map(|h| h.name.clone()).collect();
-        assert!(host_names.contains(&"hydrogen".to_string()));
-        assert!(host_names.contains(&"nitrogen".to_string()));
+        let hostnames: Vec<String> = hosts.iter().map(|h| h.name.clone()).collect();
+        assert!(hostnames.contains(&"hydrogen".to_string()));
+        assert!(hostnames.contains(&"nitrogen".to_string()));
     }
 
     #[test]

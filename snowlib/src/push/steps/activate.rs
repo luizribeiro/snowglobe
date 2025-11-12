@@ -41,13 +41,13 @@ impl<'a> Step for ActivateStep<'a> {
         observer: &dyn PushObserver,
     ) -> Result<Vec<StepResult<Self::Output>>> {
         // Collect hostnames for deploy step start notification
-        let host_names: Vec<String> = inputs
+        let hostnames: Vec<String> = inputs
             .iter()
             .map(|i| i.plan.metadata.name.clone())
             .collect();
 
         // Notify observer of deploy step start
-        observer.on_deploy_step_start(phase, &host_names)?;
+        observer.on_deploy_step_start(phase, &hostnames)?;
 
         // Deploy hosts in parallel
         let results = self.activate_parallel(inputs, observer)?;

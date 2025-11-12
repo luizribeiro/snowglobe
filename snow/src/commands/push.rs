@@ -259,9 +259,9 @@ impl PushArgs {
         let observer = crate::observer::CliObserver::new(self.quiet);
 
         // Resolve hosts and get metadata
-        let host_names = self.resolve_hosts(ctx)?;
+        let hostnames = self.resolve_hosts(ctx)?;
         let mut hosts = Vec::new();
-        for name in host_names {
+        for name in hostnames {
             let metadata = nix_ops.get_host_metadata(ctx, &name)?;
             hosts.push(metadata);
         }
