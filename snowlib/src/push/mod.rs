@@ -104,67 +104,17 @@ pub fn push(
         // Notify observer of phase start
         observer.on_phase_start(&phase, &hostnames)?;
 
-        // Execute step pipeline - handle errors to ensure phase_complete is always called
-        let phase_result: Result<Vec<(String, crate::deploy::DeployResult)>> = (|| {
-            // Step 1: Build
-            let build_inputs: Vec<BuildInput> = phase_hosts
-                .iter()
-                .map(|h| BuildInput {
-                    metadata: h.clone(),
-                })
-                .collect();
-            let build_step = BuildStep {
-                ctx,
-                nix_ops,
-                config,
-            };
-            let build_outputs = execute_step(&build_step, &phase, build_inputs, observer)?;
-
-            // Step 2: Copy
-            let copy_step = CopyStep { deployer };
-            let copy_outputs = execute_step(&copy_step, &phase, build_outputs, observer)?;
-
-            // Step 3: Planning
-            let plan_step = PlanningStep {
-                reboot_ops,
-                mode: config.mode,
-                force: config.force,
-            };
-            let planning_outputs = execute_step(&plan_step, &phase, copy_outputs, observer)?;
-
-            // Step 4: Activate
-            let activate_inputs: Vec<ActivateInput> = planning_outputs
-                .into_iter()
-                .map(|p| ActivateInput { plan: p.plan })
-                .collect();
-            let activate_step = ActivateStep {
-                deployer,
-                concurrency: config.concurrency,
-            };
-            let activate_outputs = execute_step(&activate_step, &phase, activate_inputs, observer)?;
-
-            // Step 5: Reboot
-            let reboot_inputs: Vec<RebootInput> = activate_outputs
-                .into_iter()
-                .map(|a| RebootInput {
-                    plan: a.plan,
-                    deploy_result: a.result,
-                })
-                .collect();
-            let reboot_step = RebootStep {
-                reboot_ops,
-                allow_reboot: config.allow_reboot,
-            };
-            let reboot_outputs = execute_step(&reboot_step, &phase, reboot_inputs, observer)?;
-
-            // Collect results from reboot step
-            let phase_results: Vec<(String, crate::deploy::DeployResult)> = reboot_outputs
-                .into_iter()
-                .map(|r| (r.hostname, r.result))
-                .collect();
-
-            Ok(phase_results)
-        })();
+        // Execute phase pipeline
+        let phase_result = execute_phase(
+            &phase,
+            phase_hosts,
+            ctx,
+            nix_ops,
+            deployer,
+            reboot_ops,
+            config,
+            observer,
+        );
 
         // Notify observer of phase completion (always, even on failure)
         let phase_success = phase_result
@@ -195,6 +145,87 @@ pub fn push(
     Ok(PushResults {
         results: all_results,
     })
+}
+
+/// Execute all deployment steps for a single phase
+///
+/// This function runs the complete deployment pipeline for hosts in a phase:
+/// 1. Build - Compile NixOS configurations
+/// 2. Copy - Transfer closures to remote hosts
+/// 3. Plan - Create deployment plans with reboot detection
+/// 4. Activate - Activate new configurations
+/// 5. Reboot - Reboot hosts if needed
+///
+/// Returns deployment results for all hosts in the phase.
+#[allow(clippy::too_many_arguments)]
+fn execute_phase(
+    phase: &str,
+    phase_hosts: &[HostMetadata],
+    ctx: &SnowContext,
+    nix_ops: &dyn NixOps,
+    deployer: &dyn Deployer,
+    reboot_ops: &dyn RebootOps,
+    config: &PushConfiguration,
+    observer: &dyn PushObserver,
+) -> Result<Vec<(String, crate::deploy::DeployResult)>> {
+    // Step 1: Build
+    let build_inputs: Vec<BuildInput> = phase_hosts
+        .iter()
+        .map(|h| BuildInput {
+            metadata: h.clone(),
+        })
+        .collect();
+    let build_step = BuildStep {
+        ctx,
+        nix_ops,
+        config,
+    };
+    let build_outputs = execute_step(&build_step, phase, build_inputs, observer)?;
+
+    // Step 2: Copy
+    let copy_step = CopyStep { deployer };
+    let copy_outputs = execute_step(&copy_step, phase, build_outputs, observer)?;
+
+    // Step 3: Planning
+    let plan_step = PlanningStep {
+        reboot_ops,
+        mode: config.mode,
+        force: config.force,
+    };
+    let planning_outputs = execute_step(&plan_step, phase, copy_outputs, observer)?;
+
+    // Step 4: Activate
+    let activate_inputs: Vec<ActivateInput> = planning_outputs
+        .into_iter()
+        .map(|p| ActivateInput { plan: p.plan })
+        .collect();
+    let activate_step = ActivateStep {
+        deployer,
+        concurrency: config.concurrency,
+    };
+    let activate_outputs = execute_step(&activate_step, phase, activate_inputs, observer)?;
+
+    // Step 5: Reboot
+    let reboot_inputs: Vec<RebootInput> = activate_outputs
+        .into_iter()
+        .map(|a| RebootInput {
+            plan: a.plan,
+            deploy_result: a.result,
+        })
+        .collect();
+    let reboot_step = RebootStep {
+        reboot_ops,
+        allow_reboot: config.allow_reboot,
+    };
+    let reboot_outputs = execute_step(&reboot_step, phase, reboot_inputs, observer)?;
+
+    // Collect results from reboot step
+    let phase_results: Vec<(String, crate::deploy::DeployResult)> = reboot_outputs
+        .into_iter()
+        .map(|r| (r.hostname, r.result))
+        .collect();
+
+    Ok(phase_results)
 }
 
 /// Helper function to execute a step and handle failures
