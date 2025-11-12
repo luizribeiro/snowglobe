@@ -98,74 +98,97 @@ pub fn push(
     for phase in phases {
         let phase_hosts = by_phase.get(&phase).unwrap();
 
-        // Execute step pipeline
-        // Step 1: Build
-        let build_inputs: Vec<BuildInput> = phase_hosts
-            .iter()
-            .map(|h| BuildInput {
-                metadata: h.clone(),
-            })
-            .collect();
-        let build_step = BuildStep {
-            ctx,
-            nix_ops,
-            config,
-        };
-        let build_outputs = execute_step(&build_step, &phase, build_inputs, observer)?;
+        // Collect hostnames for phase lifecycle notification
+        let host_names: Vec<String> = phase_hosts.iter().map(|h| h.name.clone()).collect();
 
-        // Step 2: Copy
-        let copy_step = CopyStep { deployer };
-        let copy_outputs = execute_step(&copy_step, &phase, build_outputs, observer)?;
+        // Notify observer of phase start
+        observer.on_phase_start(&phase, &host_names)?;
 
-        // Step 3: Planning
-        let plan_step = PlanningStep {
-            reboot_ops,
-            mode: config.mode,
-            force: config.force,
-        };
-        let planning_outputs = execute_step(&plan_step, &phase, copy_outputs, observer)?;
+        // Execute step pipeline - handle errors to ensure phase_complete is always called
+        let phase_result: Result<Vec<(String, crate::deploy::DeployResult)>> = (|| {
+            // Step 1: Build
+            let build_inputs: Vec<BuildInput> = phase_hosts
+                .iter()
+                .map(|h| BuildInput {
+                    metadata: h.clone(),
+                })
+                .collect();
+            let build_step = BuildStep {
+                ctx,
+                nix_ops,
+                config,
+            };
+            let build_outputs = execute_step(&build_step, &phase, build_inputs, observer)?;
 
-        // Step 4: Activate
-        let activate_inputs: Vec<ActivateInput> = planning_outputs
-            .into_iter()
-            .map(|p| ActivateInput { plan: p.plan })
-            .collect();
-        let activate_step = ActivateStep {
-            deployer,
-            concurrency: config.concurrency,
-        };
-        let activate_outputs = execute_step(&activate_step, &phase, activate_inputs, observer)?;
+            // Step 2: Copy
+            let copy_step = CopyStep { deployer };
+            let copy_outputs = execute_step(&copy_step, &phase, build_outputs, observer)?;
 
-        // Step 5: Reboot
-        let reboot_inputs: Vec<RebootInput> = activate_outputs
-            .into_iter()
-            .map(|a| RebootInput {
-                plan: a.plan,
-                deploy_result: a.result,
-            })
-            .collect();
-        let reboot_step = RebootStep {
-            reboot_ops,
-            allow_reboot: config.allow_reboot,
-        };
-        let reboot_outputs = execute_step(&reboot_step, &phase, reboot_inputs, observer)?;
+            // Step 3: Planning
+            let plan_step = PlanningStep {
+                reboot_ops,
+                mode: config.mode,
+                force: config.force,
+            };
+            let planning_outputs = execute_step(&plan_step, &phase, copy_outputs, observer)?;
 
-        // Collect results from reboot step
-        let phase_results: Vec<(String, crate::deploy::DeployResult)> = reboot_outputs
-            .into_iter()
-            .map(|r| (r.hostname, r.result))
-            .collect();
+            // Step 4: Activate
+            let activate_inputs: Vec<ActivateInput> = planning_outputs
+                .into_iter()
+                .map(|p| ActivateInput { plan: p.plan })
+                .collect();
+            let activate_step = ActivateStep {
+                deployer,
+                concurrency: config.concurrency,
+            };
+            let activate_outputs = execute_step(&activate_step, &phase, activate_inputs, observer)?;
 
-        // Check if phase succeeded
-        let phase_success = phase_results.iter().all(|(_, r)| r.success);
+            // Step 5: Reboot
+            let reboot_inputs: Vec<RebootInput> = activate_outputs
+                .into_iter()
+                .map(|a| RebootInput {
+                    plan: a.plan,
+                    deploy_result: a.result,
+                })
+                .collect();
+            let reboot_step = RebootStep {
+                reboot_ops,
+                allow_reboot: config.allow_reboot,
+            };
+            let reboot_outputs = execute_step(&reboot_step, &phase, reboot_inputs, observer)?;
 
-        all_results.extend(phase_results);
+            // Collect results from reboot step
+            let phase_results: Vec<(String, crate::deploy::DeployResult)> = reboot_outputs
+                .into_iter()
+                .map(|r| (r.hostname, r.result))
+                .collect();
 
-        // If this phase failed, stop deployment
-        if !phase_success {
-            return Ok(PushResults {
-                results: all_results,
-            });
+            Ok(phase_results)
+        })();
+
+        // Notify observer of phase completion (always, even on failure)
+        let phase_success = phase_result
+            .as_ref()
+            .map(|results| results.iter().all(|(_, r)| r.success))
+            .unwrap_or(false);
+        observer.on_phase_complete(&phase, phase_success)?;
+
+        // Handle phase result
+        match phase_result {
+            Ok(phase_results) => {
+                all_results.extend(phase_results);
+
+                // If this phase failed, stop deployment
+                if !phase_success {
+                    return Ok(PushResults {
+                        results: all_results,
+                    });
+                }
+            }
+            Err(e) => {
+                // Phase failed with error - stop deployment
+                return Err(e);
+            }
         }
     }
 
@@ -279,6 +302,12 @@ mod tests {
             .cloned()
             .unwrap_or_else(|| "default".to_string());
 
+        // Collect hostnames for phase lifecycle notification
+        let host_names: Vec<String> = plans.iter().map(|p| p.metadata.name.clone()).collect();
+
+        // Notify observer of phase start
+        observer.on_phase_start(&phase, &host_names)?;
+
         // Convert plans to ActivateInput
         let inputs: Vec<ActivateInput> = plans
             .into_iter()
@@ -297,9 +326,11 @@ mod tests {
         // Convert StepResults to PushResults format
         // Even if there's an error, we might have partial results we want to return
         let mut push_results = Vec::new();
+        let phase_success;
 
         match results_or_err {
             Ok(results) => {
+                phase_success = results.iter().all(|r| r.is_success());
                 for result in results {
                     match result {
                         StepResult::Success(output) => {
@@ -313,10 +344,16 @@ mod tests {
                 }
             }
             Err(e) => {
+                phase_success = false;
+                // Notify observer of phase completion with failure
+                observer.on_phase_complete(&phase, phase_success)?;
                 // On error, return the error - tests that expect failures will handle this
                 return Err(e);
             }
         }
+
+        // Notify observer of phase completion
+        observer.on_phase_complete(&phase, phase_success)?;
 
         Ok(PushResults {
             results: push_results,
@@ -633,6 +670,15 @@ mod tests {
             Ok(())
         }
 
+        fn on_build_step_complete(&self, phase: &str, success: bool) -> crate::error::Result<()> {
+            self.events.lock().unwrap().push(format!(
+                "build_step_complete:{}:{}",
+                phase,
+                if success { "ok" } else { "fail" }
+            ));
+            Ok(())
+        }
+
         fn on_copy_step_start(&self, phase: &str, hosts: &[String]) -> crate::error::Result<()> {
             self.events
                 .lock()
@@ -658,11 +704,29 @@ mod tests {
             Ok(())
         }
 
+        fn on_copy_step_complete(&self, phase: &str, success: bool) -> crate::error::Result<()> {
+            self.events.lock().unwrap().push(format!(
+                "copy_step_complete:{}:{}",
+                phase,
+                if success { "ok" } else { "fail" }
+            ));
+            Ok(())
+        }
+
         fn on_phase_start(&self, phase: &str, hosts: &[String]) -> crate::error::Result<()> {
             self.events
                 .lock()
                 .unwrap()
                 .push(format!("phase_start:{}:{}", phase, hosts.len()));
+            Ok(())
+        }
+
+        fn on_deploy_step_start(&self, phase: &str, hosts: &[String]) -> crate::error::Result<()> {
+            self.events.lock().unwrap().push(format!(
+                "deploy_step_start:{}:{}",
+                phase,
+                hosts.len()
+            ));
             Ok(())
         }
 
@@ -691,6 +755,15 @@ mod tests {
             Ok(())
         }
 
+        fn on_deploy_step_complete(&self, phase: &str, success: bool) -> crate::error::Result<()> {
+            self.events.lock().unwrap().push(format!(
+                "deploy_step_complete:{}:{}",
+                phase,
+                if success { "ok" } else { "fail" }
+            ));
+            Ok(())
+        }
+
         fn on_phase_complete(&self, phase: &str, success: bool) -> crate::error::Result<()> {
             self.events.lock().unwrap().push(format!(
                 "phase_complete:{}:{}",
@@ -712,6 +785,24 @@ mod tests {
             self.events.lock().unwrap().push(format!(
                 "reboot_complete:{}:{}",
                 hostname,
+                if success { "ok" } else { "fail" }
+            ));
+            Ok(())
+        }
+
+        fn on_reboot_step_start(&self, phase: &str, hosts: &[String]) -> crate::error::Result<()> {
+            self.events.lock().unwrap().push(format!(
+                "reboot_step_start:{}:{}",
+                phase,
+                hosts.len()
+            ));
+            Ok(())
+        }
+
+        fn on_reboot_step_complete(&self, phase: &str, success: bool) -> crate::error::Result<()> {
+            self.events.lock().unwrap().push(format!(
+                "reboot_step_complete:{}:{}",
+                phase,
                 if success { "ok" } else { "fail" }
             ));
             Ok(())
@@ -1394,14 +1485,18 @@ mod tests {
 
         let events = observer.get_events();
 
+        // Phase lifecycle events should be present
+        assert!(events.contains(&"phase_start:default:1".to_string()));
+        assert!(events.contains(&"phase_complete:default:failed".to_string()));
+
         // Build events should be present
         assert!(events.contains(&"build_step_start:default:1".to_string()));
         assert!(events.contains(&"build_start:fail-host".to_string()));
         assert!(events.contains(&"build_complete:fail-host:fail".to_string()));
+        assert!(events.contains(&"build_step_complete:default:fail".to_string()));
 
-        // NO copy/activate/reboot events should fire
+        // NO copy/activate/reboot events should fire (build failed before these steps)
         assert!(!events.iter().any(|e| e.starts_with("copy_")));
-        assert!(!events.iter().any(|e| e.starts_with("phase_start:")));
         assert!(!events.iter().any(|e| e.starts_with("deploy_")));
         assert!(!events.iter().any(|e| e.starts_with("reboot_")));
     }
@@ -1449,15 +1544,23 @@ mod tests {
 
         let events = observer.get_events();
 
+        // Phase lifecycle events should be present
+        assert!(events.contains(&"phase_start:default:1".to_string()));
+        assert!(events.contains(&"phase_complete:default:failed".to_string()));
+
         // Build should succeed
+        assert!(events.contains(&"build_step_start:default:1".to_string()));
+        assert!(events.contains(&"build_start:fail-copy".to_string()));
         assert!(events.contains(&"build_complete:fail-copy:ok".to_string()));
+        assert!(events.contains(&"build_step_complete:default:ok".to_string()));
 
         // Copy should fail
+        assert!(events.contains(&"copy_step_start:default:1".to_string()));
         assert!(events.contains(&"copy_start:fail-copy".to_string()));
         assert!(events.contains(&"copy_complete:fail-copy:fail".to_string()));
+        assert!(events.contains(&"copy_step_complete:default:fail".to_string()));
 
-        // NO activate/reboot events
-        assert!(!events.iter().any(|e| e.starts_with("phase_start:")));
+        // NO activate/reboot events (copy failed before these steps)
         assert!(!events.iter().any(|e| e.starts_with("deploy_")));
         assert!(!events.iter().any(|e| e.starts_with("reboot_")));
     }

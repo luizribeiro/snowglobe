@@ -38,6 +38,7 @@ impl<'a> Step for CopyStep<'a> {
         let mut results = Vec::new();
 
         // Copy closures sequentially
+        let all_succeeded = true;
         for input in inputs {
             let hostname = input.metadata.name.clone();
 
@@ -57,11 +58,17 @@ impl<'a> Step for CopyStep<'a> {
                     // Notify failure
                     observer.on_copy_complete(&hostname, false)?;
 
+                    // Notify copy step completion with failure
+                    observer.on_copy_step_complete(phase, false)?;
+
                     // Copy failure stops deployment immediately
                     return Err(e);
                 }
             }
         }
+
+        // Notify copy step completion
+        observer.on_copy_step_complete(phase, all_succeeded)?;
 
         Ok(results)
     }

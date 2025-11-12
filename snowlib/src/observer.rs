@@ -64,6 +64,17 @@ pub trait DeploymentObserver: Send + Sync {
         Ok(())
     }
 
+    /// Called when the build step completes for a phase
+    ///
+    /// This is called once per phase at the end of the build step, after all builds finish.
+    ///
+    /// # Arguments
+    /// - `phase`: The phase name
+    /// - `success`: Whether all builds in the phase succeeded
+    fn on_build_step_complete(&self, _phase: &str, _success: bool) -> Result<()> {
+        Ok(())
+    }
+
     /// Called when starting the copy step for a phase
     ///
     /// This is called once per phase at the start of the copy step, before copying begins for any host.
@@ -92,6 +103,17 @@ pub trait DeploymentObserver: Send + Sync {
         Ok(())
     }
 
+    /// Called when the copy step completes for a phase
+    ///
+    /// This is called once per phase at the end of the copy step, after all copies finish.
+    ///
+    /// # Arguments
+    /// - `phase`: The phase name
+    /// - `success`: Whether all copies in the phase succeeded
+    fn on_copy_step_complete(&self, _phase: &str, _success: bool) -> Result<()> {
+        Ok(())
+    }
+
     /// Called when starting to deploy/activate a phase
     ///
     /// This is called once per phase, before any deployments begin.
@@ -100,6 +122,17 @@ pub trait DeploymentObserver: Send + Sync {
     /// - `phase`: The phase name
     /// - `hosts`: Names of all hosts in this phase that will be deployed
     fn on_phase_start(&self, _phase: &str, _hosts: &[String]) -> Result<()> {
+        Ok(())
+    }
+
+    /// Called when starting the deploy/activate step for a phase
+    ///
+    /// This is called once per phase at the start of the deploy step, before activation begins for any host.
+    ///
+    /// # Arguments
+    /// - `phase`: The phase name
+    /// - `hosts`: Names of all hosts in this phase
+    fn on_deploy_step_start(&self, _phase: &str, _hosts: &[String]) -> Result<()> {
         Ok(())
     }
 
@@ -123,6 +156,17 @@ pub trait DeploymentObserver: Send + Sync {
         Ok(())
     }
 
+    /// Called when the deploy/activate step completes for a phase
+    ///
+    /// This is called once per phase at the end of the deploy step, after all activations finish.
+    ///
+    /// # Arguments
+    /// - `phase`: The phase name
+    /// - `success`: Whether all deployments in the phase succeeded
+    fn on_deploy_step_complete(&self, _phase: &str, _success: bool) -> Result<()> {
+        Ok(())
+    }
+
     /// Called when a deployment phase completes
     ///
     /// This is called once per phase after all deployments finish.
@@ -131,6 +175,17 @@ pub trait DeploymentObserver: Send + Sync {
     /// - `phase`: The phase name
     /// - `success`: Whether all deployments in the phase succeeded
     fn on_phase_complete(&self, _phase: &str, _success: bool) -> Result<()> {
+        Ok(())
+    }
+
+    /// Called when starting the reboot step for a phase
+    ///
+    /// This is called once per phase at the start of the reboot step, before rebooting begins for any host.
+    ///
+    /// # Arguments
+    /// - `phase`: The phase name
+    /// - `hosts`: Names of all hosts in this phase that will be rebooted
+    fn on_reboot_step_start(&self, _phase: &str, _hosts: &[String]) -> Result<()> {
         Ok(())
     }
 
@@ -148,6 +203,17 @@ pub trait DeploymentObserver: Send + Sync {
     /// - `hostname`: The host that was rebooted
     /// - `success`: Whether the reboot and reconnection succeeded
     fn on_reboot_complete(&self, _hostname: &str, _success: bool) -> Result<()> {
+        Ok(())
+    }
+
+    /// Called when the reboot step completes for a phase
+    ///
+    /// This is called once per phase at the end of the reboot step, after all reboots finish.
+    ///
+    /// # Arguments
+    /// - `phase`: The phase name
+    /// - `success`: Whether all reboots in the phase succeeded
+    fn on_reboot_step_complete(&self, _phase: &str, _success: bool) -> Result<()> {
         Ok(())
     }
 }
@@ -210,6 +276,13 @@ impl DeploymentObserver for CompositeObserver {
         Ok(())
     }
 
+    fn on_build_step_complete(&self, phase: &str, success: bool) -> Result<()> {
+        for observer in &self.observers {
+            observer.on_build_step_complete(phase, success)?;
+        }
+        Ok(())
+    }
+
     fn on_copy_step_start(&self, phase: &str, hosts: &[String]) -> Result<()> {
         for observer in &self.observers {
             observer.on_copy_step_start(phase, hosts)?;
@@ -231,9 +304,23 @@ impl DeploymentObserver for CompositeObserver {
         Ok(())
     }
 
+    fn on_copy_step_complete(&self, phase: &str, success: bool) -> Result<()> {
+        for observer in &self.observers {
+            observer.on_copy_step_complete(phase, success)?;
+        }
+        Ok(())
+    }
+
     fn on_phase_start(&self, phase: &str, hosts: &[String]) -> Result<()> {
         for observer in &self.observers {
             observer.on_phase_start(phase, hosts)?;
+        }
+        Ok(())
+    }
+
+    fn on_deploy_step_start(&self, phase: &str, hosts: &[String]) -> Result<()> {
+        for observer in &self.observers {
+            observer.on_deploy_step_start(phase, hosts)?;
         }
         Ok(())
     }
@@ -252,9 +339,23 @@ impl DeploymentObserver for CompositeObserver {
         Ok(())
     }
 
+    fn on_deploy_step_complete(&self, phase: &str, success: bool) -> Result<()> {
+        for observer in &self.observers {
+            observer.on_deploy_step_complete(phase, success)?;
+        }
+        Ok(())
+    }
+
     fn on_phase_complete(&self, phase: &str, success: bool) -> Result<()> {
         for observer in &self.observers {
             observer.on_phase_complete(phase, success)?;
+        }
+        Ok(())
+    }
+
+    fn on_reboot_step_start(&self, phase: &str, hosts: &[String]) -> Result<()> {
+        for observer in &self.observers {
+            observer.on_reboot_step_start(phase, hosts)?;
         }
         Ok(())
     }
@@ -269,6 +370,13 @@ impl DeploymentObserver for CompositeObserver {
     fn on_reboot_complete(&self, hostname: &str, success: bool) -> Result<()> {
         for observer in &self.observers {
             observer.on_reboot_complete(hostname, success)?;
+        }
+        Ok(())
+    }
+
+    fn on_reboot_step_complete(&self, phase: &str, success: bool) -> Result<()> {
+        for observer in &self.observers {
+            observer.on_reboot_step_complete(phase, success)?;
         }
         Ok(())
     }

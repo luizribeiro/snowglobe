@@ -40,23 +40,23 @@ impl<'a> Step for ActivateStep<'a> {
         inputs: Vec<Self::Input>,
         observer: &dyn DeploymentObserver,
     ) -> Result<Vec<StepResult<Self::Output>>> {
-        // Collect hostnames for phase start notification
+        // Collect hostnames for deploy step start notification
         let host_names: Vec<String> = inputs
             .iter()
             .map(|i| i.plan.metadata.name.clone())
             .collect();
 
-        // Notify observer of activation phase start
-        observer.on_phase_start(phase, &host_names)?;
+        // Notify observer of deploy step start
+        observer.on_deploy_step_start(phase, &host_names)?;
 
         // Deploy hosts in parallel
         let results = self.activate_parallel(inputs, observer)?;
 
         // Check if all deployments succeeded
-        let phase_success = results.iter().all(|r| r.is_success());
+        let step_success = results.iter().all(|r| r.is_success());
 
-        // Notify observer of phase completion
-        observer.on_phase_complete(phase, phase_success)?;
+        // Notify observer of deploy step completion
+        observer.on_deploy_step_complete(phase, step_success)?;
 
         // Return all results - let the orchestrator decide how to handle failures
         // This allows collecting results from all hosts even if some failed

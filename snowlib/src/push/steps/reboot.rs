@@ -35,27 +35,41 @@ impl<'a> Step for RebootStep<'a> {
 
     fn execute_batch(
         &self,
-        _phase: &str,
+        phase: &str,
         inputs: Vec<Self::Input>,
         observer: &dyn DeploymentObserver,
     ) -> Result<Vec<StepResult<Self::Output>>> {
-        // Reboot step doesn't emit phase-level notifications
+        // Determine which hosts need reboot
+        let hosts_needing_reboot: Vec<String> = inputs
+            .iter()
+            .filter(|input| {
+                self.allow_reboot
+                    && input.plan.activation_mode == ActivationMode::Boot
+                    && (input.plan.reboot_check.is_none()
+                        || input
+                            .plan
+                            .reboot_check
+                            .as_ref()
+                            .map(|c| c.required)
+                            .unwrap_or(false))
+            })
+            .map(|input| input.plan.metadata.name.clone())
+            .collect();
+
+        // Notify observer of reboot step start (only if there are hosts to reboot)
+        if !hosts_needing_reboot.is_empty() {
+            observer.on_reboot_step_start(phase, &hosts_needing_reboot)?;
+        }
+
         let mut results = Vec::new();
+        let mut all_reboots_succeeded = true;
 
         for input in inputs {
             let hostname = input.plan.metadata.name.clone();
             let mut result = input.deploy_result.clone();
 
             // Determine if this host needs reboot
-            let should_reboot = self.allow_reboot
-                && input.plan.activation_mode == ActivationMode::Boot
-                && (input.plan.reboot_check.is_none()
-                    || input
-                        .plan
-                        .reboot_check
-                        .as_ref()
-                        .map(|c| c.required)
-                        .unwrap_or(false));
+            let should_reboot = hosts_needing_reboot.contains(&hostname);
 
             if should_reboot {
                 // Notify observer of reboot start
@@ -73,12 +87,18 @@ impl<'a> Step for RebootStep<'a> {
                         observer.on_reboot_complete(&hostname, false)?;
                         result.success = false;
                         result.message = format!("Deployed but reboot failed: {}", e);
+                        all_reboots_succeeded = false;
                     }
                 }
             }
 
             // Return the result (possibly updated with reboot status)
             results.push(StepResult::success(RebootOutput { hostname, result }));
+        }
+
+        // Notify observer of reboot step completion (only if there were hosts to reboot)
+        if !hosts_needing_reboot.is_empty() {
+            observer.on_reboot_step_complete(phase, all_reboots_succeeded)?;
         }
 
         Ok(results)

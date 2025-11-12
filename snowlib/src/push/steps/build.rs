@@ -49,6 +49,7 @@ impl<'a> Step for BuildStep<'a> {
         let mut results = Vec::new();
 
         // Build each host sequentially
+        let all_succeeded = true;
         for input in inputs {
             let hostname = input.metadata.name.clone();
 
@@ -85,11 +86,17 @@ impl<'a> Step for BuildStep<'a> {
                     // Notify failure
                     observer.on_build_complete(&hostname, false)?;
 
+                    // Notify build step completion with failure
+                    observer.on_build_step_complete(phase, false)?;
+
                     // Build failure stops deployment immediately
                     return Err(e);
                 }
             }
         }
+
+        // Notify build step completion
+        observer.on_build_step_complete(phase, all_succeeded)?;
 
         Ok(results)
     }
