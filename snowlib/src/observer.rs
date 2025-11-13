@@ -216,6 +216,41 @@ pub trait PushObserver: Send + Sync {
     fn on_reboot_step_complete(&self, _phase: &str, _success: bool) -> Result<()> {
         Ok(())
     }
+
+    // --- Span access methods for explicit parenting ---
+    // These allow worker threads to get the current step span to use as an explicit parent
+
+    /// Get the current build step span (if any)
+    ///
+    /// Returns the shared build span that can be used as an explicit parent
+    /// for host spans. Returns None if no hosts are currently building.
+    fn build_span(&self) -> Option<tracing::Span> {
+        None
+    }
+
+    /// Get the current copy step span (if any)
+    ///
+    /// Returns the shared copy span that can be used as an explicit parent
+    /// for host spans. Returns None if no hosts are currently copying.
+    fn copy_span(&self) -> Option<tracing::Span> {
+        None
+    }
+
+    /// Get the current activate step span (if any)
+    ///
+    /// Returns the shared activate span that can be used as an explicit parent
+    /// for host spans. Returns None if no hosts are currently activating.
+    fn activate_span(&self) -> Option<tracing::Span> {
+        None
+    }
+
+    /// Get the current reboot step span (if any)
+    ///
+    /// Returns the shared reboot span that can be used as an explicit parent
+    /// for host spans. Returns None if no hosts are currently rebooting.
+    fn reboot_span(&self) -> Option<tracing::Span> {
+        None
+    }
 }
 
 /// No-op observer that does nothing

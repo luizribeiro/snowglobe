@@ -471,8 +471,12 @@ fn execute_host_pipeline(
     // Step 1: Build
     observer_ref.on_build_start(hostname)?;
     let build_output = {
-        // Create host span as child of the build step span
-        let host_span = info_span!("host", host = %hostname);
+        // Create host span with build span as explicit parent
+        let host_span = if let Some(parent) = observer_ref.build_span() {
+            info_span!(parent: &parent, "host", host = %hostname)
+        } else {
+            info_span!("host", host = %hostname)
+        };
         let _entered = host_span.enter();
 
         tracing::info!("Building configuration");
@@ -509,8 +513,12 @@ fn execute_host_pipeline(
     // Step 2: Copy
     observer_ref.on_copy_start(hostname)?;
     let copy_output = {
-        // Create host span as child of the copy step span
-        let host_span = info_span!("host", host = %hostname);
+        // Create host span with copy span as explicit parent
+        let host_span = if let Some(parent) = observer_ref.copy_span() {
+            info_span!(parent: &parent, "host", host = %hostname)
+        } else {
+            info_span!("host", host = %hostname)
+        };
         let _entered = host_span.enter();
 
         tracing::info!("Copying closure");
@@ -570,8 +578,12 @@ fn execute_host_pipeline(
     // Step 4: Activate
     observer_ref.on_deploy_start(hostname, plan.activation_mode)?;
     let activate_result = {
-        // Create host span as child of the activate step span
-        let host_span = info_span!("host", host = %hostname);
+        // Create host span with activate span as explicit parent
+        let host_span = if let Some(parent) = observer_ref.activate_span() {
+            info_span!(parent: &parent, "host", host = %hostname)
+        } else {
+            info_span!("host", host = %hostname)
+        };
         let _entered = host_span.enter();
 
         tracing::info!("Activating configuration");
@@ -626,8 +638,12 @@ fn execute_host_pipeline(
     let final_result = if should_reboot {
         observer_ref.on_reboot_start(hostname)?;
 
-        // Create host span as child of the reboot step span
-        let host_span = info_span!("host", host = %hostname);
+        // Create host span with reboot span as explicit parent
+        let host_span = if let Some(parent) = observer_ref.reboot_span() {
+            info_span!(parent: &parent, "host", host = %hostname)
+        } else {
+            info_span!("host", host = %hostname)
+        };
         let _entered = host_span.enter();
 
         tracing::info!("Rebooting host");

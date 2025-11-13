@@ -22,11 +22,11 @@ pub struct CliObserver {
 }
 
 struct ObserverState {
-    // Step spans - only visible when hosts are in that step
-    build_span: Option<tracing::span::EnteredSpan>,
-    copy_span: Option<tracing::span::EnteredSpan>,
-    activate_span: Option<tracing::span::EnteredSpan>,
-    reboot_span: Option<tracing::span::EnteredSpan>,
+    // Step spans - stored but not entered (Span is Clone and can be shared)
+    build_span: Option<tracing::Span>,
+    copy_span: Option<tracing::Span>,
+    activate_span: Option<tracing::Span>,
+    reboot_span: Option<tracing::Span>,
 
     // Counters - track how many hosts are in each step
     build_count: usize,
@@ -34,12 +34,6 @@ struct ObserverState {
     activate_count: usize,
     reboot_count: usize,
 }
-
-// SAFETY: ObserverState is only accessed through a Mutex, which ensures
-// that only one thread can access it at a time. The EnteredSpan fields
-// are never actually sent between threads - they're created and dropped
-// within the same mutex guard. The Mutex provides the necessary synchronization.
-unsafe impl Send for ObserverState {}
 
 impl CliObserver {
     pub fn new(_quiet: bool) -> Self {
@@ -82,8 +76,8 @@ impl PushObserver for CliObserver {
     fn on_build_start(&self, _hostname: &str) -> Result<()> {
         let mut state = self.state.lock();
         if state.build_count == 0 {
-            // First host entering build - create and enter span
-            state.build_span = Some(info_span!("build").entered());
+            // First host entering build - create span (but don't enter it)
+            state.build_span = Some(info_span!("build"));
         }
         state.build_count += 1;
         Ok(())
@@ -99,6 +93,11 @@ impl PushObserver for CliObserver {
         Ok(())
     }
 
+    /// Get the current build span for use as an explicit parent
+    fn build_span(&self) -> Option<tracing::Span> {
+        self.state.lock().build_span.clone()
+    }
+
     fn on_build_step_complete(&self, _phase: &str, _success: bool) -> Result<()> {
         Ok(())
     }
@@ -111,7 +110,7 @@ impl PushObserver for CliObserver {
     fn on_copy_start(&self, _hostname: &str) -> Result<()> {
         let mut state = self.state.lock();
         if state.copy_count == 0 {
-            state.copy_span = Some(info_span!("copy").entered());
+            state.copy_span = Some(info_span!("copy"));
         }
         state.copy_count += 1;
         Ok(())
@@ -126,6 +125,11 @@ impl PushObserver for CliObserver {
         Ok(())
     }
 
+    /// Get the current copy span for use as an explicit parent
+    fn copy_span(&self) -> Option<tracing::Span> {
+        self.state.lock().copy_span.clone()
+    }
+
     fn on_copy_step_complete(&self, _phase: &str, _success: bool) -> Result<()> {
         Ok(())
     }
@@ -138,7 +142,7 @@ impl PushObserver for CliObserver {
     fn on_deploy_start(&self, _hostname: &str, _mode: ActivationMode) -> Result<()> {
         let mut state = self.state.lock();
         if state.activate_count == 0 {
-            state.activate_span = Some(info_span!("activate").entered());
+            state.activate_span = Some(info_span!("activate"));
         }
         state.activate_count += 1;
         Ok(())
@@ -153,6 +157,11 @@ impl PushObserver for CliObserver {
         Ok(())
     }
 
+    /// Get the current activate span for use as an explicit parent
+    fn activate_span(&self) -> Option<tracing::Span> {
+        self.state.lock().activate_span.clone()
+    }
+
     fn on_deploy_step_complete(&self, _phase: &str, _success: bool) -> Result<()> {
         Ok(())
     }
@@ -165,7 +174,7 @@ impl PushObserver for CliObserver {
     fn on_reboot_start(&self, _hostname: &str) -> Result<()> {
         let mut state = self.state.lock();
         if state.reboot_count == 0 {
-            state.reboot_span = Some(info_span!("reboot").entered());
+            state.reboot_span = Some(info_span!("reboot"));
         }
         state.reboot_count += 1;
         Ok(())
@@ -178,6 +187,11 @@ impl PushObserver for CliObserver {
             state.reboot_span = None;
         }
         Ok(())
+    }
+
+    /// Get the current reboot span for use as an explicit parent
+    fn reboot_span(&self) -> Option<tracing::Span> {
+        self.state.lock().reboot_span.clone()
     }
 
     fn on_reboot_step_complete(&self, _phase: &str, _success: bool) -> Result<()> {
