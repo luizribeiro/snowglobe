@@ -9,10 +9,38 @@ use std::collections::HashMap;
 use tracing::info_span;
 use tracing_indicatif::span_ext::IndicatifSpanExt;
 
+/// Lazily creates a step span if it doesn't exist, with the phase span as parent
+macro_rules! get_or_create_step_span {
+    ($state:expr, $span_field:ident, $span_name:expr) => {{
+        if $state.$span_field.is_none() {
+            let phase_span = $state
+                .phase_span
+                .as_ref()
+                .expect("phase_span must exist - on_phase_start() should be called first");
+            let span = info_span!(parent: phase_span, $span_name);
+
+            // Set style without spinner
+            use tracing_indicatif::style::ProgressStyle;
+            let step_style = ProgressStyle::default_bar()
+                .template("{span_child_prefix}{span_name}{span_fields}")
+                .expect("Failed to create step span style");
+            span.pb_set_style(&step_style);
+
+            $state.$span_field = Some(span);
+        }
+        $state
+            .$span_field
+            .as_ref()
+            .expect("span was just created")
+    }};
+}
+
 /// CLI observer that manages the complete span hierarchy
 ///
 /// Creates and manages phase, step, and host spans internally to provide
-/// structured progress reporting. All span creation happens inside the observer,
+/// structured progress reporting. Phase spans are created in `on_phase_start()`,
+/// step spans are created lazily when first needed, and host spans are created
+/// per-host as they enter each step. All span creation happens inside the observer,
 /// keeping the library code free of tracing span details.
 ///
 /// Uses a mutex to protect shared state since observer methods are called from
@@ -25,16 +53,19 @@ struct ObserverState {
     // Phase span - created in on_phase_start()
     phase_span: Option<tracing::Span>,
 
-    // Step spans - pre-created in on_phase_start() for consistent ordering
+    // Step spans - created lazily when first host enters each step
     // These are NOT entered - they exist only as parents for host spans
     build_span: Option<tracing::Span>,
     copy_span: Option<tracing::Span>,
     activate_span: Option<tracing::Span>,
     reboot_span: Option<tracing::Span>,
 
-    // Host spans - created when host starts a step, entered temporarily for logging
+    // Host spans per step - created when host starts a step, entered temporarily for logging
     // Key is hostname, value is the span (not entered - we enter/exit as needed)
-    host_spans: HashMap<String, tracing::Span>,
+    build_host_spans: HashMap<String, tracing::Span>,
+    copy_host_spans: HashMap<String, tracing::Span>,
+    activate_host_spans: HashMap<String, tracing::Span>,
+    reboot_host_spans: HashMap<String, tracing::Span>,
 }
 
 impl CliObserver {
@@ -46,7 +77,10 @@ impl CliObserver {
                 copy_span: None,
                 activate_span: None,
                 reboot_span: None,
-                host_spans: HashMap::new(),
+                build_host_spans: HashMap::new(),
+                copy_host_spans: HashMap::new(),
+                activate_host_spans: HashMap::new(),
+                reboot_host_spans: HashMap::new(),
             }),
         }
     }
@@ -54,8 +88,6 @@ impl CliObserver {
 
 impl PushObserver for CliObserver {
     fn on_phase_start(&self, phase: &str, hosts: &[String]) -> Result<()> {
-        use tracing_indicatif::style::ProgressStyle;
-
         let mut state = self.state.lock();
 
         // Create phase span
@@ -70,31 +102,8 @@ impl PushObserver for CliObserver {
         }
         drop(_guard);
 
-        // Pre-create all step spans with phase as parent
-        // These spans are NOT entered - they exist only to serve as parents for host spans
-        // The explicit parent relationships ensure correct hierarchy without needing
-        // to keep spans entered (which would require unsafe lifetime manipulation)
-        let step_style = ProgressStyle::default_bar()
-            .template("{span_child_prefix}{span_name}{span_fields}")
-            .expect("Failed to create step span style");
-
-        let build = info_span!(parent: &phase_span, "build");
-        let copy = info_span!(parent: &phase_span, "copy");
-        let activate = info_span!(parent: &phase_span, "activate");
-        let reboot = info_span!(parent: &phase_span, "reboot");
-
-        // Set style without spinner on each step span
-        build.pb_set_style(&step_style);
-        copy.pb_set_style(&step_style);
-        activate.pb_set_style(&step_style);
-        reboot.pb_set_style(&step_style);
-
-        // Store all spans
+        // Store phase span - step spans will be created lazily when first needed
         state.phase_span = Some(phase_span);
-        state.build_span = Some(build);
-        state.copy_span = Some(copy);
-        state.activate_span = Some(activate);
-        state.reboot_span = Some(reboot);
 
         Ok(())
     }
@@ -115,7 +124,10 @@ impl PushObserver for CliObserver {
 
         // Clean up all spans
         let mut state = self.state.lock();
-        state.host_spans.clear();
+        state.build_host_spans.clear();
+        state.copy_host_spans.clear();
+        state.activate_host_spans.clear();
+        state.reboot_host_spans.clear();
         state.build_span = None;
         state.copy_span = None;
         state.activate_span = None;
@@ -132,12 +144,9 @@ impl PushObserver for CliObserver {
     fn on_build_start(&self, hostname: &str) -> Result<()> {
         let mut state = self.state.lock();
 
-        // Create host span with build step as explicit parent
-        let host_span = if let Some(ref build_span) = state.build_span {
-            info_span!(parent: build_span, "host", host = %hostname)
-        } else {
-            info_span!("host", host = %hostname)
-        };
+        // Get or create the build step span, then create host span as child
+        let build_span = get_or_create_step_span!(state, build_span, "build");
+        let host_span = info_span!(parent: build_span, "host", host = %hostname);
 
         // Log within the host span
         let _guard = host_span.enter();
@@ -145,24 +154,36 @@ impl PushObserver for CliObserver {
         drop(_guard);
 
         // Store span (not entered) - we'll enter it temporarily in on_build_complete for logging
-        state.host_spans.insert(hostname.to_string(), host_span);
+        state
+            .build_host_spans
+            .insert(hostname.to_string(), host_span);
         Ok(())
     }
 
     fn on_build_complete(&self, hostname: &str, success: bool) -> Result<()> {
         let mut state = self.state.lock();
 
-        // Log completion within the host span (if it exists)
-        if let Some(span) = state.host_spans.get(hostname) {
-            let _guard = span.enter();
-            if success {
-                tracing::info!("✓ Build completed");
-            } else {
-                tracing::error!("✗ Build failed");
-            }
+        // Log completion within the host span
+        let span = state
+            .build_host_spans
+            .get(hostname)
+            .expect("host span must exist - on_build_start() should be called first");
+        let _guard = span.enter();
+        if success {
+            tracing::info!("✓ Build completed");
+        } else {
+            tracing::error!("✗ Build failed");
+        }
+        drop(_guard);
+
+        // Remove host span
+        state.build_host_spans.remove(hostname);
+
+        // If no hosts remain in this step, clean up the step span
+        if state.build_host_spans.is_empty() {
+            state.build_span = None;
         }
 
-        state.host_spans.remove(hostname);
         Ok(())
     }
 
@@ -178,12 +199,9 @@ impl PushObserver for CliObserver {
     fn on_copy_start(&self, hostname: &str) -> Result<()> {
         let mut state = self.state.lock();
 
-        // Create host span with copy step as explicit parent
-        let host_span = if let Some(ref copy_span) = state.copy_span {
-            info_span!(parent: copy_span, "host", host = %hostname)
-        } else {
-            info_span!("host", host = %hostname)
-        };
+        // Get or create the copy step span, then create host span as child
+        let copy_span = get_or_create_step_span!(state, copy_span, "copy");
+        let host_span = info_span!(parent: copy_span, "host", host = %hostname);
 
         // Log within the host span
         let _guard = host_span.enter();
@@ -191,24 +209,36 @@ impl PushObserver for CliObserver {
         drop(_guard);
 
         // Store span (not entered)
-        state.host_spans.insert(hostname.to_string(), host_span);
+        state
+            .copy_host_spans
+            .insert(hostname.to_string(), host_span);
         Ok(())
     }
 
     fn on_copy_complete(&self, hostname: &str, success: bool) -> Result<()> {
         let mut state = self.state.lock();
 
-        // Log completion within the host span (if it exists)
-        if let Some(span) = state.host_spans.get(hostname) {
-            let _guard = span.enter();
-            if success {
-                tracing::info!("✓ Copy completed");
-            } else {
-                tracing::error!("✗ Copy failed");
-            }
+        // Log completion within the host span
+        let span = state
+            .copy_host_spans
+            .get(hostname)
+            .expect("host span must exist - on_copy_start() should be called first");
+        let _guard = span.enter();
+        if success {
+            tracing::info!("✓ Copy completed");
+        } else {
+            tracing::error!("✗ Copy failed");
+        }
+        drop(_guard);
+
+        // Remove host span
+        state.copy_host_spans.remove(hostname);
+
+        // If no hosts remain in this step, clean up the step span
+        if state.copy_host_spans.is_empty() {
+            state.copy_span = None;
         }
 
-        state.host_spans.remove(hostname);
         Ok(())
     }
 
@@ -224,12 +254,9 @@ impl PushObserver for CliObserver {
     fn on_deploy_start(&self, hostname: &str, _mode: ActivationMode) -> Result<()> {
         let mut state = self.state.lock();
 
-        // Create host span with activate step as explicit parent
-        let host_span = if let Some(ref activate_span) = state.activate_span {
-            info_span!(parent: activate_span, "host", host = %hostname)
-        } else {
-            info_span!("host", host = %hostname)
-        };
+        // Get or create the activate step span, then create host span as child
+        let activate_span = get_or_create_step_span!(state, activate_span, "activate");
+        let host_span = info_span!(parent: activate_span, "host", host = %hostname);
 
         // Log within the host span
         let _guard = host_span.enter();
@@ -237,24 +264,36 @@ impl PushObserver for CliObserver {
         drop(_guard);
 
         // Store span (not entered)
-        state.host_spans.insert(hostname.to_string(), host_span);
+        state
+            .activate_host_spans
+            .insert(hostname.to_string(), host_span);
         Ok(())
     }
 
     fn on_deploy_complete(&self, hostname: &str, result: &DeployResult) -> Result<()> {
         let mut state = self.state.lock();
 
-        // Log completion within the host span (if it exists)
-        if let Some(span) = state.host_spans.get(hostname) {
-            let _guard = span.enter();
-            if result.success {
-                tracing::info!("✓ Activation completed");
-            } else {
-                tracing::error!(message = %result.message, "✗ Activation failed");
-            }
+        // Log completion within the host span
+        let span = state
+            .activate_host_spans
+            .get(hostname)
+            .expect("host span must exist - on_deploy_start() should be called first");
+        let _guard = span.enter();
+        if result.success {
+            tracing::info!("✓ Activation completed");
+        } else {
+            tracing::error!(message = %result.message, "✗ Activation failed");
+        }
+        drop(_guard);
+
+        // Remove host span
+        state.activate_host_spans.remove(hostname);
+
+        // If no hosts remain in this step, clean up the step span
+        if state.activate_host_spans.is_empty() {
+            state.activate_span = None;
         }
 
-        state.host_spans.remove(hostname);
         Ok(())
     }
 
@@ -270,12 +309,9 @@ impl PushObserver for CliObserver {
     fn on_reboot_start(&self, hostname: &str) -> Result<()> {
         let mut state = self.state.lock();
 
-        // Create host span with reboot step as explicit parent
-        let host_span = if let Some(ref reboot_span) = state.reboot_span {
-            info_span!(parent: reboot_span, "host", host = %hostname)
-        } else {
-            info_span!("host", host = %hostname)
-        };
+        // Get or create the reboot step span, then create host span as child
+        let reboot_span = get_or_create_step_span!(state, reboot_span, "reboot");
+        let host_span = info_span!(parent: reboot_span, "host", host = %hostname);
 
         // Log within the host span
         let _guard = host_span.enter();
@@ -283,24 +319,36 @@ impl PushObserver for CliObserver {
         drop(_guard);
 
         // Store span (not entered)
-        state.host_spans.insert(hostname.to_string(), host_span);
+        state
+            .reboot_host_spans
+            .insert(hostname.to_string(), host_span);
         Ok(())
     }
 
     fn on_reboot_complete(&self, hostname: &str, success: bool) -> Result<()> {
         let mut state = self.state.lock();
 
-        // Log completion within the host span (if it exists)
-        if let Some(span) = state.host_spans.get(hostname) {
-            let _guard = span.enter();
-            if success {
-                tracing::info!("✓ Back online");
-            } else {
-                tracing::error!("✗ Reboot failed");
-            }
+        // Log completion within the host span
+        let span = state
+            .reboot_host_spans
+            .get(hostname)
+            .expect("host span must exist - on_reboot_start() should be called first");
+        let _guard = span.enter();
+        if success {
+            tracing::info!("✓ Back online");
+        } else {
+            tracing::error!("✗ Reboot failed");
+        }
+        drop(_guard);
+
+        // Remove host span
+        state.reboot_host_spans.remove(hostname);
+
+        // If no hosts remain in this step, clean up the step span
+        if state.reboot_host_spans.is_empty() {
+            state.reboot_span = None;
         }
 
-        state.host_spans.remove(hostname);
         Ok(())
     }
 
@@ -328,21 +376,22 @@ mod tests {
             assert!(state.build_span.is_none());
         }
 
-        // Start phase - creates step spans
+        // Start phase - only creates phase span, step spans are lazy
         observer
             .on_phase_start("default", &["host1".to_string(), "host2".to_string()])
             .unwrap();
         {
             let state = observer.state.lock();
-            assert!(state.build_span.is_some());
+            assert!(state.phase_span.is_some());
+            assert!(state.build_span.is_none()); // Not created yet - lazy!
         }
 
-        // First host enters build
+        // First host enters build - NOW the build span is created
         observer.on_build_start("host1").unwrap();
         {
             let state = observer.state.lock();
             assert!(state.build_span.is_some());
-            assert!(state.host_spans.contains_key("host1"));
+            assert!(state.build_host_spans.contains_key("host1"));
         }
 
         // Second host enters build
@@ -350,25 +399,25 @@ mod tests {
         {
             let state = observer.state.lock();
             assert!(state.build_span.is_some());
-            assert!(state.host_spans.contains_key("host1"));
-            assert!(state.host_spans.contains_key("host2"));
+            assert!(state.build_host_spans.contains_key("host1"));
+            assert!(state.build_host_spans.contains_key("host2"));
         }
 
-        // First host leaves - span still there
+        // First host leaves - span still there because host2 is still in build
         observer.on_build_complete("host1", true).unwrap();
         {
             let state = observer.state.lock();
             assert!(state.build_span.is_some());
-            assert!(!state.host_spans.contains_key("host1"));
-            assert!(state.host_spans.contains_key("host2"));
+            assert!(!state.build_host_spans.contains_key("host1"));
+            assert!(state.build_host_spans.contains_key("host2"));
         }
 
-        // Last host leaves - span still there (until phase completes)
+        // Last host leaves - step span is cleaned up immediately!
         observer.on_build_complete("host2", true).unwrap();
         {
             let state = observer.state.lock();
-            assert!(state.build_span.is_some()); // Span persists until phase ends
-            assert!(state.host_spans.is_empty());
+            assert!(state.build_span.is_none()); // Cleaned up when last host leaves
+            assert!(state.build_host_spans.is_empty());
         }
 
         // Phase complete - cleans up all spans
@@ -383,38 +432,44 @@ mod tests {
     fn test_multiple_step_spans() {
         let observer = CliObserver::new();
 
-        // Start phase - creates all step spans
+        // Start phase - only creates phase span, step spans are lazy
         observer
             .on_phase_start("default", &["host1".to_string()])
             .unwrap();
         {
             let state = observer.state.lock();
-            assert!(state.build_span.is_some());
-            assert!(state.copy_span.is_some());
-            assert!(state.activate_span.is_some());
-            assert!(state.reboot_span.is_some());
+            assert!(state.phase_span.is_some());
+            assert!(state.build_span.is_none());
+            assert!(state.copy_span.is_none());
+            assert!(state.activate_span.is_none());
+            assert!(state.reboot_span.is_none());
         }
 
-        // Host enters build
+        // Host enters build - creates build span lazily
         observer.on_build_start("host1").unwrap();
         {
             let state = observer.state.lock();
             assert!(state.build_span.is_some());
-            assert!(state.host_spans.contains_key("host1"));
+            assert!(state.copy_span.is_none()); // Copy span not created yet
+            assert!(state.build_host_spans.contains_key("host1"));
         }
 
-        // Same host finishes build, enters copy
+        // Same host finishes build, enters copy - build span cleaned up, copy span created
         observer.on_build_complete("host1", true).unwrap();
         observer.on_copy_start("host1").unwrap();
         {
             let state = observer.state.lock();
-            assert!(state.build_span.is_some()); // Build span still there
-            assert!(state.copy_span.is_some()); // Copy span exists
-            assert!(state.host_spans.contains_key("host1"));
+            assert!(state.build_span.is_none()); // Cleaned up when last host left
+            assert!(state.copy_span.is_some()); // Copy span NOW created
+            assert!(state.copy_host_spans.contains_key("host1"));
         }
 
-        // Cleanup
+        // Cleanup - copy span cleaned up when host leaves
         observer.on_copy_complete("host1", true).unwrap();
+        {
+            let state = observer.state.lock();
+            assert!(state.copy_span.is_none()); // Cleaned up immediately
+        }
         observer.on_phase_complete("default", true).unwrap();
     }
 
@@ -434,17 +489,17 @@ mod tests {
         observer.on_build_complete("host1", false).unwrap();
         {
             let state = observer.state.lock();
-            assert!(!state.host_spans.contains_key("host1"));
-            assert!(state.host_spans.contains_key("host2"));
+            assert!(!state.build_host_spans.contains_key("host1"));
+            assert!(state.build_host_spans.contains_key("host2"));
             assert!(state.build_span.is_some()); // Still active for host2
         }
 
-        // Host 2 completes
+        // Host 2 completes - last host, so step span is cleaned up
         observer.on_build_complete("host2", true).unwrap();
         {
             let state = observer.state.lock();
-            assert!(state.host_spans.is_empty());
-            assert!(state.build_span.is_some()); // Persists until phase ends
+            assert!(state.build_host_spans.is_empty());
+            assert!(state.build_span.is_none()); // Cleaned up when last host left
         }
 
         // Phase complete
@@ -476,7 +531,10 @@ mod tests {
             assert!(state.copy_span.is_none());
             assert!(state.activate_span.is_none());
             assert!(state.reboot_span.is_none());
-            assert!(state.host_spans.is_empty());
+            assert!(state.build_host_spans.is_empty());
+            assert!(state.copy_host_spans.is_empty());
+            assert!(state.activate_host_spans.is_empty());
+            assert!(state.reboot_host_spans.is_empty());
         }
     }
 }
