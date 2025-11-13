@@ -291,15 +291,20 @@ impl SystemRebootBackend {
 
     /// Execute an SSH command and return the status
     fn ssh_exec(&self, target: &DeployTarget, command: &str) -> Result<std::process::ExitStatus> {
-        let status = self
+        use std::process::Stdio;
+
+        // Capture output to avoid disrupting progress indicators
+        let output = self
             .build_ssh_command(target, command)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
             .status()
             .map_err(|e| DeployError::SshFailed {
                 destination: self.get_destination(target),
                 source: e,
             })?;
 
-        Ok(status)
+        Ok(output)
     }
 
     /// Execute an SSH command and return the full output

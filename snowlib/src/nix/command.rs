@@ -77,72 +77,42 @@ impl NixCommand {
 
     /// Execute the command and return stdout on success
     pub(crate) fn run(mut self) -> Result<Vec<u8>> {
-        if self.quiet {
-            // Quiet mode: capture all output
-            let output = self
-                .cmd
-                .current_dir(self.flake.flake_root())
-                .output()
-                .map_err(|e| NixError::CommandFailed { source: e })?;
+        // Always capture output to avoid disrupting progress indicators
+        let output = self
+            .cmd
+            .current_dir(self.flake.flake_root())
+            .output()
+            .map_err(|e| NixError::CommandFailed { source: e })?;
 
-            if !output.status.success() {
-                let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-                return Err(NixError::EvalFailed {
-                    stderr,
-                    source: std::io::Error::other("nix command exited with non-zero status"),
-                }
-                .into());
-            }
+        // In verbose mode, log the output through tracing
+        if !self.quiet {
+            let stdout_str = String::from_utf8_lossy(&output.stdout);
+            let stderr_str = String::from_utf8_lossy(&output.stderr);
 
-            Ok(output.stdout)
-        } else {
-            // Verbose mode: show output in real-time
-            use std::io::Read;
-            use std::process::Stdio;
-
-            let mut child = self
-                .cmd
-                .current_dir(self.flake.flake_root())
-                .stdout(Stdio::piped())
-                .stderr(Stdio::inherit())
-                .spawn()
-                .map_err(|e| NixError::CommandFailed { source: e })?;
-
-            // Read stdout while showing it in real-time
-            let mut stdout = Vec::new();
-            if let Some(mut child_stdout) = child.stdout.take() {
-                let mut buffer = [0u8; 4096];
-                loop {
-                    match child_stdout.read(&mut buffer) {
-                        Ok(0) => break, // EOF
-                        Ok(n) => {
-                            // Write to our stdout
-                            use std::io::Write;
-                            std::io::stdout().write_all(&buffer[..n]).ok();
-                            // Store for return value
-                            stdout.extend_from_slice(&buffer[..n]);
-                        }
-                        Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
-                        Err(e) => {
-                            return Err(NixError::CommandFailed { source: e }.into());
-                        }
-                    }
+            // Log stdout line by line at debug level
+            for line in stdout_str.lines() {
+                if !line.is_empty() {
+                    tracing::debug!(target: "nix_command", "{}", line);
                 }
             }
 
-            let status = child
-                .wait()
-                .map_err(|e| NixError::CommandFailed { source: e })?;
-
-            if !status.success() {
-                return Err(NixError::EvalFailed {
-                    stderr: "nix command failed (see output above)".to_string(),
-                    source: std::io::Error::other("nix command exited with non-zero status"),
+            // Log stderr line by line at debug level
+            for line in stderr_str.lines() {
+                if !line.is_empty() {
+                    tracing::debug!(target: "nix_command", "stderr: {}", line);
                 }
-                .into());
             }
-
-            Ok(stdout)
         }
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+            return Err(NixError::EvalFailed {
+                stderr,
+                source: std::io::Error::other("nix command exited with non-zero status"),
+            }
+            .into());
+        }
+
+        Ok(output.stdout)
     }
 }

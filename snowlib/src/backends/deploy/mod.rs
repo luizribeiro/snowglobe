@@ -141,13 +141,21 @@ impl DeployBackend for SshDeployBackend {
             source: e,
         })?;
 
-        // In verbose mode, print stdout/stderr for user to see
+        // In verbose mode, log output through tracing
         if !self.quiet {
-            if !output.stdout.is_empty() {
-                print!("{}", String::from_utf8_lossy(&output.stdout));
+            let stdout_str = String::from_utf8_lossy(&output.stdout);
+            let stderr_str = String::from_utf8_lossy(&output.stderr);
+
+            for line in stdout_str.lines() {
+                if !line.is_empty() {
+                    tracing::debug!(target: "deploy", "{}", line);
+                }
             }
-            if !output.stderr.is_empty() {
-                eprint!("{}", String::from_utf8_lossy(&output.stderr));
+
+            for line in stderr_str.lines() {
+                if !line.is_empty() {
+                    tracing::debug!(target: "deploy", "stderr: {}", line);
+                }
             }
         }
 
@@ -199,13 +207,21 @@ impl DeployBackend for SshDeployBackend {
             source: e,
         })?;
 
-        // In verbose mode, print stdout/stderr for user to see
+        // In verbose mode, log output through tracing
         if !self.quiet {
-            if !output.stdout.is_empty() {
-                print!("{}", String::from_utf8_lossy(&output.stdout));
+            let stdout_str = String::from_utf8_lossy(&output.stdout);
+            let stderr_str = String::from_utf8_lossy(&output.stderr);
+
+            for line in stdout_str.lines() {
+                if !line.is_empty() {
+                    tracing::debug!(target: "deploy", "{}", line);
+                }
             }
-            if !output.stderr.is_empty() {
-                eprint!("{}", String::from_utf8_lossy(&output.stderr));
+
+            for line in stderr_str.lines() {
+                if !line.is_empty() {
+                    tracing::debug!(target: "deploy", "stderr: {}", line);
+                }
             }
         }
 
