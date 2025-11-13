@@ -929,6 +929,7 @@ dependencies = [
  "clap",
  "indicatif 0.17.11",
  "miette",
+ "parking_lot",
  "predicates",
  "serde",
  "serde_json",

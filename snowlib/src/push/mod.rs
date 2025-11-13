@@ -154,6 +154,12 @@ fn execute_phase(
     push_ctx: &PushContext,
     observer: &dyn PushObserver,
 ) -> Result<Vec<(String, crate::backends::deploy::DeployResult)>> {
+    use tracing::info_span;
+
+    // Create phase span
+    let phase_span = info_span!("phase", phase = phase, hosts = phase_hosts.len());
+    let _entered = phase_span.enter();
+
     // Step 1: Build
     let build_inputs: Vec<BuildInput> = phase_hosts
         .iter()

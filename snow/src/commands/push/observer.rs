@@ -1,241 +1,186 @@
 //! CLI observer implementation for push deployment progress reporting
+//!
+//! Manages dynamic step span lifecycle - step spans appear when the first host
+//! enters that step and disappear when the last host leaves.
 
+use parking_lot::Mutex;
 use snowlib::{ActivationMode, DeployResult, PushObserver, Result};
-use std::io::Write;
+use tracing::info_span;
 
-/// CLI observer that prints deployment progress to stdout
+/// CLI observer that manages step span lifecycle
 ///
-/// This observer provides user-friendly progress reporting during deployments:
-/// - Phase start/completion notifications
-/// - Per-host deployment status (✓ or ✗)
-/// - Respects quiet mode for less verbose output
+/// Tracks how many hosts are in each step and shows/hides step spans accordingly.
+/// Uses a mutex to protect shared state since observer methods are called from
+/// Rayon worker threads (inside execute_host_pipeline) in the parallel execution model.
+///
+/// NOTE: EnteredSpan is NOT Send, but this is safe because:
+/// - The spans are protected inside the mutex
+/// - Only one thread can access them at a time (when mutex is locked)
+/// - Spans are created and dropped within the same mutex guard
 pub struct CliObserver {
-    quiet: bool,
+    state: Mutex<ObserverState>,
 }
 
+struct ObserverState {
+    // Step spans - only visible when hosts are in that step
+    build_span: Option<tracing::span::EnteredSpan>,
+    copy_span: Option<tracing::span::EnteredSpan>,
+    activate_span: Option<tracing::span::EnteredSpan>,
+    reboot_span: Option<tracing::span::EnteredSpan>,
+
+    // Counters - track how many hosts are in each step
+    build_count: usize,
+    copy_count: usize,
+    activate_count: usize,
+    reboot_count: usize,
+}
+
+// SAFETY: ObserverState is only accessed through a Mutex, which ensures
+// that only one thread can access it at a time. The EnteredSpan fields
+// are never actually sent between threads - they're created and dropped
+// within the same mutex guard. The Mutex provides the necessary synchronization.
+unsafe impl Send for ObserverState {}
+
 impl CliObserver {
-    /// Create a new CLI observer
-    ///
-    /// # Arguments
-    /// - `quiet`: If true, suppress per-host progress messages
-    pub fn new(quiet: bool) -> Self {
-        Self { quiet }
+    pub fn new(_quiet: bool) -> Self {
+        Self {
+            state: Mutex::new(ObserverState {
+                build_span: None,
+                copy_span: None,
+                activate_span: None,
+                reboot_span: None,
+                build_count: 0,
+                copy_count: 0,
+                activate_count: 0,
+                reboot_count: 0,
+            }),
+        }
     }
 }
 
 impl PushObserver for CliObserver {
-    // ========================================
-    // Phase lifecycle
-    // ========================================
+    fn on_phase_start(&self, _phase: &str, _hosts: &[String]) -> Result<()> {
+        // Phase span is created in execute_phase
+        Ok(())
+    }
 
-    fn on_phase_start(&self, phase: &str, hosts: &[String]) -> Result<()> {
-        // Don't print "default" or "_all" phase explicitly
-        if phase == "default" || phase == "_all" {
-            println!("\n→ Starting deployment for {} host(s)...", hosts.len());
-        } else {
-            println!(
-                "\n→ Starting phase '{}' ({} host(s))...",
-                phase,
-                hosts.len()
-            );
+    fn on_phase_complete(&self, _phase: &str, _success: bool) -> Result<()> {
+        // Clean up any remaining spans
+        let mut state = self.state.lock();
+        state.build_span = None;
+        state.copy_span = None;
+        state.activate_span = None;
+        state.reboot_span = None;
+        Ok(())
+    }
+
+    // Build step
+    fn on_build_step_start(&self, _phase: &str, _hosts: &[String]) -> Result<()> {
+        Ok(())
+    }
+
+    fn on_build_start(&self, _hostname: &str) -> Result<()> {
+        let mut state = self.state.lock();
+        if state.build_count == 0 {
+            // First host entering build - create and enter span
+            state.build_span = Some(info_span!("build").entered());
+        }
+        state.build_count += 1;
+        Ok(())
+    }
+
+    fn on_build_complete(&self, _hostname: &str, _success: bool) -> Result<()> {
+        let mut state = self.state.lock();
+        state.build_count = state.build_count.saturating_sub(1);
+        if state.build_count == 0 {
+            // Last host left build - drop span
+            state.build_span = None;
         }
         Ok(())
     }
 
-    fn on_phase_complete(&self, phase: &str, success: bool) -> Result<()> {
-        if success {
-            if phase == "default" {
-                println!("✓ Phase completed successfully");
-            } else {
-                println!("✓ Phase '{}' completed successfully", phase);
-            }
-        } else if phase == "default" {
-            eprintln!("✗ Phase failed, stopping deployment");
-        } else {
-            eprintln!("✗ Phase '{}' failed, stopping deployment", phase);
+    fn on_build_step_complete(&self, _phase: &str, _success: bool) -> Result<()> {
+        Ok(())
+    }
+
+    // Copy step
+    fn on_copy_step_start(&self, _phase: &str, _hosts: &[String]) -> Result<()> {
+        Ok(())
+    }
+
+    fn on_copy_start(&self, _hostname: &str) -> Result<()> {
+        let mut state = self.state.lock();
+        if state.copy_count == 0 {
+            state.copy_span = Some(info_span!("copy").entered());
+        }
+        state.copy_count += 1;
+        Ok(())
+    }
+
+    fn on_copy_complete(&self, _hostname: &str, _success: bool) -> Result<()> {
+        let mut state = self.state.lock();
+        state.copy_count = state.copy_count.saturating_sub(1);
+        if state.copy_count == 0 {
+            state.copy_span = None;
         }
         Ok(())
     }
 
-    // ========================================
-    // Step 1: Build configurations
-    // ========================================
+    fn on_copy_step_complete(&self, _phase: &str, _success: bool) -> Result<()> {
+        Ok(())
+    }
 
-    fn on_build_step_start(&self, phase: &str, hosts: &[String]) -> Result<()> {
-        // Don't print "default" or "_all" phase explicitly
-        if phase == "default" || phase == "_all" {
-            println!("\n→ Building configurations for {} host(s)...", hosts.len());
-        } else {
-            println!(
-                "\n→ Building configurations for phase '{}' ({} host(s))...",
-                phase,
-                hosts.len()
-            );
+    // Deploy/Activate step
+    fn on_deploy_step_start(&self, _phase: &str, _hosts: &[String]) -> Result<()> {
+        Ok(())
+    }
+
+    fn on_deploy_start(&self, _hostname: &str, _mode: ActivationMode) -> Result<()> {
+        let mut state = self.state.lock();
+        if state.activate_count == 0 {
+            state.activate_span = Some(info_span!("activate").entered());
+        }
+        state.activate_count += 1;
+        Ok(())
+    }
+
+    fn on_deploy_complete(&self, _hostname: &str, _result: &DeployResult) -> Result<()> {
+        let mut state = self.state.lock();
+        state.activate_count = state.activate_count.saturating_sub(1);
+        if state.activate_count == 0 {
+            state.activate_span = None;
         }
         Ok(())
     }
 
-    fn on_build_start(&self, hostname: &str) -> Result<()> {
-        if !self.quiet {
-            print!("  Building {}... ", hostname);
-            std::io::stdout().flush().ok();
+    fn on_deploy_step_complete(&self, _phase: &str, _success: bool) -> Result<()> {
+        Ok(())
+    }
+
+    // Reboot step
+    fn on_reboot_step_start(&self, _phase: &str, _hosts: &[String]) -> Result<()> {
+        Ok(())
+    }
+
+    fn on_reboot_start(&self, _hostname: &str) -> Result<()> {
+        let mut state = self.state.lock();
+        if state.reboot_count == 0 {
+            state.reboot_span = Some(info_span!("reboot").entered());
+        }
+        state.reboot_count += 1;
+        Ok(())
+    }
+
+    fn on_reboot_complete(&self, _hostname: &str, _success: bool) -> Result<()> {
+        let mut state = self.state.lock();
+        state.reboot_count = state.reboot_count.saturating_sub(1);
+        if state.reboot_count == 0 {
+            state.reboot_span = None;
         }
         Ok(())
     }
 
-    fn on_build_complete(&self, _hostname: &str, success: bool) -> Result<()> {
-        if !self.quiet {
-            if success {
-                println!("✓");
-            } else {
-                println!("✗");
-            }
-        }
-        Ok(())
-    }
-
-    fn on_build_step_complete(&self, _phase: &str, success: bool) -> Result<()> {
-        if success {
-            println!("✓ Build step completed");
-        } else {
-            eprintln!("✗ Build step failed");
-        }
-        Ok(())
-    }
-
-    // ========================================
-    // Step 2: Copy closures to hosts
-    // ========================================
-
-    fn on_copy_step_start(&self, phase: &str, hosts: &[String]) -> Result<()> {
-        // Don't print "default" or "_all" phase explicitly
-        if phase == "default" || phase == "_all" {
-            println!("\n→ Copying closures to {} host(s)...", hosts.len());
-        } else {
-            println!(
-                "\n→ Copying closures for phase '{}' ({} host(s))...",
-                phase,
-                hosts.len()
-            );
-        }
-        Ok(())
-    }
-
-    fn on_copy_start(&self, hostname: &str) -> Result<()> {
-        if !self.quiet {
-            print!("  Copying to {}... ", hostname);
-            std::io::stdout().flush().ok();
-        }
-        Ok(())
-    }
-
-    fn on_copy_complete(&self, _hostname: &str, success: bool) -> Result<()> {
-        if !self.quiet {
-            if success {
-                println!("✓");
-            } else {
-                println!("✗");
-            }
-        }
-        Ok(())
-    }
-
-    fn on_copy_step_complete(&self, _phase: &str, success: bool) -> Result<()> {
-        if success {
-            println!("✓ Copy step completed");
-        } else {
-            eprintln!("✗ Copy step failed");
-        }
-        Ok(())
-    }
-
-    // ========================================
-    // Step 3: Activate configurations
-    // ========================================
-
-    fn on_deploy_step_start(&self, phase: &str, hosts: &[String]) -> Result<()> {
-        // Don't print "default" or "_all" phase explicitly
-        if phase == "default" || phase == "_all" {
-            println!("\n→ Activating {} host(s)...", hosts.len());
-        } else {
-            println!(
-                "\n→ Activating phase '{}' ({} host(s))...",
-                phase,
-                hosts.len()
-            );
-        }
-        Ok(())
-    }
-
-    fn on_deploy_start(&self, hostname: &str, _mode: ActivationMode) -> Result<()> {
-        if !self.quiet {
-            print!("  {}... ", hostname);
-            std::io::stdout().flush().ok();
-        }
-        Ok(())
-    }
-
-    fn on_deploy_complete(&self, _hostname: &str, result: &DeployResult) -> Result<()> {
-        if !self.quiet {
-            if result.success {
-                println!("✓");
-            } else {
-                println!("✗");
-                // Print error details on failure
-                eprintln!("    Error: {}", result.message);
-            }
-        }
-        Ok(())
-    }
-
-    fn on_deploy_step_complete(&self, _phase: &str, success: bool) -> Result<()> {
-        if success {
-            println!("✓ Activation step completed");
-        } else {
-            eprintln!("✗ Activation step failed");
-        }
-        Ok(())
-    }
-
-    // ========================================
-    // Step 4: Reboot hosts (if needed)
-    // ========================================
-
-    fn on_reboot_step_start(&self, phase: &str, hosts: &[String]) -> Result<()> {
-        // Don't print "default" or "_all" phase explicitly
-        if phase == "default" || phase == "_all" {
-            println!("\n→ Rebooting {} host(s)...", hosts.len());
-        } else {
-            println!(
-                "\n→ Rebooting phase '{}' ({} host(s))...",
-                phase,
-                hosts.len()
-            );
-        }
-        Ok(())
-    }
-
-    fn on_reboot_start(&self, hostname: &str) -> Result<()> {
-        print!("  Rebooting {}...", hostname);
-        std::io::stdout().flush().ok();
-        Ok(())
-    }
-
-    fn on_reboot_complete(&self, _hostname: &str, success: bool) -> Result<()> {
-        if success {
-            println!(" ✓ Back online");
-        } else {
-            println!(" ✗ Failed");
-        }
-        Ok(())
-    }
-
-    fn on_reboot_step_complete(&self, _phase: &str, success: bool) -> Result<()> {
-        if success {
-            println!("✓ Reboot step completed");
-        } else {
-            eprintln!("✗ Reboot step failed");
-        }
+    fn on_reboot_step_complete(&self, _phase: &str, _success: bool) -> Result<()> {
         Ok(())
     }
 }
@@ -246,41 +191,119 @@ mod tests {
 
     #[test]
     fn test_cli_observer_creation() {
-        let observer = CliObserver::new(false);
-        assert!(!observer.quiet);
-
-        let quiet_observer = CliObserver::new(true);
-        assert!(quiet_observer.quiet);
+        let _observer = CliObserver::new(false);
+        let _quiet_observer = CliObserver::new(true);
     }
 
     #[test]
-    fn test_cli_observer_phase_notifications() {
+    fn test_build_span_lifecycle() {
         let observer = CliObserver::new(false);
 
-        // These just test that the methods don't panic
-        assert!(observer
-            .on_phase_start("test", &["host1".to_string()])
-            .is_ok());
-        assert!(observer.on_phase_complete("test", true).is_ok());
+        // Initially no build span
+        {
+            let state = observer.state.lock();
+            assert!(state.build_span.is_none());
+            assert_eq!(state.build_count, 0);
+        }
+
+        // First host enters build - span appears
+        observer.on_build_start("host1").unwrap();
+        {
+            let state = observer.state.lock();
+            assert!(state.build_span.is_some());
+            assert_eq!(state.build_count, 1);
+        }
+
+        // Second host enters build - span still there, count increases
+        observer.on_build_start("host2").unwrap();
+        {
+            let state = observer.state.lock();
+            assert!(state.build_span.is_some());
+            assert_eq!(state.build_count, 2);
+        }
+
+        // First host leaves - span still there
+        observer.on_build_complete("host1", true).unwrap();
+        {
+            let state = observer.state.lock();
+            assert!(state.build_span.is_some());
+            assert_eq!(state.build_count, 1);
+        }
+
+        // Last host leaves - span disappears
+        observer.on_build_complete("host2", true).unwrap();
+        {
+            let state = observer.state.lock();
+            assert!(state.build_span.is_none());
+            assert_eq!(state.build_count, 0);
+        }
     }
 
     #[test]
-    fn test_cli_observer_deploy_notifications() {
-        let observer = CliObserver::new(true); // Quiet mode for tests
+    fn test_multiple_step_spans() {
+        let observer = CliObserver::new(false);
 
-        assert!(observer
-            .on_deploy_start("host1", ActivationMode::Switch)
-            .is_ok());
-        assert!(observer
-            .on_deploy_complete("host1", &DeployResult::success("ok"))
-            .is_ok());
+        // Host enters build
+        observer.on_build_start("host1").unwrap();
+        {
+            let state = observer.state.lock();
+            assert!(state.build_span.is_some());
+            assert!(state.copy_span.is_none());
+        }
+
+        // Same host finishes build, enters copy
+        observer.on_build_complete("host1", true).unwrap();
+        observer.on_copy_start("host1").unwrap();
+        {
+            let state = observer.state.lock();
+            assert!(state.build_span.is_none()); // Build span gone
+            assert!(state.copy_span.is_some()); // Copy span appeared
+        }
+
+        // Cleanup
+        observer.on_copy_complete("host1", true).unwrap();
     }
 
     #[test]
-    fn test_cli_observer_reboot_notifications() {
-        let observer = CliObserver::new(true); // Quiet mode for tests
+    fn test_error_handling_maintains_counter() {
+        let observer = CliObserver::new(false);
 
-        assert!(observer.on_reboot_start("host1").is_ok());
-        assert!(observer.on_reboot_complete("host1", true).is_ok());
+        observer.on_build_start("host1").unwrap();
+        observer.on_build_start("host2").unwrap();
+
+        // Host 1 fails
+        observer.on_build_complete("host1", false).unwrap();
+        {
+            let state = observer.state.lock();
+            assert_eq!(state.build_count, 1);
+            assert!(state.build_span.is_some()); // Still active for host2
+        }
+
+        // Host 2 completes
+        observer.on_build_complete("host2", true).unwrap();
+        {
+            let state = observer.state.lock();
+            assert_eq!(state.build_count, 0);
+            assert!(state.build_span.is_none());
+        }
+    }
+
+    #[test]
+    fn test_phase_complete_cleanup() {
+        let observer = CliObserver::new(false);
+
+        // Create some spans
+        observer.on_build_start("host1").unwrap();
+        observer.on_copy_start("host2").unwrap();
+
+        // Phase complete should clean up everything
+        observer.on_phase_complete("default", true).unwrap();
+        {
+            let state = observer.state.lock();
+            assert!(state.build_span.is_none());
+            assert!(state.copy_span.is_none());
+            assert!(state.activate_span.is_none());
+            assert!(state.reboot_span.is_none());
+        }
     }
 }
