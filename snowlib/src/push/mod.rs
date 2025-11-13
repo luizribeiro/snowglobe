@@ -468,13 +468,13 @@ fn execute_host_pipeline(
     let push_ctx_ref = push_ctx.as_ref();
     let observer_ref = observer.as_ref();
 
-    // Create host span (will be child of current step span)
-    let host_span = info_span!("host", host = %hostname);
-    let _host_entered = host_span.enter();
-
     // Step 1: Build
     observer_ref.on_build_start(hostname)?;
     let build_output = {
+        // Create host span as child of the build step span
+        let host_span = info_span!("host", host = %hostname);
+        let _entered = host_span.enter();
+
         tracing::info!("Building configuration");
 
         match push_ctx_ref
@@ -509,6 +509,10 @@ fn execute_host_pipeline(
     // Step 2: Copy
     observer_ref.on_copy_start(hostname)?;
     let copy_output = {
+        // Create host span as child of the copy step span
+        let host_span = info_span!("host", host = %hostname);
+        let _entered = host_span.enter();
+
         tracing::info!("Copying closure");
 
         match push_ctx_ref
@@ -566,6 +570,10 @@ fn execute_host_pipeline(
     // Step 4: Activate
     observer_ref.on_deploy_start(hostname, plan.activation_mode)?;
     let activate_result = {
+        // Create host span as child of the activate step span
+        let host_span = info_span!("host", host = %hostname);
+        let _entered = host_span.enter();
+
         tracing::info!("Activating configuration");
 
         let result = push_ctx_ref
@@ -617,6 +625,11 @@ fn execute_host_pipeline(
 
     let final_result = if should_reboot {
         observer_ref.on_reboot_start(hostname)?;
+
+        // Create host span as child of the reboot step span
+        let host_span = info_span!("host", host = %hostname);
+        let _entered = host_span.enter();
+
         tracing::info!("Rebooting host");
 
         match push_ctx_ref.reboot_backend.reboot_and_wait(&plan.target) {
