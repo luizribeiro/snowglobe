@@ -35,16 +35,10 @@ struct ObserverState {
     // Host spans - created when host starts a step, entered temporarily for logging
     // Key is hostname, value is the span (not entered - we enter/exit as needed)
     host_spans: HashMap<String, tracing::Span>,
-
-    // Counters - track how many hosts are in each step
-    build_count: usize,
-    copy_count: usize,
-    activate_count: usize,
-    reboot_count: usize,
 }
 
 impl CliObserver {
-    pub fn new(_quiet: bool) -> Self {
+    pub fn new() -> Self {
         Self {
             state: Mutex::new(ObserverState {
                 phase_span: None,
@@ -53,10 +47,6 @@ impl CliObserver {
                 activate_span: None,
                 reboot_span: None,
                 host_spans: HashMap::new(),
-                build_count: 0,
-                copy_count: 0,
-                activate_count: 0,
-                reboot_count: 0,
             }),
         }
     }
@@ -156,7 +146,6 @@ impl PushObserver for CliObserver {
 
         // Store span (not entered) - we'll enter it temporarily in on_build_complete for logging
         state.host_spans.insert(hostname.to_string(), host_span);
-        state.build_count += 1;
         Ok(())
     }
 
@@ -174,7 +163,6 @@ impl PushObserver for CliObserver {
         }
 
         state.host_spans.remove(hostname);
-        state.build_count = state.build_count.saturating_sub(1);
         Ok(())
     }
 
@@ -204,7 +192,6 @@ impl PushObserver for CliObserver {
 
         // Store span (not entered)
         state.host_spans.insert(hostname.to_string(), host_span);
-        state.copy_count += 1;
         Ok(())
     }
 
@@ -222,7 +209,6 @@ impl PushObserver for CliObserver {
         }
 
         state.host_spans.remove(hostname);
-        state.copy_count = state.copy_count.saturating_sub(1);
         Ok(())
     }
 
@@ -252,7 +238,6 @@ impl PushObserver for CliObserver {
 
         // Store span (not entered)
         state.host_spans.insert(hostname.to_string(), host_span);
-        state.activate_count += 1;
         Ok(())
     }
 
@@ -270,7 +255,6 @@ impl PushObserver for CliObserver {
         }
 
         state.host_spans.remove(hostname);
-        state.activate_count = state.activate_count.saturating_sub(1);
         Ok(())
     }
 
@@ -300,7 +284,6 @@ impl PushObserver for CliObserver {
 
         // Store span (not entered)
         state.host_spans.insert(hostname.to_string(), host_span);
-        state.reboot_count += 1;
         Ok(())
     }
 
@@ -318,7 +301,6 @@ impl PushObserver for CliObserver {
         }
 
         state.host_spans.remove(hostname);
-        state.reboot_count = state.reboot_count.saturating_sub(1);
         Ok(())
     }
 
@@ -333,19 +315,17 @@ mod tests {
 
     #[test]
     fn test_cli_observer_creation() {
-        let _observer = CliObserver::new(false);
-        let _quiet_observer = CliObserver::new(true);
+        let _observer = CliObserver::new();
     }
 
     #[test]
     fn test_build_span_lifecycle() {
-        let observer = CliObserver::new(false);
+        let observer = CliObserver::new();
 
         // Initially no build span
         {
             let state = observer.state.lock();
             assert!(state.build_span.is_none());
-            assert_eq!(state.build_count, 0);
         }
 
         // Start phase - creates step spans
@@ -355,7 +335,6 @@ mod tests {
         {
             let state = observer.state.lock();
             assert!(state.build_span.is_some());
-            assert_eq!(state.build_count, 0);
         }
 
         // First host enters build
@@ -363,15 +342,16 @@ mod tests {
         {
             let state = observer.state.lock();
             assert!(state.build_span.is_some());
-            assert_eq!(state.build_count, 1);
+            assert!(state.host_spans.contains_key("host1"));
         }
 
-        // Second host enters build - span still there, count increases
+        // Second host enters build
         observer.on_build_start("host2").unwrap();
         {
             let state = observer.state.lock();
             assert!(state.build_span.is_some());
-            assert_eq!(state.build_count, 2);
+            assert!(state.host_spans.contains_key("host1"));
+            assert!(state.host_spans.contains_key("host2"));
         }
 
         // First host leaves - span still there
@@ -379,7 +359,8 @@ mod tests {
         {
             let state = observer.state.lock();
             assert!(state.build_span.is_some());
-            assert_eq!(state.build_count, 1);
+            assert!(!state.host_spans.contains_key("host1"));
+            assert!(state.host_spans.contains_key("host2"));
         }
 
         // Last host leaves - span still there (until phase completes)
@@ -387,7 +368,7 @@ mod tests {
         {
             let state = observer.state.lock();
             assert!(state.build_span.is_some()); // Span persists until phase ends
-            assert_eq!(state.build_count, 0);
+            assert!(state.host_spans.is_empty());
         }
 
         // Phase complete - cleans up all spans
@@ -400,7 +381,7 @@ mod tests {
 
     #[test]
     fn test_multiple_step_spans() {
-        let observer = CliObserver::new(false);
+        let observer = CliObserver::new();
 
         // Start phase - creates all step spans
         observer
@@ -419,7 +400,7 @@ mod tests {
         {
             let state = observer.state.lock();
             assert!(state.build_span.is_some());
-            assert_eq!(state.build_count, 1);
+            assert!(state.host_spans.contains_key("host1"));
         }
 
         // Same host finishes build, enters copy
@@ -429,8 +410,7 @@ mod tests {
             let state = observer.state.lock();
             assert!(state.build_span.is_some()); // Build span still there
             assert!(state.copy_span.is_some()); // Copy span exists
-            assert_eq!(state.build_count, 0);
-            assert_eq!(state.copy_count, 1);
+            assert!(state.host_spans.contains_key("host1"));
         }
 
         // Cleanup
@@ -439,8 +419,8 @@ mod tests {
     }
 
     #[test]
-    fn test_error_handling_maintains_counter() {
-        let observer = CliObserver::new(false);
+    fn test_error_handling_with_multiple_hosts() {
+        let observer = CliObserver::new();
 
         // Start phase
         observer
@@ -454,7 +434,8 @@ mod tests {
         observer.on_build_complete("host1", false).unwrap();
         {
             let state = observer.state.lock();
-            assert_eq!(state.build_count, 1);
+            assert!(!state.host_spans.contains_key("host1"));
+            assert!(state.host_spans.contains_key("host2"));
             assert!(state.build_span.is_some()); // Still active for host2
         }
 
@@ -462,7 +443,7 @@ mod tests {
         observer.on_build_complete("host2", true).unwrap();
         {
             let state = observer.state.lock();
-            assert_eq!(state.build_count, 0);
+            assert!(state.host_spans.is_empty());
             assert!(state.build_span.is_some()); // Persists until phase ends
         }
 
@@ -476,7 +457,7 @@ mod tests {
 
     #[test]
     fn test_phase_complete_cleanup() {
-        let observer = CliObserver::new(false);
+        let observer = CliObserver::new();
 
         // Start phase
         observer
@@ -495,6 +476,7 @@ mod tests {
             assert!(state.copy_span.is_none());
             assert!(state.activate_span.is_none());
             assert!(state.reboot_span.is_none());
+            assert!(state.host_spans.is_empty());
         }
     }
 }
