@@ -1,39 +1,30 @@
 //! Push deployment orchestration
 //!
 //! This module provides the main `push()` function for deploying NixOS configurations
-//! to remote hosts. The deployment process is organized as a pipeline of steps:
+//! to remote hosts. The deployment uses a parallel-per-host execution model where
+//! each host runs through all steps independently:
 //!
-//! 1. **Build**: Builds NixOS configurations for each host
-//! 2. **Copy**: Copies closures to remote hosts
-//! 3. **Planning**: Creates deployment plans with reboot detection
-//! 4. **Activate**: Activates configurations on remote hosts
-//! 5. **Reboot**: Reboots hosts that require it
+//! 1. **Build**: Builds NixOS configuration for the host
+//! 2. **Copy**: Copies closure to remote host
+//! 3. **Planning**: Creates deployment plan with reboot detection
+//! 4. **Activate**: Activates configuration on remote host
+//! 5. **Reboot**: Reboots host if required
 //!
-//! Each step is implemented as a separate module under `steps/` and implements
-//! the `Step` trait defined in `step.rs`.
+//! The parallel execution is orchestrated by `execute_phase()` which uses Rayon to
+//! run `execute_host_pipeline()` concurrently for each host. Dynamic step spans
+//! (managed by the observer) provide visibility into which steps hosts are currently in.
 
 mod config;
 mod context;
 mod results;
-mod step;
-pub mod steps;
 
 // Re-export public types
 pub use config::{DeploymentMode, PushConfiguration};
 pub use context::PushContext;
 pub use results::{BlockedHost, PushPlan, PushResults};
-pub use step::{Step, StepResult};
-pub use steps::{
-    ActivateInput, ActivateOutput, ActivateStep, BuildInput, BuildOutput, BuildStep, CopyInput,
-    CopyOutput, CopyStep, PlanningInput, PlanningOutput, PlanningStep, RebootInput, RebootOutput,
-    RebootStep,
-};
-
-// Re-export create_deployment_plans for backward compatibility and testing
-pub use steps::plan::create_deployment_plans;
 
 use crate::error::Result;
-use crate::nix::{Flake, HostMetadata};
+use crate::nix::{Flake, HostMetadata, StorePath};
 use crate::observer::PushObserver;
 use rayon::prelude::*;
 use std::collections::HashMap;
@@ -248,6 +239,208 @@ fn execute_phase(
     Ok(phase_results)
 }
 
+/// Intermediate data structure for passing build results through the pipeline
+#[derive(Debug, Clone)]
+struct BuildOutput {
+    metadata: HostMetadata,
+    target: crate::backends::deploy::DeployTarget,
+    store_path: StorePath,
+}
+
+/// Intermediate data structure for passing copy results through the pipeline
+#[derive(Debug, Clone)]
+struct CopyOutput {
+    metadata: HostMetadata,
+    target: crate::backends::deploy::DeployTarget,
+    store_path: StorePath,
+}
+
+/// Strategy for handling a host deployment
+enum ActivationStrategy {
+    /// Deploy with the given activation mode and optional reboot check
+    Deploy(
+        crate::backends::deploy::ActivationMode,
+        Option<crate::backends::reboot::RebootCheck>,
+    ),
+    /// Block deployment with the given reason
+    Block(String),
+}
+
+/// Determine the activation strategy for a single host
+fn determine_activation_strategy(
+    metadata: &HostMetadata,
+    target: &crate::backends::deploy::DeployTarget,
+    store_path: &StorePath,
+    reboot_backend: &dyn crate::backends::reboot::RebootBackend,
+    mode: DeploymentMode,
+    force: bool,
+) -> Result<ActivationStrategy> {
+    match mode {
+        DeploymentMode::DryRun => Ok(ActivationStrategy::Deploy(
+            crate::backends::deploy::ActivationMode::DryActivate,
+            None,
+        )),
+        DeploymentMode::Test => Ok(ActivationStrategy::Deploy(
+            crate::backends::deploy::ActivationMode::Test,
+            None,
+        )),
+        DeploymentMode::Boot => Ok(ActivationStrategy::Deploy(
+            crate::backends::deploy::ActivationMode::Boot,
+            None,
+        )),
+        DeploymentMode::Switch => {
+            handle_switch_mode(metadata, target, store_path, reboot_backend, force)
+        }
+        DeploymentMode::Auto => handle_auto_mode(metadata, target, store_path, reboot_backend),
+    }
+}
+
+/// Handle switch mode: force immediate activation with safety checks
+fn handle_switch_mode(
+    metadata: &HostMetadata,
+    target: &crate::backends::deploy::DeployTarget,
+    store_path: &StorePath,
+    reboot_backend: &dyn crate::backends::reboot::RebootBackend,
+    force: bool,
+) -> Result<ActivationStrategy> {
+    use crate::nix::RebootPolicy;
+
+    // Check reboot policy - 'never' and 'always' policies override switch mode
+    match metadata.reboot_policy {
+        RebootPolicy::Never => {
+            // Never policy: use boot mode without reboot
+            return Ok(ActivationStrategy::Deploy(
+                crate::backends::deploy::ActivationMode::Boot,
+                Some(crate::backends::reboot::RebootCheck::not_required()),
+            ));
+        }
+        RebootPolicy::Always => {
+            // Always policy: use boot mode and will reboot
+            return Ok(ActivationStrategy::Deploy(
+                crate::backends::deploy::ActivationMode::Boot,
+                Some(crate::backends::reboot::RebootCheck::required(
+                    crate::backends::reboot::RebootReason::Policy,
+                )),
+            ));
+        }
+        RebootPolicy::Auto => {
+            // Continue with normal switch mode logic
+        }
+    }
+
+    let check = reboot_backend.check_reboot_required(target, store_path)?;
+
+    if check.required && !force {
+        // Reboot required but --force not set - block this host
+        let reason = check
+            .reason
+            .as_ref()
+            .map(|r| r.to_string())
+            .unwrap_or_else(|| "unknown".to_string());
+        Ok(ActivationStrategy::Block(reason))
+    } else {
+        Ok(ActivationStrategy::Deploy(
+            crate::backends::deploy::ActivationMode::Switch,
+            Some(check),
+        ))
+    }
+}
+
+/// Handle auto mode: detect reboot requirement and choose activation mode
+fn handle_auto_mode(
+    metadata: &HostMetadata,
+    target: &crate::backends::deploy::DeployTarget,
+    store_path: &StorePath,
+    reboot_backend: &dyn crate::backends::reboot::RebootBackend,
+) -> Result<ActivationStrategy> {
+    use crate::nix::RebootPolicy;
+
+    // Check reboot policy
+    match metadata.reboot_policy {
+        RebootPolicy::Never => {
+            // Never policy: always use boot mode, never reboot
+            return Ok(ActivationStrategy::Deploy(
+                crate::backends::deploy::ActivationMode::Boot,
+                Some(crate::backends::reboot::RebootCheck::not_required()),
+            ));
+        }
+        RebootPolicy::Always => {
+            // Always policy: always use boot mode and always reboot
+            return Ok(ActivationStrategy::Deploy(
+                crate::backends::deploy::ActivationMode::Boot,
+                Some(crate::backends::reboot::RebootCheck::required(
+                    crate::backends::reboot::RebootReason::Policy,
+                )),
+            ));
+        }
+        RebootPolicy::Auto => {
+            // Continue with automatic detection
+        }
+    }
+
+    let check = reboot_backend.check_reboot_required(target, store_path)?;
+
+    let activation = if check.required {
+        crate::backends::deploy::ActivationMode::Boot
+    } else {
+        crate::backends::deploy::ActivationMode::Switch
+    };
+
+    Ok(ActivationStrategy::Deploy(activation, Some(check)))
+}
+
+/// Create deployment plans with reboot detection
+///
+/// This function determines the appropriate activation mode for each host based on:
+/// - User-requested deployment mode
+/// - Reboot detection results
+/// - Force flag
+///
+/// Returns (plans, blocked_hosts) where blocked_hosts contains hosts that were
+/// blocked by safety checks (e.g., --switch without --force when reboot required)
+pub fn create_deployment_plans(
+    hosts: Vec<(
+        HostMetadata,
+        crate::backends::deploy::DeployTarget,
+        StorePath,
+    )>,
+    reboot_backend: &dyn crate::backends::reboot::RebootBackend,
+    mode: DeploymentMode,
+    force: bool,
+) -> Result<(Vec<PushPlan>, Vec<BlockedHost>)> {
+    let mut plans = Vec::new();
+    let mut blocked = Vec::new();
+
+    for (metadata, target, store_path) in hosts {
+        match determine_activation_strategy(
+            &metadata,
+            &target,
+            &store_path,
+            reboot_backend,
+            mode,
+            force,
+        )? {
+            ActivationStrategy::Deploy(activation_mode, reboot_check) => {
+                plans.push(PushPlan {
+                    metadata,
+                    target,
+                    store_path,
+                    activation_mode,
+                    reboot_check,
+                });
+            }
+            ActivationStrategy::Block(reason) => {
+                blocked.push(BlockedHost {
+                    hostname: metadata.name.clone(),
+                    reason,
+                });
+            }
+        }
+    }
+
+    Ok((plans, blocked))
+}
+
 /// Execute the full deployment pipeline for a single host
 ///
 /// Runs: Build → Copy → Plan → Activate → Reboot
@@ -341,7 +534,7 @@ fn execute_host_pipeline(
     observer_ref.on_copy_complete(hostname, true)?;
 
     // Step 3: Planning
-    let (plans, blocked) = steps::plan::create_deployment_plans(
+    let (plans, blocked) = create_deployment_plans(
         vec![(
             copy_output.metadata.clone(),
             copy_output.target.clone(),
@@ -453,28 +646,6 @@ fn execute_host_pipeline(
 /// This function is no longer used after parallel-per-host refactor.
 /// Kept temporarily for reference.
 #[allow(dead_code)]
-fn execute_step<S: Step>(
-    step: &S,
-    phase: &str,
-    inputs: Vec<S::Input>,
-    observer: &dyn PushObserver,
-) -> Result<Vec<S::Output>> {
-    let results = step.execute_batch(phase, inputs, observer)?;
-
-    // Check for failures and collect successes
-    let mut outputs = Vec::new();
-    for result in results {
-        match result {
-            StepResult::Success(output) => outputs.push(output),
-            StepResult::Failed { error, .. } => {
-                // Early exit on first failure
-                return Err(error);
-            }
-        }
-    }
-    Ok(outputs)
-}
-
 /// Group hosts by phase
 fn group_by_phase(
     hosts: Vec<HostMetadata>,
@@ -542,13 +713,15 @@ mod tests {
         (metadata, target, store_path)
     }
 
-    /// Helper function to activate hosts using ActivateStep (replaces old activate_plans_for_test)
+    /// Helper function to activate hosts (simplified for tests)
     fn activate_plans_for_test(
         deploy_backend: &dyn crate::backends::deploy::DeployBackend,
         plans: Vec<PushPlan>,
-        concurrency: usize,
+        _concurrency: usize,
         observer: &dyn crate::observer::PushObserver,
     ) -> Result<PushResults> {
+        use crate::backends::deploy::DeployResult;
+
         // Get the phase from the first plan (all plans in tests have the same phase)
         let phase = plans
             .first()
@@ -562,60 +735,33 @@ mod tests {
         // Notify observer of phase start
         observer.on_phase_start(&phase, &hostnames)?;
 
-        // Convert plans to ActivateInput
-        let inputs: Vec<ActivateInput> = plans
-            .into_iter()
-            .map(|plan| ActivateInput { plan })
-            .collect();
-
-        // Create minimal backends and config for PushContext (only concurrency is used)
-        let nix_backend = MockNixBackend::new();
-        let reboot_backend = SystemRebootBackend::default();
-        let config = PushConfiguration {
-            concurrency,
-            ..Default::default()
-        };
-        let push_ctx = PushContext::new(&nix_backend, deploy_backend, &reboot_backend, &config);
-
-        // Create ActivateStep and execute
-        let step = ActivateStep {
-            push_ctx: &push_ctx,
-        };
-
-        // Execute and handle potential error (ActivateStep returns error on phase failure)
-        let results_or_err = step.execute_batch(&phase, inputs, observer);
-
-        // Convert StepResults to PushResults format
-        // Even if there's an error, we might have partial results we want to return
+        // Activate each plan
         let mut push_results = Vec::new();
-        let phase_success;
+        let mut all_succeeded = true;
 
-        match results_or_err {
-            Ok(results) => {
-                phase_success = results.iter().all(|r| r.is_success());
-                for result in results {
-                    match result {
-                        StepResult::Success(output) => {
-                            push_results.push((output.hostname, output.result));
-                        }
-                        StepResult::Failed { hostname, error } => {
-                            // In case of failure, create a DeployResult with error
-                            push_results.push((hostname, DeployResult::failure(error.to_string())));
-                        }
-                    }
-                }
+        for plan in plans {
+            let hostname = plan.metadata.name.clone();
+
+            // Notify deploy start
+            observer.on_deploy_start(&hostname, plan.activation_mode)?;
+
+            // Execute activation
+            let result = deploy_backend
+                .deploy(&plan.target, &plan.store_path, plan.activation_mode)
+                .unwrap_or_else(|e| DeployResult::failure(e.to_string()));
+
+            if !result.success {
+                all_succeeded = false;
             }
-            Err(e) => {
-                phase_success = false;
-                // Notify observer of phase completion with failure
-                observer.on_phase_complete(&phase, phase_success)?;
-                // On error, return the error - tests that expect failures will handle this
-                return Err(e);
-            }
+
+            // Notify deploy complete
+            observer.on_deploy_complete(&hostname, &result)?;
+
+            push_results.push((hostname, result));
         }
 
         // Notify observer of phase completion
-        observer.on_phase_complete(&phase, phase_success)?;
+        observer.on_phase_complete(&phase, all_succeeded)?;
 
         Ok(PushResults {
             results: push_results,
