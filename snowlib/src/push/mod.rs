@@ -35,7 +35,9 @@ pub use steps::plan::create_deployment_plans;
 use crate::error::Result;
 use crate::nix::{Flake, HostMetadata};
 use crate::observer::PushObserver;
+use rayon::prelude::*;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 /// Main push orchestration function - handles complete deployment workflow
 ///
@@ -139,14 +141,9 @@ pub fn push(
 
 /// Execute all deployment steps for a single phase
 ///
-/// This function runs the complete deployment pipeline for hosts in a phase:
-/// 1. Build - Compile NixOS configurations
-/// 2. Copy - Transfer closures to remote hosts
-/// 3. Plan - Create deployment plans with reboot detection
-/// 4. Activate - Activate new configurations
-/// 5. Reboot - Reboot hosts if needed
-///
-/// Returns deployment results for all hosts in the phase.
+/// Uses parallel-per-host execution where each host independently runs through
+/// all steps (build -> copy -> activate -> reboot). This allows hosts to progress
+/// at different rates - one host can be activating while another is still building.
 fn execute_phase(
     phase: &str,
     phase_hosts: &[HostMetadata],
@@ -160,53 +157,250 @@ fn execute_phase(
     let phase_span = info_span!("phase", phase = phase, hosts = phase_hosts.len());
     let _entered = phase_span.enter();
 
-    // Step 1: Build
-    let build_inputs: Vec<BuildInput> = phase_hosts
-        .iter()
-        .map(|h| BuildInput {
-            metadata: h.clone(),
-        })
-        .collect();
-    let build_step = BuildStep { flake, push_ctx };
-    let build_outputs = execute_step(&build_step, phase, build_inputs, observer)?;
+    // Wrap resources for parallel access
+    // Note: We're wrapping references in Arc which clippy warns about,
+    // but this is necessary here because:
+    // 1. We only have &T not T (T contains lifetimes and can't be cloned)
+    // 2. We need to share across threads (Arc)
+    // 3. Rayon's par_iter requires 'static closure
+    #[allow(clippy::redundant_allocation)]
+    let flake = Arc::new(flake);
+    #[allow(clippy::redundant_allocation)]
+    let push_ctx = Arc::new(push_ctx);
+    #[allow(clippy::redundant_allocation)]
+    let observer = Arc::new(observer);
 
-    // Step 2: Copy
-    let copy_step = CopyStep { push_ctx };
-    let copy_outputs = execute_step(&copy_step, phase, build_outputs, observer)?;
+    // Create thread pool with concurrency limit
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(push_ctx.config.concurrency)
+        .build()
+        .map_err(|e| {
+            crate::error::SnowError::Deploy(crate::error::DeployError::Failed {
+                host: "thread pool".to_string(),
+                source: std::io::Error::other(e.to_string()),
+            })
+        })?;
 
-    // Step 3: Planning
-    let plan_step = PlanningStep { push_ctx };
-    let planning_outputs = execute_step(&plan_step, phase, copy_outputs, observer)?;
+    // Execute hosts in parallel - each host runs through all steps independently
+    let results: Vec<Result<(String, crate::backends::deploy::DeployResult)>> =
+        pool.install(|| {
+            phase_hosts
+                .par_iter()
+                .map(|host_metadata| {
+                    execute_host_pipeline(
+                        host_metadata,
+                        Arc::clone(&flake),
+                        Arc::clone(&push_ctx),
+                        Arc::clone(&observer),
+                    )
+                })
+                .collect()
+        });
 
-    // Step 4: Activate
-    let activate_inputs: Vec<ActivateInput> = planning_outputs
-        .into_iter()
-        .map(|p| ActivateInput { plan: p.plan })
-        .collect();
-    let activate_step = ActivateStep { push_ctx };
-    let activate_outputs = execute_step(&activate_step, phase, activate_inputs, observer)?;
+    // Collect successful results and handle errors
+    let mut phase_results = Vec::new();
+    let mut first_error = None;
 
-    // Step 5: Reboot
-    let reboot_inputs: Vec<RebootInput> = activate_outputs
-        .into_iter()
-        .map(|a| RebootInput {
-            plan: a.plan,
-            deploy_result: a.result,
-        })
-        .collect();
-    let reboot_step = RebootStep { push_ctx };
-    let reboot_outputs = execute_step(&reboot_step, phase, reboot_inputs, observer)?;
+    for result in results {
+        match result {
+            Ok((hostname, deploy_result)) => {
+                phase_results.push((hostname, deploy_result));
+            }
+            Err(e) => {
+                if first_error.is_none() {
+                    first_error = Some(e);
+                }
+            }
+        }
+    }
 
-    // Collect results from reboot step
-    let phase_results: Vec<(String, crate::backends::deploy::DeployResult)> = reboot_outputs
-        .into_iter()
-        .map(|r| (r.hostname, r.result))
-        .collect();
+    // Return first error if any
+    if let Some(err) = first_error {
+        return Err(err);
+    }
 
     Ok(phase_results)
 }
 
-/// Helper function to execute a step and handle failures
+/// Execute the full deployment pipeline for a single host
+///
+/// Runs: Build → Copy → Plan → Activate → Reboot
+///
+/// This function is called in parallel for each host in a phase. Observer callbacks
+/// are used to track when hosts enter/leave steps, enabling dynamic step span visibility.
+///
+/// Note: Uses Arc<&T> pattern which clippy warns about, but is necessary because:
+/// - We only have &T not T (types contain lifetimes and can't be easily cloned)
+/// - We need to share across threads (Arc)
+/// - Rayon's par_iter requires 'static closure
+#[allow(clippy::redundant_allocation)]
+fn execute_host_pipeline(
+    host_metadata: &HostMetadata,
+    flake: Arc<&Flake>,
+    push_ctx: Arc<&PushContext>,
+    observer: Arc<&dyn PushObserver>,
+) -> Result<(String, crate::backends::deploy::DeployResult)> {
+    use tracing::info_span;
+
+    let hostname = &host_metadata.name;
+
+    // Deref Arc to get the actual references
+    let flake_ref = flake.as_ref();
+    let push_ctx_ref = push_ctx.as_ref();
+    let observer_ref = observer.as_ref();
+
+    // Create host span (will be child of current step span)
+    let host_span = info_span!("host", host = %hostname);
+    let _host_entered = host_span.enter();
+
+    // Step 1: Build
+    observer_ref.on_build_start(hostname)?;
+    let build_output = {
+        match push_ctx_ref
+            .nix_backend
+            .build_host(flake_ref, hostname, push_ctx_ref.config.quiet)
+        {
+            Ok(store_path) => {
+                // Create deployment target
+                let target = crate::backends::deploy::DeployTarget {
+                    user: push_ctx_ref.config.ssh_user.clone(),
+                    hostname: host_metadata.fqdn.clone(),
+                    port: None,
+                };
+
+                BuildOutput {
+                    metadata: host_metadata.clone(),
+                    target,
+                    store_path,
+                }
+            }
+            Err(e) => {
+                observer_ref.on_build_complete(hostname, false)?;
+                return Err(e);
+            }
+        }
+    };
+    observer_ref.on_build_complete(hostname, true)?;
+
+    // Step 2: Copy
+    observer_ref.on_copy_start(hostname)?;
+    let copy_output = {
+        match push_ctx_ref
+            .deploy_backend
+            .copy_closure(&build_output.target, &build_output.store_path)
+        {
+            Ok(()) => CopyOutput {
+                metadata: build_output.metadata,
+                target: build_output.target,
+                store_path: build_output.store_path,
+            },
+            Err(e) => {
+                observer_ref.on_copy_complete(hostname, false)?;
+                return Err(e);
+            }
+        }
+    };
+    observer_ref.on_copy_complete(hostname, true)?;
+
+    // Step 3: Planning
+    let (plans, blocked) = steps::plan::create_deployment_plans(
+        vec![(
+            copy_output.metadata.clone(),
+            copy_output.target.clone(),
+            copy_output.store_path.clone(),
+        )],
+        push_ctx_ref.reboot_backend,
+        push_ctx_ref.config.mode,
+        push_ctx_ref.config.force,
+    )?;
+
+    // Handle blocked hosts
+    if !blocked.is_empty() {
+        return Err(crate::error::SnowError::Deploy(
+            crate::error::DeployError::Failed {
+                host: blocked[0].hostname.clone(),
+                source: std::io::Error::other(blocked[0].reason.clone()),
+            },
+        ));
+    }
+
+    // Should only have one plan
+    let plan = plans.into_iter().next().ok_or_else(|| {
+        crate::error::SnowError::Deploy(crate::error::DeployError::Failed {
+            host: hostname.clone(),
+            source: std::io::Error::other("No deployment plan created"),
+        })
+    })?;
+
+    // Step 4: Activate
+    observer_ref.on_deploy_start(hostname, plan.activation_mode)?;
+    let activate_result = {
+        push_ctx_ref
+            .deploy_backend
+            .deploy(&plan.target, &plan.store_path, plan.activation_mode)
+            .unwrap_or_else(|e| {
+                // Build comprehensive error message with error chain
+                let mut error_msg = e.to_string();
+                let mut source = std::error::Error::source(&e);
+                while let Some(err) = source {
+                    error_msg.push_str(&format!("\n  Caused by: {}", err));
+                    source = std::error::Error::source(err);
+                }
+                crate::backends::deploy::DeployResult::failure(error_msg)
+            })
+    };
+    observer_ref.on_deploy_complete(hostname, &activate_result)?;
+
+    if !activate_result.success {
+        return Err(crate::error::SnowError::Deploy(
+            crate::error::DeployError::Failed {
+                host: hostname.clone(),
+                source: std::io::Error::other(activate_result.message.clone()),
+            },
+        ));
+    }
+
+    // Step 5: Reboot (if needed)
+    // Reboot if:
+    // 1. allow_reboot is true, AND
+    // 2. activation_mode is Boot, AND
+    // 3. Either no reboot check OR reboot is required
+    let should_reboot = push_ctx_ref.config.allow_reboot
+        && plan.activation_mode == crate::backends::deploy::ActivationMode::Boot
+        && (plan.reboot_check.is_none()
+            || plan
+                .reboot_check
+                .as_ref()
+                .map(|c| c.required)
+                .unwrap_or(false));
+
+    let final_result = if should_reboot {
+        observer_ref.on_reboot_start(hostname)?;
+        match push_ctx_ref.reboot_backend.reboot_and_wait(&plan.target) {
+            Ok(()) => {
+                observer_ref.on_reboot_complete(hostname, true)?;
+                activate_result
+            }
+            Err(e) => {
+                observer_ref.on_reboot_complete(hostname, false)?;
+                crate::backends::deploy::DeployResult::failure(format!(
+                    "Deployment succeeded but reboot failed: {}",
+                    e
+                ))
+            }
+        }
+    } else {
+        activate_result
+    };
+
+    Ok((hostname.clone(), final_result))
+}
+
+/// Helper function to execute a step and handle failures (DEPRECATED)
+///
+/// This function is no longer used after parallel-per-host refactor.
+/// Kept temporarily for reference.
+#[allow(dead_code)]
 fn execute_step<S: Step>(
     step: &S,
     phase: &str,
@@ -1340,18 +1534,16 @@ mod tests {
         assert_eq!(results.success_count(), 2);
         assert_eq!(results.failure_count(), 0);
 
-        // Verify observer events fired in correct order
+        // Verify observer events fired in correct order (parallel-per-host model)
         let events = observer.get_events();
 
-        // Build step events
-        assert!(events.contains(&"build_step_start:web:2".to_string()));
+        // Build events (per-host)
         assert!(events.contains(&"build_start:web1".to_string()));
         assert!(events.contains(&"build_complete:web1:ok".to_string()));
         assert!(events.contains(&"build_start:web2".to_string()));
         assert!(events.contains(&"build_complete:web2:ok".to_string()));
 
-        // Copy step events
-        assert!(events.contains(&"copy_step_start:web:2".to_string()));
+        // Copy events (per-host)
         assert!(events.contains(&"copy_start:web1".to_string()));
         assert!(events.contains(&"copy_complete:web1:ok".to_string()));
         assert!(events.contains(&"copy_start:web2".to_string()));
@@ -1412,19 +1604,19 @@ mod tests {
 
         let events = observer.get_events();
 
-        // Database phase should complete before web phase starts
+        // Database phase should complete before web phase starts (parallel-per-host model)
         let db_phase_start = events
             .iter()
-            .position(|e| e == "build_step_start:database:1")
-            .expect("database build should start");
+            .position(|e| e == "phase_start:database:1")
+            .expect("database phase should start");
         let db_phase_complete = events
             .iter()
             .position(|e| e == "phase_complete:database:ok")
-            .expect("database activation should complete");
+            .expect("database phase should complete");
         let web_phase_start = events
             .iter()
-            .position(|e| e == "build_step_start:web:1")
-            .expect("web build should start");
+            .position(|e| e == "phase_start:web:1")
+            .expect("web phase should start");
 
         assert!(db_phase_start < db_phase_complete);
         assert!(db_phase_complete < web_phase_start);
@@ -1471,11 +1663,9 @@ mod tests {
         assert!(events.contains(&"phase_start:default:1".to_string()));
         assert!(events.contains(&"phase_complete:default:failed".to_string()));
 
-        // Build events should be present
-        assert!(events.contains(&"build_step_start:default:1".to_string()));
+        // Build events should be present (parallel-per-host model)
         assert!(events.contains(&"build_start:fail-host".to_string()));
         assert!(events.contains(&"build_complete:fail-host:fail".to_string()));
-        assert!(events.contains(&"build_step_complete:default:fail".to_string()));
 
         // NO copy/activate/reboot events should fire (build failed before these steps)
         assert!(!events.iter().any(|e| e.starts_with("copy_")));
@@ -1525,17 +1715,13 @@ mod tests {
         assert!(events.contains(&"phase_start:default:1".to_string()));
         assert!(events.contains(&"phase_complete:default:failed".to_string()));
 
-        // Build should succeed
-        assert!(events.contains(&"build_step_start:default:1".to_string()));
+        // Build should succeed (parallel-per-host model)
         assert!(events.contains(&"build_start:fail-copy".to_string()));
         assert!(events.contains(&"build_complete:fail-copy:ok".to_string()));
-        assert!(events.contains(&"build_step_complete:default:ok".to_string()));
 
         // Copy should fail
-        assert!(events.contains(&"copy_step_start:default:1".to_string()));
         assert!(events.contains(&"copy_start:fail-copy".to_string()));
         assert!(events.contains(&"copy_complete:fail-copy:fail".to_string()));
-        assert!(events.contains(&"copy_step_complete:default:fail".to_string()));
 
         // NO activate/reboot events (copy failed before these steps)
         assert!(!events.iter().any(|e| e.starts_with("deploy_")));
@@ -1586,11 +1772,7 @@ mod tests {
 
         let events = observer.get_events();
 
-        // Verify copy sequence: copy_step_start → copy_start → copy_complete
-        let copy_phase_idx = events
-            .iter()
-            .position(|e| e == "copy_step_start:p1:2")
-            .unwrap();
+        // In parallel-per-host model, verify each host completes its copy
         let copy1_start_idx = events.iter().position(|e| e == "copy_start:host1").unwrap();
         let copy1_complete_idx = events
             .iter()
@@ -1602,9 +1784,8 @@ mod tests {
             .position(|e| e == "copy_complete:host2:ok")
             .unwrap();
 
-        assert!(copy_phase_idx < copy1_start_idx);
+        // Each host's copy_start should come before its copy_complete
         assert!(copy1_start_idx < copy1_complete_idx);
-        assert!(copy_phase_idx < copy2_start_idx);
         assert!(copy2_start_idx < copy2_complete_idx);
     }
 
@@ -1652,11 +1833,7 @@ mod tests {
 
         let events = observer.get_events();
 
-        // Verify build sequence: build_step_start → build_start → build_complete
-        let build_phase_idx = events
-            .iter()
-            .position(|e| e == "build_step_start:p1:2")
-            .unwrap();
+        // In parallel-per-host model, verify each host completes its build
         let build1_start_idx = events
             .iter()
             .position(|e| e == "build_start:host1")
@@ -1674,9 +1851,8 @@ mod tests {
             .position(|e| e == "build_complete:host2:ok")
             .unwrap();
 
-        assert!(build_phase_idx < build1_start_idx);
+        // Each host's build_start should come before its build_complete
         assert!(build1_start_idx < build1_complete_idx);
-        assert!(build_phase_idx < build2_start_idx);
         assert!(build2_start_idx < build2_complete_idx);
     }
 
@@ -1725,14 +1901,23 @@ mod tests {
 
         let events = observer.get_events();
 
+        // Parallel-per-host model: host1 can proceed even if host2 fails
         // host1 build should succeed
         assert!(events.contains(&"build_complete:host1:ok".to_string()));
 
         // host2 build should fail
         assert!(events.contains(&"build_complete:host2:fail".to_string()));
 
-        // No copy should happen for either host
-        assert!(!events.iter().any(|e| e.starts_with("copy_")));
+        // In parallel model, host1 continues through the pipeline even though host2 failed
+        // host1 should complete copy, activate, etc.
+        assert!(events
+            .iter()
+            .any(|e| e.starts_with("copy_") && e.contains("host1")));
+
+        // host2 should NOT proceed to copy (it failed build)
+        assert!(!events
+            .iter()
+            .any(|e| e.starts_with("copy_") && e.contains("host2")));
     }
 
     #[test]
@@ -1781,9 +1966,7 @@ mod tests {
 
         let events = observer.get_events();
 
-        // Both hosts should be in "_all" phase
-        assert!(events.contains(&"build_step_start:_all:2".to_string()));
-        assert!(events.contains(&"copy_step_start:_all:2".to_string()));
+        // Both hosts should be in "_all" phase (parallel-per-host model)
         assert!(events.contains(&"phase_start:_all:2".to_string()));
 
         // Should NOT have separate database/web phases
