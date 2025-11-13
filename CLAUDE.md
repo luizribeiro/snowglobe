@@ -120,17 +120,19 @@ The `PushContext` struct consolidates all deployment state:
 
 This replaced an earlier scattered approach and centralizes deployment orchestration.
 
-#### Deployment Steps
+#### Parallel-Per-Host Execution
 
-The push operation is broken into steps (see `snowlib/src/push/steps/`):
+The push operation uses a parallel-per-host execution model where each host runs through all deployment steps independently:
 
-1. **Plan** - Determine which hosts to deploy
-2. **Build** - Build NixOS configurations in parallel
-3. **Copy** - Copy closures to target hosts
-4. **Activate** - Run activation scripts on hosts
-5. **Reboot** - Handle reboots if required
+1. **Build** - Build NixOS configuration for the host
+2. **Copy** - Copy closure to target host
+3. **Planning** - Create deployment plan with reboot detection
+4. **Activate** - Run activation script on host
+5. **Reboot** - Reboot host if required
 
-Each step is modular and can be tested independently.
+This is implemented in `execute_phase()` which uses Rayon to run `execute_host_pipeline()` concurrently for each host. Dynamic step spans (managed by the observer) provide visibility into which steps hosts are currently in.
+
+The advantage of this approach is that fast hosts don't wait for slow hosts to complete each step - each host progresses through the pipeline at its own pace.
 
 ### Core Concepts
 
@@ -203,16 +205,10 @@ snowlib/src/
 │   ├── reboot.rs       # RebootBackend trait
 │   └── mock.rs         # Test fixtures
 └── push/               # Push command implementation
-    ├── mod.rs          # Main push orchestration
+    ├── mod.rs          # Main push orchestration (includes deployment planning)
     ├── config.rs       # Configuration types
     ├── context.rs      # PushContext
-    ├── results.rs      # Result types
-    └── steps/          # Individual deployment steps
-        ├── plan.rs
-        ├── build.rs
-        ├── copy.rs
-        ├── activate.rs
-        └── reboot.rs
+    └── results.rs      # Result types
 ```
 
 ## Design Philosophy & Patterns
@@ -319,11 +315,14 @@ nix build .#nixosConfigurations.hostname.config.system.build.toplevel
 
 ### Working with the Observer
 
-When adding new deployment steps or operations:
+When adding new deployment operations or modifying the pipeline:
 
 1. Call observer methods at appropriate points:
-   - `on_step_start()` / `on_step_end()`
-   - `on_host_deploy_start()` / `on_host_deploy_end()`
-   - `on_host_deploy_output()` for streaming output
-2. Mock observer in tests to verify callbacks
-3. CLI observer handles pretty-printing automatically
+   - `on_phase_start()` / `on_phase_complete()` for phase lifecycle
+   - `on_build_start()` / `on_build_complete()` for build operations
+   - `on_copy_start()` / `on_copy_complete()` for copy operations
+   - `on_deploy_start()` / `on_deploy_complete()` for activation
+   - `on_reboot_start()` / `on_reboot_complete()` for reboot operations
+2. Add tracing events for progress visibility (`tracing::info!`, `tracing::error!`)
+3. Mock observer in tests to verify callbacks
+4. CLI observer manages dynamic step spans automatically
