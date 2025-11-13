@@ -1,5 +1,7 @@
 use clap::Parser;
 use miette::{IntoDiagnostic, Result};
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
 
 mod backend_factory;
 mod commands;
@@ -24,6 +26,18 @@ struct Cli {
 
 fn main() -> Result<()> {
     miette::set_panic_hook();
+
+    // Set up tracing with indicatif integration for progress bars
+    let indicatif_layer = tracing_indicatif::IndicatifLayer::new();
+    tracing_subscriber::registry()
+        .with(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| "snow=info,snowlib=info".into()),
+        )
+        .with(tracing_subscriber::fmt::layer().with_writer(indicatif_layer.get_stderr_writer()))
+        .with(indicatif_layer)
+        .init();
+
     let cli = Cli::parse();
 
     // Create flake context
