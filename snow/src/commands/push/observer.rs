@@ -6,6 +6,7 @@
 use parking_lot::Mutex;
 use snowlib::{ActivationMode, DeployResult, PushObserver, Result};
 use tracing::info_span;
+use tracing_indicatif::span_ext::IndicatifSpanExt;
 
 /// CLI observer that manages step span lifecycle
 ///
@@ -230,22 +231,51 @@ impl PushObserver for CliObserver {
     }
 
     fn prepare_step_spans(&self) {
+        use tracing_indicatif::style::ProgressStyle;
+
         let mut state = self.state.lock();
 
         // Pre-create all step spans (build, copy, activate, reboot)
         // These will be entered in REVERSE order in execute_phase to display correctly
         // (tracing-indicatif's insert_after causes reverse ordering)
         let parent = state.phase_span.clone();
+
+        // Create a simple style without spinner for step spans
+        let step_style = ProgressStyle::default_bar()
+            .template("{span_child_prefix}{span_name}{span_fields}")
+            .expect("Failed to create step span style");
+
         if let Some(parent) = parent {
-            state.build_span = Some(info_span!(parent: &parent, "build"));
-            state.copy_span = Some(info_span!(parent: &parent, "copy"));
-            state.activate_span = Some(info_span!(parent: &parent, "activate"));
-            state.reboot_span = Some(info_span!(parent: &parent, "reboot"));
+            let build = info_span!(parent: &parent, "build");
+            let copy = info_span!(parent: &parent, "copy");
+            let activate = info_span!(parent: &parent, "activate");
+            let reboot = info_span!(parent: &parent, "reboot");
+
+            // Set style without spinner on each step span
+            build.pb_set_style(&step_style);
+            copy.pb_set_style(&step_style);
+            activate.pb_set_style(&step_style);
+            reboot.pb_set_style(&step_style);
+
+            state.build_span = Some(build);
+            state.copy_span = Some(copy);
+            state.activate_span = Some(activate);
+            state.reboot_span = Some(reboot);
         } else {
-            state.build_span = Some(info_span!("build"));
-            state.copy_span = Some(info_span!("copy"));
-            state.activate_span = Some(info_span!("activate"));
-            state.reboot_span = Some(info_span!("reboot"));
+            let build = info_span!("build");
+            let copy = info_span!("copy");
+            let activate = info_span!("activate");
+            let reboot = info_span!("reboot");
+
+            build.pb_set_style(&step_style);
+            copy.pb_set_style(&step_style);
+            activate.pb_set_style(&step_style);
+            reboot.pb_set_style(&step_style);
+
+            state.build_span = Some(build);
+            state.copy_span = Some(copy);
+            state.activate_span = Some(activate);
+            state.reboot_span = Some(reboot);
         }
     }
 }
