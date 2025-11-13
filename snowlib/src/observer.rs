@@ -216,59 +216,6 @@ pub trait PushObserver: Send + Sync {
     fn on_reboot_step_complete(&self, _phase: &str, _success: bool) -> Result<()> {
         Ok(())
     }
-
-    // --- Span management for explicit parenting ---
-
-    /// Set the current phase span to use as parent for step spans
-    ///
-    /// This should be called when a phase starts to allow step spans
-    /// to use the phase span as their explicit parent.
-    fn set_phase_span(&self, _span: tracing::Span) {
-        // Default no-op - only observers that track spans need to implement this
-    }
-
-    /// Pre-create step spans in the desired display order
-    ///
-    /// This ensures step spans appear in a consistent order (build, copy, activate, reboot)
-    /// in progress indicators, regardless of which step hosts enter first.
-    fn prepare_step_spans(&self) {
-        // Default no-op - only observers that track spans need to implement this
-    }
-
-    // --- Span access methods for explicit parenting ---
-    // These allow worker threads to get the current step span to use as an explicit parent
-
-    /// Get the current build step span (if any)
-    ///
-    /// Returns the shared build span that can be used as an explicit parent
-    /// for host spans. Returns None if no hosts are currently building.
-    fn build_span(&self) -> Option<tracing::Span> {
-        None
-    }
-
-    /// Get the current copy step span (if any)
-    ///
-    /// Returns the shared copy span that can be used as an explicit parent
-    /// for host spans. Returns None if no hosts are currently copying.
-    fn copy_span(&self) -> Option<tracing::Span> {
-        None
-    }
-
-    /// Get the current activate step span (if any)
-    ///
-    /// Returns the shared activate span that can be used as an explicit parent
-    /// for host spans. Returns None if no hosts are currently activating.
-    fn activate_span(&self) -> Option<tracing::Span> {
-        None
-    }
-
-    /// Get the current reboot step span (if any)
-    ///
-    /// Returns the shared reboot span that can be used as an explicit parent
-    /// for host spans. Returns None if no hosts are currently rebooting.
-    fn reboot_span(&self) -> Option<tracing::Span> {
-        None
-    }
 }
 
 /// No-op observer that does nothing

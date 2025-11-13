@@ -136,44 +136,15 @@ pub fn push(
 /// all steps (build -> copy -> activate -> reboot). This allows hosts to progress
 /// at different rates - one host can be activating while another is still building.
 fn execute_phase(
-    phase: &str,
+    _phase: &str,
     phase_hosts: &[HostMetadata],
     flake: &Flake,
     push_ctx: &PushContext,
     observer: &dyn PushObserver,
 ) -> Result<Vec<(String, crate::backends::deploy::DeployResult)>> {
-    use tracing::info_span;
-
     // Sort hosts lexicographically for consistent rendering order
     let mut sorted_hosts = phase_hosts.to_vec();
     sorted_hosts.sort_by(|a, b| a.name.cmp(&b.name));
-
-    // Create phase span
-    let phase_span = info_span!("phase", phase = phase, hosts = sorted_hosts.len());
-    // Provide phase span to observer so step spans can use it as parent
-    observer.set_phase_span(phase_span.clone());
-    // Pre-create step spans in the desired order for consistent rendering
-    observer.prepare_step_spans();
-    let _entered_phase = phase_span.enter();
-
-    // Enter all step spans in REVERSE order to display in correct order
-    // Note: Must enter in reverse because tracing-indicatif uses insert_after()
-    // which causes each new child to push previous children down
-    let build_span = observer.build_span();
-    let copy_span = observer.copy_span();
-    let activate_span = observer.activate_span();
-    let reboot_span = observer.reboot_span();
-    let _entered_reboot = reboot_span.as_ref().map(|s| s.enter());
-    let _entered_activate = activate_span.as_ref().map(|s| s.enter());
-    let _entered_copy = copy_span.as_ref().map(|s| s.enter());
-    let _entered_build = build_span.as_ref().map(|s| s.enter());
-
-    // Log phase start
-    if phase == "default" || phase == "_all" {
-        tracing::info!(hosts = sorted_hosts.len(), "Starting deployment");
-    } else {
-        tracing::info!(phase = phase, hosts = sorted_hosts.len(), "Starting phase");
-    }
 
     // Wrap resources for parallel access
     // Note: We're wrapping references in Arc which clippy warns about,
@@ -234,26 +205,7 @@ fn execute_phase(
 
     // Return first error if any
     if let Some(err) = first_error {
-        if phase == "default" || phase == "_all" {
-            tracing::error!("✗ Deployment failed");
-        } else {
-            tracing::error!(phase = phase, "✗ Phase failed");
-        }
         return Err(err);
-    }
-
-    // Log phase success
-    if phase == "default" || phase == "_all" {
-        tracing::info!(
-            succeeded = phase_results.len(),
-            "✓ Deployment completed successfully"
-        );
-    } else {
-        tracing::info!(
-            phase = phase,
-            succeeded = phase_results.len(),
-            "✓ Phase completed successfully"
-        );
     }
 
     Ok(phase_results)
@@ -479,8 +431,6 @@ fn execute_host_pipeline(
     push_ctx: Arc<&PushContext>,
     observer: Arc<&dyn PushObserver>,
 ) -> Result<(String, crate::backends::deploy::DeployResult)> {
-    use tracing::info_span;
-
     let hostname = &host_metadata.name;
 
     // Deref Arc to get the actual references
@@ -490,24 +440,12 @@ fn execute_host_pipeline(
 
     // Step 1: Build
     observer_ref.on_build_start(hostname)?;
-    let build_output = {
-        // Create host span with build span as explicit parent
-        let host_span = if let Some(parent) = observer_ref.build_span() {
-            info_span!(parent: &parent, "host", host = %hostname)
-        } else {
-            info_span!("host", host = %hostname)
-        };
-        let _entered = host_span.enter();
-
-        tracing::info!("Building configuration");
-
+    let build_output =
         match push_ctx_ref
             .nix_backend
             .build_host(flake_ref, hostname, push_ctx_ref.config.quiet)
         {
             Ok(store_path) => {
-                tracing::info!("✓ Build completed");
-
                 // Create deployment target
                 let target = crate::backends::deploy::DeployTarget {
                     user: push_ctx_ref.config.ssh_user.clone(),
@@ -522,45 +460,26 @@ fn execute_host_pipeline(
                 }
             }
             Err(e) => {
-                tracing::error!("✗ Build failed");
                 observer_ref.on_build_complete(hostname, false)?;
                 return Err(e);
             }
-        }
-    };
+        };
     observer_ref.on_build_complete(hostname, true)?;
 
     // Step 2: Copy
     observer_ref.on_copy_start(hostname)?;
-    let copy_output = {
-        // Create host span with copy span as explicit parent
-        let host_span = if let Some(parent) = observer_ref.copy_span() {
-            info_span!(parent: &parent, "host", host = %hostname)
-        } else {
-            info_span!("host", host = %hostname)
-        };
-        let _entered = host_span.enter();
-
-        tracing::info!("Copying closure");
-
-        match push_ctx_ref
-            .deploy_backend
-            .copy_closure(&build_output.target, &build_output.store_path)
-        {
-            Ok(()) => {
-                tracing::info!("✓ Copy completed");
-
-                CopyOutput {
-                    metadata: build_output.metadata,
-                    target: build_output.target,
-                    store_path: build_output.store_path,
-                }
-            }
-            Err(e) => {
-                tracing::error!("✗ Copy failed");
-                observer_ref.on_copy_complete(hostname, false)?;
-                return Err(e);
-            }
+    let copy_output = match push_ctx_ref
+        .deploy_backend
+        .copy_closure(&build_output.target, &build_output.store_path)
+    {
+        Ok(()) => CopyOutput {
+            metadata: build_output.metadata,
+            target: build_output.target,
+            store_path: build_output.store_path,
+        },
+        Err(e) => {
+            observer_ref.on_copy_complete(hostname, false)?;
+            return Err(e);
         }
     };
     observer_ref.on_copy_complete(hostname, true)?;
@@ -597,39 +516,19 @@ fn execute_host_pipeline(
 
     // Step 4: Activate
     observer_ref.on_deploy_start(hostname, plan.activation_mode)?;
-    let activate_result = {
-        // Create host span with activate span as explicit parent
-        let host_span = if let Some(parent) = observer_ref.activate_span() {
-            info_span!(parent: &parent, "host", host = %hostname)
-        } else {
-            info_span!("host", host = %hostname)
-        };
-        let _entered = host_span.enter();
-
-        tracing::info!("Activating configuration");
-
-        let result = push_ctx_ref
-            .deploy_backend
-            .deploy(&plan.target, &plan.store_path, plan.activation_mode)
-            .unwrap_or_else(|e| {
-                // Build comprehensive error message with error chain
-                let mut error_msg = e.to_string();
-                let mut source = std::error::Error::source(&e);
-                while let Some(err) = source {
-                    error_msg.push_str(&format!("\n  Caused by: {}", err));
-                    source = std::error::Error::source(err);
-                }
-                crate::backends::deploy::DeployResult::failure(error_msg)
-            });
-
-        if result.success {
-            tracing::info!("✓ Activation completed");
-        } else {
-            tracing::error!(message = %result.message, "✗ Activation failed");
-        }
-
-        result
-    };
+    let activate_result = push_ctx_ref
+        .deploy_backend
+        .deploy(&plan.target, &plan.store_path, plan.activation_mode)
+        .unwrap_or_else(|e| {
+            // Build comprehensive error message with error chain
+            let mut error_msg = e.to_string();
+            let mut source = std::error::Error::source(&e);
+            while let Some(err) = source {
+                error_msg.push_str(&format!("\n  Caused by: {}", err));
+                source = std::error::Error::source(err);
+            }
+            crate::backends::deploy::DeployResult::failure(error_msg)
+        });
     observer_ref.on_deploy_complete(hostname, &activate_result)?;
 
     if !activate_result.success {
@@ -658,24 +557,12 @@ fn execute_host_pipeline(
     let final_result = if should_reboot {
         observer_ref.on_reboot_start(hostname)?;
 
-        // Create host span with reboot span as explicit parent
-        let host_span = if let Some(parent) = observer_ref.reboot_span() {
-            info_span!(parent: &parent, "host", host = %hostname)
-        } else {
-            info_span!("host", host = %hostname)
-        };
-        let _entered = host_span.enter();
-
-        tracing::info!("Rebooting host");
-
         match push_ctx_ref.reboot_backend.reboot_and_wait(&plan.target) {
             Ok(()) => {
-                tracing::info!("✓ Back online");
                 observer_ref.on_reboot_complete(hostname, true)?;
                 activate_result
             }
             Err(e) => {
-                tracing::error!("✗ Reboot failed");
                 observer_ref.on_reboot_complete(hostname, false)?;
                 crate::backends::deploy::DeployResult::failure(format!(
                     "Deployment succeeded but reboot failed: {}",
