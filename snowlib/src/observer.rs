@@ -227,6 +227,14 @@ pub trait PushObserver: Send + Sync {
         // Default no-op - only observers that track spans need to implement this
     }
 
+    /// Pre-create step spans in the desired display order
+    ///
+    /// This ensures step spans appear in a consistent order (build, copy, activate, reboot)
+    /// in progress indicators, regardless of which step hosts enter first.
+    fn prepare_step_spans(&self) {
+        // Default no-op - only observers that track spans need to implement this
+    }
+
     // --- Span access methods for explicit parenting ---
     // These allow worker threads to get the current step span to use as an explicit parent
 

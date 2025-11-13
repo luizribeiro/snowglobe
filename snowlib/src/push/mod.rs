@@ -144,17 +144,35 @@ fn execute_phase(
 ) -> Result<Vec<(String, crate::backends::deploy::DeployResult)>> {
     use tracing::info_span;
 
+    // Sort hosts lexicographically for consistent rendering order
+    let mut sorted_hosts = phase_hosts.to_vec();
+    sorted_hosts.sort_by(|a, b| a.name.cmp(&b.name));
+
     // Create phase span
-    let phase_span = info_span!("phase", phase = phase, hosts = phase_hosts.len());
+    let phase_span = info_span!("phase", phase = phase, hosts = sorted_hosts.len());
     // Provide phase span to observer so step spans can use it as parent
     observer.set_phase_span(phase_span.clone());
-    let _entered = phase_span.enter();
+    // Pre-create step spans in the desired order for consistent rendering
+    observer.prepare_step_spans();
+    let _entered_phase = phase_span.enter();
+
+    // Enter all step spans in REVERSE order to display in correct order
+    // Note: Must enter in reverse because tracing-indicatif uses insert_after()
+    // which causes each new child to push previous children down
+    let build_span = observer.build_span();
+    let copy_span = observer.copy_span();
+    let activate_span = observer.activate_span();
+    let reboot_span = observer.reboot_span();
+    let _entered_reboot = reboot_span.as_ref().map(|s| s.enter());
+    let _entered_activate = activate_span.as_ref().map(|s| s.enter());
+    let _entered_copy = copy_span.as_ref().map(|s| s.enter());
+    let _entered_build = build_span.as_ref().map(|s| s.enter());
 
     // Log phase start
     if phase == "default" || phase == "_all" {
-        tracing::info!(hosts = phase_hosts.len(), "Starting deployment");
+        tracing::info!(hosts = sorted_hosts.len(), "Starting deployment");
     } else {
-        tracing::info!(phase = phase, hosts = phase_hosts.len(), "Starting phase");
+        tracing::info!(phase = phase, hosts = sorted_hosts.len(), "Starting phase");
     }
 
     // Wrap resources for parallel access
@@ -184,7 +202,7 @@ fn execute_phase(
     // Execute hosts in parallel - each host runs through all steps independently
     let results: Vec<Result<(String, crate::backends::deploy::DeployResult)>> =
         pool.install(|| {
-            phase_hosts
+            sorted_hosts
                 .par_iter()
                 .map(|host_metadata| {
                     execute_host_pipeline(
