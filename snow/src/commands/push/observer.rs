@@ -54,12 +54,6 @@ impl CliObserver {
             }),
         }
     }
-
-    /// Set the current phase span to use as parent for step spans
-    #[allow(dead_code)] // Called through trait interface, not detected by compiler
-    fn set_phase_span(&self, span: tracing::Span) {
-        self.state.lock().phase_span = Some(span);
-    }
 }
 
 impl PushObserver for CliObserver {
@@ -225,6 +219,12 @@ impl PushObserver for CliObserver {
 
     fn on_reboot_step_complete(&self, _phase: &str, _success: bool) -> Result<()> {
         Ok(())
+    }
+
+    // --- Span management ---
+
+    fn set_phase_span(&self, span: tracing::Span) {
+        self.state.lock().phase_span = Some(span);
     }
 }
 
