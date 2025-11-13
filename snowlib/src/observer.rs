@@ -217,6 +217,16 @@ pub trait PushObserver: Send + Sync {
         Ok(())
     }
 
+    // --- Span management for explicit parenting ---
+
+    /// Set the current phase span to use as parent for step spans
+    ///
+    /// This should be called when a phase starts to allow step spans
+    /// to use the phase span as their explicit parent.
+    fn set_phase_span(&self, _span: tracing::Span) {
+        // Default no-op - only observers that track spans need to implement this
+    }
+
     // --- Span access methods for explicit parenting ---
     // These allow worker threads to get the current step span to use as an explicit parent
 

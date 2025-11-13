@@ -146,6 +146,8 @@ fn execute_phase(
 
     // Create phase span
     let phase_span = info_span!("phase", phase = phase, hosts = phase_hosts.len());
+    // Provide phase span to observer so step spans can use it as parent
+    observer.set_phase_span(phase_span.clone());
     let _entered = phase_span.enter();
 
     // Log phase start

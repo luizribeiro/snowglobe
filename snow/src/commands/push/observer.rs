@@ -22,6 +22,9 @@ pub struct CliObserver {
 }
 
 struct ObserverState {
+    // Phase span - used as parent for step spans
+    phase_span: Option<tracing::Span>,
+
     // Step spans - stored but not entered (Span is Clone and can be shared)
     build_span: Option<tracing::Span>,
     copy_span: Option<tracing::Span>,
@@ -39,6 +42,7 @@ impl CliObserver {
     pub fn new(_quiet: bool) -> Self {
         Self {
             state: Mutex::new(ObserverState {
+                phase_span: None,
                 build_span: None,
                 copy_span: None,
                 activate_span: None,
@@ -49,6 +53,12 @@ impl CliObserver {
                 reboot_count: 0,
             }),
         }
+    }
+
+    /// Set the current phase span to use as parent for step spans
+    #[allow(dead_code)] // Called through trait interface, not detected by compiler
+    fn set_phase_span(&self, span: tracing::Span) {
+        self.state.lock().phase_span = Some(span);
     }
 }
 
@@ -76,8 +86,12 @@ impl PushObserver for CliObserver {
     fn on_build_start(&self, _hostname: &str) -> Result<()> {
         let mut state = self.state.lock();
         if state.build_count == 0 {
-            // First host entering build - create span (but don't enter it)
-            state.build_span = Some(info_span!("build"));
+            // First host entering build - create span with phase as parent
+            state.build_span = if let Some(ref parent) = state.phase_span {
+                Some(info_span!(parent: parent, "build"))
+            } else {
+                Some(info_span!("build"))
+            };
         }
         state.build_count += 1;
         Ok(())
@@ -110,7 +124,12 @@ impl PushObserver for CliObserver {
     fn on_copy_start(&self, _hostname: &str) -> Result<()> {
         let mut state = self.state.lock();
         if state.copy_count == 0 {
-            state.copy_span = Some(info_span!("copy"));
+            // First host entering copy - create span with phase as parent
+            state.copy_span = if let Some(ref parent) = state.phase_span {
+                Some(info_span!(parent: parent, "copy"))
+            } else {
+                Some(info_span!("copy"))
+            };
         }
         state.copy_count += 1;
         Ok(())
@@ -142,7 +161,12 @@ impl PushObserver for CliObserver {
     fn on_deploy_start(&self, _hostname: &str, _mode: ActivationMode) -> Result<()> {
         let mut state = self.state.lock();
         if state.activate_count == 0 {
-            state.activate_span = Some(info_span!("activate"));
+            // First host entering activate - create span with phase as parent
+            state.activate_span = if let Some(ref parent) = state.phase_span {
+                Some(info_span!(parent: parent, "activate"))
+            } else {
+                Some(info_span!("activate"))
+            };
         }
         state.activate_count += 1;
         Ok(())
@@ -174,7 +198,12 @@ impl PushObserver for CliObserver {
     fn on_reboot_start(&self, _hostname: &str) -> Result<()> {
         let mut state = self.state.lock();
         if state.reboot_count == 0 {
-            state.reboot_span = Some(info_span!("reboot"));
+            // First host entering reboot - create span with phase as parent
+            state.reboot_span = if let Some(ref parent) = state.phase_span {
+                Some(info_span!(parent: parent, "reboot"))
+            } else {
+                Some(info_span!("reboot"))
+            };
         }
         state.reboot_count += 1;
         Ok(())
