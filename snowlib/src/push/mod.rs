@@ -157,6 +157,13 @@ fn execute_phase(
     let phase_span = info_span!("phase", phase = phase, hosts = phase_hosts.len());
     let _entered = phase_span.enter();
 
+    // Log phase start
+    if phase == "default" || phase == "_all" {
+        tracing::info!(hosts = phase_hosts.len(), "Starting deployment");
+    } else {
+        tracing::info!(phase = phase, hosts = phase_hosts.len(), "Starting phase");
+    }
+
     // Wrap resources for parallel access
     // Note: We're wrapping references in Arc which clippy warns about,
     // but this is necessary here because:
@@ -216,7 +223,26 @@ fn execute_phase(
 
     // Return first error if any
     if let Some(err) = first_error {
+        if phase == "default" || phase == "_all" {
+            tracing::error!("✗ Deployment failed");
+        } else {
+            tracing::error!(phase = phase, "✗ Phase failed");
+        }
         return Err(err);
+    }
+
+    // Log phase success
+    if phase == "default" || phase == "_all" {
+        tracing::info!(
+            succeeded = phase_results.len(),
+            "✓ Deployment completed successfully"
+        );
+    } else {
+        tracing::info!(
+            phase = phase,
+            succeeded = phase_results.len(),
+            "✓ Phase completed successfully"
+        );
     }
 
     Ok(phase_results)
@@ -256,11 +282,15 @@ fn execute_host_pipeline(
     // Step 1: Build
     observer_ref.on_build_start(hostname)?;
     let build_output = {
+        tracing::info!("Building configuration");
+
         match push_ctx_ref
             .nix_backend
             .build_host(flake_ref, hostname, push_ctx_ref.config.quiet)
         {
             Ok(store_path) => {
+                tracing::info!("✓ Build completed");
+
                 // Create deployment target
                 let target = crate::backends::deploy::DeployTarget {
                     user: push_ctx_ref.config.ssh_user.clone(),
@@ -275,6 +305,7 @@ fn execute_host_pipeline(
                 }
             }
             Err(e) => {
+                tracing::error!("✗ Build failed");
                 observer_ref.on_build_complete(hostname, false)?;
                 return Err(e);
             }
@@ -285,16 +316,23 @@ fn execute_host_pipeline(
     // Step 2: Copy
     observer_ref.on_copy_start(hostname)?;
     let copy_output = {
+        tracing::info!("Copying closure");
+
         match push_ctx_ref
             .deploy_backend
             .copy_closure(&build_output.target, &build_output.store_path)
         {
-            Ok(()) => CopyOutput {
-                metadata: build_output.metadata,
-                target: build_output.target,
-                store_path: build_output.store_path,
-            },
+            Ok(()) => {
+                tracing::info!("✓ Copy completed");
+
+                CopyOutput {
+                    metadata: build_output.metadata,
+                    target: build_output.target,
+                    store_path: build_output.store_path,
+                }
+            }
             Err(e) => {
+                tracing::error!("✗ Copy failed");
                 observer_ref.on_copy_complete(hostname, false)?;
                 return Err(e);
             }
@@ -335,7 +373,9 @@ fn execute_host_pipeline(
     // Step 4: Activate
     observer_ref.on_deploy_start(hostname, plan.activation_mode)?;
     let activate_result = {
-        push_ctx_ref
+        tracing::info!("Activating configuration");
+
+        let result = push_ctx_ref
             .deploy_backend
             .deploy(&plan.target, &plan.store_path, plan.activation_mode)
             .unwrap_or_else(|e| {
@@ -347,7 +387,15 @@ fn execute_host_pipeline(
                     source = std::error::Error::source(err);
                 }
                 crate::backends::deploy::DeployResult::failure(error_msg)
-            })
+            });
+
+        if result.success {
+            tracing::info!("✓ Activation completed");
+        } else {
+            tracing::error!(message = %result.message, "✗ Activation failed");
+        }
+
+        result
     };
     observer_ref.on_deploy_complete(hostname, &activate_result)?;
 
@@ -376,12 +424,16 @@ fn execute_host_pipeline(
 
     let final_result = if should_reboot {
         observer_ref.on_reboot_start(hostname)?;
+        tracing::info!("Rebooting host");
+
         match push_ctx_ref.reboot_backend.reboot_and_wait(&plan.target) {
             Ok(()) => {
+                tracing::info!("✓ Back online");
                 observer_ref.on_reboot_complete(hostname, true)?;
                 activate_result
             }
             Err(e) => {
+                tracing::error!("✗ Reboot failed");
                 observer_ref.on_reboot_complete(hostname, false)?;
                 crate::backends::deploy::DeployResult::failure(format!(
                     "Deployment succeeded but reboot failed: {}",
