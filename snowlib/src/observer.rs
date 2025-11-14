@@ -13,7 +13,7 @@
 //! # Example
 //!
 //! ```
-//! use snowlib::{PushObserver, DeployResult, ActivationMode, Result};
+//! use snowlib::{PushObserver, DeployResult, Result};
 //!
 //! struct MyObserver;
 //!
@@ -25,7 +25,7 @@
 //! }
 //! ```
 
-use crate::backends::deploy::{ActivationMode, DeployResult};
+use crate::backends::deploy::DeployResult;
 use crate::error::Result;
 
 /// Observer trait for push deployment lifecycle events
@@ -136,23 +136,23 @@ pub trait PushObserver: Send + Sync {
         Ok(())
     }
 
-    /// Called before deploying/activating on a specific host
+    /// Called before activating on a specific host
     ///
     /// This is where orchestration hooks (like Kubernetes cordoning) should run.
+    /// This is called before planning and activation begin.
     ///
     /// # Arguments
-    /// - `hostname`: The host being deployed to
-    /// - `mode`: The activation mode being used
-    fn on_deploy_start(&self, _hostname: &str, _mode: ActivationMode) -> Result<()> {
+    /// - `hostname`: The host being activated
+    fn on_activation_start(&self, _hostname: &str) -> Result<()> {
         Ok(())
     }
 
-    /// Called after deployment/activation completes on a host
+    /// Called after activation completes on a host
     ///
     /// # Arguments
-    /// - `hostname`: The host that was deployed to
-    /// - `result`: The deployment result (success or failure)
-    fn on_deploy_complete(&self, _hostname: &str, _result: &DeployResult) -> Result<()> {
+    /// - `hostname`: The host that was activated
+    /// - `result`: The activation result (success or failure)
+    fn on_activation_complete(&self, _hostname: &str, _result: &DeployResult) -> Result<()> {
         Ok(())
     }
 
@@ -325,16 +325,16 @@ impl PushObserver for CompositeObserver {
         Ok(())
     }
 
-    fn on_deploy_start(&self, hostname: &str, mode: ActivationMode) -> Result<()> {
+    fn on_activation_start(&self, hostname: &str) -> Result<()> {
         for observer in &self.observers {
-            observer.on_deploy_start(hostname, mode)?;
+            observer.on_activation_start(hostname)?;
         }
         Ok(())
     }
 
-    fn on_deploy_complete(&self, hostname: &str, result: &DeployResult) -> Result<()> {
+    fn on_activation_complete(&self, hostname: &str, result: &DeployResult) -> Result<()> {
         for observer in &self.observers {
-            observer.on_deploy_complete(hostname, result)?;
+            observer.on_activation_complete(hostname, result)?;
         }
         Ok(())
     }
@@ -408,14 +408,14 @@ mod tests {
             Ok(())
         }
 
-        fn on_deploy_start(&self, hostname: &str, _mode: ActivationMode) -> Result<()> {
-            self.log(format!("deploy_start:{}", hostname));
+        fn on_activation_start(&self, hostname: &str) -> Result<()> {
+            self.log(format!("activation_start:{}", hostname));
             Ok(())
         }
 
-        fn on_deploy_complete(&self, hostname: &str, result: &DeployResult) -> Result<()> {
+        fn on_activation_complete(&self, hostname: &str, result: &DeployResult) -> Result<()> {
             self.log(format!(
-                "deploy_complete:{}:{}",
+                "activation_complete:{}:{}",
                 hostname,
                 if result.success { "ok" } else { "failed" }
             ));
@@ -427,11 +427,9 @@ mod tests {
     fn test_noop_observer() {
         let observer = NoopObserver;
         assert!(observer.on_phase_start("p1", &[]).is_ok());
+        assert!(observer.on_activation_start("host1").is_ok());
         assert!(observer
-            .on_deploy_start("host1", ActivationMode::Switch)
-            .is_ok());
-        assert!(observer
-            .on_deploy_complete("host1", &DeployResult::success("ok"))
+            .on_activation_complete("host1", &DeployResult::success("ok"))
             .is_ok());
     }
 
@@ -441,16 +439,15 @@ mod tests {
 
         log.on_phase_start("p1", &["host1".to_string(), "host2".to_string()])
             .unwrap();
-        log.on_deploy_start("host1", ActivationMode::Switch)
-            .unwrap();
-        log.on_deploy_complete("host1", &DeployResult::success("ok"))
+        log.on_activation_start("host1").unwrap();
+        log.on_activation_complete("host1", &DeployResult::success("ok"))
             .unwrap();
 
         let events = log.get_events();
         assert_eq!(events.len(), 3);
         assert_eq!(events[0], "phase_start:p1:2");
-        assert_eq!(events[1], "deploy_start:host1");
-        assert_eq!(events[2], "deploy_complete:host1:ok");
+        assert_eq!(events[1], "activation_start:host1");
+        assert_eq!(events[2], "activation_complete:host1:ok");
     }
 
     #[test]
@@ -470,9 +467,7 @@ mod tests {
         composite
             .on_phase_start("p1", &["host1".to_string()])
             .unwrap();
-        composite
-            .on_deploy_start("host1", ActivationMode::Switch)
-            .unwrap();
+        composite.on_activation_start("host1").unwrap();
 
         // Both observers should have received events
         assert_eq!(log1.get_events().len(), 2);
@@ -483,7 +478,7 @@ mod tests {
     fn test_observer_error_propagation() {
         struct FailingObserver;
         impl PushObserver for FailingObserver {
-            fn on_deploy_start(&self, _hostname: &str, _mode: ActivationMode) -> Result<()> {
+            fn on_activation_start(&self, _hostname: &str) -> Result<()> {
                 Err(crate::error::SnowError::Deploy(
                     crate::error::DeployError::Failed {
                         host: "test".to_string(),
@@ -494,7 +489,7 @@ mod tests {
         }
 
         let observer = FailingObserver;
-        let result = observer.on_deploy_start("host1", ActivationMode::Switch);
+        let result = observer.on_activation_start("host1");
         assert!(result.is_err());
     }
 }

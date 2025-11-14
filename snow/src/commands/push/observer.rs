@@ -4,7 +4,7 @@
 //! including phase, step, and host-level spans.
 
 use parking_lot::Mutex;
-use snowlib::{ActivationMode, DeployResult, PushObserver, Result};
+use snowlib::{DeployResult, PushObserver, Result};
 use std::collections::HashMap;
 use tracing::info_span;
 use tracing_indicatif::span_ext::IndicatifSpanExt;
@@ -251,7 +251,7 @@ impl PushObserver for CliObserver {
         Ok(())
     }
 
-    fn on_deploy_start(&self, hostname: &str, _mode: ActivationMode) -> Result<()> {
+    fn on_activation_start(&self, hostname: &str) -> Result<()> {
         let mut state = self.state.lock();
 
         // Get or create the activate step span, then create host span as child
@@ -270,14 +270,14 @@ impl PushObserver for CliObserver {
         Ok(())
     }
 
-    fn on_deploy_complete(&self, hostname: &str, result: &DeployResult) -> Result<()> {
+    fn on_activation_complete(&self, hostname: &str, result: &DeployResult) -> Result<()> {
         let mut state = self.state.lock();
 
         // Log completion within the host span
         let span = state
             .activate_host_spans
             .get(hostname)
-            .expect("host span must exist - on_deploy_start() should be called first");
+            .expect("host span must exist - on_activation_start() should be called first");
         let _guard = span.enter();
         if result.success {
             tracing::info!("✓ Activation completed");

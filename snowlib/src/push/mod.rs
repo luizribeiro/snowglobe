@@ -484,7 +484,11 @@ fn execute_host_pipeline(
     };
     observer_ref.on_copy_complete(hostname, true)?;
 
-    // Step 3: Planning
+    // Step 3: Activate (includes planning + activation)
+    // Start the activate observer span before planning so planning work is visible
+    observer_ref.on_activation_start(hostname)?;
+
+    // Planning: Determine activation strategy
     let (plans, blocked) = create_deployment_plans(
         vec![(
             copy_output.metadata.clone(),
@@ -514,8 +518,7 @@ fn execute_host_pipeline(
         })
     })?;
 
-    // Step 4: Activate
-    observer_ref.on_deploy_start(hostname, plan.activation_mode)?;
+    // Execute activation
     let activate_result = push_ctx_ref
         .deploy_backend
         .deploy(&plan.target, &plan.store_path, plan.activation_mode)
@@ -529,7 +532,7 @@ fn execute_host_pipeline(
             }
             crate::backends::deploy::DeployResult::failure(error_msg)
         });
-    observer_ref.on_deploy_complete(hostname, &activate_result)?;
+    observer_ref.on_activation_complete(hostname, &activate_result)?;
 
     if !activate_result.success {
         return Err(crate::error::SnowError::Deploy(
@@ -540,7 +543,7 @@ fn execute_host_pipeline(
         ));
     }
 
-    // Step 5: Reboot (if needed)
+    // Step 4: Reboot (if needed)
     // Reboot if:
     // 1. allow_reboot is true, AND
     // 2. activation_mode is Boot, AND
@@ -678,8 +681,8 @@ mod tests {
         for plan in plans {
             let hostname = plan.metadata.name.clone();
 
-            // Notify deploy start
-            observer.on_deploy_start(&hostname, plan.activation_mode)?;
+            // Notify activation start
+            observer.on_activation_start(&hostname)?;
 
             // Execute activation
             let result = deploy_backend
@@ -690,8 +693,8 @@ mod tests {
                 all_succeeded = false;
             }
 
-            // Notify deploy complete
-            observer.on_deploy_complete(&hostname, &result)?;
+            // Notify activation complete
+            observer.on_activation_complete(&hostname, &result)?;
 
             push_results.push((hostname, result));
         }
@@ -1074,25 +1077,21 @@ mod tests {
             Ok(())
         }
 
-        fn on_deploy_start(
-            &self,
-            hostname: &str,
-            _mode: ActivationMode,
-        ) -> crate::error::Result<()> {
+        fn on_activation_start(&self, hostname: &str) -> crate::error::Result<()> {
             self.events
                 .lock()
                 .unwrap()
-                .push(format!("deploy_start:{}", hostname));
+                .push(format!("activation_start:{}", hostname));
             Ok(())
         }
 
-        fn on_deploy_complete(
+        fn on_activation_complete(
             &self,
             hostname: &str,
             result: &DeployResult,
         ) -> crate::error::Result<()> {
             self.events.lock().unwrap().push(format!(
-                "deploy_complete:{}:{}",
+                "activation_complete:{}:{}",
                 hostname,
                 if result.success { "ok" } else { "failed" }
             ));
@@ -1203,10 +1202,10 @@ mod tests {
         // Check observer events
         let events = observer.get_events();
         assert!(events.contains(&"phase_start:p1:2".to_string()));
-        assert!(events.contains(&"deploy_start:host1".to_string()));
-        assert!(events.contains(&"deploy_start:host2".to_string()));
-        assert!(events.contains(&"deploy_complete:host1:ok".to_string()));
-        assert!(events.contains(&"deploy_complete:host2:ok".to_string()));
+        assert!(events.contains(&"activation_start:host1".to_string()));
+        assert!(events.contains(&"activation_start:host2".to_string()));
+        assert!(events.contains(&"activation_complete:host1:ok".to_string()));
+        assert!(events.contains(&"activation_complete:host2:ok".to_string()));
         assert!(events.contains(&"phase_complete:p1:ok".to_string()));
     }
 
@@ -1685,10 +1684,10 @@ mod tests {
 
         // Activation phase events
         assert!(events.contains(&"phase_start:web:2".to_string()));
-        assert!(events.contains(&"deploy_start:web1".to_string()));
-        assert!(events.contains(&"deploy_complete:web1:ok".to_string()));
-        assert!(events.contains(&"deploy_start:web2".to_string()));
-        assert!(events.contains(&"deploy_complete:web2:ok".to_string()));
+        assert!(events.contains(&"activation_start:web1".to_string()));
+        assert!(events.contains(&"activation_complete:web1:ok".to_string()));
+        assert!(events.contains(&"activation_start:web2".to_string()));
+        assert!(events.contains(&"activation_complete:web2:ok".to_string()));
         assert!(events.contains(&"phase_complete:web:ok".to_string()));
     }
 
@@ -2240,14 +2239,14 @@ mod tests {
             .iter()
             .position(|e| e == "reboot_start:reboot-host")
             .unwrap();
-        let deploy_complete_idx = events
+        let activation_complete_idx = events
             .iter()
-            .position(|e| e.starts_with("deploy_complete:reboot-host"))
+            .position(|e| e.starts_with("activation_complete:reboot-host"))
             .unwrap();
 
         assert!(
-            deploy_complete_idx < reboot_start_idx,
-            "Reboot should happen after deployment"
+            activation_complete_idx < reboot_start_idx,
+            "Reboot should happen after activation"
         );
     }
 
@@ -2376,8 +2375,8 @@ mod tests {
             "Should not have reboot_complete when reboot not required"
         );
 
-        // Should have completed deployment
-        assert!(events.iter().any(|e| e.starts_with("deploy_complete")));
+        // Should have completed activation
+        assert!(events.iter().any(|e| e.starts_with("activation_complete")));
     }
 
     #[test]
@@ -2535,8 +2534,8 @@ mod tests {
         );
         assert!(!events.iter().any(|e| e.contains("reboot_complete")));
 
-        // Should still have deployed successfully
-        assert!(events.iter().any(|e| e.starts_with("deploy_complete")));
+        // Should still have activated successfully
+        assert!(events.iter().any(|e| e.starts_with("activation_complete")));
     }
 
     #[test]
@@ -2585,8 +2584,8 @@ mod tests {
         );
         assert!(!events.iter().any(|e| e.contains("reboot_complete")));
 
-        // Should still have deployed successfully
-        assert!(events.iter().any(|e| e.starts_with("deploy_complete")));
+        // Should still have activated successfully
+        assert!(events.iter().any(|e| e.starts_with("activation_complete")));
     }
 
     #[test]
@@ -2641,7 +2640,7 @@ mod tests {
         );
         assert!(!events.iter().any(|e| e.contains("reboot_complete")));
 
-        // Should still have deployed successfully (Boot mode without reboot)
-        assert!(events.iter().any(|e| e.starts_with("deploy_complete")));
+        // Should still have activated successfully (Boot mode without reboot)
+        assert!(events.iter().any(|e| e.starts_with("activation_complete")));
     }
 }
