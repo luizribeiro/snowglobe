@@ -214,11 +214,6 @@ fn execute_phase(
     Ok(phase_results)
 }
 
-/// Helper function to execute a step and handle failures (DEPRECATED)
-///
-/// This function is no longer used after parallel-per-host refactor.
-/// Kept temporarily for reference.
-#[allow(dead_code)]
 /// Group hosts by phase
 fn group_by_phase(
     hosts: Vec<HostMetadata>,

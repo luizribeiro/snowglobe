@@ -4,10 +4,6 @@ use clap::Args;
 use snowlib::{DeploymentMode, Flake, PushResults, Result};
 use tabled::{Table, Tabled};
 
-// Used in tests
-#[allow(unused_imports)]
-use snowlib::{ActivationMode, DeployTarget, StorePath};
-
 /// Deploy configurations to hosts
 #[derive(Debug, Args)]
 pub struct PushArgs {
@@ -278,9 +274,9 @@ impl PushArgs {
 mod tests {
     use super::*;
     use snowlib::{
-        DeployBackend, DeploymentFixture, HostFixture, MockDeployBackend, OperationFixture,
+        ActivationMode, DeployBackend, DeployTarget, DeploymentFixture, HostFixture,
+        MockDeployBackend, OperationFixture, StorePath,
     };
-    use snowlib::{DeployTarget, StorePath};
 
     #[test]
     fn test_mock_deploy_backend_success() {
