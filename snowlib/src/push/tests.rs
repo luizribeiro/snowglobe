@@ -1,5 +1,6 @@
 //! Tests for push deployment
 
+use super::planning::create_deployment_plans;
 use super::*;
 use crate::backends::deploy::{ActivationMode, DeployResult, DeployTarget};
 use crate::backends::mock::{MockDeployBackend, MockNixBackend};
