@@ -245,14 +245,16 @@ impl PushArgs {
 
         // Create push context with backends and configuration
         let push_ctx = snowlib::PushContext::new(
+            flake,
             nix_backend.as_ref(),
             deploy_backend.as_ref(),
             &reboot_backend,
             &config,
+            &observer,
         );
 
         // Execute the push - snowlib handles everything!
-        let results = snowlib::push(flake, &push_ctx, hosts, &observer)?;
+        let results = snowlib::push(&push_ctx, hosts)?;
 
         // Print results table
         self.print_results_table(&results)?;

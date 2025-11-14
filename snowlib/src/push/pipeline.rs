@@ -5,8 +5,7 @@
 
 use crate::backends::deploy::{DeployResult, DeployTarget};
 use crate::error::Result;
-use crate::nix::{Flake, HostMetadata, StorePath};
-use crate::observer::PushObserver;
+use crate::nix::{HostMetadata, StorePath};
 use std::sync::Arc;
 
 use super::context::PushContext;
@@ -42,28 +41,23 @@ struct CopyOutput {
 /// - Rayon's par_iter requires 'static closure
 #[allow(clippy::redundant_allocation)]
 pub fn execute_host_pipeline(
-    host_metadata: &HostMetadata,
-    flake: Arc<&Flake>,
     push_ctx: Arc<&PushContext>,
-    observer: Arc<&dyn PushObserver>,
+    host_metadata: &HostMetadata,
 ) -> Result<DeployResult> {
-    // Deref Arc to get the actual references
-    let flake_ref = flake.as_ref();
+    // Deref Arc to get the actual reference
     let push_ctx_ref = push_ctx.as_ref();
-    let observer_ref = observer.as_ref();
 
     // Step 1: Build
-    let build_output = execute_build_step(host_metadata, flake_ref, push_ctx_ref, *observer_ref)?;
+    let build_output = execute_build_step(push_ctx_ref, host_metadata)?;
 
     // Step 2: Copy
-    let copy_output = execute_copy_step(build_output, push_ctx_ref, *observer_ref)?;
+    let copy_output = execute_copy_step(push_ctx_ref, build_output)?;
 
     // Step 3: Activate (includes planning + activation)
-    let (plan, activate_result) =
-        execute_activation_step(copy_output, push_ctx_ref, *observer_ref)?;
+    let (plan, activate_result) = execute_activation_step(push_ctx_ref, copy_output)?;
 
     // Step 4: Reboot (if needed)
-    let final_result = execute_reboot_step(&plan, activate_result, push_ctx_ref, *observer_ref)?;
+    let final_result = execute_reboot_step(push_ctx_ref, &plan, activate_result)?;
 
     Ok(final_result)
 }
@@ -71,39 +65,35 @@ pub fn execute_host_pipeline(
 /// Execute the build step for a single host
 ///
 /// Builds the NixOS configuration and creates the deployment target.
-fn execute_build_step(
-    host_metadata: &HostMetadata,
-    flake: &Flake,
-    push_ctx: &PushContext,
-    observer: &dyn PushObserver,
-) -> Result<BuildOutput> {
+fn execute_build_step(push_ctx: &PushContext, host_metadata: &HostMetadata) -> Result<BuildOutput> {
     let hostname = &host_metadata.name;
 
-    observer.on_build_start(hostname)?;
-    let build_output = match push_ctx
-        .nix_backend
-        .build_host(flake, hostname, push_ctx.config.quiet)
-    {
-        Ok(store_path) => {
-            // Create deployment target
-            let target = DeployTarget {
-                user: push_ctx.config.ssh_user.clone(),
-                hostname: host_metadata.fqdn.clone(),
-                port: None,
-            };
+    push_ctx.observer.on_build_start(hostname)?;
+    let build_output =
+        match push_ctx
+            .nix_backend
+            .build_host(push_ctx.flake, hostname, push_ctx.config.quiet)
+        {
+            Ok(store_path) => {
+                // Create deployment target
+                let target = DeployTarget {
+                    user: push_ctx.config.ssh_user.clone(),
+                    hostname: host_metadata.fqdn.clone(),
+                    port: None,
+                };
 
-            BuildOutput {
-                metadata: host_metadata.clone(),
-                target,
-                store_path,
+                BuildOutput {
+                    metadata: host_metadata.clone(),
+                    target,
+                    store_path,
+                }
             }
-        }
-        Err(e) => {
-            observer.on_build_complete(hostname, false)?;
-            return Err(e);
-        }
-    };
-    observer.on_build_complete(hostname, true)?;
+            Err(e) => {
+                push_ctx.observer.on_build_complete(hostname, false)?;
+                return Err(e);
+            }
+        };
+    push_ctx.observer.on_build_complete(hostname, true)?;
 
     Ok(build_output)
 }
@@ -111,14 +101,10 @@ fn execute_build_step(
 /// Execute the copy step for a single host
 ///
 /// Copies the built closure to the target host.
-fn execute_copy_step(
-    build_output: BuildOutput,
-    push_ctx: &PushContext,
-    observer: &dyn PushObserver,
-) -> Result<CopyOutput> {
+fn execute_copy_step(push_ctx: &PushContext, build_output: BuildOutput) -> Result<CopyOutput> {
     let hostname = build_output.metadata.name.clone();
 
-    observer.on_copy_start(&hostname)?;
+    push_ctx.observer.on_copy_start(&hostname)?;
     let copy_output = match push_ctx
         .deploy_backend
         .copy_closure(&build_output.target, &build_output.store_path)
@@ -129,11 +115,11 @@ fn execute_copy_step(
             store_path: build_output.store_path,
         },
         Err(e) => {
-            observer.on_copy_complete(&hostname, false)?;
+            push_ctx.observer.on_copy_complete(&hostname, false)?;
             return Err(e);
         }
     };
-    observer.on_copy_complete(&hostname, true)?;
+    push_ctx.observer.on_copy_complete(&hostname, true)?;
 
     Ok(copy_output)
 }
@@ -142,14 +128,13 @@ fn execute_copy_step(
 ///
 /// Includes deployment planning (with reboot detection) and activation.
 fn execute_activation_step(
-    copy_output: CopyOutput,
     push_ctx: &PushContext,
-    observer: &dyn PushObserver,
+    copy_output: CopyOutput,
 ) -> Result<(PushPlan, DeployResult)> {
     let hostname = &copy_output.metadata.name;
 
     // Start the activate observer span before planning so planning work is visible
-    observer.on_activation_start(hostname)?;
+    push_ctx.observer.on_activation_start(hostname)?;
 
     // Planning: Determine activation strategy
     let (plans, blocked) = create_deployment_plans(
@@ -195,7 +180,9 @@ fn execute_activation_step(
             }
             DeployResult::failure(error_msg)
         });
-    observer.on_activation_complete(hostname, &activate_result)?;
+    push_ctx
+        .observer
+        .on_activation_complete(hostname, &activate_result)?;
 
     if !activate_result.success {
         return Err(crate::error::SnowError::Deploy(
@@ -216,10 +203,9 @@ fn execute_activation_step(
 /// 2. activation_mode is Boot, AND
 /// 3. Either no reboot check OR reboot is required
 fn execute_reboot_step(
+    push_ctx: &PushContext,
     plan: &PushPlan,
     activate_result: DeployResult,
-    push_ctx: &PushContext,
-    observer: &dyn PushObserver,
 ) -> Result<DeployResult> {
     let hostname = &plan.metadata.name;
 
@@ -233,15 +219,15 @@ fn execute_reboot_step(
                 .unwrap_or(false));
 
     let final_result = if should_reboot {
-        observer.on_reboot_start(hostname)?;
+        push_ctx.observer.on_reboot_start(hostname)?;
 
         match push_ctx.reboot_backend.reboot_and_wait(&plan.target) {
             Ok(()) => {
-                observer.on_reboot_complete(hostname, true)?;
+                push_ctx.observer.on_reboot_complete(hostname, true)?;
                 activate_result
             }
             Err(e) => {
-                observer.on_reboot_complete(hostname, false)?;
+                push_ctx.observer.on_reboot_complete(hostname, false)?;
                 DeployResult::failure(format!("Deployment succeeded but reboot failed: {}", e))
             }
         }

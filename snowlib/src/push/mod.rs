@@ -26,8 +26,7 @@ pub use context::PushContext;
 pub use results::{BlockedHost, PushPlan, PushResults};
 
 use crate::error::Result;
-use crate::nix::{Flake, HostMetadata};
-use crate::observer::PushObserver;
+use crate::nix::HostMetadata;
 use pipeline::execute_host_pipeline;
 use rayon::prelude::*;
 use std::collections::HashMap;
@@ -49,13 +48,8 @@ use std::sync::Arc;
 ///
 /// # Arguments
 ///
-/// - `ctx`: Nix context (flake root)
-/// - `nix_backend`: Nix backend implementation (for building)
-/// - `deploy_backend`: Deployment backend implementation (for copying and activation)
-/// - `reboot_backend`: Reboot backend implementation (detection and execution)
+/// - `push_ctx`: Push context containing flake, backends, configuration, and observer
 /// - `hosts`: List of hosts to deploy
-/// - `config`: Push configuration (mode, concurrency, etc.)
-/// - `observer`: Observer to receive lifecycle events
 ///
 /// # Example
 ///
@@ -70,19 +64,14 @@ use std::sync::Arc;
 /// let deploy_backend = SshDeployBackend::new();
 /// let reboot_backend = SystemRebootBackend::default();
 /// let config = PushConfiguration::default();
-/// let push_ctx = PushContext::new(&nix_backend, &deploy_backend, &reboot_backend, &config);
 /// let observer = NoopObserver;
+/// let push_ctx = PushContext::new(&flake, &nix_backend, &deploy_backend, &reboot_backend, &config, &observer);
 ///
-/// let results = push(&flake, &push_ctx, hosts, &observer)?;
+/// let results = push(&push_ctx, hosts)?;
 /// # Ok(())
 /// # }
 /// ```
-pub fn push(
-    flake: &Flake,
-    push_ctx: &PushContext,
-    hosts: Vec<HostMetadata>,
-    observer: &dyn PushObserver,
-) -> Result<PushResults> {
+pub fn push(push_ctx: &PushContext, hosts: Vec<HostMetadata>) -> Result<PushResults> {
     // Group hosts by phase
     let by_phase = group_by_phase(hosts, push_ctx.config.ignore_phases);
     let phases = sorted_phases(&by_phase);
@@ -97,17 +86,17 @@ pub fn push(
         let hostnames: Vec<String> = phase_hosts.iter().map(|h| h.name.clone()).collect();
 
         // Notify observer of phase start
-        observer.on_phase_start(&phase, &hostnames)?;
+        push_ctx.observer.on_phase_start(&phase, &hostnames)?;
 
         // Execute phase pipeline
-        let phase_result = execute_phase(&phase, phase_hosts, flake, push_ctx, observer);
+        let phase_result = execute_phase(push_ctx, &phase, phase_hosts);
 
         // Notify observer of phase completion (always, even on failure)
         let phase_success = phase_result
             .as_ref()
             .map(|results| results.iter().all(|(_, r)| r.success))
             .unwrap_or(false);
-        observer.on_phase_complete(&phase, phase_success)?;
+        push_ctx.observer.on_phase_complete(&phase, phase_success)?;
 
         // Handle phase result
         match phase_result {
@@ -139,28 +128,22 @@ pub fn push(
 /// all steps (build -> copy -> activate -> reboot). This allows hosts to progress
 /// at different rates - one host can be activating while another is still building.
 fn execute_phase(
+    push_ctx: &PushContext,
     _phase: &str,
     phase_hosts: &[HostMetadata],
-    flake: &Flake,
-    push_ctx: &PushContext,
-    observer: &dyn PushObserver,
 ) -> Result<Vec<(String, crate::backends::deploy::DeployResult)>> {
     // Sort hosts lexicographically for consistent rendering order
     let mut sorted_hosts = phase_hosts.to_vec();
     sorted_hosts.sort_by(|a, b| a.name.cmp(&b.name));
 
-    // Wrap resources for parallel access
+    // Wrap push_ctx for parallel access
     // Note: We're wrapping references in Arc which clippy warns about,
     // but this is necessary here because:
     // 1. We only have &T not T (T contains lifetimes and can't be cloned)
     // 2. We need to share across threads (Arc)
     // 3. Rayon's par_iter requires 'static closure
     #[allow(clippy::redundant_allocation)]
-    let flake = Arc::new(flake);
-    #[allow(clippy::redundant_allocation)]
     let push_ctx = Arc::new(push_ctx);
-    #[allow(clippy::redundant_allocation)]
-    let observer = Arc::new(observer);
 
     // Create thread pool with concurrency limit
     let pool = rayon::ThreadPoolBuilder::new()
@@ -177,14 +160,7 @@ fn execute_phase(
     let results: Vec<Result<crate::backends::deploy::DeployResult>> = pool.install(|| {
         sorted_hosts
             .par_iter()
-            .map(|host_metadata| {
-                execute_host_pipeline(
-                    host_metadata,
-                    Arc::clone(&flake),
-                    Arc::clone(&push_ctx),
-                    Arc::clone(&observer),
-                )
-            })
+            .map(|host_metadata| execute_host_pipeline(Arc::clone(&push_ctx), host_metadata))
             .collect()
     });
 

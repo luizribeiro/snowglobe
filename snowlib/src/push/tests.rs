@@ -639,8 +639,15 @@ fn test_push_with_multiple_phases() {
     };
 
     let results = {
-        let push_ctx = PushContext::new(&nix_backend, &deployer, &reboot_detector, &config);
-        push(&flake, &push_ctx, hosts, &observer)
+        let push_ctx = PushContext::new(
+            &flake,
+            &nix_backend,
+            &deployer,
+            &reboot_detector,
+            &config,
+            &observer,
+        );
+        push(&push_ctx, hosts)
     }
     .unwrap();
 
@@ -700,8 +707,15 @@ fn test_push_stops_on_phase_failure() {
 
     // When activation fails, push() returns Err
     let result = {
-        let push_ctx = PushContext::new(&nix_backend, &deployer, &reboot_detector, &config);
-        push(&flake, &push_ctx, hosts, &observer)
+        let push_ctx = PushContext::new(
+            &flake,
+            &nix_backend,
+            &deployer,
+            &reboot_detector,
+            &config,
+            &observer,
+        );
+        push(&push_ctx, hosts)
     };
 
     // Push should fail due to phase p1 activation failure
@@ -883,8 +897,15 @@ fn test_push_error_message_includes_source() {
 
     // When activation fails, push() returns Err
     let result = {
-        let push_ctx = PushContext::new(&nix_backend, &deployer, &reboot_detector, &config);
-        push(&flake, &push_ctx, hosts, &observer)
+        let push_ctx = PushContext::new(
+            &flake,
+            &nix_backend,
+            &deployer,
+            &reboot_detector,
+            &config,
+            &observer,
+        );
+        push(&push_ctx, hosts)
     };
 
     // Push should fail due to activation failure
@@ -969,8 +990,15 @@ fn test_push_error_message_format_with_activation_failure() {
 
     // When activation fails, push() returns Err
     let result = {
-        let push_ctx = PushContext::new(&nix_backend, &deployer, &reboot_detector, &config);
-        push(&flake, &push_ctx, hosts, &observer)
+        let push_ctx = PushContext::new(
+            &flake,
+            &nix_backend,
+            &deployer,
+            &reboot_detector,
+            &config,
+            &observer,
+        );
+        push(&push_ctx, hosts)
     };
 
     // Push should fail due to activation failure
@@ -1043,8 +1071,15 @@ fn test_push_full_workflow_single_phase_success() {
     };
 
     let results = {
-        let push_ctx = PushContext::new(&nix_backend, &deployer, &reboot_detector, &config);
-        push(&flake, &push_ctx, hosts, &observer)
+        let push_ctx = PushContext::new(
+            &flake,
+            &nix_backend,
+            &deployer,
+            &reboot_detector,
+            &config,
+            &observer,
+        );
+        push(&push_ctx, hosts)
     }
     .unwrap();
 
@@ -1113,8 +1148,15 @@ fn test_push_full_workflow_multi_phase_success() {
     };
 
     let results = {
-        let push_ctx = PushContext::new(&nix_backend, &deployer, &reboot_detector, &config);
-        push(&flake, &push_ctx, hosts, &observer)
+        let push_ctx = PushContext::new(
+            &flake,
+            &nix_backend,
+            &deployer,
+            &reboot_detector,
+            &config,
+            &observer,
+        );
+        push(&push_ctx, hosts)
     }
     .unwrap();
 
@@ -1168,8 +1210,15 @@ fn test_push_build_failure_stops_deployment() {
     };
 
     let result = {
-        let push_ctx = PushContext::new(&nix_backend, &deployer, &reboot_detector, &config);
-        push(&flake, &push_ctx, hosts, &observer)
+        let push_ctx = PushContext::new(
+            &flake,
+            &nix_backend,
+            &deployer,
+            &reboot_detector,
+            &config,
+            &observer,
+        );
+        push(&push_ctx, hosts)
     };
 
     // Should fail during build
@@ -1220,8 +1269,15 @@ fn test_push_copy_failure_stops_deployment() {
     };
 
     let result = {
-        let push_ctx = PushContext::new(&nix_backend, &deployer, &reboot_detector, &config);
-        push(&flake, &push_ctx, hosts, &observer)
+        let push_ctx = PushContext::new(
+            &flake,
+            &nix_backend,
+            &deployer,
+            &reboot_detector,
+            &config,
+            &observer,
+        );
+        push(&push_ctx, hosts)
     };
 
     // Should fail during copy
@@ -1283,8 +1339,15 @@ fn test_push_copy_observer_hooks_called() {
     };
 
     {
-        let push_ctx = PushContext::new(&nix_backend, &deployer, &reboot_detector, &config);
-        push(&flake, &push_ctx, hosts, &observer)
+        let push_ctx = PushContext::new(
+            &flake,
+            &nix_backend,
+            &deployer,
+            &reboot_detector,
+            &config,
+            &observer,
+        );
+        push(&push_ctx, hosts)
     }
     .unwrap();
 
@@ -1344,8 +1407,15 @@ fn test_push_build_observer_hooks_called() {
     };
 
     {
-        let push_ctx = PushContext::new(&nix_backend, &deployer, &reboot_detector, &config);
-        push(&flake, &push_ctx, hosts, &observer)
+        let push_ctx = PushContext::new(
+            &flake,
+            &nix_backend,
+            &deployer,
+            &reboot_detector,
+            &config,
+            &observer,
+        );
+        push(&push_ctx, hosts)
     }
     .unwrap();
 
@@ -1411,8 +1481,15 @@ fn test_push_build_partial_failure() {
     };
 
     let result = {
-        let push_ctx = PushContext::new(&nix_backend, &deployer, &reboot_detector, &config);
-        push(&flake, &push_ctx, hosts, &observer)
+        let push_ctx = PushContext::new(
+            &flake,
+            &nix_backend,
+            &deployer,
+            &reboot_detector,
+            &config,
+            &observer,
+        );
+        push(&push_ctx, hosts)
     };
 
     assert!(result.is_err());
@@ -1475,8 +1552,15 @@ fn test_push_ignore_phases_flag() {
     };
 
     let results = {
-        let push_ctx = PushContext::new(&nix_backend, &deployer, &reboot_detector, &config);
-        push(&flake, &push_ctx, hosts, &observer)
+        let push_ctx = PushContext::new(
+            &flake,
+            &nix_backend,
+            &deployer,
+            &reboot_detector,
+            &config,
+            &observer,
+        );
+        push(&push_ctx, hosts)
     }
     .unwrap();
 
@@ -1531,8 +1615,15 @@ fn test_push_phase_failure_stops_next_phase() {
 
     // When activation fails, push() returns Err but observer events still fire
     let result = {
-        let push_ctx = PushContext::new(&nix_backend, &deployer, &reboot_detector, &config);
-        push(&flake, &push_ctx, hosts, &observer)
+        let push_ctx = PushContext::new(
+            &flake,
+            &nix_backend,
+            &deployer,
+            &reboot_detector,
+            &config,
+            &observer,
+        );
+        push(&push_ctx, hosts)
     };
 
     // Push should fail due to phase1 activation failure
@@ -1594,8 +1685,15 @@ fn test_push_reboot_execution_success() {
     };
 
     let results = {
-        let push_ctx = PushContext::new(&nix_backend, &deployer, &reboot_backend, &config);
-        push(&flake, &push_ctx, hosts, &observer)
+        let push_ctx = PushContext::new(
+            &flake,
+            &nix_backend,
+            &deployer,
+            &reboot_backend,
+            &config,
+            &observer,
+        );
+        push(&push_ctx, hosts)
     }
     .unwrap();
 
@@ -1673,8 +1771,15 @@ fn test_push_reboot_execution_failure() {
     };
 
     let results = {
-        let push_ctx = PushContext::new(&nix_backend, &deployer, &reboot_backend, &config);
-        push(&flake, &push_ctx, hosts, &observer)
+        let push_ctx = PushContext::new(
+            &flake,
+            &nix_backend,
+            &deployer,
+            &reboot_backend,
+            &config,
+            &observer,
+        );
+        push(&push_ctx, hosts)
     }
     .unwrap();
 
@@ -1738,8 +1843,15 @@ fn test_push_no_reboot_when_not_required() {
     };
 
     let results = {
-        let push_ctx = PushContext::new(&nix_backend, &deployer, &reboot_backend, &config);
-        push(&flake, &push_ctx, hosts, &observer)
+        let push_ctx = PushContext::new(
+            &flake,
+            &nix_backend,
+            &deployer,
+            &reboot_backend,
+            &config,
+            &observer,
+        );
+        push(&push_ctx, hosts)
     }
     .unwrap();
 
@@ -1800,8 +1912,15 @@ fn test_push_reboot_with_boot_mode() {
     };
 
     let results = {
-        let push_ctx = PushContext::new(&nix_backend, &deployer, &reboot_backend, &config);
-        push(&flake, &push_ctx, hosts, &observer)
+        let push_ctx = PushContext::new(
+            &flake,
+            &nix_backend,
+            &deployer,
+            &reboot_backend,
+            &config,
+            &observer,
+        );
+        push(&push_ctx, hosts)
     }
     .unwrap();
 
@@ -1847,8 +1966,15 @@ fn test_push_reboot_policy_always() {
     };
 
     let results = {
-        let push_ctx = PushContext::new(&nix_backend, &deployer, &reboot_backend, &config);
-        push(&flake, &push_ctx, hosts, &observer)
+        let push_ctx = PushContext::new(
+            &flake,
+            &nix_backend,
+            &deployer,
+            &reboot_backend,
+            &config,
+            &observer,
+        );
+        push(&push_ctx, hosts)
     }
     .unwrap();
 
@@ -1903,8 +2029,15 @@ fn test_push_reboot_policy_never() {
     };
 
     let results = {
-        let push_ctx = PushContext::new(&nix_backend, &deployer, &reboot_backend, &config);
-        push(&flake, &push_ctx, hosts, &observer)
+        let push_ctx = PushContext::new(
+            &flake,
+            &nix_backend,
+            &deployer,
+            &reboot_backend,
+            &config,
+            &observer,
+        );
+        push(&push_ctx, hosts)
     }
     .unwrap();
 
@@ -1953,8 +2086,15 @@ fn test_push_no_reboot_flag_overrides_always_policy() {
     };
 
     let results = {
-        let push_ctx = PushContext::new(&nix_backend, &deployer, &reboot_backend, &config);
-        push(&flake, &push_ctx, hosts, &observer)
+        let push_ctx = PushContext::new(
+            &flake,
+            &nix_backend,
+            &deployer,
+            &reboot_backend,
+            &config,
+            &observer,
+        );
+        push(&push_ctx, hosts)
     }
     .unwrap();
 
@@ -2009,8 +2149,15 @@ fn test_push_no_reboot_flag_with_detected_reboot() {
     };
 
     let results = {
-        let push_ctx = PushContext::new(&nix_backend, &deployer, &reboot_backend, &config);
-        push(&flake, &push_ctx, hosts, &observer)
+        let push_ctx = PushContext::new(
+            &flake,
+            &nix_backend,
+            &deployer,
+            &reboot_backend,
+            &config,
+            &observer,
+        );
+        push(&push_ctx, hosts)
     }
     .unwrap();
 
