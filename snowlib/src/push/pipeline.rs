@@ -103,7 +103,7 @@ pub fn execute_host_pipeline(
 fn execute_build_step(push_ctx: &PushContext, host_metadata: &HostMetadata) -> Result<BuildOutput> {
     let hostname = &host_metadata.name;
 
-    push_ctx.observer.on_build_start(hostname)?;
+    push_ctx.observer.on_build_start(hostname);
     let build_output =
         match push_ctx
             .nix_backend
@@ -124,11 +124,11 @@ fn execute_build_step(push_ctx: &PushContext, host_metadata: &HostMetadata) -> R
                 }
             }
             Err(e) => {
-                push_ctx.observer.on_build_complete(hostname, false)?;
+                push_ctx.observer.on_build_complete(hostname, false);
                 return Err(e);
             }
         };
-    push_ctx.observer.on_build_complete(hostname, true)?;
+    push_ctx.observer.on_build_complete(hostname, true);
 
     Ok(build_output)
 }
@@ -139,7 +139,7 @@ fn execute_build_step(push_ctx: &PushContext, host_metadata: &HostMetadata) -> R
 fn execute_copy_step(push_ctx: &PushContext, build_output: BuildOutput) -> Result<CopyOutput> {
     let hostname = build_output.metadata.name.clone();
 
-    push_ctx.observer.on_copy_start(&hostname)?;
+    push_ctx.observer.on_copy_start(&hostname);
     let copy_output = match push_ctx
         .deploy_backend
         .copy_closure(&build_output.target, &build_output.store_path)
@@ -150,11 +150,11 @@ fn execute_copy_step(push_ctx: &PushContext, build_output: BuildOutput) -> Resul
             store_path: build_output.store_path,
         },
         Err(e) => {
-            push_ctx.observer.on_copy_complete(&hostname, false)?;
+            push_ctx.observer.on_copy_complete(&hostname, false);
             return Err(e);
         }
     };
-    push_ctx.observer.on_copy_complete(&hostname, true)?;
+    push_ctx.observer.on_copy_complete(&hostname, true);
 
     Ok(copy_output)
 }
@@ -169,7 +169,7 @@ fn execute_activation_step(
     let hostname = &copy_output.metadata.name;
 
     // Start the activate observer span before planning so planning work is visible
-    push_ctx.observer.on_activation_start(hostname)?;
+    push_ctx.observer.on_activation_start(hostname);
 
     // Planning: Determine activation strategy
     let (plans, blocked) = create_deployment_plans(
@@ -217,7 +217,7 @@ fn execute_activation_step(
         });
     push_ctx
         .observer
-        .on_activation_complete(hostname, &activate_result)?;
+        .on_activation_complete(hostname, &activate_result);
 
     if !activate_result.success {
         return Err(crate::error::SnowError::Deploy(
@@ -256,15 +256,15 @@ fn execute_reboot_step(
                 .unwrap_or(false));
 
     let (final_result, rebooted) = if should_reboot {
-        push_ctx.observer.on_reboot_start(hostname)?;
+        push_ctx.observer.on_reboot_start(hostname);
 
         match push_ctx.reboot_backend.reboot_and_wait(&plan.target) {
             Ok(()) => {
-                push_ctx.observer.on_reboot_complete(hostname, true)?;
+                push_ctx.observer.on_reboot_complete(hostname, true);
                 (activate_result, true)
             }
             Err(e) => {
-                push_ctx.observer.on_reboot_complete(hostname, false)?;
+                push_ctx.observer.on_reboot_complete(hostname, false);
                 (
                     DeployResult::failure(format!("Deployment succeeded but reboot failed: {}", e)),
                     false,

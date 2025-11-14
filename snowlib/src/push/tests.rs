@@ -60,7 +60,7 @@ fn activate_plans_for_test(
     let hostnames: Vec<String> = plans.iter().map(|p| p.metadata.name.clone()).collect();
 
     // Notify observer of phase start
-    observer.on_phase_start(&phase, &hostnames)?;
+    observer.on_phase_start(&phase, &hostnames);
 
     // Activate each plan
     let mut host_results = Vec::new();
@@ -69,7 +69,7 @@ fn activate_plans_for_test(
         let hostname = plan.metadata.name.clone();
 
         // Notify activation start
-        observer.on_activation_start(&hostname)?;
+        observer.on_activation_start(&hostname);
 
         // Execute activation
         let result = deploy_backend
@@ -77,7 +77,7 @@ fn activate_plans_for_test(
             .unwrap_or_else(|e| DeployResult::failure(e.to_string()));
 
         // Notify activation complete
-        observer.on_activation_complete(&hostname, &result)?;
+        observer.on_activation_complete(&hostname, &result);
 
         host_results.push(HostDeploymentResult {
             hostname,
@@ -103,7 +103,7 @@ fn activate_plans_for_test(
     };
 
     // Notify observer of phase completion
-    observer.on_phase_complete(&phase, phase_result.all_succeeded())?;
+    observer.on_phase_complete(&phase, phase_result.all_succeeded());
 
     Ok(PushResults {
         phases: vec![phase_result],
@@ -439,161 +439,139 @@ impl TestObserver {
 }
 
 impl PushObserver for TestObserver {
-    fn on_build_step_start(&self, phase: &str, hosts: &[String]) -> crate::error::Result<()> {
+    fn on_build_step_start(&self, phase: &str, hosts: &[String]) {
         self.events
             .lock()
             .unwrap()
             .push(format!("build_step_start:{}:{}", phase, hosts.len()));
-        Ok(())
     }
 
-    fn on_build_start(&self, hostname: &str) -> crate::error::Result<()> {
+    fn on_build_start(&self, hostname: &str) {
         self.events
             .lock()
             .unwrap()
             .push(format!("build_start:{}", hostname));
-        Ok(())
     }
 
-    fn on_build_complete(&self, hostname: &str, success: bool) -> crate::error::Result<()> {
+    fn on_build_complete(&self, hostname: &str, success: bool) {
         self.events.lock().unwrap().push(format!(
             "build_complete:{}:{}",
             hostname,
             if success { "ok" } else { "fail" }
         ));
-        Ok(())
     }
 
-    fn on_build_step_complete(&self, phase: &str, success: bool) -> crate::error::Result<()> {
+    fn on_build_step_complete(&self, phase: &str, success: bool) {
         self.events.lock().unwrap().push(format!(
             "build_step_complete:{}:{}",
             phase,
             if success { "ok" } else { "fail" }
         ));
-        Ok(())
     }
 
-    fn on_copy_step_start(&self, phase: &str, hosts: &[String]) -> crate::error::Result<()> {
+    fn on_copy_step_start(&self, phase: &str, hosts: &[String]) {
         self.events
             .lock()
             .unwrap()
             .push(format!("copy_step_start:{}:{}", phase, hosts.len()));
-        Ok(())
     }
 
-    fn on_copy_start(&self, hostname: &str) -> crate::error::Result<()> {
+    fn on_copy_start(&self, hostname: &str) {
         self.events
             .lock()
             .unwrap()
             .push(format!("copy_start:{}", hostname));
-        Ok(())
     }
 
-    fn on_copy_complete(&self, hostname: &str, success: bool) -> crate::error::Result<()> {
+    fn on_copy_complete(&self, hostname: &str, success: bool) {
         self.events.lock().unwrap().push(format!(
             "copy_complete:{}:{}",
             hostname,
             if success { "ok" } else { "fail" }
         ));
-        Ok(())
     }
 
-    fn on_copy_step_complete(&self, phase: &str, success: bool) -> crate::error::Result<()> {
+    fn on_copy_step_complete(&self, phase: &str, success: bool) {
         self.events.lock().unwrap().push(format!(
             "copy_step_complete:{}:{}",
             phase,
             if success { "ok" } else { "fail" }
         ));
-        Ok(())
     }
 
-    fn on_phase_start(&self, phase: &str, hosts: &[String]) -> crate::error::Result<()> {
+    fn on_phase_start(&self, phase: &str, hosts: &[String]) {
         self.events
             .lock()
             .unwrap()
             .push(format!("phase_start:{}:{}", phase, hosts.len()));
-        Ok(())
     }
 
-    fn on_deploy_step_start(&self, phase: &str, hosts: &[String]) -> crate::error::Result<()> {
+    fn on_deploy_step_start(&self, phase: &str, hosts: &[String]) {
         self.events
             .lock()
             .unwrap()
             .push(format!("deploy_step_start:{}:{}", phase, hosts.len()));
-        Ok(())
     }
 
-    fn on_activation_start(&self, hostname: &str) -> crate::error::Result<()> {
+    fn on_activation_start(&self, hostname: &str) {
         self.events
             .lock()
             .unwrap()
             .push(format!("activation_start:{}", hostname));
-        Ok(())
     }
 
-    fn on_activation_complete(
-        &self,
-        hostname: &str,
-        result: &DeployResult,
-    ) -> crate::error::Result<()> {
+    fn on_activation_complete(&self, hostname: &str, result: &DeployResult) {
         self.events.lock().unwrap().push(format!(
             "activation_complete:{}:{}",
             hostname,
             if result.success { "ok" } else { "failed" }
         ));
-        Ok(())
     }
 
-    fn on_deploy_step_complete(&self, phase: &str, success: bool) -> crate::error::Result<()> {
+    fn on_deploy_step_complete(&self, phase: &str, success: bool) {
         self.events.lock().unwrap().push(format!(
             "deploy_step_complete:{}:{}",
             phase,
             if success { "ok" } else { "fail" }
         ));
-        Ok(())
     }
 
-    fn on_phase_complete(&self, phase: &str, success: bool) -> crate::error::Result<()> {
+    fn on_phase_complete(&self, phase: &str, success: bool) {
         self.events.lock().unwrap().push(format!(
             "phase_complete:{}:{}",
             phase,
             if success { "ok" } else { "failed" }
         ));
-        Ok(())
     }
 
-    fn on_reboot_start(&self, hostname: &str) -> crate::error::Result<()> {
+    fn on_reboot_start(&self, hostname: &str) {
         self.events
             .lock()
             .unwrap()
             .push(format!("reboot_start:{}", hostname));
-        Ok(())
     }
 
-    fn on_reboot_complete(&self, hostname: &str, success: bool) -> crate::error::Result<()> {
+    fn on_reboot_complete(&self, hostname: &str, success: bool) {
         self.events.lock().unwrap().push(format!(
             "reboot_complete:{}:{}",
             hostname,
             if success { "ok" } else { "fail" }
         ));
-        Ok(())
     }
 
-    fn on_reboot_step_start(&self, phase: &str, hosts: &[String]) -> crate::error::Result<()> {
+    fn on_reboot_step_start(&self, phase: &str, hosts: &[String]) {
         self.events
             .lock()
             .unwrap()
             .push(format!("reboot_step_start:{}:{}", phase, hosts.len()));
-        Ok(())
     }
 
-    fn on_reboot_step_complete(&self, phase: &str, success: bool) -> crate::error::Result<()> {
+    fn on_reboot_step_complete(&self, phase: &str, success: bool) {
         self.events.lock().unwrap().push(format!(
             "reboot_step_complete:{}:{}",
             phase,
             if success { "ok" } else { "fail" }
         ));
-        Ok(())
     }
 }
 

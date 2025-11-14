@@ -6,35 +6,33 @@
 //! # Design
 //!
 //! - All methods have default no-op implementations
-//! - Methods return `Result<()>` to allow observers to abort deployment
+//! - Observers are infallible - they handle their own errors internally
 //! - Trait is `Send + Sync` for use in parallel deployment
 //! - Events are emitted at key lifecycle points
 //!
 //! # Example
 //!
 //! ```
-//! use snowlib::{PushObserver, DeployResult, Result};
+//! use snowlib::{PushObserver, DeployResult};
 //!
 //! struct MyObserver;
 //!
 //! impl PushObserver for MyObserver {
-//!     fn on_phase_start(&self, phase: &str, hosts: &[String]) -> Result<()> {
+//!     fn on_phase_start(&self, phase: &str, hosts: &[String]) {
 //!         println!("Starting phase {} with {} hosts", phase, hosts.len());
-//!         Ok(())
 //!     }
 //! }
 //! ```
 
 use crate::backends::deploy::DeployResult;
-use crate::error::Result;
 
 /// Observer trait for push deployment lifecycle events
 ///
 /// All methods have default no-op implementations, so observers only need
 /// to implement the events they care about.
 ///
-/// Methods return `Result<()>` to allow observers to signal errors and
-/// potentially abort deployment.
+/// Observers are infallible and should handle errors internally (e.g., by logging).
+/// Observer failures will not abort deployment.
 pub trait PushObserver: Send + Sync {
     /// Called when starting the build step for a phase
     ///
@@ -43,26 +41,20 @@ pub trait PushObserver: Send + Sync {
     /// # Arguments
     /// - `phase`: The phase name
     /// - `hosts`: Names of all hosts in this phase
-    fn on_build_step_start(&self, _phase: &str, _hosts: &[String]) -> Result<()> {
-        Ok(())
-    }
+    fn on_build_step_start(&self, _phase: &str, _hosts: &[String]) {}
 
     /// Called before building configuration for a specific host
     ///
     /// # Arguments
     /// - `hostname`: The host being built
-    fn on_build_start(&self, _hostname: &str) -> Result<()> {
-        Ok(())
-    }
+    fn on_build_start(&self, _hostname: &str) {}
 
     /// Called after building configuration for a specific host
     ///
     /// # Arguments
     /// - `hostname`: The host that was built
     /// - `success`: Whether the build succeeded
-    fn on_build_complete(&self, _hostname: &str, _success: bool) -> Result<()> {
-        Ok(())
-    }
+    fn on_build_complete(&self, _hostname: &str, _success: bool) {}
 
     /// Called when the build step completes for a phase
     ///
@@ -71,9 +63,7 @@ pub trait PushObserver: Send + Sync {
     /// # Arguments
     /// - `phase`: The phase name
     /// - `success`: Whether all builds in the phase succeeded
-    fn on_build_step_complete(&self, _phase: &str, _success: bool) -> Result<()> {
-        Ok(())
-    }
+    fn on_build_step_complete(&self, _phase: &str, _success: bool) {}
 
     /// Called when starting the copy step for a phase
     ///
@@ -82,26 +72,20 @@ pub trait PushObserver: Send + Sync {
     /// # Arguments
     /// - `phase`: The phase name
     /// - `hosts`: Names of all hosts in this phase
-    fn on_copy_step_start(&self, _phase: &str, _hosts: &[String]) -> Result<()> {
-        Ok(())
-    }
+    fn on_copy_step_start(&self, _phase: &str, _hosts: &[String]) {}
 
     /// Called before copying closure to a specific host
     ///
     /// # Arguments
     /// - `hostname`: The host being copied to
-    fn on_copy_start(&self, _hostname: &str) -> Result<()> {
-        Ok(())
-    }
+    fn on_copy_start(&self, _hostname: &str) {}
 
     /// Called after copying closure to a specific host
     ///
     /// # Arguments
     /// - `hostname`: The host that was copied to
     /// - `success`: Whether the copy succeeded
-    fn on_copy_complete(&self, _hostname: &str, _success: bool) -> Result<()> {
-        Ok(())
-    }
+    fn on_copy_complete(&self, _hostname: &str, _success: bool) {}
 
     /// Called when the copy step completes for a phase
     ///
@@ -110,9 +94,7 @@ pub trait PushObserver: Send + Sync {
     /// # Arguments
     /// - `phase`: The phase name
     /// - `success`: Whether all copies in the phase succeeded
-    fn on_copy_step_complete(&self, _phase: &str, _success: bool) -> Result<()> {
-        Ok(())
-    }
+    fn on_copy_step_complete(&self, _phase: &str, _success: bool) {}
 
     /// Called when starting to deploy/activate a phase
     ///
@@ -121,9 +103,7 @@ pub trait PushObserver: Send + Sync {
     /// # Arguments
     /// - `phase`: The phase name
     /// - `hosts`: Names of all hosts in this phase that will be deployed
-    fn on_phase_start(&self, _phase: &str, _hosts: &[String]) -> Result<()> {
-        Ok(())
-    }
+    fn on_phase_start(&self, _phase: &str, _hosts: &[String]) {}
 
     /// Called when starting the deploy/activate step for a phase
     ///
@@ -132,9 +112,7 @@ pub trait PushObserver: Send + Sync {
     /// # Arguments
     /// - `phase`: The phase name
     /// - `hosts`: Names of all hosts in this phase
-    fn on_deploy_step_start(&self, _phase: &str, _hosts: &[String]) -> Result<()> {
-        Ok(())
-    }
+    fn on_deploy_step_start(&self, _phase: &str, _hosts: &[String]) {}
 
     /// Called before activating on a specific host
     ///
@@ -143,18 +121,14 @@ pub trait PushObserver: Send + Sync {
     ///
     /// # Arguments
     /// - `hostname`: The host being activated
-    fn on_activation_start(&self, _hostname: &str) -> Result<()> {
-        Ok(())
-    }
+    fn on_activation_start(&self, _hostname: &str) {}
 
     /// Called after activation completes on a host
     ///
     /// # Arguments
     /// - `hostname`: The host that was activated
     /// - `result`: The activation result (success or failure)
-    fn on_activation_complete(&self, _hostname: &str, _result: &DeployResult) -> Result<()> {
-        Ok(())
-    }
+    fn on_activation_complete(&self, _hostname: &str, _result: &DeployResult) {}
 
     /// Called when the deploy/activate step completes for a phase
     ///
@@ -163,9 +137,7 @@ pub trait PushObserver: Send + Sync {
     /// # Arguments
     /// - `phase`: The phase name
     /// - `success`: Whether all deployments in the phase succeeded
-    fn on_deploy_step_complete(&self, _phase: &str, _success: bool) -> Result<()> {
-        Ok(())
-    }
+    fn on_deploy_step_complete(&self, _phase: &str, _success: bool) {}
 
     /// Called when a deployment phase completes
     ///
@@ -174,9 +146,7 @@ pub trait PushObserver: Send + Sync {
     /// # Arguments
     /// - `phase`: The phase name
     /// - `success`: Whether all deployments in the phase succeeded
-    fn on_phase_complete(&self, _phase: &str, _success: bool) -> Result<()> {
-        Ok(())
-    }
+    fn on_phase_complete(&self, _phase: &str, _success: bool) {}
 
     /// Called when starting the reboot step for a phase
     ///
@@ -185,26 +155,20 @@ pub trait PushObserver: Send + Sync {
     /// # Arguments
     /// - `phase`: The phase name
     /// - `hosts`: Names of all hosts in this phase that will be rebooted
-    fn on_reboot_step_start(&self, _phase: &str, _hosts: &[String]) -> Result<()> {
-        Ok(())
-    }
+    fn on_reboot_step_start(&self, _phase: &str, _hosts: &[String]) {}
 
     /// Called before rebooting a host
     ///
     /// # Arguments
     /// - `hostname`: The host being rebooted
-    fn on_reboot_start(&self, _hostname: &str) -> Result<()> {
-        Ok(())
-    }
+    fn on_reboot_start(&self, _hostname: &str) {}
 
     /// Called after reboot completes (or fails)
     ///
     /// # Arguments
     /// - `hostname`: The host that was rebooted
     /// - `success`: Whether the reboot and reconnection succeeded
-    fn on_reboot_complete(&self, _hostname: &str, _success: bool) -> Result<()> {
-        Ok(())
-    }
+    fn on_reboot_complete(&self, _hostname: &str, _success: bool) {}
 
     /// Called when the reboot step completes for a phase
     ///
@@ -213,9 +177,7 @@ pub trait PushObserver: Send + Sync {
     /// # Arguments
     /// - `phase`: The phase name
     /// - `success`: Whether all reboots in the phase succeeded
-    fn on_reboot_step_complete(&self, _phase: &str, _success: bool) -> Result<()> {
-        Ok(())
-    }
+    fn on_reboot_step_complete(&self, _phase: &str, _success: bool) {}
 }
 
 /// No-op observer that does nothing
@@ -228,7 +190,7 @@ impl PushObserver for NoopObserver {}
 
 /// Composite observer that calls multiple observers in sequence
 ///
-/// If any observer returns an error, the chain stops and the error is returned.
+/// All observers are called even if one encounters an error internally.
 ///
 /// # Example
 ///
@@ -255,130 +217,112 @@ impl CompositeObserver {
 }
 
 impl PushObserver for CompositeObserver {
-    fn on_build_step_start(&self, phase: &str, hosts: &[String]) -> Result<()> {
+    fn on_build_step_start(&self, phase: &str, hosts: &[String]) {
         for observer in &self.observers {
-            observer.on_build_step_start(phase, hosts)?;
+            observer.on_build_step_start(phase, hosts);
         }
-        Ok(())
     }
 
-    fn on_build_start(&self, hostname: &str) -> Result<()> {
+    fn on_build_start(&self, hostname: &str) {
         for observer in &self.observers {
-            observer.on_build_start(hostname)?;
+            observer.on_build_start(hostname);
         }
-        Ok(())
     }
 
-    fn on_build_complete(&self, hostname: &str, success: bool) -> Result<()> {
+    fn on_build_complete(&self, hostname: &str, success: bool) {
         for observer in &self.observers {
-            observer.on_build_complete(hostname, success)?;
+            observer.on_build_complete(hostname, success);
         }
-        Ok(())
     }
 
-    fn on_build_step_complete(&self, phase: &str, success: bool) -> Result<()> {
+    fn on_build_step_complete(&self, phase: &str, success: bool) {
         for observer in &self.observers {
-            observer.on_build_step_complete(phase, success)?;
+            observer.on_build_step_complete(phase, success);
         }
-        Ok(())
     }
 
-    fn on_copy_step_start(&self, phase: &str, hosts: &[String]) -> Result<()> {
+    fn on_copy_step_start(&self, phase: &str, hosts: &[String]) {
         for observer in &self.observers {
-            observer.on_copy_step_start(phase, hosts)?;
+            observer.on_copy_step_start(phase, hosts);
         }
-        Ok(())
     }
 
-    fn on_copy_start(&self, hostname: &str) -> Result<()> {
+    fn on_copy_start(&self, hostname: &str) {
         for observer in &self.observers {
-            observer.on_copy_start(hostname)?;
+            observer.on_copy_start(hostname);
         }
-        Ok(())
     }
 
-    fn on_copy_complete(&self, hostname: &str, success: bool) -> Result<()> {
+    fn on_copy_complete(&self, hostname: &str, success: bool) {
         for observer in &self.observers {
-            observer.on_copy_complete(hostname, success)?;
+            observer.on_copy_complete(hostname, success);
         }
-        Ok(())
     }
 
-    fn on_copy_step_complete(&self, phase: &str, success: bool) -> Result<()> {
+    fn on_copy_step_complete(&self, phase: &str, success: bool) {
         for observer in &self.observers {
-            observer.on_copy_step_complete(phase, success)?;
+            observer.on_copy_step_complete(phase, success);
         }
-        Ok(())
     }
 
-    fn on_phase_start(&self, phase: &str, hosts: &[String]) -> Result<()> {
+    fn on_phase_start(&self, phase: &str, hosts: &[String]) {
         for observer in &self.observers {
-            observer.on_phase_start(phase, hosts)?;
+            observer.on_phase_start(phase, hosts);
         }
-        Ok(())
     }
 
-    fn on_deploy_step_start(&self, phase: &str, hosts: &[String]) -> Result<()> {
+    fn on_deploy_step_start(&self, phase: &str, hosts: &[String]) {
         for observer in &self.observers {
-            observer.on_deploy_step_start(phase, hosts)?;
+            observer.on_deploy_step_start(phase, hosts);
         }
-        Ok(())
     }
 
-    fn on_activation_start(&self, hostname: &str) -> Result<()> {
+    fn on_activation_start(&self, hostname: &str) {
         for observer in &self.observers {
-            observer.on_activation_start(hostname)?;
+            observer.on_activation_start(hostname);
         }
-        Ok(())
     }
 
-    fn on_activation_complete(&self, hostname: &str, result: &DeployResult) -> Result<()> {
+    fn on_activation_complete(&self, hostname: &str, result: &DeployResult) {
         for observer in &self.observers {
-            observer.on_activation_complete(hostname, result)?;
+            observer.on_activation_complete(hostname, result);
         }
-        Ok(())
     }
 
-    fn on_deploy_step_complete(&self, phase: &str, success: bool) -> Result<()> {
+    fn on_deploy_step_complete(&self, phase: &str, success: bool) {
         for observer in &self.observers {
-            observer.on_deploy_step_complete(phase, success)?;
+            observer.on_deploy_step_complete(phase, success);
         }
-        Ok(())
     }
 
-    fn on_phase_complete(&self, phase: &str, success: bool) -> Result<()> {
+    fn on_phase_complete(&self, phase: &str, success: bool) {
         for observer in &self.observers {
-            observer.on_phase_complete(phase, success)?;
+            observer.on_phase_complete(phase, success);
         }
-        Ok(())
     }
 
-    fn on_reboot_step_start(&self, phase: &str, hosts: &[String]) -> Result<()> {
+    fn on_reboot_step_start(&self, phase: &str, hosts: &[String]) {
         for observer in &self.observers {
-            observer.on_reboot_step_start(phase, hosts)?;
+            observer.on_reboot_step_start(phase, hosts);
         }
-        Ok(())
     }
 
-    fn on_reboot_start(&self, hostname: &str) -> Result<()> {
+    fn on_reboot_start(&self, hostname: &str) {
         for observer in &self.observers {
-            observer.on_reboot_start(hostname)?;
+            observer.on_reboot_start(hostname);
         }
-        Ok(())
     }
 
-    fn on_reboot_complete(&self, hostname: &str, success: bool) -> Result<()> {
+    fn on_reboot_complete(&self, hostname: &str, success: bool) {
         for observer in &self.observers {
-            observer.on_reboot_complete(hostname, success)?;
+            observer.on_reboot_complete(hostname, success);
         }
-        Ok(())
     }
 
-    fn on_reboot_step_complete(&self, phase: &str, success: bool) -> Result<()> {
+    fn on_reboot_step_complete(&self, phase: &str, success: bool) {
         for observer in &self.observers {
-            observer.on_reboot_step_complete(phase, success)?;
+            observer.on_reboot_step_complete(phase, success);
         }
-        Ok(())
     }
 }
 
@@ -403,45 +347,38 @@ mod tests {
     }
 
     impl PushObserver for EventLog {
-        fn on_phase_start(&self, phase: &str, hosts: &[String]) -> Result<()> {
+        fn on_phase_start(&self, phase: &str, hosts: &[String]) {
             self.log(format!("phase_start:{}:{}", phase, hosts.len()));
-            Ok(())
         }
 
-        fn on_activation_start(&self, hostname: &str) -> Result<()> {
+        fn on_activation_start(&self, hostname: &str) {
             self.log(format!("activation_start:{}", hostname));
-            Ok(())
         }
 
-        fn on_activation_complete(&self, hostname: &str, result: &DeployResult) -> Result<()> {
+        fn on_activation_complete(&self, hostname: &str, result: &DeployResult) {
             self.log(format!(
                 "activation_complete:{}:{}",
                 hostname,
                 if result.success { "ok" } else { "failed" }
             ));
-            Ok(())
         }
     }
 
     #[test]
     fn test_noop_observer() {
         let observer = NoopObserver;
-        assert!(observer.on_phase_start("p1", &[]).is_ok());
-        assert!(observer.on_activation_start("host1").is_ok());
-        assert!(observer
-            .on_activation_complete("host1", &DeployResult::success("ok"))
-            .is_ok());
+        observer.on_phase_start("p1", &[]);
+        observer.on_activation_start("host1");
+        observer.on_activation_complete("host1", &DeployResult::success("ok"));
     }
 
     #[test]
     fn test_event_log_observer() {
         let log = EventLog::default();
 
-        log.on_phase_start("p1", &["host1".to_string(), "host2".to_string()])
-            .unwrap();
-        log.on_activation_start("host1").unwrap();
-        log.on_activation_complete("host1", &DeployResult::success("ok"))
-            .unwrap();
+        log.on_phase_start("p1", &["host1".to_string(), "host2".to_string()]);
+        log.on_activation_start("host1");
+        log.on_activation_complete("host1", &DeployResult::success("ok"));
 
         let events = log.get_events();
         assert_eq!(events.len(), 3);
@@ -464,32 +401,11 @@ mod tests {
 
         let composite = CompositeObserver::new(vec![Box::new(log1_clone), Box::new(log2_clone)]);
 
-        composite
-            .on_phase_start("p1", &["host1".to_string()])
-            .unwrap();
-        composite.on_activation_start("host1").unwrap();
+        composite.on_phase_start("p1", &["host1".to_string()]);
+        composite.on_activation_start("host1");
 
         // Both observers should have received events
         assert_eq!(log1.get_events().len(), 2);
         assert_eq!(log2.get_events().len(), 2);
-    }
-
-    #[test]
-    fn test_observer_error_propagation() {
-        struct FailingObserver;
-        impl PushObserver for FailingObserver {
-            fn on_activation_start(&self, _hostname: &str) -> Result<()> {
-                Err(crate::error::SnowError::Deploy(
-                    crate::error::DeployError::Failed {
-                        host: "test".to_string(),
-                        source: std::io::Error::other("observer error"),
-                    },
-                ))
-            }
-        }
-
-        let observer = FailingObserver;
-        let result = observer.on_activation_start("host1");
-        assert!(result.is_err());
     }
 }

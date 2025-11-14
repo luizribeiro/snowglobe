@@ -4,7 +4,7 @@
 //! including phase, step, and host-level spans.
 
 use parking_lot::Mutex;
-use snowlib::{DeployResult, PushObserver, Result};
+use snowlib::{DeployResult, PushObserver};
 use std::collections::HashMap;
 use tracing::info_span;
 use tracing_indicatif::span_ext::IndicatifSpanExt;
@@ -87,7 +87,7 @@ impl CliObserver {
 }
 
 impl PushObserver for CliObserver {
-    fn on_phase_start(&self, phase: &str, hosts: &[String]) -> Result<()> {
+    fn on_phase_start(&self, phase: &str, hosts: &[String]) {
         let mut state = self.state.lock();
 
         // Create phase span
@@ -104,11 +104,9 @@ impl PushObserver for CliObserver {
 
         // Store phase span - step spans will be created lazily when first needed
         state.phase_span = Some(phase_span);
-
-        Ok(())
     }
 
-    fn on_phase_complete(&self, phase: &str, success: bool) -> Result<()> {
+    fn on_phase_complete(&self, phase: &str, success: bool) {
         // Log phase completion
         if phase == "default" || phase == "_all" {
             if success {
@@ -133,15 +131,12 @@ impl PushObserver for CliObserver {
         state.activate_span = None;
         state.reboot_span = None;
         state.phase_span = None;
-        Ok(())
     }
 
     // Build step
-    fn on_build_step_start(&self, _phase: &str, _hosts: &[String]) -> Result<()> {
-        Ok(())
-    }
+    fn on_build_step_start(&self, _phase: &str, _hosts: &[String]) {}
 
-    fn on_build_start(&self, hostname: &str) -> Result<()> {
+    fn on_build_start(&self, hostname: &str) {
         let mut state = self.state.lock();
 
         // Get or create the build step span, then create host span as child
@@ -157,10 +152,9 @@ impl PushObserver for CliObserver {
         state
             .build_host_spans
             .insert(hostname.to_string(), host_span);
-        Ok(())
     }
 
-    fn on_build_complete(&self, hostname: &str, success: bool) -> Result<()> {
+    fn on_build_complete(&self, hostname: &str, success: bool) {
         let mut state = self.state.lock();
 
         // Log completion within the host span
@@ -183,20 +177,14 @@ impl PushObserver for CliObserver {
         if state.build_host_spans.is_empty() {
             state.build_span = None;
         }
-
-        Ok(())
     }
 
-    fn on_build_step_complete(&self, _phase: &str, _success: bool) -> Result<()> {
-        Ok(())
-    }
+    fn on_build_step_complete(&self, _phase: &str, _success: bool) {}
 
     // Copy step
-    fn on_copy_step_start(&self, _phase: &str, _hosts: &[String]) -> Result<()> {
-        Ok(())
-    }
+    fn on_copy_step_start(&self, _phase: &str, _hosts: &[String]) {}
 
-    fn on_copy_start(&self, hostname: &str) -> Result<()> {
+    fn on_copy_start(&self, hostname: &str) {
         let mut state = self.state.lock();
 
         // Get or create the copy step span, then create host span as child
@@ -212,10 +200,9 @@ impl PushObserver for CliObserver {
         state
             .copy_host_spans
             .insert(hostname.to_string(), host_span);
-        Ok(())
     }
 
-    fn on_copy_complete(&self, hostname: &str, success: bool) -> Result<()> {
+    fn on_copy_complete(&self, hostname: &str, success: bool) {
         let mut state = self.state.lock();
 
         // Log completion within the host span
@@ -238,20 +225,14 @@ impl PushObserver for CliObserver {
         if state.copy_host_spans.is_empty() {
             state.copy_span = None;
         }
-
-        Ok(())
     }
 
-    fn on_copy_step_complete(&self, _phase: &str, _success: bool) -> Result<()> {
-        Ok(())
-    }
+    fn on_copy_step_complete(&self, _phase: &str, _success: bool) {}
 
     // Deploy/Activate step
-    fn on_deploy_step_start(&self, _phase: &str, _hosts: &[String]) -> Result<()> {
-        Ok(())
-    }
+    fn on_deploy_step_start(&self, _phase: &str, _hosts: &[String]) {}
 
-    fn on_activation_start(&self, hostname: &str) -> Result<()> {
+    fn on_activation_start(&self, hostname: &str) {
         let mut state = self.state.lock();
 
         // Get or create the activate step span, then create host span as child
@@ -267,10 +248,9 @@ impl PushObserver for CliObserver {
         state
             .activate_host_spans
             .insert(hostname.to_string(), host_span);
-        Ok(())
     }
 
-    fn on_activation_complete(&self, hostname: &str, result: &DeployResult) -> Result<()> {
+    fn on_activation_complete(&self, hostname: &str, result: &DeployResult) {
         let mut state = self.state.lock();
 
         // Log completion within the host span
@@ -293,20 +273,14 @@ impl PushObserver for CliObserver {
         if state.activate_host_spans.is_empty() {
             state.activate_span = None;
         }
-
-        Ok(())
     }
 
-    fn on_deploy_step_complete(&self, _phase: &str, _success: bool) -> Result<()> {
-        Ok(())
-    }
+    fn on_deploy_step_complete(&self, _phase: &str, _success: bool) {}
 
     // Reboot step
-    fn on_reboot_step_start(&self, _phase: &str, _hosts: &[String]) -> Result<()> {
-        Ok(())
-    }
+    fn on_reboot_step_start(&self, _phase: &str, _hosts: &[String]) {}
 
-    fn on_reboot_start(&self, hostname: &str) -> Result<()> {
+    fn on_reboot_start(&self, hostname: &str) {
         let mut state = self.state.lock();
 
         // Get or create the reboot step span, then create host span as child
@@ -322,10 +296,9 @@ impl PushObserver for CliObserver {
         state
             .reboot_host_spans
             .insert(hostname.to_string(), host_span);
-        Ok(())
     }
 
-    fn on_reboot_complete(&self, hostname: &str, success: bool) -> Result<()> {
+    fn on_reboot_complete(&self, hostname: &str, success: bool) {
         let mut state = self.state.lock();
 
         // Log completion within the host span
@@ -348,13 +321,9 @@ impl PushObserver for CliObserver {
         if state.reboot_host_spans.is_empty() {
             state.reboot_span = None;
         }
-
-        Ok(())
     }
 
-    fn on_reboot_step_complete(&self, _phase: &str, _success: bool) -> Result<()> {
-        Ok(())
-    }
+    fn on_reboot_step_complete(&self, _phase: &str, _success: bool) {}
 }
 
 #[cfg(test)]
@@ -377,9 +346,7 @@ mod tests {
         }
 
         // Start phase - only creates phase span, step spans are lazy
-        observer
-            .on_phase_start("default", &["host1".to_string(), "host2".to_string()])
-            .unwrap();
+        observer.on_phase_start("default", &["host1".to_string(), "host2".to_string()]);
         {
             let state = observer.state.lock();
             assert!(state.phase_span.is_some());
@@ -387,7 +354,7 @@ mod tests {
         }
 
         // First host enters build - NOW the build span is created
-        observer.on_build_start("host1").unwrap();
+        observer.on_build_start("host1");
         {
             let state = observer.state.lock();
             assert!(state.build_span.is_some());
@@ -395,7 +362,7 @@ mod tests {
         }
 
         // Second host enters build
-        observer.on_build_start("host2").unwrap();
+        observer.on_build_start("host2");
         {
             let state = observer.state.lock();
             assert!(state.build_span.is_some());
@@ -404,7 +371,7 @@ mod tests {
         }
 
         // First host leaves - span still there because host2 is still in build
-        observer.on_build_complete("host1", true).unwrap();
+        observer.on_build_complete("host1", true);
         {
             let state = observer.state.lock();
             assert!(state.build_span.is_some());
@@ -413,7 +380,7 @@ mod tests {
         }
 
         // Last host leaves - step span is cleaned up immediately!
-        observer.on_build_complete("host2", true).unwrap();
+        observer.on_build_complete("host2", true);
         {
             let state = observer.state.lock();
             assert!(state.build_span.is_none()); // Cleaned up when last host leaves
@@ -421,7 +388,7 @@ mod tests {
         }
 
         // Phase complete - cleans up all spans
-        observer.on_phase_complete("default", true).unwrap();
+        observer.on_phase_complete("default", true);
         {
             let state = observer.state.lock();
             assert!(state.build_span.is_none());
@@ -433,9 +400,7 @@ mod tests {
         let observer = CliObserver::new();
 
         // Start phase - only creates phase span, step spans are lazy
-        observer
-            .on_phase_start("default", &["host1".to_string()])
-            .unwrap();
+        observer.on_phase_start("default", &["host1".to_string()]);
         {
             let state = observer.state.lock();
             assert!(state.phase_span.is_some());
@@ -446,7 +411,7 @@ mod tests {
         }
 
         // Host enters build - creates build span lazily
-        observer.on_build_start("host1").unwrap();
+        observer.on_build_start("host1");
         {
             let state = observer.state.lock();
             assert!(state.build_span.is_some());
@@ -455,8 +420,8 @@ mod tests {
         }
 
         // Same host finishes build, enters copy - build span cleaned up, copy span created
-        observer.on_build_complete("host1", true).unwrap();
-        observer.on_copy_start("host1").unwrap();
+        observer.on_build_complete("host1", true);
+        observer.on_copy_start("host1");
         {
             let state = observer.state.lock();
             assert!(state.build_span.is_none()); // Cleaned up when last host left
@@ -465,12 +430,12 @@ mod tests {
         }
 
         // Cleanup - copy span cleaned up when host leaves
-        observer.on_copy_complete("host1", true).unwrap();
+        observer.on_copy_complete("host1", true);
         {
             let state = observer.state.lock();
             assert!(state.copy_span.is_none()); // Cleaned up immediately
         }
-        observer.on_phase_complete("default", true).unwrap();
+        observer.on_phase_complete("default", true);
     }
 
     #[test]
@@ -478,15 +443,13 @@ mod tests {
         let observer = CliObserver::new();
 
         // Start phase
-        observer
-            .on_phase_start("default", &["host1".to_string(), "host2".to_string()])
-            .unwrap();
+        observer.on_phase_start("default", &["host1".to_string(), "host2".to_string()]);
 
-        observer.on_build_start("host1").unwrap();
-        observer.on_build_start("host2").unwrap();
+        observer.on_build_start("host1");
+        observer.on_build_start("host2");
 
         // Host 1 fails
-        observer.on_build_complete("host1", false).unwrap();
+        observer.on_build_complete("host1", false);
         {
             let state = observer.state.lock();
             assert!(!state.build_host_spans.contains_key("host1"));
@@ -495,7 +458,7 @@ mod tests {
         }
 
         // Host 2 completes - last host, so step span is cleaned up
-        observer.on_build_complete("host2", true).unwrap();
+        observer.on_build_complete("host2", true);
         {
             let state = observer.state.lock();
             assert!(state.build_host_spans.is_empty());
@@ -503,7 +466,7 @@ mod tests {
         }
 
         // Phase complete
-        observer.on_phase_complete("default", false).unwrap();
+        observer.on_phase_complete("default", false);
         {
             let state = observer.state.lock();
             assert!(state.build_span.is_none());
@@ -515,16 +478,14 @@ mod tests {
         let observer = CliObserver::new();
 
         // Start phase
-        observer
-            .on_phase_start("default", &["host1".to_string(), "host2".to_string()])
-            .unwrap();
+        observer.on_phase_start("default", &["host1".to_string(), "host2".to_string()]);
 
         // Create some host spans
-        observer.on_build_start("host1").unwrap();
-        observer.on_copy_start("host2").unwrap();
+        observer.on_build_start("host1");
+        observer.on_copy_start("host2");
 
         // Phase complete should clean up everything
-        observer.on_phase_complete("default", true).unwrap();
+        observer.on_phase_complete("default", true);
         {
             let state = observer.state.lock();
             assert!(state.build_span.is_none());

@@ -35,6 +35,29 @@ use rayon::prelude::*;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+/// Helper to create SkippedPhase entries for all remaining phases
+fn skip_remaining_phases(
+    phases: &[String],
+    current_idx: usize,
+    by_phase: &HashMap<String, Vec<HostMetadata>>,
+) -> Vec<SkippedPhase> {
+    phases[current_idx + 1..]
+        .iter()
+        .map(|phase| {
+            let hostnames = by_phase
+                .get(phase)
+                .unwrap()
+                .iter()
+                .map(|h| h.name.clone())
+                .collect();
+            SkippedPhase {
+                phase: phase.clone(),
+                hostnames,
+            }
+        })
+        .collect()
+}
+
 /// Main push orchestration function - handles complete deployment workflow
 ///
 /// This is the primary entry point for deploying configurations. It orchestrates
@@ -90,46 +113,23 @@ pub fn push(push_ctx: &PushContext, hosts: Vec<HostMetadata>) -> Result<PushResu
         let hostnames: Vec<String> = phase_hosts.iter().map(|h| h.name.clone()).collect();
 
         // Notify observer of phase start
-        push_ctx.observer.on_phase_start(phase, &hostnames)?;
+        push_ctx.observer.on_phase_start(phase, &hostnames);
 
-        // Execute phase pipeline
+        // Execute phase and notify observer (even on failure)
         let phase_result = execute_phase(push_ctx, phase, phase_hosts);
+        let phase_success = phase_result.as_ref().is_ok_and(|pr| pr.all_succeeded());
+        push_ctx.observer.on_phase_complete(phase, phase_success);
 
-        // Notify observer of phase completion (always, even on failure)
-        let phase_success = phase_result
-            .as_ref()
-            .map(|pr| pr.all_succeeded())
-            .unwrap_or(false);
-        push_ctx.observer.on_phase_complete(phase, phase_success)?;
+        // Propagate infrastructure errors immediately
+        let phase_result = phase_result?;
 
-        // Handle phase result
-        match phase_result {
-            Ok(phase_result) => {
-                // If this phase failed, stop deployment and mark remaining phases as skipped
-                if !phase_result.all_succeeded() {
-                    executed_phases.push(phase_result);
+        // Always record this phase result
+        executed_phases.push(phase_result);
 
-                    // Mark all remaining phases as skipped
-                    for remaining_phase in &phases[idx + 1..] {
-                        let remaining_hosts = by_phase.get(remaining_phase).unwrap();
-                        skipped_phases.push(SkippedPhase {
-                            phase: remaining_phase.clone(),
-                            hostnames: remaining_hosts.iter().map(|h| h.name.clone()).collect(),
-                        });
-                    }
-
-                    return Ok(PushResults {
-                        phases: executed_phases,
-                        skipped_phases,
-                    });
-                }
-
-                executed_phases.push(phase_result);
-            }
-            Err(e) => {
-                // Phase failed with error - stop deployment
-                return Err(e);
-            }
+        // If phase had failures, skip remaining phases and stop deployment
+        if !phase_success {
+            skipped_phases = skip_remaining_phases(&phases, idx, &by_phase);
+            break;
         }
     }
 
