@@ -21,7 +21,7 @@ mod planning;
 mod results;
 
 // Re-export public types
-pub use config::{DeploymentMode, PushConfiguration};
+pub use config::{PushConfiguration, PushStrategy};
 pub use context::PushContext;
 pub use results::{
     BlockedHost, HostDeploymentResult, PhaseResult, PipelineStep, PushPlan, PushResults,

@@ -179,7 +179,7 @@ fn execute_activation_step(
             copy_output.store_path.clone(),
         )],
         push_ctx.reboot_backend,
-        push_ctx.config.mode,
+        push_ctx.config.strategy,
         push_ctx.config.force,
     )?;
 
@@ -247,7 +247,7 @@ fn execute_reboot_step(
     let hostname = &plan.metadata.name;
 
     let should_reboot = push_ctx.config.allow_reboot
-        && plan.activation_mode == crate::backends::deploy::ActivationMode::Boot
+        && plan.activation_mode == crate::nix::ActivationMode::Boot
         && (plan.reboot_check.is_none()
             || plan
                 .reboot_check

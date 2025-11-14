@@ -1,8 +1,8 @@
 /// Configuration for push operations
 #[derive(Debug, Clone)]
 pub struct PushConfiguration {
-    /// Deployment mode (auto, switch, boot, test, dry-run)
-    pub mode: DeploymentMode,
+    /// Push strategy (auto, switch, boot, test, dry-run)
+    pub strategy: PushStrategy,
     /// Force deployment even when reboot is detected in switch mode
     pub force: bool,
     /// Maximum number of parallel deployments within a phase
@@ -20,7 +20,7 @@ pub struct PushConfiguration {
 impl Default for PushConfiguration {
     fn default() -> Self {
         Self {
-            mode: DeploymentMode::Auto,
+            strategy: PushStrategy::Auto,
             force: false,
             concurrency: 3,
             ignore_phases: false,
@@ -31,9 +31,9 @@ impl Default for PushConfiguration {
     }
 }
 
-/// Deployment mode requested by the user
+/// Push deployment strategy requested by the user
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DeploymentMode {
+pub enum PushStrategy {
     /// Auto mode - detect reboot need and choose appropriate activation mode
     Auto,
     /// Force immediate activation (switch mode)

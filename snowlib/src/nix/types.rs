@@ -70,6 +70,21 @@ impl StorePath {
     }
 }
 
+/// Activation mode for NixOS configuration
+///
+/// Maps directly to switch-to-configuration subcommands
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ActivationMode {
+    /// Activate and make default (switch)
+    Switch,
+    /// Only set for next boot
+    Boot,
+    /// Test activation without making permanent
+    Test,
+    /// Dry run - show what would change
+    DryActivate,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

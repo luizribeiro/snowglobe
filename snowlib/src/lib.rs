@@ -14,15 +14,13 @@ pub mod observer;
 pub mod process;
 pub mod push;
 
-pub use backends::deploy::{
-    ActivationMode, DeployBackend, DeployResult, DeployTarget, SshDeployBackend,
-};
+pub use backends::deploy::{DeployBackend, DeployResult, DeployTarget, SshDeployBackend};
 pub use backends::nix::{NixBackend, SystemNixBackend};
 pub use backends::reboot::SystemRebootBackend;
 pub use error::Result;
-pub use nix::{Flake, StorePath};
+pub use nix::{ActivationMode, Flake, StorePath};
 pub use observer::PushObserver;
-pub use push::{push, DeploymentMode, PushConfiguration, PushContext, PushResults};
+pub use push::{push, PushConfiguration, PushContext, PushResults, PushStrategy};
 
 #[cfg(debug_assertions)]
 pub use backends::mock::{

@@ -2,9 +2,9 @@
 
 use super::planning::create_deployment_plans;
 use super::*;
-use crate::backends::deploy::{ActivationMode, DeployResult, DeployTarget};
+use crate::backends::deploy::{DeployResult, DeployTarget};
 use crate::backends::mock::{MockDeployBackend, MockNixBackend};
-use crate::nix::{Flake, HostMetadata, StorePath};
+use crate::nix::{ActivationMode, Flake, HostMetadata, StorePath};
 
 /// Helper to create just HostMetadata for push tests
 fn make_host_metadata(
@@ -206,7 +206,7 @@ fn test_create_deployment_plans_auto_mode_no_reboot() {
     let hosts = vec![make_host("test", None, crate::nix::RebootPolicy::Auto)];
 
     let (plans, blocked) =
-        create_deployment_plans(hosts, &detector, DeploymentMode::Auto, false).unwrap();
+        create_deployment_plans(hosts, &detector, PushStrategy::Auto, false).unwrap();
 
     assert_eq!(plans.len(), 1);
     assert_eq!(blocked.len(), 0);
@@ -223,7 +223,7 @@ fn test_create_deployment_plans_dry_run() {
     let hosts = vec![make_host("test", None, crate::nix::RebootPolicy::Auto)];
 
     let (plans, blocked) =
-        create_deployment_plans(hosts, &detector, DeploymentMode::DryRun, false).unwrap();
+        create_deployment_plans(hosts, &detector, PushStrategy::DryRun, false).unwrap();
 
     assert_eq!(plans.len(), 1);
     assert_eq!(blocked.len(), 0);
@@ -237,7 +237,7 @@ fn test_create_deployment_plans_boot_mode() {
     let hosts = vec![make_host("test", None, crate::nix::RebootPolicy::Auto)];
 
     let (plans, blocked) =
-        create_deployment_plans(hosts, &detector, DeploymentMode::Boot, false).unwrap();
+        create_deployment_plans(hosts, &detector, PushStrategy::Boot, false).unwrap();
 
     assert_eq!(plans.len(), 1);
     assert_eq!(blocked.len(), 0);
@@ -251,7 +251,7 @@ fn test_create_deployment_plans_test_mode() {
     let hosts = vec![make_host("test", None, crate::nix::RebootPolicy::Auto)];
 
     let (plans, blocked) =
-        create_deployment_plans(hosts, &detector, DeploymentMode::Test, false).unwrap();
+        create_deployment_plans(hosts, &detector, PushStrategy::Test, false).unwrap();
 
     assert_eq!(plans.len(), 1);
     assert_eq!(blocked.len(), 0);
@@ -266,7 +266,7 @@ fn test_create_deployment_plans_switch_with_force() {
     let hosts = vec![make_host("test", None, crate::nix::RebootPolicy::Auto)];
 
     let (plans, blocked) =
-        create_deployment_plans(hosts, &detector, DeploymentMode::Switch, true).unwrap();
+        create_deployment_plans(hosts, &detector, PushStrategy::Switch, true).unwrap();
 
     assert_eq!(plans.len(), 1);
     assert_eq!(blocked.len(), 0);
@@ -292,7 +292,7 @@ fn test_create_deployment_plans_multiple_hosts_mixed_results() {
     ];
 
     let (plans, blocked) =
-        create_deployment_plans(hosts, &detector, DeploymentMode::Auto, false).unwrap();
+        create_deployment_plans(hosts, &detector, PushStrategy::Auto, false).unwrap();
 
     assert_eq!(plans.len(), 3);
     assert_eq!(blocked.len(), 0);
@@ -315,7 +315,7 @@ fn test_reboot_policy_never_uses_boot_mode() {
     let hosts = vec![make_host("host1", None, crate::nix::RebootPolicy::Never)];
 
     let (plans, blocked) =
-        create_deployment_plans(hosts, &detector, DeploymentMode::Auto, false).unwrap();
+        create_deployment_plans(hosts, &detector, PushStrategy::Auto, false).unwrap();
 
     assert_eq!(plans.len(), 1);
     assert_eq!(blocked.len(), 0);
@@ -339,7 +339,7 @@ fn test_reboot_policy_always_uses_boot_mode_with_reboot() {
     let hosts = vec![make_host("host1", None, crate::nix::RebootPolicy::Always)];
 
     let (plans, blocked) =
-        create_deployment_plans(hosts, &detector, DeploymentMode::Auto, false).unwrap();
+        create_deployment_plans(hosts, &detector, PushStrategy::Auto, false).unwrap();
 
     assert_eq!(plans.len(), 1);
     assert_eq!(blocked.len(), 0);
@@ -363,7 +363,7 @@ fn test_reboot_policy_auto_uses_detection() {
     let hosts = vec![make_host("host1", None, crate::nix::RebootPolicy::Auto)];
 
     let (plans, blocked) =
-        create_deployment_plans(hosts, &detector, DeploymentMode::Auto, false).unwrap();
+        create_deployment_plans(hosts, &detector, PushStrategy::Auto, false).unwrap();
 
     assert_eq!(plans.len(), 1);
     assert_eq!(blocked.len(), 0);
@@ -386,7 +386,7 @@ fn test_reboot_policy_never_overrides_switch_mode() {
     let hosts = vec![make_host("host1", None, crate::nix::RebootPolicy::Never)];
 
     let (plans, blocked) =
-        create_deployment_plans(hosts, &detector, DeploymentMode::Switch, false).unwrap();
+        create_deployment_plans(hosts, &detector, PushStrategy::Switch, false).unwrap();
 
     assert_eq!(plans.len(), 1);
     assert_eq!(blocked.len(), 0);
@@ -408,7 +408,7 @@ fn test_reboot_policy_always_overrides_switch_mode() {
     let hosts = vec![make_host("host1", None, crate::nix::RebootPolicy::Always)];
 
     let (plans, blocked) =
-        create_deployment_plans(hosts, &detector, DeploymentMode::Switch, false).unwrap();
+        create_deployment_plans(hosts, &detector, PushStrategy::Switch, false).unwrap();
 
     assert_eq!(plans.len(), 1);
     assert_eq!(blocked.len(), 0);
@@ -688,7 +688,7 @@ fn test_push_with_multiple_phases() {
     ];
 
     let config = PushConfiguration {
-        mode: DeploymentMode::Switch,
+        strategy: PushStrategy::Switch,
         force: false,
         concurrency: 2,
         ignore_phases: false,
@@ -755,7 +755,7 @@ fn test_push_stops_on_phase_failure() {
     ];
 
     let config = PushConfiguration {
-        mode: DeploymentMode::Switch,
+        strategy: PushStrategy::Switch,
         force: false,
         concurrency: 2,
         ignore_phases: false,
@@ -961,7 +961,7 @@ fn test_push_error_message_includes_source() {
     }];
 
     let config = PushConfiguration {
-        mode: DeploymentMode::Switch,
+        strategy: PushStrategy::Switch,
         force: false,
         concurrency: 1,
         ignore_phases: false,
@@ -1055,7 +1055,7 @@ fn test_push_error_message_format_with_activation_failure() {
     }];
 
     let config = PushConfiguration {
-        mode: DeploymentMode::Switch,
+        strategy: PushStrategy::Switch,
         force: false,
         concurrency: 1,
         ignore_phases: false,
@@ -1138,7 +1138,7 @@ fn test_push_full_workflow_single_phase_success() {
     ];
 
     let config = PushConfiguration {
-        mode: DeploymentMode::Switch,
+        strategy: PushStrategy::Switch,
         force: false,
         concurrency: 2,
         ignore_phases: false,
@@ -1215,7 +1215,7 @@ fn test_push_full_workflow_multi_phase_success() {
     ];
 
     let config = PushConfiguration {
-        mode: DeploymentMode::Switch,
+        strategy: PushStrategy::Switch,
         force: false,
         concurrency: 2,
         ignore_phases: false,
@@ -1277,7 +1277,7 @@ fn test_push_build_failure_stops_deployment() {
     }];
 
     let config = PushConfiguration {
-        mode: DeploymentMode::Switch,
+        strategy: PushStrategy::Switch,
         force: false,
         concurrency: 1,
         ignore_phases: false,
@@ -1338,7 +1338,7 @@ fn test_push_copy_failure_stops_deployment() {
     }];
 
     let config = PushConfiguration {
-        mode: DeploymentMode::Switch,
+        strategy: PushStrategy::Switch,
         force: false,
         concurrency: 1,
         ignore_phases: false,
@@ -1410,7 +1410,7 @@ fn test_push_copy_observer_hooks_called() {
     ];
 
     let config = PushConfiguration {
-        mode: DeploymentMode::Switch,
+        strategy: PushStrategy::Switch,
         force: false,
         concurrency: 2,
         ignore_phases: false,
@@ -1478,7 +1478,7 @@ fn test_push_build_observer_hooks_called() {
     ];
 
     let config = PushConfiguration {
-        mode: DeploymentMode::Switch,
+        strategy: PushStrategy::Switch,
         force: false,
         concurrency: 2,
         ignore_phases: false,
@@ -1552,7 +1552,7 @@ fn test_push_build_partial_failure() {
     ];
 
     let config = PushConfiguration {
-        mode: DeploymentMode::Switch,
+        strategy: PushStrategy::Switch,
         force: false,
         concurrency: 2,
         ignore_phases: false,
@@ -1627,7 +1627,7 @@ fn test_push_ignore_phases_flag() {
     ];
 
     let config = PushConfiguration {
-        mode: DeploymentMode::Switch,
+        strategy: PushStrategy::Switch,
         force: false,
         concurrency: 2,
         ignore_phases: true, // Ignore phase ordering
@@ -1689,7 +1689,7 @@ fn test_push_phase_failure_stops_next_phase() {
     ];
 
     let config = PushConfiguration {
-        mode: DeploymentMode::Switch,
+        strategy: PushStrategy::Switch,
         force: false,
         concurrency: 1,
         ignore_phases: false,
@@ -1760,7 +1760,7 @@ fn test_push_reboot_execution_success() {
     )];
 
     let config = PushConfiguration {
-        mode: DeploymentMode::Auto, // Auto mode will detect reboot requirement
+        strategy: PushStrategy::Auto, // Auto mode will detect reboot requirement
         force: false,
         concurrency: 1,
         ignore_phases: false,
@@ -1846,7 +1846,7 @@ fn test_push_reboot_execution_failure() {
     )];
 
     let config = PushConfiguration {
-        mode: DeploymentMode::Auto,
+        strategy: PushStrategy::Auto,
         force: false,
         concurrency: 1,
         ignore_phases: false,
@@ -1922,7 +1922,7 @@ fn test_push_no_reboot_when_not_required() {
     )];
 
     let config = PushConfiguration {
-        mode: DeploymentMode::Auto,
+        strategy: PushStrategy::Auto,
         force: false,
         concurrency: 1,
         ignore_phases: false,
@@ -1991,7 +1991,7 @@ fn test_push_reboot_with_boot_mode() {
     )];
 
     let config = PushConfiguration {
-        mode: DeploymentMode::Boot, // Explicit Boot mode
+        strategy: PushStrategy::Boot, // Explicit Boot mode
         force: false,
         concurrency: 1,
         ignore_phases: false,
@@ -2045,7 +2045,7 @@ fn test_push_reboot_policy_always() {
     )];
 
     let config = PushConfiguration {
-        mode: DeploymentMode::Auto,
+        strategy: PushStrategy::Auto,
         force: false,
         concurrency: 1,
         ignore_phases: false,
@@ -2108,7 +2108,7 @@ fn test_push_reboot_policy_never() {
     )];
 
     let config = PushConfiguration {
-        mode: DeploymentMode::Auto,
+        strategy: PushStrategy::Auto,
         force: false,
         concurrency: 1,
         ignore_phases: false,
@@ -2165,7 +2165,7 @@ fn test_push_no_reboot_flag_overrides_always_policy() {
     )];
 
     let config = PushConfiguration {
-        mode: DeploymentMode::Auto,
+        strategy: PushStrategy::Auto,
         force: false,
         concurrency: 1,
         ignore_phases: false,
@@ -2228,7 +2228,7 @@ fn test_push_no_reboot_flag_with_detected_reboot() {
     )];
 
     let config = PushConfiguration {
-        mode: DeploymentMode::Auto,
+        strategy: PushStrategy::Auto,
         force: false,
         concurrency: 1,
         ignore_phases: false,

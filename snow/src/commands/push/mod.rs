@@ -1,7 +1,7 @@
 mod observer;
 
 use clap::Args;
-use snowlib::{DeploymentMode, Flake, Result};
+use snowlib::{Flake, PushStrategy, Result};
 
 /// Deploy configurations to hosts
 #[derive(Debug, Args)]
@@ -89,18 +89,18 @@ impl PushArgs {
         Ok(())
     }
 
-    /// Determine the deployment mode from flags
-    fn deployment_mode(&self) -> DeploymentMode {
+    /// Determine the push strategy from flags
+    fn push_strategy(&self) -> PushStrategy {
         if self.dry_run {
-            DeploymentMode::DryRun
+            PushStrategy::DryRun
         } else if self.test {
-            DeploymentMode::Test
+            PushStrategy::Test
         } else if self.boot {
-            DeploymentMode::Boot
+            PushStrategy::Boot
         } else if self.switch {
-            DeploymentMode::Switch
+            PushStrategy::Switch
         } else {
-            DeploymentMode::Auto
+            PushStrategy::Auto
         }
     }
 
@@ -191,7 +191,7 @@ impl PushArgs {
 
         // Create push configuration
         let config = snowlib::PushConfiguration {
-            mode: self.deployment_mode(),
+            strategy: self.push_strategy(),
             force: self.force,
             concurrency: self.concurrency as usize,
             ignore_phases: self.ignore_phases,
@@ -234,7 +234,7 @@ mod tests {
     use super::*;
     use snowlib::{
         ActivationMode, DeployBackend, DeployTarget, DeploymentFixture, HostFixture,
-        MockDeployBackend, OperationFixture, StorePath,
+        MockDeployBackend, OperationFixture, PushStrategy, StorePath,
     };
 
     #[test]
@@ -429,7 +429,7 @@ mod tests {
     }
 
     #[test]
-    fn test_deployment_mode_auto() {
+    fn test_push_strategy_auto() {
         let args = PushArgs {
             hosts: vec![],
             dry_run: false,
@@ -446,11 +446,11 @@ mod tests {
             mock_fixture: None,
         };
 
-        assert_eq!(args.deployment_mode(), DeploymentMode::Auto);
+        assert_eq!(args.push_strategy(), PushStrategy::Auto);
     }
 
     #[test]
-    fn test_deployment_mode_switch() {
+    fn test_push_strategy_switch() {
         let args = PushArgs {
             hosts: vec![],
             dry_run: false,
@@ -467,6 +467,6 @@ mod tests {
             mock_fixture: None,
         };
 
-        assert_eq!(args.deployment_mode(), DeploymentMode::Switch);
+        assert_eq!(args.push_strategy(), PushStrategy::Switch);
     }
 }

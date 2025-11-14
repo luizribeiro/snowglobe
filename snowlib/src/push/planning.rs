@@ -1,14 +1,14 @@
 //! Deployment planning and reboot detection
 //!
 //! This module handles determining the appropriate activation strategy for each host
-//! based on deployment mode, reboot detection, and reboot policies.
+//! based on push strategy, reboot detection, and reboot policies.
 
-use crate::backends::deploy::{ActivationMode, DeployTarget};
+use crate::backends::deploy::DeployTarget;
 use crate::backends::reboot::{RebootBackend, RebootCheck, RebootReason};
 use crate::error::Result;
-use crate::nix::{HostMetadata, RebootPolicy, StorePath};
+use crate::nix::{ActivationMode, HostMetadata, RebootPolicy, StorePath};
 
-use super::config::DeploymentMode;
+use super::config::PushStrategy;
 use super::results::{BlockedHost, PushPlan};
 
 /// Strategy for handling a host deployment
@@ -25,20 +25,20 @@ fn determine_activation_strategy(
     target: &DeployTarget,
     store_path: &StorePath,
     reboot_backend: &dyn RebootBackend,
-    mode: DeploymentMode,
+    strategy: PushStrategy,
     force: bool,
 ) -> Result<ActivationStrategy> {
-    match mode {
-        DeploymentMode::DryRun => Ok(ActivationStrategy::Deploy(
+    match strategy {
+        PushStrategy::DryRun => Ok(ActivationStrategy::Deploy(
             ActivationMode::DryActivate,
             None,
         )),
-        DeploymentMode::Test => Ok(ActivationStrategy::Deploy(ActivationMode::Test, None)),
-        DeploymentMode::Boot => Ok(ActivationStrategy::Deploy(ActivationMode::Boot, None)),
-        DeploymentMode::Switch => {
+        PushStrategy::Test => Ok(ActivationStrategy::Deploy(ActivationMode::Test, None)),
+        PushStrategy::Boot => Ok(ActivationStrategy::Deploy(ActivationMode::Boot, None)),
+        PushStrategy::Switch => {
             handle_switch_mode(metadata, target, store_path, reboot_backend, force)
         }
-        DeploymentMode::Auto => handle_auto_mode(metadata, target, store_path, reboot_backend),
+        PushStrategy::Auto => handle_auto_mode(metadata, target, store_path, reboot_backend),
     }
 }
 
@@ -131,7 +131,7 @@ fn handle_auto_mode(
 /// Create deployment plans with reboot detection
 ///
 /// This function determines the appropriate activation mode for each host based on:
-/// - User-requested deployment mode
+/// - User-requested push strategy
 /// - Reboot detection results
 /// - Force flag
 ///
@@ -140,7 +140,7 @@ fn handle_auto_mode(
 pub fn create_deployment_plans(
     hosts: Vec<(HostMetadata, DeployTarget, StorePath)>,
     reboot_backend: &dyn RebootBackend,
-    mode: DeploymentMode,
+    strategy: PushStrategy,
     force: bool,
 ) -> Result<(Vec<PushPlan>, Vec<BlockedHost>)> {
     let mut plans = Vec::new();
@@ -152,7 +152,7 @@ pub fn create_deployment_plans(
             &target,
             &store_path,
             reboot_backend,
-            mode,
+            strategy,
             force,
         )? {
             ActivationStrategy::Deploy(activation_mode, reboot_check) => {

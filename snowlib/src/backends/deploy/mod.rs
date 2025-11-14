@@ -3,22 +3,9 @@ mod target;
 pub use target::DeployTarget;
 
 use crate::error::{DeployError, Result};
-use crate::nix::StorePath;
+use crate::nix::{ActivationMode, StorePath};
 use crate::process::StreamingExecutor;
 use std::process::Command;
-
-/// Activation mode for NixOS configuration
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum ActivationMode {
-    /// Activate and make default (switch)
-    Switch,
-    /// Only set for next boot
-    Boot,
-    /// Test activation without making permanent
-    Test,
-    /// Dry run - show what would change
-    DryActivate,
-}
 
 /// Result of a deployment operation
 #[derive(Debug, Clone)]
