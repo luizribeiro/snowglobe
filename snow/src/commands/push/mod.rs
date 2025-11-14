@@ -1,8 +1,7 @@
 mod observer;
 
 use clap::Args;
-use snowlib::{DeploymentMode, Flake, PushResults, Result};
-use tabled::{Table, Tabled};
+use snowlib::{DeploymentMode, Flake, Result};
 
 /// Deploy configurations to hosts
 #[derive(Debug, Args)]
@@ -57,21 +56,6 @@ pub struct PushArgs {
     /// Path to fixture file for mock deployer (debug builds only)
     #[arg(long, hide = true)]
     pub mock_fixture: Option<String>,
-}
-
-#[derive(Debug, Tabled)]
-struct DeploymentResult {
-    #[tabled(rename = "Host")]
-    host: String,
-
-    #[tabled(rename = "Status")]
-    status: String,
-
-    #[tabled(rename = "Reboot")]
-    reboot_required: String,
-
-    #[tabled(rename = "Message")]
-    message: String,
 }
 
 impl PushArgs {
@@ -158,33 +142,6 @@ impl PushArgs {
         }
     }
 
-    /// Print results table (simplified for new architecture)
-    fn print_results_table(&self, results: &PushResults) -> Result<()> {
-        let table_data: Vec<DeploymentResult> = results
-            .results
-            .iter()
-            .map(|(host, result)| DeploymentResult {
-                host: host.clone(),
-                status: if result.success { "✓" } else { "✗" }.to_string(),
-                reboot_required: "-".to_string(), // Reboot info is in message now
-                message: result.message.clone(),
-            })
-            .collect();
-
-        println!("\nPush Results\n");
-        let table = Table::new(&table_data).to_string();
-        println!("{}", table);
-
-        // Summary
-        println!(
-            "\n{}/{} hosts deployed successfully",
-            results.success_count(),
-            results.results.len()
-        );
-
-        Ok(())
-    }
-
     /// Main entry point for the push command
     ///
     /// Orchestrates the entire deployment process by delegating to snowlib's `push()` function.
@@ -256,8 +213,8 @@ impl PushArgs {
         // Execute the push - snowlib handles everything!
         let results = snowlib::push(&push_ctx, hosts)?;
 
-        // Print results table
-        self.print_results_table(&results)?;
+        // Print summary of results
+        results.print_summary();
 
         // Return error if any deployments failed
         if !results.all_succeeded() {

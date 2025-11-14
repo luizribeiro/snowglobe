@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use super::context::PushContext;
 use super::planning::create_deployment_plans;
-use super::results::PushPlan;
+use super::results::{HostDeploymentResult, PipelineStep, PushPlan};
 
 /// Intermediate data structure for passing build results through the pipeline
 #[derive(Debug, Clone)]
@@ -43,23 +43,58 @@ struct CopyOutput {
 pub fn execute_host_pipeline(
     push_ctx: Arc<&PushContext>,
     host_metadata: &HostMetadata,
-) -> Result<DeployResult> {
+) -> Result<HostDeploymentResult> {
     // Deref Arc to get the actual reference
     let push_ctx_ref = push_ctx.as_ref();
+    let hostname = host_metadata.name.clone();
+
+    // Helper to convert errors into HostDeploymentResult
+    let make_failure = |step: PipelineStep, error: crate::error::SnowError| HostDeploymentResult {
+        hostname: hostname.clone(),
+        success: false,
+        failed_at_step: Some(step),
+        activation_mode: None,
+        rebooted: false,
+        error_message: Some(error.to_string()),
+    };
 
     // Step 1: Build
-    let build_output = execute_build_step(push_ctx_ref, host_metadata)?;
+    let build_output = match execute_build_step(push_ctx_ref, host_metadata) {
+        Ok(output) => output,
+        Err(e) => return Ok(make_failure(PipelineStep::Build, e)),
+    };
 
     // Step 2: Copy
-    let copy_output = execute_copy_step(push_ctx_ref, build_output)?;
+    let copy_output = match execute_copy_step(push_ctx_ref, build_output) {
+        Ok(output) => output,
+        Err(e) => return Ok(make_failure(PipelineStep::Copy, e)),
+    };
 
     // Step 3: Activate (includes planning + activation)
-    let (plan, activate_result) = execute_activation_step(push_ctx_ref, copy_output)?;
+    let (plan, activate_result) = match execute_activation_step(push_ctx_ref, copy_output) {
+        Ok(result) => result,
+        Err(e) => return Ok(make_failure(PipelineStep::Activate, e)),
+    };
 
     // Step 4: Reboot (if needed)
-    let final_result = execute_reboot_step(push_ctx_ref, &plan, activate_result)?;
+    let (final_result, rebooted) = match execute_reboot_step(push_ctx_ref, &plan, activate_result) {
+        Ok(result) => result,
+        Err(e) => return Ok(make_failure(PipelineStep::Reboot, e)),
+    };
 
-    Ok(final_result)
+    // Build success result
+    Ok(HostDeploymentResult {
+        hostname,
+        success: final_result.success,
+        failed_at_step: None,
+        activation_mode: Some(plan.activation_mode),
+        rebooted,
+        error_message: if final_result.success {
+            None
+        } else {
+            Some(final_result.message)
+        },
+    })
 }
 
 /// Execute the build step for a single host
@@ -202,11 +237,13 @@ fn execute_activation_step(
 /// 1. allow_reboot is true, AND
 /// 2. activation_mode is Boot, AND
 /// 3. Either no reboot check OR reboot is required
+///
+/// Returns (DeployResult, whether_rebooted)
 fn execute_reboot_step(
     push_ctx: &PushContext,
     plan: &PushPlan,
     activate_result: DeployResult,
-) -> Result<DeployResult> {
+) -> Result<(DeployResult, bool)> {
     let hostname = &plan.metadata.name;
 
     let should_reboot = push_ctx.config.allow_reboot
@@ -218,22 +255,25 @@ fn execute_reboot_step(
                 .map(|c| c.required)
                 .unwrap_or(false));
 
-    let final_result = if should_reboot {
+    let (final_result, rebooted) = if should_reboot {
         push_ctx.observer.on_reboot_start(hostname)?;
 
         match push_ctx.reboot_backend.reboot_and_wait(&plan.target) {
             Ok(()) => {
                 push_ctx.observer.on_reboot_complete(hostname, true)?;
-                activate_result
+                (activate_result, true)
             }
             Err(e) => {
                 push_ctx.observer.on_reboot_complete(hostname, false)?;
-                DeployResult::failure(format!("Deployment succeeded but reboot failed: {}", e))
+                (
+                    DeployResult::failure(format!("Deployment succeeded but reboot failed: {}", e)),
+                    false,
+                )
             }
         }
     } else {
-        activate_result
+        (activate_result, false)
     };
 
-    Ok(final_result)
+    Ok((final_result, rebooted))
 }

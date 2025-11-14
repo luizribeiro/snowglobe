@@ -23,7 +23,10 @@ mod results;
 // Re-export public types
 pub use config::{DeploymentMode, PushConfiguration};
 pub use context::PushContext;
-pub use results::{BlockedHost, PushPlan, PushResults};
+pub use results::{
+    BlockedHost, HostDeploymentResult, PhaseResult, PipelineStep, PushPlan, PushResults,
+    SkippedPhase,
+};
 
 use crate::error::Result;
 use crate::nix::HostMetadata;
@@ -76,39 +79,52 @@ pub fn push(push_ctx: &PushContext, hosts: Vec<HostMetadata>) -> Result<PushResu
     let by_phase = group_by_phase(hosts, push_ctx.config.ignore_phases);
     let phases = sorted_phases(&by_phase);
 
-    let mut all_results = Vec::new();
+    let mut executed_phases = Vec::new();
+    let mut skipped_phases = Vec::new();
 
     // Execute each phase sequentially
-    for phase in phases {
-        let phase_hosts = by_phase.get(&phase).unwrap();
+    for (idx, phase) in phases.iter().enumerate() {
+        let phase_hosts = by_phase.get(phase).unwrap();
 
         // Collect hostnames for phase lifecycle notification
         let hostnames: Vec<String> = phase_hosts.iter().map(|h| h.name.clone()).collect();
 
         // Notify observer of phase start
-        push_ctx.observer.on_phase_start(&phase, &hostnames)?;
+        push_ctx.observer.on_phase_start(phase, &hostnames)?;
 
         // Execute phase pipeline
-        let phase_result = execute_phase(push_ctx, &phase, phase_hosts);
+        let phase_result = execute_phase(push_ctx, phase, phase_hosts);
 
         // Notify observer of phase completion (always, even on failure)
         let phase_success = phase_result
             .as_ref()
-            .map(|results| results.iter().all(|(_, r)| r.success))
+            .map(|pr| pr.all_succeeded())
             .unwrap_or(false);
-        push_ctx.observer.on_phase_complete(&phase, phase_success)?;
+        push_ctx.observer.on_phase_complete(phase, phase_success)?;
 
         // Handle phase result
         match phase_result {
-            Ok(phase_results) => {
-                all_results.extend(phase_results);
+            Ok(phase_result) => {
+                // If this phase failed, stop deployment and mark remaining phases as skipped
+                if !phase_result.all_succeeded() {
+                    executed_phases.push(phase_result);
 
-                // If this phase failed, stop deployment
-                if !phase_success {
+                    // Mark all remaining phases as skipped
+                    for remaining_phase in &phases[idx + 1..] {
+                        let remaining_hosts = by_phase.get(remaining_phase).unwrap();
+                        skipped_phases.push(SkippedPhase {
+                            phase: remaining_phase.clone(),
+                            hostnames: remaining_hosts.iter().map(|h| h.name.clone()).collect(),
+                        });
+                    }
+
                     return Ok(PushResults {
-                        results: all_results,
+                        phases: executed_phases,
+                        skipped_phases,
                     });
                 }
+
+                executed_phases.push(phase_result);
             }
             Err(e) => {
                 // Phase failed with error - stop deployment
@@ -118,7 +134,8 @@ pub fn push(push_ctx: &PushContext, hosts: Vec<HostMetadata>) -> Result<PushResu
     }
 
     Ok(PushResults {
-        results: all_results,
+        phases: executed_phases,
+        skipped_phases,
     })
 }
 
@@ -129,9 +146,9 @@ pub fn push(push_ctx: &PushContext, hosts: Vec<HostMetadata>) -> Result<PushResu
 /// at different rates - one host can be activating while another is still building.
 fn execute_phase(
     push_ctx: &PushContext,
-    _phase: &str,
+    phase: &str,
     phase_hosts: &[HostMetadata],
-) -> Result<Vec<(String, crate::backends::deploy::DeployResult)>> {
+) -> Result<PhaseResult> {
     // Sort hosts lexicographically for consistent rendering order
     let mut sorted_hosts = phase_hosts.to_vec();
     sorted_hosts.sort_by(|a, b| a.name.cmp(&b.name));
@@ -157,36 +174,33 @@ fn execute_phase(
         })?;
 
     // Execute hosts in parallel - each host runs through all steps independently
-    let results: Vec<Result<crate::backends::deploy::DeployResult>> = pool.install(|| {
+    let results: Vec<Result<HostDeploymentResult>> = pool.install(|| {
         sorted_hosts
             .par_iter()
             .map(|host_metadata| execute_host_pipeline(Arc::clone(&push_ctx), host_metadata))
             .collect()
     });
 
-    // Collect successful results and handle errors, pairing with hostnames
-    let mut phase_results = Vec::new();
-    let mut first_error = None;
+    // Collect results - note that pipeline now returns Ok(HostDeploymentResult) even on failure
+    let mut host_results = Vec::new();
 
-    for (host_metadata, result) in sorted_hosts.iter().zip(results) {
+    for result in results {
         match result {
-            Ok(deploy_result) => {
-                phase_results.push((host_metadata.name.clone(), deploy_result));
+            Ok(host_result) => {
+                host_results.push(host_result);
             }
             Err(e) => {
-                if first_error.is_none() {
-                    first_error = Some(e);
-                }
+                // This should be rare now - pipeline converts most errors to HostDeploymentResult
+                // But we still need to handle catastrophic errors (e.g., observer errors)
+                return Err(e);
             }
         }
     }
 
-    // Return first error if any
-    if let Some(err) = first_error {
-        return Err(err);
-    }
-
-    Ok(phase_results)
+    Ok(PhaseResult {
+        phase: phase.to_string(),
+        hosts: host_results,
+    })
 }
 
 /// Group hosts by phase
