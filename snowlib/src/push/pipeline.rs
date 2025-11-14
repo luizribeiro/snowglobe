@@ -3,7 +3,7 @@
 //! This module handles the execution of the deployment pipeline for individual hosts.
 //! The pipeline consists of: Build → Copy → Plan → Activate → Reboot
 
-use crate::backends::deploy::DeployTarget;
+use crate::backends::deploy::{DeployResult, DeployTarget};
 use crate::error::Result;
 use crate::nix::{Flake, HostMetadata, StorePath};
 use crate::observer::PushObserver;
@@ -11,6 +11,7 @@ use std::sync::Arc;
 
 use super::context::PushContext;
 use super::planning::create_deployment_plans;
+use super::results::PushPlan;
 
 /// Intermediate data structure for passing build results through the pipeline
 #[derive(Debug, Clone)]
@@ -45,7 +46,7 @@ pub fn execute_host_pipeline(
     flake: Arc<&Flake>,
     push_ctx: Arc<&PushContext>,
     observer: Arc<&dyn PushObserver>,
-) -> Result<(String, crate::backends::deploy::DeployResult)> {
+) -> Result<(String, DeployResult)> {
     let hostname = &host_metadata.name;
 
     // Deref Arc to get the actual references
@@ -54,36 +55,73 @@ pub fn execute_host_pipeline(
     let observer_ref = observer.as_ref();
 
     // Step 1: Build
-    observer_ref.on_build_start(hostname)?;
-    let build_output =
-        match push_ctx_ref
-            .nix_backend
-            .build_host(flake_ref, hostname, push_ctx_ref.config.quiet)
-        {
-            Ok(store_path) => {
-                // Create deployment target
-                let target = DeployTarget {
-                    user: push_ctx_ref.config.ssh_user.clone(),
-                    hostname: host_metadata.fqdn.clone(),
-                    port: None,
-                };
-
-                BuildOutput {
-                    metadata: host_metadata.clone(),
-                    target,
-                    store_path,
-                }
-            }
-            Err(e) => {
-                observer_ref.on_build_complete(hostname, false)?;
-                return Err(e);
-            }
-        };
-    observer_ref.on_build_complete(hostname, true)?;
+    let build_output = execute_build_step(host_metadata, flake_ref, push_ctx_ref, *observer_ref)?;
 
     // Step 2: Copy
-    observer_ref.on_copy_start(hostname)?;
-    let copy_output = match push_ctx_ref
+    let copy_output = execute_copy_step(build_output, push_ctx_ref, *observer_ref)?;
+
+    // Step 3: Activate (includes planning + activation)
+    let (plan, activate_result) =
+        execute_activation_step(copy_output, push_ctx_ref, *observer_ref)?;
+
+    // Step 4: Reboot (if needed)
+    let final_result = execute_reboot_step(&plan, activate_result, push_ctx_ref, *observer_ref)?;
+
+    Ok((hostname.clone(), final_result))
+}
+
+/// Execute the build step for a single host
+///
+/// Builds the NixOS configuration and creates the deployment target.
+fn execute_build_step(
+    host_metadata: &HostMetadata,
+    flake: &Flake,
+    push_ctx: &PushContext,
+    observer: &dyn PushObserver,
+) -> Result<BuildOutput> {
+    let hostname = &host_metadata.name;
+
+    observer.on_build_start(hostname)?;
+    let build_output = match push_ctx
+        .nix_backend
+        .build_host(flake, hostname, push_ctx.config.quiet)
+    {
+        Ok(store_path) => {
+            // Create deployment target
+            let target = DeployTarget {
+                user: push_ctx.config.ssh_user.clone(),
+                hostname: host_metadata.fqdn.clone(),
+                port: None,
+            };
+
+            BuildOutput {
+                metadata: host_metadata.clone(),
+                target,
+                store_path,
+            }
+        }
+        Err(e) => {
+            observer.on_build_complete(hostname, false)?;
+            return Err(e);
+        }
+    };
+    observer.on_build_complete(hostname, true)?;
+
+    Ok(build_output)
+}
+
+/// Execute the copy step for a single host
+///
+/// Copies the built closure to the target host.
+fn execute_copy_step(
+    build_output: BuildOutput,
+    push_ctx: &PushContext,
+    observer: &dyn PushObserver,
+) -> Result<CopyOutput> {
+    let hostname = build_output.metadata.name.clone();
+
+    observer.on_copy_start(&hostname)?;
+    let copy_output = match push_ctx
         .deploy_backend
         .copy_closure(&build_output.target, &build_output.store_path)
     {
@@ -93,15 +131,27 @@ pub fn execute_host_pipeline(
             store_path: build_output.store_path,
         },
         Err(e) => {
-            observer_ref.on_copy_complete(hostname, false)?;
+            observer.on_copy_complete(&hostname, false)?;
             return Err(e);
         }
     };
-    observer_ref.on_copy_complete(hostname, true)?;
+    observer.on_copy_complete(&hostname, true)?;
 
-    // Step 3: Activate (includes planning + activation)
+    Ok(copy_output)
+}
+
+/// Execute the activation step for a single host
+///
+/// Includes deployment planning (with reboot detection) and activation.
+fn execute_activation_step(
+    copy_output: CopyOutput,
+    push_ctx: &PushContext,
+    observer: &dyn PushObserver,
+) -> Result<(PushPlan, DeployResult)> {
+    let hostname = &copy_output.metadata.name;
+
     // Start the activate observer span before planning so planning work is visible
-    observer_ref.on_activation_start(hostname)?;
+    observer.on_activation_start(hostname)?;
 
     // Planning: Determine activation strategy
     let (plans, blocked) = create_deployment_plans(
@@ -110,9 +160,9 @@ pub fn execute_host_pipeline(
             copy_output.target.clone(),
             copy_output.store_path.clone(),
         )],
-        push_ctx_ref.reboot_backend,
-        push_ctx_ref.config.mode,
-        push_ctx_ref.config.force,
+        push_ctx.reboot_backend,
+        push_ctx.config.mode,
+        push_ctx.config.force,
     )?;
 
     // Handle blocked hosts
@@ -134,7 +184,7 @@ pub fn execute_host_pipeline(
     })?;
 
     // Execute activation
-    let activate_result = push_ctx_ref
+    let activate_result = push_ctx
         .deploy_backend
         .deploy(&plan.target, &plan.store_path, plan.activation_mode)
         .unwrap_or_else(|e| {
@@ -145,9 +195,9 @@ pub fn execute_host_pipeline(
                 error_msg.push_str(&format!("\n  Caused by: {}", err));
                 source = std::error::Error::source(err);
             }
-            crate::backends::deploy::DeployResult::failure(error_msg)
+            DeployResult::failure(error_msg)
         });
-    observer_ref.on_activation_complete(hostname, &activate_result)?;
+    observer.on_activation_complete(hostname, &activate_result)?;
 
     if !activate_result.success {
         return Err(crate::error::SnowError::Deploy(
@@ -158,12 +208,24 @@ pub fn execute_host_pipeline(
         ));
     }
 
-    // Step 4: Reboot (if needed)
-    // Reboot if:
-    // 1. allow_reboot is true, AND
-    // 2. activation_mode is Boot, AND
-    // 3. Either no reboot check OR reboot is required
-    let should_reboot = push_ctx_ref.config.allow_reboot
+    Ok((plan, activate_result))
+}
+
+/// Execute the reboot step for a single host (if needed)
+///
+/// Reboots the host if:
+/// 1. allow_reboot is true, AND
+/// 2. activation_mode is Boot, AND
+/// 3. Either no reboot check OR reboot is required
+fn execute_reboot_step(
+    plan: &PushPlan,
+    activate_result: DeployResult,
+    push_ctx: &PushContext,
+    observer: &dyn PushObserver,
+) -> Result<DeployResult> {
+    let hostname = &plan.metadata.name;
+
+    let should_reboot = push_ctx.config.allow_reboot
         && plan.activation_mode == crate::backends::deploy::ActivationMode::Boot
         && (plan.reboot_check.is_none()
             || plan
@@ -173,24 +235,21 @@ pub fn execute_host_pipeline(
                 .unwrap_or(false));
 
     let final_result = if should_reboot {
-        observer_ref.on_reboot_start(hostname)?;
+        observer.on_reboot_start(hostname)?;
 
-        match push_ctx_ref.reboot_backend.reboot_and_wait(&plan.target) {
+        match push_ctx.reboot_backend.reboot_and_wait(&plan.target) {
             Ok(()) => {
-                observer_ref.on_reboot_complete(hostname, true)?;
+                observer.on_reboot_complete(hostname, true)?;
                 activate_result
             }
             Err(e) => {
-                observer_ref.on_reboot_complete(hostname, false)?;
-                crate::backends::deploy::DeployResult::failure(format!(
-                    "Deployment succeeded but reboot failed: {}",
-                    e
-                ))
+                observer.on_reboot_complete(hostname, false)?;
+                DeployResult::failure(format!("Deployment succeeded but reboot failed: {}", e))
             }
         }
     } else {
         activate_result
     };
 
-    Ok((hostname.clone(), final_result))
+    Ok(final_result)
 }
