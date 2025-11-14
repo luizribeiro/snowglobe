@@ -5,6 +5,7 @@
 
 use crate::error::{NixError, Result};
 use crate::nix::Flake;
+use crate::process::StreamingExecutor;
 use std::process::Command;
 
 /// Builder for constructing and executing Nix commands
@@ -77,35 +78,14 @@ impl NixCommand {
 
     /// Execute the command and return stdout on success
     pub(crate) fn run(mut self) -> Result<Vec<u8>> {
-        // Always capture output to avoid disrupting progress indicators
-        let output = self
-            .cmd
-            .current_dir(self.flake.flake_root())
-            .output()
+        let result = StreamingExecutor::new(&mut self.cmd)
+            .working_dir(self.flake.flake_root())
+            .quiet(self.quiet)
+            .execute()
             .map_err(|e| NixError::CommandFailed { source: e })?;
 
-        // In verbose mode, log the output through tracing
-        if !self.quiet {
-            let stdout_str = String::from_utf8_lossy(&output.stdout);
-            let stderr_str = String::from_utf8_lossy(&output.stderr);
-
-            // Log stdout line by line at debug level
-            for line in stdout_str.lines() {
-                if !line.is_empty() {
-                    tracing::debug!(target: "nix_command", "{}", line);
-                }
-            }
-
-            // Log stderr line by line at debug level
-            for line in stderr_str.lines() {
-                if !line.is_empty() {
-                    tracing::debug!(target: "nix_command", "stderr: {}", line);
-                }
-            }
-        }
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        if !result.status.success() {
+            let stderr = String::from_utf8_lossy(&result.stderr).to_string();
             return Err(NixError::EvalFailed {
                 stderr,
                 source: std::io::Error::other("nix command exited with non-zero status"),
@@ -113,6 +93,6 @@ impl NixCommand {
             .into());
         }
 
-        Ok(output.stdout)
+        Ok(result.stdout)
     }
 }

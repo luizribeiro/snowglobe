@@ -11,6 +11,7 @@ pub mod backends;
 pub mod error;
 pub mod nix;
 pub mod observer;
+pub mod process;
 pub mod push;
 
 pub use backends::deploy::{

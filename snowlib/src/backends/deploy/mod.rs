@@ -4,6 +4,7 @@ pub use target::DeployTarget;
 
 use crate::error::{DeployError, Result};
 use crate::nix::StorePath;
+use crate::process::StreamingExecutor;
 use std::process::Command;
 
 /// Activation mode for NixOS configuration
@@ -135,32 +136,16 @@ impl DeployBackend for SshDeployBackend {
         // Configure SSH to disable interactive prompts for nix copy
         cmd.env("NIX_SSHOPTS", "-o BatchMode=yes");
 
-        // Always capture output to get detailed error messages
-        let output = cmd.output().map_err(|e| DeployError::Failed {
-            host: target.hostname.clone(),
-            source: e,
-        })?;
+        let result = StreamingExecutor::new(&mut cmd)
+            .quiet(self.quiet)
+            .execute()
+            .map_err(|e| DeployError::Failed {
+                host: target.hostname.clone(),
+                source: e,
+            })?;
 
-        // In verbose mode, log output through tracing
-        if !self.quiet {
-            let stdout_str = String::from_utf8_lossy(&output.stdout);
-            let stderr_str = String::from_utf8_lossy(&output.stderr);
-
-            for line in stdout_str.lines() {
-                if !line.is_empty() {
-                    tracing::debug!(target: "deploy", "{}", line);
-                }
-            }
-
-            for line in stderr_str.lines() {
-                if !line.is_empty() {
-                    tracing::debug!(target: "deploy", "stderr: {}", line);
-                }
-            }
-        }
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        if !result.status.success() {
+            let stderr = String::from_utf8_lossy(&result.stderr).trim().to_string();
             let error_msg = if stderr.is_empty() {
                 "nix copy failed".to_string()
             } else {
@@ -201,32 +186,16 @@ impl DeployBackend for SshDeployBackend {
 
         let mut cmd = self.ssh_command(target, &["sudo", &switch_to_configuration, mode_arg]);
 
-        // Always capture output to get detailed error messages
-        let output = cmd.output().map_err(|e| DeployError::SshFailed {
-            destination: self.get_destination(target),
-            source: e,
-        })?;
+        let result = StreamingExecutor::new(&mut cmd)
+            .quiet(self.quiet)
+            .execute()
+            .map_err(|e| DeployError::SshFailed {
+                destination: self.get_destination(target),
+                source: e,
+            })?;
 
-        // In verbose mode, log output through tracing
-        if !self.quiet {
-            let stdout_str = String::from_utf8_lossy(&output.stdout);
-            let stderr_str = String::from_utf8_lossy(&output.stderr);
-
-            for line in stdout_str.lines() {
-                if !line.is_empty() {
-                    tracing::debug!(target: "deploy", "{}", line);
-                }
-            }
-
-            for line in stderr_str.lines() {
-                if !line.is_empty() {
-                    tracing::debug!(target: "deploy", "stderr: {}", line);
-                }
-            }
-        }
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        if !result.status.success() {
+            let stderr = String::from_utf8_lossy(&result.stderr).trim().to_string();
             let error_msg = if stderr.is_empty() {
                 "Activation failed".to_string()
             } else {
