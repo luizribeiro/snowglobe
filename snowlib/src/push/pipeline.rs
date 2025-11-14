@@ -46,9 +46,7 @@ pub fn execute_host_pipeline(
     flake: Arc<&Flake>,
     push_ctx: Arc<&PushContext>,
     observer: Arc<&dyn PushObserver>,
-) -> Result<(String, DeployResult)> {
-    let hostname = &host_metadata.name;
-
+) -> Result<DeployResult> {
     // Deref Arc to get the actual references
     let flake_ref = flake.as_ref();
     let push_ctx_ref = push_ctx.as_ref();
@@ -67,7 +65,7 @@ pub fn execute_host_pipeline(
     // Step 4: Reboot (if needed)
     let final_result = execute_reboot_step(&plan, activate_result, push_ctx_ref, *observer_ref)?;
 
-    Ok((hostname.clone(), final_result))
+    Ok(final_result)
 }
 
 /// Execute the build step for a single host

@@ -174,29 +174,28 @@ fn execute_phase(
         })?;
 
     // Execute hosts in parallel - each host runs through all steps independently
-    let results: Vec<Result<(String, crate::backends::deploy::DeployResult)>> =
-        pool.install(|| {
-            sorted_hosts
-                .par_iter()
-                .map(|host_metadata| {
-                    execute_host_pipeline(
-                        host_metadata,
-                        Arc::clone(&flake),
-                        Arc::clone(&push_ctx),
-                        Arc::clone(&observer),
-                    )
-                })
-                .collect()
-        });
+    let results: Vec<Result<crate::backends::deploy::DeployResult>> = pool.install(|| {
+        sorted_hosts
+            .par_iter()
+            .map(|host_metadata| {
+                execute_host_pipeline(
+                    host_metadata,
+                    Arc::clone(&flake),
+                    Arc::clone(&push_ctx),
+                    Arc::clone(&observer),
+                )
+            })
+            .collect()
+    });
 
-    // Collect successful results and handle errors
+    // Collect successful results and handle errors, pairing with hostnames
     let mut phase_results = Vec::new();
     let mut first_error = None;
 
-    for result in results {
+    for (host_metadata, result) in sorted_hosts.iter().zip(results) {
         match result {
-            Ok((hostname, deploy_result)) => {
-                phase_results.push((hostname, deploy_result));
+            Ok(deploy_result) => {
+                phase_results.push((host_metadata.name.clone(), deploy_result));
             }
             Err(e) => {
                 if first_error.is_none() {
