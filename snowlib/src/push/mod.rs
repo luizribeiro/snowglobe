@@ -98,21 +98,17 @@ fn skip_remaining_phases(
 /// # }
 /// ```
 pub fn push(push_ctx: &PushContext, hosts: Vec<HostMetadata>) -> Result<PushResults> {
-    // Group hosts by phase
     let by_phase = group_by_phase(hosts, push_ctx.config.ignore_phases);
     let phases = sorted_phases(&by_phase);
 
     let mut executed_phases = Vec::new();
     let mut skipped_phases = Vec::new();
 
-    // Execute each phase sequentially
     for (idx, phase) in phases.iter().enumerate() {
         let phase_hosts = by_phase.get(phase).unwrap();
 
-        // Collect hostnames for phase lifecycle notification
         let hostnames: Vec<String> = phase_hosts.iter().map(|h| h.name.clone()).collect();
 
-        // Notify observer of phase start
         push_ctx.observer.on_phase_start(phase, &hostnames);
 
         // Execute phase and notify observer (even on failure)
@@ -203,7 +199,6 @@ fn execute_phase(
     })
 }
 
-/// Group hosts by phase
 fn group_by_phase(
     hosts: Vec<HostMetadata>,
     ignore_phases: bool,
@@ -222,7 +217,6 @@ fn group_by_phase(
     by_phase
 }
 
-/// Get sorted list of phases
 fn sorted_phases(by_phase: &HashMap<String, Vec<HostMetadata>>) -> Vec<String> {
     let mut phases: Vec<String> = by_phase.keys().cloned().collect();
     phases.sort();

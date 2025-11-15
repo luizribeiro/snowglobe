@@ -40,7 +40,6 @@ fn main() -> Result<()> {
 
     let cli = Cli::parse();
 
-    // Create flake context
     let flake = snowlib::Flake::new(cli.flake_path.as_deref()).into_diagnostic()?;
 
     cli.command.run(&flake).into_diagnostic()

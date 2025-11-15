@@ -119,13 +119,11 @@ impl NixBackend for MockNixBackend {
         }
 
         if let Some(build_fix) = self.get_build_fixture(host) {
-            // Simulate build timing (only in release builds for production CLI)
             print!("Building {}... ", host);
             if !cfg!(debug_assertions) {
                 thread::sleep(Duration::from_millis(build_fix.duration_ms));
             }
 
-            // Print output
             if !build_fix.stdout.is_empty() {
                 print!("{}", build_fix.stdout);
             }
@@ -276,15 +274,12 @@ impl MockDeployBackend {
 
 impl DeployBackend for MockDeployBackend {
     fn copy_closure(&self, target: &DeployTarget, _store_path: &StorePath) -> Result<()> {
-        // Realistic delay (only in release builds for production CLI)
         if !cfg!(debug_assertions) {
             thread::sleep(Duration::from_millis(1000));
         }
 
-        // Generate realistic output
         print!("{}", self.generate_copy_closure_output(&target.hostname));
 
-        // Check if this host should fail at copy_closure
         let (should_fail, error_msg) = self.should_fail_at(&target.hostname, "copy_closure");
 
         if should_fail {
@@ -307,7 +302,6 @@ impl DeployBackend for MockDeployBackend {
             .into());
         }
 
-        // Check copy_failures list
         if self.copy_failures.contains(&target.hostname) {
             return Err(crate::error::DeployError::Failed {
                 host: target.hostname.clone(),
@@ -325,15 +319,12 @@ impl DeployBackend for MockDeployBackend {
         _store_path: &StorePath,
         _mode: ActivationMode,
     ) -> Result<()> {
-        // Check if this host should fail at activate
         let (should_fail, error_msg) = self.should_fail_at(&target.hostname, "activate");
 
-        // Realistic delay (only in release builds for production CLI)
         if !cfg!(debug_assertions) {
             thread::sleep(Duration::from_millis(500));
         }
 
-        // Generate realistic output
         print!("{}", self.generate_activate_output(!should_fail));
 
         if should_fail {
@@ -359,7 +350,6 @@ impl DeployBackend for MockDeployBackend {
             .into());
         }
 
-        // Check activate_failures list
         if self.activate_failures.contains(&target.hostname) {
             return Err(crate::error::DeployError::Failed {
                 host: target.hostname.clone(),
@@ -441,7 +431,6 @@ impl RebootBackend for MockRebootBackend {
     }
 
     fn reboot_and_wait(&self, target: &DeployTarget) -> Result<()> {
-        // Simulate reboot delay
         if !cfg!(debug_assertions) {
             thread::sleep(Duration::from_millis(100));
         }

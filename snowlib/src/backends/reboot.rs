@@ -412,7 +412,6 @@ impl RebootBackend for SystemRebootBackend {
     }
 }
 
-/// Escape a string for safe use in shell commands
 fn shell_escape(s: &str) -> String {
     // Use single quotes and escape any single quotes in the string
     format!("'{}'", s.replace('\'', r"'\''"))

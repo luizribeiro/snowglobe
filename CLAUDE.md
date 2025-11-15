@@ -223,6 +223,29 @@ The project emerged from real homelab pain points and embodies these principles:
 4. **Progressive Enhancement** - Phase 1 (push) → Phase 2 (agents) → Phase 3 (VMs)
 5. **Smart Defaults** - `snow push` should "do the right thing" automatically
 
+### Comments
+
+Use comments sparingly and focus on explaining **WHY**, not **WHAT**.
+
+**Good comments (keep these):**
+- Explain architectural decisions (e.g., "Uses Arc<&T> pattern which clippy warns about, but necessary for Rayon")
+- Document non-obvious behavior (e.g., "Returns Ok even on non-zero exit - only Err on IO errors")
+- Explain workarounds and edge cases (e.g., "File may not exist on first boot - discovered in homelab testing")
+- Clarify business rules (e.g., "Reboot policies override CLI flags for safety")
+- Provide context that isn't visible in the code (e.g., "Wait 5 seconds to avoid race condition with SSH reconnection")
+
+**Bad comments (remove these):**
+- Restate what the code does (e.g., `// Create a vector` above `Vec::new()`)
+- Describe obvious function names (e.g., `/// Add --json flag` above `fn json()`)
+- Repeat struct field types (e.g., `/// The hostname` above `hostname: String`)
+- Mark obvious steps (e.g., `// Step 1: Build` before calling `build()`)
+- Explain trivial getters (e.g., `/// Get the flake root` above `fn flake_root(&self)`)
+
+**When in doubt:**
+- If the function/variable name clearly communicates the WHAT, skip the comment
+- If you find yourself rephrasing the code, the comment is probably redundant
+- Ask: "Does this comment explain WHY this code exists or WHY it works this way?"
+
 ### Error Handling
 
 - Use `miette` for user-facing errors with context and suggestions

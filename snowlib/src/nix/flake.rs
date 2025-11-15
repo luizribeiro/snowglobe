@@ -28,12 +28,10 @@ impl Flake {
         Ok(Self { flake_root })
     }
 
-    /// Get the flake root directory
     pub fn flake_root(&self) -> &Path {
         &self.flake_root
     }
 
-    /// Create a test context using the fixture directory
     #[cfg(test)]
     pub fn test_context() -> Self {
         let fixture_path =
@@ -59,7 +57,6 @@ fn validate_flake_path(path: &str) -> Result<PathBuf> {
         return Err(FlakeError::PathNotFound { path: path_buf }.into());
     }
 
-    // If path points to flake.nix file, use its parent directory
     let flake_dir =
         if path_buf.is_file() && path_buf.file_name() == Some(std::ffi::OsStr::new("flake.nix")) {
             path_buf
@@ -69,7 +66,6 @@ fn validate_flake_path(path: &str) -> Result<PathBuf> {
                 })?
                 .to_path_buf()
         } else if path_buf.is_dir() {
-            // If it's a directory, verify flake.nix exists in it
             let flake_file = path_buf.join("flake.nix");
             if !flake_file.exists() {
                 return Err(FlakeError::MissingInDir { path: path_buf }.into());
@@ -82,15 +78,12 @@ fn validate_flake_path(path: &str) -> Result<PathBuf> {
     Ok(flake_dir)
 }
 
-/// Find the flake root by searching up from the current directory
-/// Returns the path to the directory containing flake.nix
 fn find_flake_root() -> Result<PathBuf> {
     let current_dir = env::current_dir().map_err(|e| IoError::CurrentDir { source: e })?;
 
     find_flake_root_from(&current_dir)
 }
 
-/// Find the flake root by searching up from a given directory
 fn find_flake_root_from(start: &Path) -> Result<PathBuf> {
     let mut current = start;
 

@@ -116,10 +116,8 @@ impl PushArgs {
         let all_hosts = nix_backend.list_hosts(flake, None)?;
 
         if self.hosts.is_empty() {
-            // No hosts specified, push all hosts
             Ok(all_hosts.iter().map(|h| h.name.clone()).collect())
         } else {
-            // Validate that all provided hosts exist in the flake
             let valid_hosts: std::collections::HashSet<String> =
                 all_hosts.iter().map(|h| h.name.clone()).collect();
 
@@ -151,7 +149,6 @@ impl PushArgs {
     /// - Call snowlib::push()
     /// - Print results table
     pub fn run(self, flake: &Flake) -> Result<()> {
-        // Validate flag combinations
         self.validate()?;
 
         // When using --mock-fixture, use the mock flake instead of the real one
@@ -168,7 +165,6 @@ impl PushArgs {
             flake
         };
 
-        // Create backend implementations
         let nix_backend = crate::backend_factory::create_nix_backend(
             #[cfg(debug_assertions)]
             &self.mock_fixture,
@@ -181,7 +177,6 @@ impl PushArgs {
         let reboot_backend = crate::backend_factory::create_reboot_backend(self.user.as_deref())?;
         let observer = observer::CliObserver::new();
 
-        // Resolve hosts and get metadata
         let hostnames = self.resolve_hosts(flake, nix_backend.as_ref())?;
         let mut hosts = Vec::new();
         for name in hostnames {
@@ -189,7 +184,6 @@ impl PushArgs {
             hosts.push(metadata);
         }
 
-        // Create push configuration
         let config = snowlib::PushConfiguration {
             strategy: self.push_strategy(),
             force: self.force,
@@ -200,7 +194,6 @@ impl PushArgs {
             allow_reboot: !self.no_reboot, // Invert: no_reboot=true means allow_reboot=false
         };
 
-        // Create push context with backends and configuration
         let push_ctx = snowlib::PushContext::new(
             flake,
             nix_backend.as_ref(),
@@ -213,10 +206,8 @@ impl PushArgs {
         // Execute the push - snowlib handles everything!
         let results = snowlib::push(&push_ctx, hosts)?;
 
-        // Print summary of results
         results.print_summary();
 
-        // Return error if any deployments failed
         if !results.all_succeeded() {
             return Err(snowlib::error::DeployError::Failed {
                 host: "multiple".to_string(),
