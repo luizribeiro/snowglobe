@@ -123,7 +123,7 @@ impl Default for RebootDetectionConfig {
                 .collect(),
             check_kernel: true,
             check_initrd: true,
-            check_init: true,
+            check_init: false,
         }
     }
 }
@@ -545,7 +545,7 @@ mod tests {
         let config = RebootDetectionConfig::default();
         assert!(config.check_kernel);
         assert!(config.check_initrd);
-        assert!(config.check_init);
+        assert!(!config.check_init);
         assert!(!config.critical_services.is_empty());
         assert!(config
             .critical_services

@@ -313,7 +313,7 @@ mod tests {
         let backend = LocalRebootBackend::default();
         assert!(backend.config.check_kernel);
         assert!(backend.config.check_initrd);
-        assert!(backend.config.check_init);
+        assert!(!backend.config.check_init);
         assert!(!backend.config.critical_services.is_empty());
     }
 
