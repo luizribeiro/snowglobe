@@ -72,7 +72,7 @@ impl RebuildArgs {
         }
     }
 
-    /// Determine the activation mode from flags
+    /// Determine activation mode from flags
     fn activation_mode(&self) -> ActivationMode {
         if self.dry_run {
             ActivationMode::DryActivate
@@ -99,10 +99,10 @@ impl RebuildArgs {
         println!("\n⚠️  Reboot required: {}", reason);
 
         let options = vec![
-            "Reboot now (boot + reboot)",
-            "Reboot later (boot only)",
-            "Switch without rebooting (risky)",
-            "Cancel (don't activate)",
+            "Activate and reboot now",
+            "Set for next boot only",
+            "Activate immediately (skip reboot, risky)",
+            "Cancel",
         ];
 
         let selection = Select::with_theme(&ColorfulTheme::default())
@@ -128,16 +128,16 @@ impl RebuildArgs {
         self.validate()?;
 
         let hostname = self.resolve_hostname()?;
-        println!("🔨 Rebuilding configuration for {}", hostname);
+        println!("Rebuilding configuration for {}", hostname);
 
         let nix_backend = crate::backend_factory::create_nix_backend(
             #[cfg(debug_assertions)]
             &self.mock_fixture,
         )?;
 
-        println!("📦 Building configuration...");
+        println!("Building configuration...");
         let store_path = nix_backend.build_host(flake, &hostname, self.quiet)?;
-        println!("✅ Built: {}", store_path.as_str());
+        println!("Built {}", store_path.as_str());
 
         let target = DeployTarget {
             user: None,
@@ -148,68 +148,69 @@ impl RebuildArgs {
         let deploy_backend = LocalDeployBackend::new().with_quiet(self.quiet);
         let reboot_backend = LocalRebootBackend::default();
 
-        // Determine activation mode
-        let mut mode = self.activation_mode();
+        let mode = self.activation_mode();
 
-        // Check if reboot is required (unless in dry-run or test mode)
-        if mode == ActivationMode::Switch && !self.dry_run && !self.test {
-            println!("🔍 Checking if reboot is required...");
-            let reboot_check = reboot_backend.check_reboot_required(&target, &store_path)?;
-
-            if reboot_check.required {
-                let reason = reboot_check
-                    .reason
-                    .map(|r| r.to_string())
-                    .unwrap_or_else(|| "unknown".to_string());
-
-                let action = self.prompt_reboot_action(&reason)?;
-
-                match action {
-                    RebootAction::BootAndReboot => {
-                        mode = ActivationMode::Boot;
-                        println!("\n🚀 Activating in boot mode...");
-                        deploy_backend.activate(&target, &store_path, mode)?;
-                        println!("✅ Configuration activated for next boot");
-                        println!("🔄 Rebooting...");
-                        reboot_backend.reboot_and_wait(&target)?;
-                    }
-                    RebootAction::BootOnly => {
-                        mode = ActivationMode::Boot;
-                        println!("\n🚀 Activating in boot mode...");
-                        deploy_backend.activate(&target, &store_path, mode)?;
-                        println!("✅ Configuration will apply on next boot");
-                        println!("💡 Remember to reboot when convenient");
-                        return Ok(());
-                    }
-                    RebootAction::SwitchRisky => {
-                        println!("\n⚠️  Switching without reboot (risky)...");
-                        deploy_backend.activate(&target, &store_path, mode)?;
-                        println!("✅ Configuration activated (but may be unstable)");
-                        return Ok(());
-                    }
-                    RebootAction::Cancel => {
-                        println!("\n❌ Rebuild cancelled");
-                        return Err(snowlib::error::DeployError::Failed {
-                            host: hostname,
-                            source: std::io::Error::other("Cancelled by user"),
-                        }
-                        .into());
-                    }
-                }
-            } else {
-                println!("✅ No reboot required");
-                println!("🚀 Activating configuration...");
-                deploy_backend.activate(&target, &store_path, mode)?;
-                println!("✅ Configuration activated successfully");
-            }
-        } else {
-            println!("🚀 Activating configuration...");
+        // Handle non-switch modes early (dry-run, test, boot)
+        if mode != ActivationMode::Switch {
+            println!("Activating configuration...");
             deploy_backend.activate(&target, &store_path, mode)?;
             match mode {
                 ActivationMode::DryActivate => println!("✅ Dry run complete"),
                 ActivationMode::Test => println!("✅ Test activation complete"),
                 ActivationMode::Boot => println!("✅ Configuration will apply on next boot"),
-                ActivationMode::Switch => println!("✅ Configuration activated successfully"),
+                ActivationMode::Switch => unreachable!(),
+            }
+            return Ok(());
+        }
+
+        // For switch mode, check if reboot is required
+        println!("Checking if reboot is required...");
+        let reboot_check = reboot_backend.check_reboot_required(&target, &store_path)?;
+
+        // If no reboot needed, activate immediately and exit
+        if !reboot_check.required {
+            println!("✅ No reboot required");
+            println!("Activating configuration...");
+            deploy_backend.activate(&target, &store_path, mode)?;
+            println!("✅ Configuration activated successfully");
+            return Ok(());
+        }
+
+        // Reboot is required
+        let reason = reboot_check
+            .reason
+            .map(|r| r.to_string())
+            .unwrap_or_else(|| "unknown".to_string());
+
+        // Prompt user for action when reboot is required
+        let action = self.prompt_reboot_action(&reason)?;
+
+        match action {
+            RebootAction::BootAndReboot => {
+                println!("\nActivating in boot mode...");
+                deploy_backend.activate(&target, &store_path, ActivationMode::Boot)?;
+                println!("✅ Configuration activated for next boot");
+                println!("Rebooting...");
+                reboot_backend.reboot_and_wait(&target)?;
+            }
+            RebootAction::BootOnly => {
+                println!("\nActivating in boot mode...");
+                deploy_backend.activate(&target, &store_path, ActivationMode::Boot)?;
+                println!("✅ Configuration will apply on next boot");
+                println!("Remember to reboot when convenient");
+            }
+            RebootAction::SwitchRisky => {
+                println!("\n⚠️  Switching without reboot (risky)");
+                deploy_backend.activate(&target, &store_path, mode)?;
+                println!("Configuration activated (may be unstable)");
+            }
+            RebootAction::Cancel => {
+                println!("\n❌ Rebuild cancelled");
+                return Err(snowlib::error::DeployError::Failed {
+                    host: hostname,
+                    source: std::io::Error::other("Cancelled by user"),
+                }
+                .into());
             }
         }
 
