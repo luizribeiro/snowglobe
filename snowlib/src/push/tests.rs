@@ -677,7 +677,7 @@ fn test_push_with_multiple_phases() {
         force: false,
         concurrency: 2,
         ignore_phases: false,
-        quiet: false,
+        output_mode: crate::process::OutputMode::Capture,
         ssh_user: None,
         allow_reboot: true,
     };
@@ -744,7 +744,7 @@ fn test_push_stops_on_phase_failure() {
         force: false,
         concurrency: 2,
         ignore_phases: false,
-        quiet: false,
+        output_mode: crate::process::OutputMode::Capture,
         ssh_user: None,
         allow_reboot: true,
     };
@@ -950,7 +950,7 @@ fn test_push_error_message_includes_source() {
         force: false,
         concurrency: 1,
         ignore_phases: false,
-        quiet: false,
+        output_mode: crate::process::OutputMode::Capture,
         ssh_user: None,
         allow_reboot: true,
     };
@@ -1044,7 +1044,7 @@ fn test_push_error_message_format_with_activation_failure() {
         force: false,
         concurrency: 1,
         ignore_phases: false,
-        quiet: false,
+        output_mode: crate::process::OutputMode::Capture,
         ssh_user: None,
         allow_reboot: true,
     };
@@ -1127,7 +1127,7 @@ fn test_push_full_workflow_single_phase_success() {
         force: false,
         concurrency: 2,
         ignore_phases: false,
-        quiet: false,
+        output_mode: crate::process::OutputMode::Capture,
         ssh_user: None,
         allow_reboot: true,
     };
@@ -1204,7 +1204,7 @@ fn test_push_full_workflow_multi_phase_success() {
         force: false,
         concurrency: 2,
         ignore_phases: false,
-        quiet: false,
+        output_mode: crate::process::OutputMode::Capture,
         ssh_user: None,
         allow_reboot: true,
     };
@@ -1266,7 +1266,7 @@ fn test_push_build_failure_stops_deployment() {
         force: false,
         concurrency: 1,
         ignore_phases: false,
-        quiet: false,
+        output_mode: crate::process::OutputMode::Capture,
         ssh_user: None,
         allow_reboot: true,
     };
@@ -1327,7 +1327,7 @@ fn test_push_copy_failure_stops_deployment() {
         force: false,
         concurrency: 1,
         ignore_phases: false,
-        quiet: false,
+        output_mode: crate::process::OutputMode::Capture,
         ssh_user: None,
         allow_reboot: true,
     };
@@ -1399,7 +1399,7 @@ fn test_push_copy_observer_hooks_called() {
         force: false,
         concurrency: 2,
         ignore_phases: false,
-        quiet: false,
+        output_mode: crate::process::OutputMode::Capture,
         ssh_user: None,
         allow_reboot: true,
     };
@@ -1467,7 +1467,7 @@ fn test_push_build_observer_hooks_called() {
         force: false,
         concurrency: 2,
         ignore_phases: false,
-        quiet: false,
+        output_mode: crate::process::OutputMode::Capture,
         ssh_user: None,
         allow_reboot: true,
     };
@@ -1541,7 +1541,7 @@ fn test_push_build_partial_failure() {
         force: false,
         concurrency: 2,
         ignore_phases: false,
-        quiet: false,
+        output_mode: crate::process::OutputMode::Capture,
         ssh_user: None,
         allow_reboot: true,
     };
@@ -1616,7 +1616,7 @@ fn test_push_ignore_phases_flag() {
         force: false,
         concurrency: 2,
         ignore_phases: true, // Ignore phase ordering
-        quiet: false,
+        output_mode: crate::process::OutputMode::Capture,
         ssh_user: None,
         allow_reboot: true,
     };
@@ -1678,7 +1678,7 @@ fn test_push_phase_failure_stops_next_phase() {
         force: false,
         concurrency: 1,
         ignore_phases: false,
-        quiet: false,
+        output_mode: crate::process::OutputMode::Capture,
         ssh_user: None,
         allow_reboot: true,
     };
@@ -1752,7 +1752,7 @@ fn test_push_reboot_execution_success() {
         force: false,
         concurrency: 1,
         ignore_phases: false,
-        quiet: false,
+        output_mode: crate::process::OutputMode::Capture,
         ssh_user: None,
         allow_reboot: true,
     };
@@ -1841,7 +1841,7 @@ fn test_push_reboot_execution_failure() {
         force: false,
         concurrency: 1,
         ignore_phases: false,
-        quiet: false,
+        output_mode: crate::process::OutputMode::Capture,
         ssh_user: None,
         allow_reboot: true,
     };
@@ -1917,7 +1917,7 @@ fn test_push_no_reboot_when_not_required() {
         force: false,
         concurrency: 1,
         ignore_phases: false,
-        quiet: false,
+        output_mode: crate::process::OutputMode::Capture,
         ssh_user: None,
         allow_reboot: true,
     };
@@ -1989,7 +1989,7 @@ fn test_push_reboot_with_boot_mode() {
         force: false,
         concurrency: 1,
         ignore_phases: false,
-        quiet: false,
+        output_mode: crate::process::OutputMode::Capture,
         ssh_user: None,
         allow_reboot: true,
     };
@@ -2043,7 +2043,7 @@ fn test_push_reboot_policy_always() {
         force: false,
         concurrency: 1,
         ignore_phases: false,
-        quiet: false,
+        output_mode: crate::process::OutputMode::Capture,
         ssh_user: None,
         allow_reboot: true,
     };
@@ -2109,7 +2109,7 @@ fn test_push_reboot_policy_never() {
         force: false,
         concurrency: 1,
         ignore_phases: false,
-        quiet: false,
+        output_mode: crate::process::OutputMode::Capture,
         ssh_user: None,
         allow_reboot: true,
     };
@@ -2166,7 +2166,7 @@ fn test_push_no_reboot_flag_overrides_always_policy() {
         force: false,
         concurrency: 1,
         ignore_phases: false,
-        quiet: false,
+        output_mode: crate::process::OutputMode::Capture,
         ssh_user: None,
         allow_reboot: false, // User says --no-reboot
     };
@@ -2232,7 +2232,7 @@ fn test_push_no_reboot_flag_with_detected_reboot() {
         force: false,
         concurrency: 1,
         ignore_phases: false,
-        quiet: false,
+        output_mode: crate::process::OutputMode::Capture,
         ssh_user: None,
         allow_reboot: false, // User says --no-reboot
     };

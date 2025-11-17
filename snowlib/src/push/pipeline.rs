@@ -107,7 +107,7 @@ fn execute_build_step(push_ctx: &PushContext, host_metadata: &HostMetadata) -> R
     let build_output =
         match push_ctx
             .nix_backend
-            .build_host(push_ctx.flake, hostname, push_ctx.config.quiet)
+            .build_host(push_ctx.flake, hostname, push_ctx.config.output_mode)
         {
             Ok(store_path) => {
                 // Create deployment target

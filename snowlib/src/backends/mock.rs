@@ -107,7 +107,12 @@ impl NixBackend for MockNixBackend {
         }
     }
 
-    fn build_host(&self, _flake: &Flake, host: &str, _quiet: bool) -> Result<StorePath> {
+    fn build_host(
+        &self,
+        _flake: &Flake,
+        host: &str,
+        _output_mode: crate::process::OutputMode,
+    ) -> Result<StorePath> {
         // Check if this host should fail
         if self.build_failures.contains(&host.to_string()) {
             return Err(crate::error::NixError::BuildFailed {

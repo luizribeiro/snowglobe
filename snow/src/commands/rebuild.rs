@@ -135,8 +135,14 @@ impl RebuildArgs {
             &self.mock_fixture,
         )?;
 
+        let output_mode = if self.quiet {
+            snowlib::OutputMode::Capture
+        } else {
+            snowlib::OutputMode::Inherit
+        };
+
         println!("Building configuration...");
-        let store_path = nix_backend.build_host(flake, &hostname, self.quiet)?;
+        let store_path = nix_backend.build_host(flake, &hostname, output_mode)?;
         println!("Built {}", store_path.as_str());
 
         let target = DeployTarget {
@@ -145,7 +151,7 @@ impl RebuildArgs {
             port: None,
         };
 
-        let deploy_backend = LocalDeployBackend::new().with_quiet(self.quiet);
+        let deploy_backend = LocalDeployBackend::new().with_output_mode(output_mode);
         let reboot_backend = LocalRebootBackend::default();
 
         let mode = self.activation_mode();

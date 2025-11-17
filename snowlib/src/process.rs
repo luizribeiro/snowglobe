@@ -10,6 +10,23 @@ use std::process::{Command, ExitStatus, Stdio};
 use std::sync::{Arc, Mutex};
 use std::thread;
 
+/// Controls how command output is handled during execution
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OutputMode {
+    /// Capture output but don't display it
+    Capture,
+    /// Display output via tracing at info level
+    Display,
+    /// Direct passthrough to terminal (inherit stdio)
+    Inherit,
+}
+
+impl Default for OutputMode {
+    fn default() -> Self {
+        Self::Capture
+    }
+}
+
 /// Result of executing a command
 #[derive(Debug)]
 pub struct CommandResult {
@@ -31,13 +48,13 @@ pub struct CommandResult {
 ///
 /// ```no_run
 /// use std::process::Command;
-/// use snowlib::process::StreamingExecutor;
+/// use snowlib::process::{StreamingExecutor, OutputMode};
 ///
 /// let mut cmd = Command::new("nix");
 /// cmd.args(["build", ".#something"]);
 ///
 /// let result = StreamingExecutor::new(&mut cmd)
-///     .quiet(false)
+///     .output_mode(OutputMode::Display)
 ///     .execute()?;
 ///
 /// if !result.status.success() {
@@ -47,7 +64,7 @@ pub struct CommandResult {
 /// ```
 pub struct StreamingExecutor<'a> {
     command: &'a mut Command,
-    quiet: bool,
+    output_mode: OutputMode,
     working_dir: Option<&'a Path>,
 }
 
@@ -56,15 +73,19 @@ impl<'a> StreamingExecutor<'a> {
     pub fn new(command: &'a mut Command) -> Self {
         Self {
             command,
-            quiet: true,
+            output_mode: OutputMode::default(),
             working_dir: None,
         }
     }
 
-    /// Set whether to suppress tracing output (default: true)
-    pub fn quiet(mut self, quiet: bool) -> Self {
-        self.quiet = quiet;
+    /// Set the output mode for command execution
+    pub fn output_mode(mut self, mode: OutputMode) -> Self {
+        self.output_mode = mode;
         self
+    }
+
+    pub fn quiet(self) -> Self {
+        self.output_mode(OutputMode::Capture)
     }
 
     /// Set the working directory for command execution
@@ -75,8 +96,10 @@ impl<'a> StreamingExecutor<'a> {
 
     /// Execute the command with streaming output
     ///
-    /// Spawns the command and streams stdout/stderr line-by-line to tracing
-    /// (if not in quiet mode) while also capturing all output for the result.
+    /// Behavior depends on the configured OutputMode:
+    /// - Inherit: Direct passthrough to terminal (no capture)
+    /// - Capture: Capture output but don't display
+    /// - Display: Capture and stream to tracing at info level
     ///
     /// Returns `Ok(CommandResult)` whether the command succeeds or fails.
     /// Only returns `Err` if there's an IO error spawning or reading from the process.
@@ -86,7 +109,22 @@ impl<'a> StreamingExecutor<'a> {
             self.command.current_dir(dir);
         }
 
-        // Spawn with piped streams
+        // Handle Inherit mode separately - direct passthrough to terminal
+        if self.output_mode == OutputMode::Inherit {
+            let status = self
+                .command
+                .stdout(Stdio::inherit())
+                .stderr(Stdio::inherit())
+                .status()?;
+
+            return Ok(CommandResult {
+                stdout: Vec::new(),
+                stderr: Vec::new(),
+                status,
+            });
+        }
+
+        // For Capture and Display modes, pipe and capture output
         let mut child = self
             .command
             .stdout(Stdio::piped())
@@ -105,15 +143,15 @@ impl<'a> StreamingExecutor<'a> {
         let stdout_lines_clone = Arc::clone(&stdout_lines);
         let stderr_lines_clone = Arc::clone(&stderr_lines);
 
-        let quiet = self.quiet;
+        let output_mode = self.output_mode;
 
         // Spawn thread to read stdout
         let stdout_thread = thread::spawn(move || {
             let reader = BufReader::new(stdout);
             for line in reader.lines().map_while(Result::ok) {
-                // Log to tracing if not quiet
-                if !quiet && !line.is_empty() {
-                    tracing::debug!(target: "command", "{}", line);
+                // Log to tracing if Display mode
+                if output_mode == OutputMode::Display && !line.is_empty() {
+                    tracing::info!(target: "command", "{}", line);
                 }
 
                 // Capture for result
@@ -127,9 +165,9 @@ impl<'a> StreamingExecutor<'a> {
         let stderr_thread = thread::spawn(move || {
             let reader = BufReader::new(stderr);
             for line in reader.lines().map_while(Result::ok) {
-                // Log to tracing if not quiet
-                if !quiet && !line.is_empty() {
-                    tracing::debug!(target: "command", "stderr: {}", line);
+                // Log to tracing if Display mode
+                if output_mode == OutputMode::Display && !line.is_empty() {
+                    tracing::info!(target: "command", "stderr: {}", line);
                 }
 
                 // Capture for result

@@ -1,6 +1,6 @@
 use crate::error::{DeployError, Result};
 use crate::nix::{ActivationMode, StorePath};
-use crate::process::StreamingExecutor;
+use crate::process::{OutputMode, StreamingExecutor};
 use std::process::Command;
 
 use super::{DeployBackend, DeployTarget};
@@ -10,18 +10,24 @@ use super::{DeployBackend, DeployTarget};
 /// Unlike SshDeployBackend which deploys to remote hosts over SSH,
 /// LocalDeployBackend operates on the local machine directly.
 pub struct LocalDeployBackend {
-    /// Quiet mode - suppress subprocess output
-    pub quiet: bool,
+    /// Output mode for subprocess operations
+    pub output_mode: OutputMode,
 }
 
 impl LocalDeployBackend {
     pub fn new() -> Self {
-        Self { quiet: false }
+        Self {
+            output_mode: OutputMode::Inherit,
+        }
     }
 
-    pub fn with_quiet(mut self, quiet: bool) -> Self {
-        self.quiet = quiet;
+    pub fn with_output_mode(mut self, mode: OutputMode) -> Self {
+        self.output_mode = mode;
         self
+    }
+
+    pub fn with_quiet(self) -> Self {
+        self.with_output_mode(OutputMode::Capture)
     }
 }
 
@@ -50,7 +56,7 @@ impl DeployBackend for LocalDeployBackend {
         cmd.args([&switch_to_configuration, mode_arg]);
 
         let result = StreamingExecutor::new(&mut cmd)
-            .quiet(self.quiet)
+            .output_mode(self.output_mode)
             .execute()
             .map_err(|e| DeployError::Failed {
                 host: target.hostname.clone(),
@@ -107,7 +113,7 @@ mod tests {
 
     #[test]
     fn test_activate_nonexistent_path() {
-        let backend = LocalDeployBackend::new().with_quiet(true);
+        let backend = LocalDeployBackend::new().with_quiet();
         let target = DeployTarget {
             user: None,
             hostname: "localhost".to_string(),

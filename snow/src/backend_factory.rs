@@ -3,7 +3,9 @@
 //! This module centralizes the logic for creating appropriate backend implementations
 //! based on command-line arguments and build configuration.
 
-use snowlib::{DeployBackend, NixBackend, Result, SshDeployBackend, SystemRebootBackend};
+use snowlib::{
+    DeployBackend, NixBackend, OutputMode, Result, SshDeployBackend, SystemRebootBackend,
+};
 
 #[cfg(debug_assertions)]
 use snowlib::MockDeployBackend;
@@ -34,7 +36,7 @@ pub fn create_nix_backend(
 /// Otherwise, returns the production SshDeployBackend with appropriate configuration.
 pub fn create_deploy_backend(
     #[cfg(debug_assertions)] mock_fixture: &Option<String>,
-    quiet: bool,
+    output_mode: OutputMode,
 ) -> Result<Box<dyn DeployBackend>> {
     #[cfg(debug_assertions)]
     {
@@ -44,7 +46,9 @@ pub fn create_deploy_backend(
         }
     }
 
-    Ok(Box::new(SshDeployBackend::new().with_quiet(quiet)))
+    Ok(Box::new(
+        SshDeployBackend::new().with_output_mode(output_mode),
+    ))
 }
 
 /// Create the RebootBackend with appropriate configuration

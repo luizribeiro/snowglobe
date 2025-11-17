@@ -1,3 +1,5 @@
+use crate::process::OutputMode;
+
 /// Configuration for push operations
 #[derive(Debug, Clone)]
 pub struct PushConfiguration {
@@ -9,8 +11,8 @@ pub struct PushConfiguration {
     pub concurrency: usize,
     /// Ignore push phases and deploy all hosts in parallel
     pub ignore_phases: bool,
-    /// Suppress build output
-    pub quiet: bool,
+    /// Output mode for build and deploy operations
+    pub output_mode: OutputMode,
     /// SSH user for deployment (if None, uses SSH config default)
     pub ssh_user: Option<String>,
     /// Allow automatic reboots (false = never reboot, overrides policy/detection)
@@ -24,7 +26,7 @@ impl Default for PushConfiguration {
             force: false,
             concurrency: 3,
             ignore_phases: false,
-            quiet: false,
+            output_mode: OutputMode::Display,
             ssh_user: None,
             allow_reboot: true, // Allow reboots by default
         }

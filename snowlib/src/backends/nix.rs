@@ -15,6 +15,8 @@ fn parse_hostnames(json: &[u8]) -> Result<Vec<Host>> {
     Ok(hosts)
 }
 
+use crate::process::OutputMode;
+
 /// Trait for Nix backend operations (evaluation, building)
 ///
 /// Allows swapping between real Nix commands and mocked versions for testing.
@@ -29,7 +31,7 @@ pub trait NixBackend: Send + Sync {
     fn get_host_metadata(&self, flake: &Flake, host: &str) -> Result<HostMetadata>;
 
     /// Build a host's NixOS configuration and return the store path
-    fn build_host(&self, flake: &Flake, host: &str, quiet: bool) -> Result<StorePath>;
+    fn build_host(&self, flake: &Flake, host: &str, output_mode: OutputMode) -> Result<StorePath>;
 }
 
 /// System implementation of NixBackend that executes real Nix commands
@@ -139,7 +141,7 @@ impl NixBackend for SystemNixBackend {
         })
     }
 
-    fn build_host(&self, flake: &Flake, host: &str, quiet: bool) -> Result<StorePath> {
+    fn build_host(&self, flake: &Flake, host: &str, output_mode: OutputMode) -> Result<StorePath> {
         let target = format!(
             ".#nixosConfigurations.{}.config.system.build.toplevel",
             host
@@ -148,7 +150,7 @@ impl NixBackend for SystemNixBackend {
         let stdout = NixCommand::build(flake, &target)
             .no_link()
             .print_out_paths()
-            .quiet(quiet)
+            .output_mode(output_mode)
             .run()
             .map_err(|e| match e {
                 crate::error::SnowError::Nix(crate::error::NixError::EvalFailed {

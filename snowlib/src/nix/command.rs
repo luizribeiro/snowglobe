@@ -5,7 +5,7 @@
 
 use crate::error::{NixError, Result};
 use crate::nix::Flake;
-use crate::process::StreamingExecutor;
+use crate::process::{OutputMode, StreamingExecutor};
 use std::process::Command;
 
 /// Builder for constructing and executing Nix commands
@@ -19,7 +19,7 @@ use std::process::Command;
 pub(crate) struct NixCommand {
     cmd: Command,
     flake: Flake,
-    quiet: bool,
+    output_mode: OutputMode,
 }
 
 impl NixCommand {
@@ -27,7 +27,7 @@ impl NixCommand {
         Self {
             cmd: Command::new("nix"),
             flake: flake.clone(),
-            quiet: true, // Default to quiet mode
+            output_mode: OutputMode::Capture,
         }
     }
 
@@ -63,15 +63,15 @@ impl NixCommand {
         self
     }
 
-    pub(crate) fn quiet(mut self, quiet: bool) -> Self {
-        self.quiet = quiet;
+    pub(crate) fn output_mode(mut self, mode: OutputMode) -> Self {
+        self.output_mode = mode;
         self
     }
 
     pub(crate) fn run(mut self) -> Result<Vec<u8>> {
         let result = StreamingExecutor::new(&mut self.cmd)
             .working_dir(self.flake.flake_root())
-            .quiet(self.quiet)
+            .output_mode(self.output_mode)
             .execute()
             .map_err(|e| NixError::CommandFailed { source: e })?;
 

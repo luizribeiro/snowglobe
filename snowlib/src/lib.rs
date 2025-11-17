@@ -23,6 +23,7 @@ pub use backends::reboot::{RebootBackend, RebootCheck, SystemRebootBackend};
 pub use error::Result;
 pub use nix::{get_hostname, ActivationMode, Flake, StorePath};
 pub use observer::PushObserver;
+pub use process::OutputMode;
 pub use push::{push, PushConfiguration, PushContext, PushResults, PushStrategy};
 
 #[cfg(debug_assertions)]

@@ -169,10 +169,17 @@ impl PushArgs {
             #[cfg(debug_assertions)]
             &self.mock_fixture,
         )?;
+
+        let output_mode = if self.quiet {
+            snowlib::OutputMode::Capture
+        } else {
+            snowlib::OutputMode::Display
+        };
+
         let deploy_backend = crate::backend_factory::create_deploy_backend(
             #[cfg(debug_assertions)]
             &self.mock_fixture,
-            self.quiet,
+            output_mode,
         )?;
         let reboot_backend = crate::backend_factory::create_reboot_backend(self.user.as_deref())?;
         let observer = observer::CliObserver::new();
@@ -189,7 +196,7 @@ impl PushArgs {
             force: self.force,
             concurrency: self.concurrency as usize,
             ignore_phases: self.ignore_phases,
-            quiet: self.quiet,
+            output_mode,
             ssh_user: self.user.clone(),
             allow_reboot: !self.no_reboot, // Invert: no_reboot=true means allow_reboot=false
         };

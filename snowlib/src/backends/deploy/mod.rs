@@ -63,19 +63,21 @@ pub trait DeployBackend: Send + Sync {
     }
 }
 
+use crate::process::OutputMode;
+
 /// SSH-based deployer using subprocess commands (MVP implementation)
 pub struct SshDeployBackend {
     /// Optional SSH user (defaults to root in target)
     pub ssh_user: Option<String>,
-    /// Quiet mode - suppress subprocess output
-    pub quiet: bool,
+    /// Output mode for subprocess operations
+    pub output_mode: OutputMode,
 }
 
 impl SshDeployBackend {
     pub fn new() -> Self {
         Self {
             ssh_user: None,
-            quiet: false,
+            output_mode: OutputMode::Display,
         }
     }
 
@@ -84,9 +86,13 @@ impl SshDeployBackend {
         self
     }
 
-    pub fn with_quiet(mut self, quiet: bool) -> Self {
-        self.quiet = quiet;
+    pub fn with_output_mode(mut self, mode: OutputMode) -> Self {
+        self.output_mode = mode;
         self
+    }
+
+    pub fn with_quiet(self) -> Self {
+        self.with_output_mode(OutputMode::Capture)
     }
 
     /// Get the effective SSH destination
@@ -126,7 +132,7 @@ impl DeployBackend for SshDeployBackend {
         cmd.env("NIX_SSHOPTS", "-o BatchMode=yes");
 
         let result = StreamingExecutor::new(&mut cmd)
-            .quiet(self.quiet)
+            .output_mode(self.output_mode)
             .execute()
             .map_err(|e| DeployError::Failed {
                 host: target.hostname.clone(),
@@ -176,7 +182,7 @@ impl DeployBackend for SshDeployBackend {
         let mut cmd = self.ssh_command(target, &["sudo", &switch_to_configuration, mode_arg]);
 
         let result = StreamingExecutor::new(&mut cmd)
-            .quiet(self.quiet)
+            .output_mode(self.output_mode)
             .execute()
             .map_err(|e| DeployError::SshFailed {
                 destination: self.get_destination(target),
@@ -275,7 +281,7 @@ mod tests {
 
     #[test]
     fn test_copy_closure_quiet_mode_captures_stderr() {
-        let deployer = SshDeployBackend::new().with_quiet(true);
+        let deployer = SshDeployBackend::new().with_quiet();
         let target = DeployTarget {
             user: Some("root".to_string()),
             hostname: "nonexistent.invalid".to_string(),
