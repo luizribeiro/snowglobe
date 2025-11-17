@@ -12,5 +12,5 @@ pub mod local_reboot;
 pub mod nix;
 pub mod reboot;
 
-#[cfg(debug_assertions)]
+#[cfg(any(debug_assertions, test))]
 pub mod mock;
