@@ -14,11 +14,14 @@ pub mod observer;
 pub mod process;
 pub mod push;
 
-pub use backends::deploy::{DeployBackend, DeployResult, DeployTarget, SshDeployBackend};
+pub use backends::deploy::{
+    DeployBackend, DeployResult, DeployTarget, LocalDeployBackend, SshDeployBackend,
+};
+pub use backends::local_reboot::LocalRebootBackend;
 pub use backends::nix::{NixBackend, SystemNixBackend};
-pub use backends::reboot::SystemRebootBackend;
+pub use backends::reboot::{RebootBackend, RebootCheck, SystemRebootBackend};
 pub use error::Result;
-pub use nix::{ActivationMode, Flake, StorePath};
+pub use nix::{get_hostname, ActivationMode, Flake, StorePath};
 pub use observer::PushObserver;
 pub use push::{push, PushConfiguration, PushContext, PushResults, PushStrategy};
 

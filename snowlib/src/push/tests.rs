@@ -262,7 +262,14 @@ fn test_create_deployment_plans_test_mode() {
 #[test]
 fn test_create_deployment_plans_switch_with_force() {
     // In reality, reboot would be detected, but with force flag it should still use Switch
-    let detector = SystemRebootBackend::default();
+    // Disable reboot checks to avoid SSH calls in unit tests
+    let config = RebootDetectionConfig {
+        critical_services: vec![],
+        check_kernel: false,
+        check_initrd: false,
+        check_init: false,
+    };
+    let detector = SystemRebootBackend::new(config);
     let hosts = vec![make_host("test", None, crate::nix::RebootPolicy::Auto)];
 
     let (plans, blocked) =
@@ -1725,7 +1732,10 @@ fn test_push_reboot_execution_success() {
     let mut reboot_required = std::collections::HashMap::new();
     reboot_required.insert(
         "reboot-host.example.com".to_string(),
-        RebootReason::KernelChanged,
+        RebootReason::KernelChanged {
+            old: "/nix/store/old-kernel".to_string(),
+            new: "/nix/store/new-kernel".to_string(),
+        },
     );
     let reboot_backend = MockRebootBackend::new().with_reboot_required(reboot_required.clone());
 
@@ -1809,7 +1819,10 @@ fn test_push_reboot_execution_failure() {
     let mut reboot_required = std::collections::HashMap::new();
     reboot_required.insert(
         "fail-reboot.example.com".to_string(),
-        RebootReason::InitrdChanged,
+        RebootReason::InitrdChanged {
+            old: "/nix/store/old-initrd".to_string(),
+            new: "/nix/store/new-initrd".to_string(),
+        },
     );
     let reboot_backend = MockRebootBackend::new()
         .with_reboot_required(reboot_required)
@@ -1956,7 +1969,10 @@ fn test_push_reboot_with_boot_mode() {
     let mut reboot_required = std::collections::HashMap::new();
     reboot_required.insert(
         "boot-host.example.com".to_string(),
-        RebootReason::InitChanged,
+        RebootReason::InitChanged {
+            old: "/nix/store/old-init".to_string(),
+            new: "/nix/store/new-init".to_string(),
+        },
     );
     let reboot_backend = MockRebootBackend::new().with_reboot_required(reboot_required);
 
@@ -2073,7 +2089,10 @@ fn test_push_reboot_policy_never() {
     let mut reboot_required = std::collections::HashMap::new();
     reboot_required.insert(
         "never-reboot.example.com".to_string(),
-        RebootReason::KernelChanged,
+        RebootReason::KernelChanged {
+            old: "/nix/store/old-kernel".to_string(),
+            new: "/nix/store/new-kernel".to_string(),
+        },
     );
     let reboot_backend = MockRebootBackend::new().with_reboot_required(reboot_required);
 
@@ -2193,7 +2212,10 @@ fn test_push_no_reboot_flag_with_detected_reboot() {
     let mut reboot_required = std::collections::HashMap::new();
     reboot_required.insert(
         "needs-reboot.example.com".to_string(),
-        RebootReason::KernelChanged,
+        RebootReason::KernelChanged {
+            old: "/nix/store/old-kernel".to_string(),
+            new: "/nix/store/new-kernel".to_string(),
+        },
     );
     let reboot_backend = MockRebootBackend::new().with_reboot_required(reboot_required);
 

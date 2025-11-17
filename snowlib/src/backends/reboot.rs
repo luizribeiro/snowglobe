@@ -64,11 +64,11 @@ impl RebootCheck {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RebootReason {
     /// Kernel changed
-    KernelChanged,
+    KernelChanged { old: String, new: String },
     /// Initrd changed
-    InitrdChanged,
+    InitrdChanged { old: String, new: String },
     /// Init (systemd) changed
-    InitChanged,
+    InitChanged { old: String, new: String },
     /// A critical service would be restarted
     CriticalService(String),
     /// Reboot required by host's reboot policy
@@ -78,11 +78,25 @@ pub enum RebootReason {
 impl std::fmt::Display for RebootReason {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            RebootReason::KernelChanged => write!(f, "kernel changed"),
-            RebootReason::InitrdChanged => write!(f, "initrd changed"),
-            RebootReason::InitChanged => write!(f, "init changed"),
-            RebootReason::CriticalService(service) => write!(f, "critical service: {}", service),
-            RebootReason::Policy => write!(f, "reboot policy"),
+            RebootReason::KernelChanged { old, new } => {
+                writeln!(f, "Kernel changed:")?;
+                writeln!(f, "  Current: {}", old)?;
+                write!(f, "  New:     {}", new)
+            }
+            RebootReason::InitrdChanged { old, new } => {
+                writeln!(f, "Initrd changed:")?;
+                writeln!(f, "  Current: {}", old)?;
+                write!(f, "  New:     {}", new)
+            }
+            RebootReason::InitChanged { old, new } => {
+                writeln!(f, "Init (systemd) changed:")?;
+                writeln!(f, "  Current: {}", old)?;
+                write!(f, "  New:     {}", new)
+            }
+            RebootReason::CriticalService(service) => {
+                write!(f, "Critical service will restart: {}", service)
+            }
+            RebootReason::Policy => write!(f, "Host reboot policy requires reboot"),
         }
     }
 }
@@ -183,33 +197,68 @@ impl SystemRebootBackend {
         target: &DeployTarget,
         new_system: &StorePath,
     ) -> Result<Option<RebootReason>> {
-        // Define checks as data: (enabled, component_name, reason)
         let checks = [
-            (
-                self.config.check_kernel,
-                "kernel",
-                RebootReason::KernelChanged,
-            ),
-            (
-                self.config.check_initrd,
-                "initrd",
-                RebootReason::InitrdChanged,
-            ),
-            (self.config.check_init, "init", RebootReason::InitChanged),
+            (self.config.check_kernel, "kernel"),
+            (self.config.check_initrd, "initrd"),
+            (self.config.check_init, "init"),
         ];
 
-        for (enabled, component, reason) in checks {
+        for (enabled, component) in checks {
             if enabled {
                 let booted_path = format!("/run/booted-system/{}", component);
                 let new_path = format!("{}/{}", new_system.as_str(), component);
 
                 if !self.compare_symlinks(target, &booted_path, &new_path)? {
-                    return Ok(Some(reason));
+                    let old_target = self.read_symlink_target(target, &booted_path)?;
+                    let new_target = self.read_symlink_target(target, &new_path)?;
+
+                    // Only report as changed if the canonical paths actually differ
+                    if old_target != new_target {
+                        let reason = match component {
+                            "kernel" => RebootReason::KernelChanged {
+                                old: old_target,
+                                new: new_target,
+                            },
+                            "initrd" => RebootReason::InitrdChanged {
+                                old: old_target,
+                                new: new_target,
+                            },
+                            "init" => RebootReason::InitChanged {
+                                old: old_target,
+                                new: new_target,
+                            },
+                            _ => unreachable!(),
+                        };
+
+                        return Ok(Some(reason));
+                    }
                 }
             }
         }
 
         Ok(None)
+    }
+
+    /// Read the target of a symlink on the remote host
+    ///
+    /// Uses `readlink -f` to resolve all symlinks and get the canonical path.
+    fn read_symlink_target(&self, target: &DeployTarget, symlink_path: &str) -> Result<String> {
+        let cmd = format!("readlink -f {}", shell_escape(symlink_path));
+        let output = self.ssh_exec_output(target, &cmd)?;
+
+        if !output.status.success() {
+            return Err(DeployError::Failed {
+                host: target.hostname.clone(),
+                source: std::io::Error::other(format!(
+                    "Failed to resolve path {}: {}",
+                    symlink_path,
+                    String::from_utf8_lossy(&output.stderr)
+                )),
+            }
+            .into());
+        }
+
+        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
     }
 
     /// Compare two symlinks on the remote host
@@ -425,11 +474,17 @@ mod tests {
     fn test_reboot_check_equality() {
         let check1 = RebootCheck {
             required: true,
-            reason: Some(RebootReason::KernelChanged),
+            reason: Some(RebootReason::KernelChanged {
+                old: "/nix/store/old-kernel".to_string(),
+                new: "/nix/store/new-kernel".to_string(),
+            }),
         };
         let check2 = RebootCheck {
             required: true,
-            reason: Some(RebootReason::KernelChanged),
+            reason: Some(RebootReason::KernelChanged {
+                old: "/nix/store/old-kernel".to_string(),
+                new: "/nix/store/new-kernel".to_string(),
+            }),
         };
         assert_eq!(check1, check2);
     }
@@ -443,19 +498,45 @@ mod tests {
 
     #[test]
     fn test_reboot_check_required() {
-        let check = RebootCheck::required(RebootReason::KernelChanged);
+        let check = RebootCheck::required(RebootReason::KernelChanged {
+            old: "/nix/store/old-kernel".to_string(),
+            new: "/nix/store/new-kernel".to_string(),
+        });
         assert!(check.required);
-        assert_eq!(check.reason, Some(RebootReason::KernelChanged));
+        assert!(matches!(
+            check.reason,
+            Some(RebootReason::KernelChanged { .. })
+        ));
     }
 
     #[test]
     fn test_reboot_reason_display() {
-        assert_eq!(RebootReason::KernelChanged.to_string(), "kernel changed");
-        assert_eq!(RebootReason::InitrdChanged.to_string(), "initrd changed");
-        assert_eq!(RebootReason::InitChanged.to_string(), "init changed");
+        let kernel_msg = RebootReason::KernelChanged {
+            old: "/nix/store/old-kernel".to_string(),
+            new: "/nix/store/new-kernel".to_string(),
+        }
+        .to_string();
+        assert!(kernel_msg.contains("Kernel changed"));
+        assert!(kernel_msg.contains("/nix/store/old-kernel"));
+        assert!(kernel_msg.contains("/nix/store/new-kernel"));
+
+        let initrd_msg = RebootReason::InitrdChanged {
+            old: "/nix/store/old-initrd".to_string(),
+            new: "/nix/store/new-initrd".to_string(),
+        }
+        .to_string();
+        assert!(initrd_msg.contains("Initrd changed"));
+
+        let init_msg = RebootReason::InitChanged {
+            old: "/nix/store/old-init".to_string(),
+            new: "/nix/store/new-init".to_string(),
+        }
+        .to_string();
+        assert!(init_msg.contains("Init (systemd) changed"));
+
         assert_eq!(
             RebootReason::CriticalService("audit.service".to_string()).to_string(),
-            "critical service: audit.service"
+            "Critical service will restart: audit.service"
         );
     }
 

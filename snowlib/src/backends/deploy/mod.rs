@@ -1,5 +1,7 @@
+mod local;
 mod target;
 
+pub use local::LocalDeployBackend;
 pub use target::DeployTarget;
 
 use crate::error::{DeployError, Result};

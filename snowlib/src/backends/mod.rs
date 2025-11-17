@@ -8,6 +8,7 @@
 //! Each backend has both production (system) and mock implementations for testing.
 
 pub mod deploy;
+pub mod local_reboot;
 pub mod nix;
 pub mod reboot;
 
