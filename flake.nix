@@ -60,6 +60,13 @@
             shellHook = ''
               export PATH="$PWD/target/debug:$PATH"
 
+              # Load .env file if it exists
+              if [ -f .env ]; then
+                set -a
+                source .env
+                set +a
+              fi
+
               # Install pre-commit hooks if not already installed
               if [ ! -f .git/hooks/pre-commit ] || ! grep -q "pre-commit" .git/hooks/pre-commit 2>/dev/null; then
                 echo "Installing pre-commit hooks..."
