@@ -67,8 +67,6 @@ pub enum RebootReason {
     KernelChanged { old: String, new: String },
     /// Initrd changed
     InitrdChanged { old: String, new: String },
-    /// Init (systemd) changed
-    InitChanged { old: String, new: String },
     /// A critical service would be restarted
     CriticalService(String),
     /// Reboot required by host's reboot policy
@@ -85,11 +83,6 @@ impl std::fmt::Display for RebootReason {
             }
             RebootReason::InitrdChanged { old, new } => {
                 writeln!(f, "Initrd changed:")?;
-                writeln!(f, "  Current: {}", old)?;
-                write!(f, "  New:     {}", new)
-            }
-            RebootReason::InitChanged { old, new } => {
-                writeln!(f, "Init (systemd) changed:")?;
                 writeln!(f, "  Current: {}", old)?;
                 write!(f, "  New:     {}", new)
             }
@@ -110,8 +103,6 @@ pub struct RebootDetectionConfig {
     pub check_kernel: bool,
     /// Whether to check initrd changes
     pub check_initrd: bool,
-    /// Whether to check init changes
-    pub check_init: bool,
 }
 
 impl Default for RebootDetectionConfig {
@@ -123,7 +114,6 @@ impl Default for RebootDetectionConfig {
                 .collect(),
             check_kernel: true,
             check_initrd: true,
-            check_init: false,
         }
     }
 }
@@ -174,7 +164,7 @@ impl SystemRebootBackend {
         new_system: &StorePath,
     ) -> Result<RebootCheck> {
         // Phase 1: Check hard requirements (fast)
-        if self.config.check_kernel || self.config.check_initrd || self.config.check_init {
+        if self.config.check_kernel || self.config.check_initrd {
             if let Some(reason) = self.check_hard_requirements(target, new_system)? {
                 return Ok(RebootCheck::required(reason));
             }
@@ -191,7 +181,7 @@ impl SystemRebootBackend {
         Ok(RebootCheck::not_required())
     }
 
-    /// Check if kernel, initrd, or init changed (fast check)
+    /// Check if kernel or initrd changed (fast check)
     fn check_hard_requirements(
         &self,
         target: &DeployTarget,
@@ -200,7 +190,6 @@ impl SystemRebootBackend {
         let checks = [
             (self.config.check_kernel, "kernel"),
             (self.config.check_initrd, "initrd"),
-            (self.config.check_init, "init"),
         ];
 
         for (enabled, component) in checks {
@@ -220,10 +209,6 @@ impl SystemRebootBackend {
                                 new: new_target,
                             },
                             "initrd" => RebootReason::InitrdChanged {
-                                old: old_target,
-                                new: new_target,
-                            },
-                            "init" => RebootReason::InitChanged {
                                 old: old_target,
                                 new: new_target,
                             },
@@ -527,13 +512,6 @@ mod tests {
         .to_string();
         assert!(initrd_msg.contains("Initrd changed"));
 
-        let init_msg = RebootReason::InitChanged {
-            old: "/nix/store/old-init".to_string(),
-            new: "/nix/store/new-init".to_string(),
-        }
-        .to_string();
-        assert!(init_msg.contains("Init (systemd) changed"));
-
         assert_eq!(
             RebootReason::CriticalService("audit.service".to_string()).to_string(),
             "Critical service will restart: audit.service"
@@ -545,7 +523,6 @@ mod tests {
         let config = RebootDetectionConfig::default();
         assert!(config.check_kernel);
         assert!(config.check_initrd);
-        assert!(!config.check_init);
         assert!(!config.critical_services.is_empty());
         assert!(config
             .critical_services
@@ -609,7 +586,6 @@ mod tests {
             critical_services: vec![],
             check_kernel: true,
             check_initrd: true,
-            check_init: true,
         };
 
         let backend = SystemRebootBackend::new(config.clone());
@@ -618,7 +594,6 @@ mod tests {
         assert!(backend.config.critical_services.is_empty());
         assert!(backend.config.check_kernel);
         assert!(backend.config.check_initrd);
-        assert!(backend.config.check_init);
     }
 
     #[test]
@@ -629,7 +604,6 @@ mod tests {
             critical_services: vec![],
             check_kernel: false,
             check_initrd: false,
-            check_init: false,
         };
 
         let backend = SystemRebootBackend::new(config);
@@ -637,6 +611,5 @@ mod tests {
         assert!(backend.config.critical_services.is_empty());
         assert!(!backend.config.check_kernel);
         assert!(!backend.config.check_initrd);
-        assert!(!backend.config.check_init);
     }
 }

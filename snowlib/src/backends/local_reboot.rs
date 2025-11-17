@@ -28,7 +28,7 @@ impl LocalRebootBackend {
     /// Check if a deployment requires a reboot (local version)
     ///
     /// This performs a two-phase check:
-    /// 1. Compare kernel/initrd/init symlinks (fast)
+    /// 1. Compare kernel/initrd symlinks (fast)
     /// 2. Run dry-activate and check critical services (detailed)
     fn check_reboot_required_impl(
         &self,
@@ -36,7 +36,7 @@ impl LocalRebootBackend {
         new_system: &StorePath,
     ) -> Result<RebootCheck> {
         // Phase 1: Check hard requirements (fast)
-        if self.config.check_kernel || self.config.check_initrd || self.config.check_init {
+        if self.config.check_kernel || self.config.check_initrd {
             if let Some(reason) = self.check_hard_requirements(target, new_system)? {
                 return Ok(RebootCheck::required(reason));
             }
@@ -52,7 +52,7 @@ impl LocalRebootBackend {
         Ok(RebootCheck::not_required())
     }
 
-    /// Check if kernel, initrd, or init changed (fast check)
+    /// Check if kernel or initrd changed (fast check)
     fn check_hard_requirements(
         &self,
         target: &DeployTarget,
@@ -61,7 +61,6 @@ impl LocalRebootBackend {
         let checks = [
             (self.config.check_kernel, "kernel"),
             (self.config.check_initrd, "initrd"),
-            (self.config.check_init, "init"),
         ];
 
         for (enabled, component) in checks {
@@ -81,10 +80,6 @@ impl LocalRebootBackend {
                                 new: new_target,
                             },
                             "initrd" => RebootReason::InitrdChanged {
-                                old: old_target,
-                                new: new_target,
-                            },
-                            "init" => RebootReason::InitChanged {
                                 old: old_target,
                                 new: new_target,
                             },
@@ -313,7 +308,6 @@ mod tests {
         let backend = LocalRebootBackend::default();
         assert!(backend.config.check_kernel);
         assert!(backend.config.check_initrd);
-        assert!(!backend.config.check_init);
         assert!(!backend.config.critical_services.is_empty());
     }
 
@@ -323,13 +317,11 @@ mod tests {
             critical_services: vec!["test.service".to_string()],
             check_kernel: false,
             check_initrd: true,
-            check_init: true,
         };
 
         let backend = LocalRebootBackend::new(config);
         assert!(!backend.config.check_kernel);
         assert!(backend.config.check_initrd);
-        assert!(backend.config.check_init);
         assert_eq!(backend.config.critical_services.len(), 1);
     }
 }
