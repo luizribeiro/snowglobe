@@ -317,6 +317,7 @@ mod tests {
             critical_services: vec!["test.service".to_string()],
             check_kernel: false,
             check_initrd: true,
+            ..Default::default()
         };
 
         let backend = LocalRebootBackend::new(config);

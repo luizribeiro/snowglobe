@@ -103,6 +103,12 @@ pub struct RebootDetectionConfig {
     pub check_kernel: bool,
     /// Whether to check initrd changes
     pub check_initrd: bool,
+    /// SSH connection timeout in seconds
+    pub ssh_connect_timeout: u32,
+    /// Maximum time to wait for host to come back online after reboot (seconds)
+    pub reboot_max_wait: u32,
+    /// Interval between retry attempts when waiting for reboot (seconds)
+    pub reboot_retry_interval: u32,
 }
 
 impl Default for RebootDetectionConfig {
@@ -114,6 +120,9 @@ impl Default for RebootDetectionConfig {
                 .collect(),
             check_kernel: true,
             check_initrd: true,
+            ssh_connect_timeout: 5,
+            reboot_max_wait: 600,
+            reboot_retry_interval: 5,
         }
     }
 }
@@ -315,6 +324,12 @@ impl SystemRebootBackend {
         // Disable interactive prompts - will error instead of prompting
         cmd.arg("-o").arg("BatchMode=yes");
 
+        // Set connection timeout
+        cmd.arg("-o").arg(format!(
+            "ConnectTimeout={}",
+            self.config.ssh_connect_timeout
+        ));
+
         if let Some(port) = target.port {
             cmd.arg("-p").arg(port.to_string());
         }
@@ -398,10 +413,11 @@ impl SystemRebootBackend {
 
     /// Wait for a host to come back online by repeatedly trying SSH
     fn wait_for_host(&self, target: &DeployTarget) -> Result<()> {
-        const MAX_ATTEMPTS: u32 = 60; // 5 minutes with 5-second intervals
-        const RETRY_INTERVAL: std::time::Duration = std::time::Duration::from_secs(5);
+        let max_attempts = self.config.reboot_max_wait / self.config.reboot_retry_interval;
+        let retry_interval =
+            std::time::Duration::from_secs(self.config.reboot_retry_interval as u64);
 
-        for attempt in 1..=MAX_ATTEMPTS {
+        for attempt in 1..=max_attempts {
             // Try a simple SSH command
             let test_cmd = "true";
             let result = self.ssh_exec(target, test_cmd);
@@ -410,16 +426,16 @@ impl SystemRebootBackend {
                 return Ok(());
             }
 
-            if attempt < MAX_ATTEMPTS {
-                std::thread::sleep(RETRY_INTERVAL);
+            if attempt < max_attempts {
+                std::thread::sleep(retry_interval);
             }
         }
 
         Err(DeployError::Failed {
             host: target.hostname.clone(),
             source: std::io::Error::other(format!(
-                "Host did not come back online after {} attempts",
-                MAX_ATTEMPTS
+                "Host did not come back online after {} attempts ({} seconds)",
+                max_attempts, self.config.reboot_max_wait
             )),
         }
         .into())
@@ -586,6 +602,7 @@ mod tests {
             critical_services: vec![],
             check_kernel: true,
             check_initrd: true,
+            ..Default::default()
         };
 
         let backend = SystemRebootBackend::new(config.clone());
@@ -604,6 +621,7 @@ mod tests {
             critical_services: vec![],
             check_kernel: false,
             check_initrd: false,
+            ..Default::default()
         };
 
         let backend = SystemRebootBackend::new(config);

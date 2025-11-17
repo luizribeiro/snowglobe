@@ -199,6 +199,7 @@ fn test_create_deployment_plans_auto_mode_no_reboot() {
         critical_services: vec![],
         check_kernel: false,
         check_initrd: false,
+        ..Default::default()
     };
     let detector = SystemRebootBackend::new(config);
 
@@ -266,6 +267,7 @@ fn test_create_deployment_plans_switch_with_force() {
         critical_services: vec![],
         check_kernel: false,
         check_initrd: false,
+        ..Default::default()
     };
     let detector = SystemRebootBackend::new(config);
     let hosts = vec![make_host("test", None, crate::nix::RebootPolicy::Auto)];
@@ -286,6 +288,7 @@ fn test_create_deployment_plans_multiple_hosts_mixed_results() {
         critical_services: vec![],
         check_kernel: false,
         check_initrd: false,
+        ..Default::default()
     };
     let detector = SystemRebootBackend::new(config);
 
@@ -312,6 +315,7 @@ fn test_reboot_policy_never_uses_boot_mode() {
         critical_services: vec![],
         check_kernel: false,
         check_initrd: false,
+        ..Default::default()
     };
     let detector = SystemRebootBackend::new(config);
 
@@ -335,6 +339,7 @@ fn test_reboot_policy_always_uses_boot_mode_with_reboot() {
         critical_services: vec![],
         check_kernel: false,
         check_initrd: false,
+        ..Default::default()
     };
     let detector = SystemRebootBackend::new(config);
 
@@ -358,6 +363,7 @@ fn test_reboot_policy_auto_uses_detection() {
         critical_services: vec![],
         check_kernel: false,
         check_initrd: false,
+        ..Default::default()
     };
     let detector = SystemRebootBackend::new(config);
 
@@ -380,6 +386,7 @@ fn test_reboot_policy_never_overrides_switch_mode() {
         critical_services: vec![],
         check_kernel: false,
         check_initrd: false,
+        ..Default::default()
     };
     let detector = SystemRebootBackend::new(config);
 
@@ -401,6 +408,7 @@ fn test_reboot_policy_always_overrides_switch_mode() {
         critical_services: vec![],
         check_kernel: false,
         check_initrd: false,
+        ..Default::default()
     };
     let detector = SystemRebootBackend::new(config);
 
@@ -641,6 +649,7 @@ fn test_push_with_multiple_phases() {
         critical_services: vec![],
         check_kernel: false,
         check_initrd: false,
+        ..Default::default()
     };
     let reboot_detector = crate::backends::reboot::SystemRebootBackend::new(reboot_config);
     let observer = TestObserver::new();
@@ -708,6 +717,7 @@ fn test_push_stops_on_phase_failure() {
         critical_services: vec![],
         check_kernel: false,
         check_initrd: false,
+        ..Default::default()
     };
     let reboot_detector = crate::backends::reboot::SystemRebootBackend::new(reboot_config);
     let observer = TestObserver::new();
@@ -922,6 +932,7 @@ fn test_push_error_message_includes_source() {
         critical_services: vec![],
         check_kernel: false,
         check_initrd: false,
+        ..Default::default()
     };
     let reboot_detector = crate::backends::reboot::SystemRebootBackend::new(reboot_config);
     let observer = crate::observer::NoopObserver;
@@ -1015,6 +1026,7 @@ fn test_push_error_message_format_with_activation_failure() {
         critical_services: vec![],
         check_kernel: false,
         check_initrd: false,
+        ..Default::default()
     };
     let reboot_detector = crate::backends::reboot::SystemRebootBackend::new(reboot_config);
     let observer = crate::observer::NoopObserver;
