@@ -97,49 +97,29 @@ impl<'a> StreamingExecutor<'a> {
     /// Execute the command with streaming output
     ///
     /// Behavior depends on the configured OutputMode:
-    /// - Inherit: Direct passthrough to terminal (no capture)
+    /// - Inherit: Capture and display output directly to terminal
     /// - Capture: Capture output but don't display
     /// - Display: Capture and stream to tracing at info level
     ///
     /// Returns `Ok(CommandResult)` whether the command succeeds or fails.
     /// Only returns `Err` if there's an IO error spawning or reading from the process.
     pub fn execute(self) -> std::io::Result<CommandResult> {
-        // Configure working directory if specified
         if let Some(dir) = self.working_dir {
             self.command.current_dir(dir);
         }
 
-        // Handle Inherit mode separately - direct passthrough to terminal
-        if self.output_mode == OutputMode::Inherit {
-            let status = self
-                .command
-                .stdout(Stdio::inherit())
-                .stderr(Stdio::inherit())
-                .status()?;
-
-            return Ok(CommandResult {
-                stdout: Vec::new(),
-                stderr: Vec::new(),
-                status,
-            });
-        }
-
-        // For Capture and Display modes, pipe and capture output
         let mut child = self
             .command
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()?;
 
-        // Take ownership of stdout/stderr
         let stdout = child.stdout.take().expect("stdout was piped");
         let stderr = child.stderr.take().expect("stderr was piped");
 
-        // Shared buffers for captured output
         let stdout_lines = Arc::new(Mutex::new(Vec::new()));
         let stderr_lines = Arc::new(Mutex::new(Vec::new()));
 
-        // Clone references for threads
         let stdout_lines_clone = Arc::clone(&stdout_lines);
         let stderr_lines_clone = Arc::clone(&stderr_lines);
 
@@ -149,12 +129,16 @@ impl<'a> StreamingExecutor<'a> {
         let stdout_thread = thread::spawn(move || {
             let reader = BufReader::new(stdout);
             for line in reader.lines().map_while(Result::ok) {
-                // Log to tracing if Display mode
-                if output_mode == OutputMode::Display && !line.is_empty() {
-                    tracing::info!(target: "command", "{}", line);
+                match output_mode {
+                    OutputMode::Display if !line.is_empty() => {
+                        tracing::info!(target: "command", "{}", line);
+                    }
+                    OutputMode::Inherit if !line.is_empty() => {
+                        println!("{}", line);
+                    }
+                    _ => {}
                 }
 
-                // Capture for result
                 let mut lines = stdout_lines_clone.lock().unwrap();
                 lines.extend_from_slice(line.as_bytes());
                 lines.push(b'\n');
@@ -165,26 +149,27 @@ impl<'a> StreamingExecutor<'a> {
         let stderr_thread = thread::spawn(move || {
             let reader = BufReader::new(stderr);
             for line in reader.lines().map_while(Result::ok) {
-                // Log to tracing if Display mode
-                if output_mode == OutputMode::Display && !line.is_empty() {
-                    tracing::info!(target: "command", "stderr: {}", line);
+                match output_mode {
+                    OutputMode::Display if !line.is_empty() => {
+                        tracing::info!(target: "command", "stderr: {}", line);
+                    }
+                    OutputMode::Inherit if !line.is_empty() => {
+                        eprintln!("{}", line);
+                    }
+                    _ => {}
                 }
 
-                // Capture for result
                 let mut lines = stderr_lines_clone.lock().unwrap();
                 lines.extend_from_slice(line.as_bytes());
                 lines.push(b'\n');
             }
         });
 
-        // Wait for process to complete
         let status = child.wait()?;
 
-        // Wait for reader threads to finish
         stdout_thread.join().expect("stdout thread panicked");
         stderr_thread.join().expect("stderr thread panicked");
 
-        // Extract captured output
         let stdout = Arc::try_unwrap(stdout_lines)
             .expect("stdout Arc has multiple references")
             .into_inner()
@@ -199,5 +184,98 @@ impl<'a> StreamingExecutor<'a> {
             stderr,
             status,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_capture_mode_captures_stdout() {
+        let mut cmd = Command::new("echo");
+        cmd.arg("hello");
+
+        let result = StreamingExecutor::new(&mut cmd)
+            .output_mode(OutputMode::Capture)
+            .execute()
+            .unwrap();
+
+        assert!(result.status.success());
+        assert_eq!(String::from_utf8_lossy(&result.stdout).trim(), "hello");
+    }
+
+    #[test]
+    fn test_inherit_mode_captures_stdout() {
+        let mut cmd = Command::new("echo");
+        cmd.arg("test output");
+
+        let result = StreamingExecutor::new(&mut cmd)
+            .output_mode(OutputMode::Inherit)
+            .execute()
+            .unwrap();
+
+        assert!(result.status.success());
+        assert_eq!(
+            String::from_utf8_lossy(&result.stdout).trim(),
+            "test output",
+            "Inherit mode must capture stdout for commands that need to parse output"
+        );
+    }
+
+    #[test]
+    fn test_display_mode_captures_stdout() {
+        let mut cmd = Command::new("echo");
+        cmd.arg("display test");
+
+        let result = StreamingExecutor::new(&mut cmd)
+            .output_mode(OutputMode::Display)
+            .execute()
+            .unwrap();
+
+        assert!(result.status.success());
+        assert_eq!(
+            String::from_utf8_lossy(&result.stdout).trim(),
+            "display test"
+        );
+    }
+
+    #[test]
+    fn test_stderr_captured_in_all_modes() {
+        for mode in [
+            OutputMode::Capture,
+            OutputMode::Display,
+            OutputMode::Inherit,
+        ] {
+            let mut cmd = Command::new("sh");
+            cmd.args(["-c", "echo error >&2"]);
+
+            let result = StreamingExecutor::new(&mut cmd)
+                .output_mode(mode)
+                .execute()
+                .unwrap();
+
+            assert!(result.status.success());
+            assert_eq!(
+                String::from_utf8_lossy(&result.stderr).trim(),
+                "error",
+                "{:?} mode must capture stderr",
+                mode
+            );
+        }
+    }
+
+    #[test]
+    fn test_nonzero_exit_still_returns_ok() {
+        let mut cmd = Command::new("sh");
+        cmd.args(["-c", "exit 42"]);
+
+        let result = StreamingExecutor::new(&mut cmd)
+            .output_mode(OutputMode::Capture)
+            .execute()
+            .unwrap();
+
+        assert!(!result.status.success());
+        assert_eq!(result.status.code(), Some(42));
     }
 }
