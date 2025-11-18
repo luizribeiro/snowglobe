@@ -113,7 +113,7 @@ impl PushArgs {
         flake: &Flake,
         nix_backend: &dyn snowlib::NixBackend,
     ) -> Result<Vec<String>> {
-        let all_hosts = nix_backend.list_hosts(flake, None)?;
+        let all_hosts = nix_backend.list_all_hosts(flake, None)?;
 
         if self.hosts.is_empty() {
             Ok(all_hosts.iter().map(|h| h.name.clone()).collect())
@@ -187,7 +187,12 @@ impl PushArgs {
         let hostnames = self.resolve_hosts(flake, nix_backend.as_ref())?;
         let mut hosts = Vec::new();
         for name in hostnames {
-            let metadata = nix_backend.get_host_metadata(flake, &name)?;
+            // Try NixOS first, then Darwin
+            let metadata = nix_backend
+                .get_host_metadata(flake, &name, snowlib::SystemType::NixOS)
+                .or_else(|_| {
+                    nix_backend.get_host_metadata(flake, &name, snowlib::SystemType::Darwin)
+                })?;
             hosts.push(metadata);
         }
 
@@ -198,7 +203,7 @@ impl PushArgs {
             ignore_phases: self.ignore_phases,
             output_mode,
             ssh_user: self.user.clone(),
-            allow_reboot: !self.skip_reboot, // Invert: skip_reboot=true means allow_reboot=false
+            allow_reboot: !self.skip_reboot,
         };
 
         let push_ctx = snowlib::PushContext::new(

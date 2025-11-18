@@ -1,7 +1,7 @@
 use clap::Args;
 use snowlib::{Flake, Result};
 
-/// List hostnames from nixosConfigurations
+/// List hostnames from nixosConfigurations and darwinConfigurations
 #[derive(Debug, Args)]
 pub struct ListArgs {
     /// Filter hosts using a Nix expression (e.g., "config: config.services.nginx.enable or false")
@@ -21,7 +21,7 @@ impl ListArgs {
             &self.mock_fixture,
         )?;
 
-        let hosts = nix_backend.list_hosts(flake, self.filter.as_deref())?;
+        let hosts = nix_backend.list_all_hosts(flake, self.filter.as_deref())?;
 
         for host in hosts {
             println!("{}", host.name);

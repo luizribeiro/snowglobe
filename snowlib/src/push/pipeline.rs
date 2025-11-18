@@ -104,30 +104,31 @@ fn execute_build_step(push_ctx: &PushContext, host_metadata: &HostMetadata) -> R
     let hostname = &host_metadata.name;
 
     push_ctx.observer.on_build_start(hostname);
-    let build_output =
-        match push_ctx
-            .nix_backend
-            .build_host(push_ctx.flake, hostname, push_ctx.config.output_mode)
-        {
-            Ok(store_path) => {
-                // Create deployment target
-                let target = DeployTarget {
-                    user: push_ctx.config.ssh_user.clone(),
-                    hostname: host_metadata.fqdn.clone(),
-                    port: None,
-                };
+    let build_output = match push_ctx.nix_backend.build_host(
+        push_ctx.flake,
+        hostname,
+        host_metadata.system_type,
+        push_ctx.config.output_mode,
+    ) {
+        Ok(store_path) => {
+            // Create deployment target
+            let target = DeployTarget {
+                user: push_ctx.config.ssh_user.clone(),
+                hostname: host_metadata.fqdn.clone(),
+                port: None,
+            };
 
-                BuildOutput {
-                    metadata: host_metadata.clone(),
-                    target,
-                    store_path,
-                }
+            BuildOutput {
+                metadata: host_metadata.clone(),
+                target,
+                store_path,
             }
-            Err(e) => {
-                push_ctx.observer.on_build_complete(hostname, false);
-                return Err(e);
-            }
-        };
+        }
+        Err(e) => {
+            push_ctx.observer.on_build_complete(hostname, false);
+            return Err(e);
+        }
+    };
     push_ctx.observer.on_build_complete(hostname, true);
 
     Ok(build_output)

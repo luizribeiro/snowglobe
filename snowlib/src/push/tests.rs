@@ -4,7 +4,7 @@ use super::planning::create_deployment_plans;
 use super::*;
 use crate::backends::deploy::{DeployResult, DeployTarget};
 use crate::backends::mock::{MockDeployBackend, MockNixBackend};
-use crate::nix::{ActivationMode, Flake, HostMetadata, StorePath};
+use crate::nix::{ActivationMode, Flake, HostMetadata, StorePath, SystemType};
 
 /// Helper to create just HostMetadata for push tests
 fn make_host_metadata(
@@ -18,6 +18,7 @@ fn make_host_metadata(
         tags: vec![],
         fqdn: format!("{}.example.com", name),
         reboot_policy,
+        system_type: SystemType::NixOS,
     }
 }
 
@@ -637,6 +638,7 @@ fn test_push_with_single_phase() {
                 tags: vec![],
                 fqdn: "host1.example.com".to_string(),
                 reboot_policy: crate::nix::RebootPolicy::Auto,
+                system_type: SystemType::NixOS,
             },
             target: DeployTarget {
                 user: Some("root".to_string()),
@@ -654,6 +656,7 @@ fn test_push_with_single_phase() {
                 tags: vec![],
                 fqdn: "host2.example.com".to_string(),
                 reboot_policy: crate::nix::RebootPolicy::Auto,
+                system_type: SystemType::NixOS,
             },
             target: DeployTarget {
                 user: Some("root".to_string()),
@@ -704,6 +707,7 @@ fn test_push_with_multiple_phases() {
             phase: Some("p2".to_string()),
             tags: vec![],
             reboot_policy: crate::nix::RebootPolicy::Auto,
+            system_type: SystemType::NixOS,
         },
         HostMetadata {
             name: "host1".to_string(),
@@ -711,6 +715,7 @@ fn test_push_with_multiple_phases() {
             phase: Some("p1".to_string()),
             tags: vec![],
             reboot_policy: crate::nix::RebootPolicy::Auto,
+            system_type: SystemType::NixOS,
         },
     ];
 
@@ -771,6 +776,7 @@ fn test_push_stops_on_phase_failure() {
             phase: Some("p1".to_string()),
             tags: vec![],
             reboot_policy: crate::nix::RebootPolicy::Auto,
+            system_type: SystemType::NixOS,
         },
         HostMetadata {
             name: "host2".to_string(),
@@ -778,6 +784,7 @@ fn test_push_stops_on_phase_failure() {
             phase: Some("p2".to_string()),
             tags: vec![],
             reboot_policy: crate::nix::RebootPolicy::Auto,
+            system_type: SystemType::NixOS,
         },
     ];
 
@@ -838,6 +845,7 @@ fn test_push_with_noop_observer() {
             tags: vec![],
             fqdn: "host1.example.com".to_string(),
             reboot_policy: crate::nix::RebootPolicy::Auto,
+            system_type: SystemType::NixOS,
         },
         target: DeployTarget {
             user: Some("root".to_string()),
@@ -865,6 +873,7 @@ fn test_push_with_default_phase() {
             tags: vec![],
             fqdn: "host1.example.com".to_string(),
             reboot_policy: crate::nix::RebootPolicy::Auto,
+            system_type: SystemType::NixOS,
         },
         target: DeployTarget {
             user: Some("root".to_string()),
@@ -898,6 +907,7 @@ fn test_push_with_partial_failure_in_phase() {
                 tags: vec![],
                 fqdn: "host1.example.com".to_string(),
                 reboot_policy: crate::nix::RebootPolicy::Auto,
+                system_type: SystemType::NixOS,
             },
             target: DeployTarget {
                 user: Some("root".to_string()),
@@ -915,6 +925,7 @@ fn test_push_with_partial_failure_in_phase() {
                 tags: vec![],
                 fqdn: "host2.example.com".to_string(),
                 reboot_policy: crate::nix::RebootPolicy::Auto,
+                system_type: SystemType::NixOS,
             },
             target: DeployTarget {
                 user: Some("root".to_string()),
@@ -985,6 +996,7 @@ fn test_push_error_message_includes_source() {
         phase: Some("p1".to_string()),
         tags: vec![],
         reboot_policy: crate::nix::RebootPolicy::Auto,
+        system_type: SystemType::NixOS,
     }];
 
     let config = PushConfiguration {
@@ -1079,6 +1091,7 @@ fn test_push_error_message_format_with_activation_failure() {
         phase: Some("p1".to_string()),
         tags: vec![],
         reboot_policy: crate::nix::RebootPolicy::Auto,
+        system_type: SystemType::NixOS,
     }];
 
     let config = PushConfiguration {
@@ -1153,7 +1166,8 @@ fn test_push_full_workflow_single_phase_success() {
             fqdn: "web1.example.com".to_string(),
             phase: Some("web".to_string()),
             tags: vec![],
-            reboot_policy: crate::nix::RebootPolicy::Never, // No reboot needed
+            reboot_policy: crate::nix::RebootPolicy::Never,
+            system_type: SystemType::NixOS,
         },
         HostMetadata {
             name: "web2".to_string(),
@@ -1161,6 +1175,7 @@ fn test_push_full_workflow_single_phase_success() {
             phase: Some("web".to_string()),
             tags: vec![],
             reboot_policy: crate::nix::RebootPolicy::Never,
+            system_type: SystemType::NixOS,
         },
     ];
 
@@ -1231,6 +1246,7 @@ fn test_push_full_workflow_multi_phase_success() {
             phase: Some("database".to_string()),
             tags: vec![],
             reboot_policy: crate::nix::RebootPolicy::Never,
+            system_type: SystemType::NixOS,
         },
         HostMetadata {
             name: "web1".to_string(),
@@ -1238,6 +1254,7 @@ fn test_push_full_workflow_multi_phase_success() {
             phase: Some("web".to_string()),
             tags: vec![],
             reboot_policy: crate::nix::RebootPolicy::Never,
+            system_type: SystemType::NixOS,
         },
     ];
 
@@ -1301,6 +1318,7 @@ fn test_push_build_failure_stops_deployment() {
         phase: None,
         tags: vec![],
         reboot_policy: crate::nix::RebootPolicy::Never,
+        system_type: SystemType::NixOS,
     }];
 
     let config = PushConfiguration {
@@ -1362,6 +1380,7 @@ fn test_push_copy_failure_stops_deployment() {
         phase: None,
         tags: vec![],
         reboot_policy: crate::nix::RebootPolicy::Never,
+        system_type: SystemType::NixOS,
     }];
 
     let config = PushConfiguration {
@@ -1426,6 +1445,7 @@ fn test_push_copy_observer_hooks_called() {
             phase: Some("p1".to_string()),
             tags: vec![],
             reboot_policy: crate::nix::RebootPolicy::Never,
+            system_type: SystemType::NixOS,
         },
         HostMetadata {
             name: "host2".to_string(),
@@ -1433,6 +1453,7 @@ fn test_push_copy_observer_hooks_called() {
             phase: Some("p1".to_string()),
             tags: vec![],
             reboot_policy: crate::nix::RebootPolicy::Never,
+            system_type: SystemType::NixOS,
         },
     ];
 
@@ -1494,6 +1515,7 @@ fn test_push_build_observer_hooks_called() {
             phase: Some("p1".to_string()),
             tags: vec![],
             reboot_policy: crate::nix::RebootPolicy::Never,
+            system_type: SystemType::NixOS,
         },
         HostMetadata {
             name: "host2".to_string(),
@@ -1501,6 +1523,7 @@ fn test_push_build_observer_hooks_called() {
             phase: Some("p1".to_string()),
             tags: vec![],
             reboot_policy: crate::nix::RebootPolicy::Never,
+            system_type: SystemType::NixOS,
         },
     ];
 
@@ -1568,6 +1591,7 @@ fn test_push_build_partial_failure() {
             phase: Some("p1".to_string()),
             tags: vec![],
             reboot_policy: crate::nix::RebootPolicy::Never,
+            system_type: SystemType::NixOS,
         },
         HostMetadata {
             name: "host2".to_string(),
@@ -1575,6 +1599,7 @@ fn test_push_build_partial_failure() {
             phase: Some("p1".to_string()),
             tags: vec![],
             reboot_policy: crate::nix::RebootPolicy::Never,
+            system_type: SystemType::NixOS,
         },
     ];
 
@@ -1643,6 +1668,7 @@ fn test_push_ignore_phases_flag() {
             phase: Some("database".to_string()),
             tags: vec![],
             reboot_policy: crate::nix::RebootPolicy::Never,
+            system_type: SystemType::NixOS,
         },
         HostMetadata {
             name: "web1".to_string(),
@@ -1650,6 +1676,7 @@ fn test_push_ignore_phases_flag() {
             phase: Some("web".to_string()),
             tags: vec![],
             reboot_policy: crate::nix::RebootPolicy::Never,
+            system_type: SystemType::NixOS,
         },
     ];
 
@@ -1705,6 +1732,7 @@ fn test_push_phase_failure_stops_next_phase() {
             phase: Some("phase1".to_string()),
             tags: vec![],
             reboot_policy: crate::nix::RebootPolicy::Never,
+            system_type: SystemType::NixOS,
         },
         HostMetadata {
             name: "phase2-host".to_string(),
@@ -1712,6 +1740,7 @@ fn test_push_phase_failure_stops_next_phase() {
             phase: Some("phase2".to_string()),
             tags: vec![],
             reboot_policy: crate::nix::RebootPolicy::Never,
+            system_type: SystemType::NixOS,
         },
     ];
 
@@ -2210,7 +2239,7 @@ fn test_push_skip_reboot_flag_overrides_always_policy() {
         ignore_phases: false,
         output_mode: crate::process::OutputMode::Capture,
         ssh_user: None,
-        allow_reboot: false, // User says --skip-reboot
+        allow_reboot: false,
     };
 
     let results = {
@@ -2276,7 +2305,7 @@ fn test_push_skip_reboot_flag_with_detected_reboot() {
         ignore_phases: false,
         output_mode: crate::process::OutputMode::Capture,
         ssh_user: None,
-        allow_reboot: false, // User says --skip-reboot
+        allow_reboot: false,
     };
 
     let results = {

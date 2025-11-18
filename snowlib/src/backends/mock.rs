@@ -2,7 +2,7 @@ use crate::backends::deploy::{DeployBackend, DeployTarget};
 use crate::backends::nix::NixBackend;
 use crate::backends::reboot::{RebootBackend, RebootCheck, RebootReason};
 use crate::error::Result;
-use crate::nix::{ActivationMode, Flake, HostMetadata, StorePath};
+use crate::nix::{ActivationMode, Flake, HostMetadata, StorePath, SystemType};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
@@ -67,11 +67,10 @@ impl NixBackend for MockNixBackend {
     fn list_hosts(
         &self,
         _ctx: &Flake,
+        _system_type: SystemType,
         _filter_expr: Option<&str>,
     ) -> Result<Vec<crate::nix::Host>> {
-        // Note: filter_expr is ignored in mock - would require evaluating Nix expressions
         if let Some(fixture) = &self.fixture {
-            // Return hosts from fixture
             let hosts = fixture
                 .hosts
                 .iter()
@@ -81,12 +80,16 @@ impl NixBackend for MockNixBackend {
                 .collect();
             Ok(hosts)
         } else {
-            // No fixture - return empty list
             Ok(vec![])
         }
     }
 
-    fn get_host_metadata(&self, _flake: &Flake, host: &str) -> Result<HostMetadata> {
+    fn get_host_metadata(
+        &self,
+        _flake: &Flake,
+        host: &str,
+        system_type: SystemType,
+    ) -> Result<HostMetadata> {
         if let Some(meta_fix) = self.get_metadata_fixture(host) {
             Ok(HostMetadata {
                 name: host.to_string(),
@@ -94,15 +97,16 @@ impl NixBackend for MockNixBackend {
                 tags: meta_fix.tags.clone(),
                 fqdn: meta_fix.fqdn.clone(),
                 reboot_policy: crate::nix::RebootPolicy::Auto,
+                system_type,
             })
         } else {
-            // Default mock metadata
             Ok(HostMetadata {
                 name: host.to_string(),
                 phase: Some("production".to_string()),
                 tags: vec![],
                 fqdn: format!("{}.example.com", host),
                 reboot_policy: crate::nix::RebootPolicy::Auto,
+                system_type,
             })
         }
     }
@@ -111,6 +115,7 @@ impl NixBackend for MockNixBackend {
         &self,
         _flake: &Flake,
         host: &str,
+        _system_type: SystemType,
         _output_mode: crate::process::OutputMode,
     ) -> Result<StorePath> {
         // Check if this host should fail

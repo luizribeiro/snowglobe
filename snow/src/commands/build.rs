@@ -30,7 +30,7 @@ pub struct BuildResult {
 
 impl BuildArgs {
     fn resolve_hosts(&self, flake: &Flake, nix_backend: &dyn NixBackend) -> Result<Vec<String>> {
-        let all_hosts = nix_backend.list_hosts(flake, None)?;
+        let all_hosts = nix_backend.list_all_hosts(flake, None)?;
 
         if self.hosts.is_empty() {
             Ok(all_hosts.iter().map(|h| h.name.clone()).collect())
@@ -101,10 +101,30 @@ impl BuildArgs {
 
         let hostnames = self.resolve_hosts(flake, nix_backend.as_ref())?;
 
+        // Get metadata for each host to determine system type
+        let host_metadata: Vec<_> = hostnames
+            .iter()
+            .filter_map(|hostname| {
+                // Try NixOS first
+                if let Ok(metadata) =
+                    nix_backend.get_host_metadata(flake, hostname, snowlib::SystemType::NixOS)
+                {
+                    return Some(metadata);
+                }
+                // Then try Darwin
+                if let Ok(metadata) =
+                    nix_backend.get_host_metadata(flake, hostname, snowlib::SystemType::Darwin)
+                {
+                    return Some(metadata);
+                }
+                None
+            })
+            .collect();
+
         println!(
             "Building {} {} with concurrency {}...",
-            hostnames.len(),
-            if hostnames.len() == 1 {
+            host_metadata.len(),
+            if host_metadata.len() == 1 {
                 "host"
             } else {
                 "hosts"
@@ -121,12 +141,17 @@ impl BuildArgs {
             })?;
 
         let results: Vec<BuildResult> = pool.install(|| {
-            hostnames
+            host_metadata
                 .par_iter()
-                .map(|hostname| {
-                    let result = nix_backend.build_host(flake, hostname, output_mode);
+                .map(|metadata| {
+                    let result = nix_backend.build_host(
+                        flake,
+                        &metadata.name,
+                        metadata.system_type,
+                        output_mode,
+                    );
                     BuildResult {
-                        hostname: hostname.clone(),
+                        hostname: metadata.name.clone(),
                         result,
                     }
                 })

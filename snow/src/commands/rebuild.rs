@@ -2,7 +2,7 @@ use clap::Args;
 use dialoguer::{theme::ColorfulTheme, Select};
 use snowlib::{
     ActivationMode, DeployBackend, DeployTarget, Flake, LocalDeployBackend, LocalRebootBackend,
-    RebootBackend, Result,
+    RebootBackend, Result, SystemType,
 };
 
 /// Rebuild the current host
@@ -151,8 +151,10 @@ impl RebuildArgs {
             snowlib::OutputMode::Inherit
         };
 
+        let system_type = SystemType::detect_current();
+
         println!("Building configuration...");
-        let store_path = nix_backend.build_host(flake, &hostname, output_mode)?;
+        let store_path = nix_backend.build_host(flake, &hostname, system_type, output_mode)?;
         println!("Built {}", store_path.as_str());
 
         let target = DeployTarget {

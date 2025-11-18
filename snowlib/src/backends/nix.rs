@@ -1,5 +1,5 @@
 use crate::error::{NixError, Result};
-use crate::nix::{Flake, Host, HostMetadata, NixCommand, StorePath};
+use crate::nix::{Flake, Host, HostMetadata, NixCommand, StorePath, SystemType};
 use std::str::FromStr;
 
 /// Parse hostnames from nix JSON output
@@ -21,17 +21,79 @@ use crate::process::OutputMode;
 ///
 /// Allows swapping between real Nix commands and mocked versions for testing.
 pub trait NixBackend: Send + Sync {
-    /// List all nixosConfigurations from the flake
+    /// List all configurations from the flake (nixosConfigurations or darwinConfigurations)
     ///
     /// If filter_expr is provided, it should be a Nix expression that takes a config and returns a boolean.
     /// Example: "config: config.features.backup.enable or false"
-    fn list_hosts(&self, flake: &Flake, filter_expr: Option<&str>) -> Result<Vec<Host>>;
+    fn list_hosts(
+        &self,
+        flake: &Flake,
+        system_type: SystemType,
+        filter_expr: Option<&str>,
+    ) -> Result<Vec<Host>>;
 
-    /// Get metadata for a host from its NixOS configuration
-    fn get_host_metadata(&self, flake: &Flake, host: &str) -> Result<HostMetadata>;
+    /// List all configurations from both nixosConfigurations and darwinConfigurations
+    ///
+    /// Tries both configuration types and combines the results. If one type doesn't exist,
+    /// ignores it and returns hosts from the other type. However, actual errors (like invalid
+    /// filter syntax) are propagated.
+    fn list_all_hosts(&self, flake: &Flake, filter_expr: Option<&str>) -> Result<Vec<Host>> {
+        let mut all_hosts = Vec::new();
+        let mut has_valid_result = false;
 
-    /// Build a host's NixOS configuration and return the store path
-    fn build_host(&self, flake: &Flake, host: &str, output_mode: OutputMode) -> Result<StorePath>;
+        match self.list_hosts(flake, SystemType::NixOS, filter_expr) {
+            Ok(nixos_hosts) => {
+                all_hosts.extend(nixos_hosts);
+                has_valid_result = true;
+            }
+            Err(e) => {
+                // Only ignore if the configuration type doesn't exist
+                let err_str = e.to_string();
+                if !err_str.contains("does not provide attribute") {
+                    return Err(e);
+                }
+            }
+        }
+
+        match self.list_hosts(flake, SystemType::Darwin, filter_expr) {
+            Ok(darwin_hosts) => {
+                all_hosts.extend(darwin_hosts);
+                has_valid_result = true;
+            }
+            Err(e) => {
+                let err_str = e.to_string();
+                if !err_str.contains("does not provide attribute") {
+                    return Err(e);
+                }
+            }
+        }
+
+        if !has_valid_result {
+            return Err(crate::error::FlakeError::NotFound {
+                start_dir: flake.flake_root().to_path_buf(),
+            }
+            .into());
+        }
+
+        Ok(all_hosts)
+    }
+
+    /// Get metadata for a host from its configuration
+    fn get_host_metadata(
+        &self,
+        flake: &Flake,
+        host: &str,
+        system_type: SystemType,
+    ) -> Result<HostMetadata>;
+
+    /// Build a host's configuration and return the store path
+    fn build_host(
+        &self,
+        flake: &Flake,
+        host: &str,
+        system_type: SystemType,
+        output_mode: OutputMode,
+    ) -> Result<StorePath>;
 }
 
 /// System implementation of NixBackend that executes real Nix commands
@@ -54,9 +116,13 @@ impl Default for SystemNixBackend {
 }
 
 impl NixBackend for SystemNixBackend {
-    fn list_hosts(&self, flake: &Flake, filter_expr: Option<&str>) -> Result<Vec<Host>> {
+    fn list_hosts(
+        &self,
+        flake: &Flake,
+        system_type: SystemType,
+        filter_expr: Option<&str>,
+    ) -> Result<Vec<Host>> {
         let apply_arg = if let Some(expr) = filter_expr {
-            // Build a filter expression similar to find-hosts in justfile
             format!(
                 r#"configs:
   let
@@ -72,7 +138,8 @@ impl NixBackend for SystemNixBackend {
             "builtins.attrNames".to_string()
         };
 
-        let stdout = NixCommand::eval(flake, ".#nixosConfigurations")
+        let flake_ref = format!(".#{}", system_type.flake_attr());
+        let stdout = NixCommand::eval(flake, &flake_ref)
             .apply(&apply_arg)
             .json()
             .run()?;
@@ -80,10 +147,14 @@ impl NixBackend for SystemNixBackend {
         parse_hostnames(&stdout)
     }
 
-    fn get_host_metadata(&self, flake: &Flake, host: &str) -> Result<HostMetadata> {
-        let flake_ref = format!(".#nixosConfigurations.{}", host);
+    fn get_host_metadata(
+        &self,
+        flake: &Flake,
+        host: &str,
+        system_type: SystemType,
+    ) -> Result<HostMetadata> {
+        let flake_ref = format!(".#{}.{}", system_type.flake_attr(), host);
 
-        // Use eval with apply, similar to list_hosts
         let apply_expr = r#"config: {
           hostName = config.config.networking.hostName;
           domain = config.config.networking.domain or "";
@@ -138,13 +209,22 @@ impl NixBackend for SystemNixBackend {
             tags: meta.tags,
             fqdn,
             reboot_policy,
+            system_type,
         })
     }
 
-    fn build_host(&self, flake: &Flake, host: &str, output_mode: OutputMode) -> Result<StorePath> {
+    fn build_host(
+        &self,
+        flake: &Flake,
+        host: &str,
+        system_type: SystemType,
+        output_mode: OutputMode,
+    ) -> Result<StorePath> {
         let target = format!(
-            ".#nixosConfigurations.{}.config.system.build.toplevel",
-            host
+            ".#{}.{}.{}",
+            system_type.flake_attr(),
+            host,
+            system_type.build_path_suffix()
         );
 
         let stdout = NixCommand::build(flake, &target)

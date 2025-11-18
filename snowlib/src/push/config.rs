@@ -28,7 +28,7 @@ impl Default for PushConfiguration {
             ignore_phases: false,
             output_mode: OutputMode::Display,
             ssh_user: None,
-            allow_reboot: true, // Allow reboots by default
+            allow_reboot: true,
         }
     }
 }
