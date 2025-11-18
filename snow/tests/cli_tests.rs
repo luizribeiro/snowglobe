@@ -12,6 +12,7 @@ fn test_help_command() {
         .assert()
         .success()
         .stdout(predicate::str::contains("NixOS cluster orchestration tool"))
+        .stdout(predicate::str::contains("build"))
         .stdout(predicate::str::contains("push"));
 }
 
@@ -45,4 +46,16 @@ fn test_status_help() {
         .assert()
         .success()
         .stdout(predicate::str::contains("Show cluster status"));
+}
+
+#[test]
+fn test_build_help() {
+    snow_cmd()
+        .arg("build")
+        .arg("--help")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Build NixOS configurations for one or more hosts",
+        ));
 }
