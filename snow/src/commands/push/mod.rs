@@ -10,8 +10,24 @@ pub struct PushArgs {
     pub hosts: Vec<String>,
 
     /// Filter hosts using a Nix expression (e.g., "config: config.services.nginx.enable or false")
-    #[arg(short = 'e', long)]
+    #[arg(short = 'e', long, conflicts_with_all = &["phase", "phases", "tag", "tags"])]
     pub filter: Option<String>,
+
+    /// Filter by deployment phase (e.g., "production")
+    #[arg(long, conflicts_with_all = &["filter", "phases", "tag", "tags"])]
+    pub phase: Option<String>,
+
+    /// Filter by multiple phases (comma-separated, OR logic)
+    #[arg(long, conflicts_with_all = &["filter", "phase", "tag", "tags"], value_delimiter = ',')]
+    pub phases: Vec<String>,
+
+    /// Filter by tag (e.g., "web")
+    #[arg(long, conflicts_with_all = &["filter", "phase", "phases", "tags"])]
+    pub tag: Option<String>,
+
+    /// Filter by multiple tags (comma-separated, OR logic)
+    #[arg(long, conflicts_with_all = &["filter", "phase", "phases", "tag"], value_delimiter = ',')]
+    pub tags: Vec<String>,
 
     /// Dry run - show what would change without activating
     #[arg(long)]
@@ -108,6 +124,16 @@ impl PushArgs {
         }
     }
 
+    fn get_filter_expression(&self) -> Result<Option<String>> {
+        crate::filter_helpers::build_filter_expression(
+            self.filter.as_deref(),
+            self.phase.as_deref(),
+            &self.phases,
+            self.tag.as_deref(),
+            &self.tags,
+        )
+    }
+
     /// Resolve and validate the hosts to push
     ///
     /// If no hosts are provided, returns all hosts from the flake (optionally filtered).
@@ -120,7 +146,7 @@ impl PushArgs {
         crate::host_selection::resolve_hosts_from_args(
             flake,
             nix_backend,
-            self.filter.as_deref(),
+            self.get_filter_expression()?.as_deref(),
             &self.hosts,
         )
     }
@@ -358,6 +384,10 @@ mod tests {
         let args = PushArgs {
             hosts: vec![],
             filter: None,
+            phase: None,
+            phases: vec![],
+            tag: None,
+            tags: vec![],
             dry_run: true,
             switch: true,
             boot: false,
@@ -380,6 +410,10 @@ mod tests {
         let args = PushArgs {
             hosts: vec![],
             filter: None,
+            phase: None,
+            phases: vec![],
+            tag: None,
+            tags: vec![],
             dry_run: false,
             switch: false,
             boot: false,
@@ -402,6 +436,10 @@ mod tests {
         let args = PushArgs {
             hosts: vec![],
             filter: None,
+            phase: None,
+            phases: vec![],
+            tag: None,
+            tags: vec![],
             dry_run: false,
             switch: false,
             boot: false,
@@ -424,6 +462,10 @@ mod tests {
         let args = PushArgs {
             hosts: vec![],
             filter: None,
+            phase: None,
+            phases: vec![],
+            tag: None,
+            tags: vec![],
             dry_run: false,
             switch: false,
             boot: false,
@@ -446,6 +488,10 @@ mod tests {
         let args = PushArgs {
             hosts: vec![],
             filter: None,
+            phase: None,
+            phases: vec![],
+            tag: None,
+            tags: vec![],
             dry_run: false,
             switch: true,
             boot: false,

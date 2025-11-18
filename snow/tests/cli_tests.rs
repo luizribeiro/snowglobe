@@ -83,3 +83,161 @@ fn test_push_filter_flag_in_help() {
             "Filter hosts using a Nix expression",
         ));
 }
+
+#[test]
+fn test_build_phase_flag_in_help() {
+    snow_cmd()
+        .arg("build")
+        .arg("--help")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Filter by deployment phase"));
+}
+
+#[test]
+fn test_build_phases_flag_in_help() {
+    snow_cmd()
+        .arg("build")
+        .arg("--help")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Filter by multiple phases"));
+}
+
+#[test]
+fn test_build_tag_flag_in_help() {
+    snow_cmd()
+        .arg("build")
+        .arg("--help")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Filter by tag"));
+}
+
+#[test]
+fn test_build_tags_flag_in_help() {
+    snow_cmd()
+        .arg("build")
+        .arg("--help")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Filter by multiple tags"));
+}
+
+#[test]
+fn test_push_phase_flag_in_help() {
+    snow_cmd()
+        .arg("push")
+        .arg("--help")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Filter by deployment phase"));
+}
+
+#[test]
+fn test_push_tags_flag_in_help() {
+    snow_cmd()
+        .arg("push")
+        .arg("--help")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Filter by multiple tags"));
+}
+
+#[test]
+fn test_build_filter_and_phase_mutually_exclusive() {
+    snow_cmd()
+        .arg("build")
+        .arg("-e")
+        .arg("config: true")
+        .arg("--phase")
+        .arg("production")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("cannot be used with"));
+}
+
+#[test]
+fn test_build_phase_and_phases_mutually_exclusive() {
+    snow_cmd()
+        .arg("build")
+        .arg("--phase")
+        .arg("production")
+        .arg("--phases")
+        .arg("staging")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("cannot be used with"));
+}
+
+#[test]
+fn test_build_tag_and_tags_mutually_exclusive() {
+    snow_cmd()
+        .arg("build")
+        .arg("--tag")
+        .arg("web")
+        .arg("--tags")
+        .arg("database")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("cannot be used with"));
+}
+
+#[test]
+fn test_build_phase_and_tag_mutually_exclusive() {
+    snow_cmd()
+        .arg("build")
+        .arg("--phase")
+        .arg("production")
+        .arg("--tag")
+        .arg("web")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("cannot be used with"));
+}
+
+#[test]
+fn test_push_filter_and_tag_mutually_exclusive() {
+    snow_cmd()
+        .arg("push")
+        .arg("-e")
+        .arg("config: true")
+        .arg("--tag")
+        .arg("web")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("cannot be used with"));
+}
+
+#[test]
+fn test_build_invalid_phase_name() {
+    snow_cmd()
+        .arg("build")
+        .arg("--phase")
+        .arg("prod!uction")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("only ASCII alphanumeric"));
+}
+
+#[test]
+fn test_build_empty_phase_name() {
+    snow_cmd()
+        .arg("build")
+        .arg("--phase")
+        .arg("!@#$")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("must contain at least one"));
+}
+
+#[test]
+fn test_push_invalid_tag_name() {
+    snow_cmd()
+        .arg("push")
+        .arg("--tag")
+        .arg("web.server")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("only ASCII alphanumeric"));
+}

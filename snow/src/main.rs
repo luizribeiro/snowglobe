@@ -5,6 +5,7 @@ use tracing_subscriber::util::SubscriberInitExt;
 
 mod backend_factory;
 mod commands;
+mod filter_helpers;
 mod host_selection;
 
 #[cfg(test)]

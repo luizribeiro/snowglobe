@@ -9,8 +9,24 @@ pub struct BuildArgs {
     pub hosts: Vec<String>,
 
     /// Filter hosts using a Nix expression (e.g., "config: config.services.nginx.enable or false")
-    #[arg(short = 'e', long)]
+    #[arg(short = 'e', long, conflicts_with_all = &["phase", "phases", "tag", "tags"])]
     pub filter: Option<String>,
+
+    /// Filter by deployment phase (e.g., "production")
+    #[arg(long, conflicts_with_all = &["filter", "phases", "tag", "tags"])]
+    pub phase: Option<String>,
+
+    /// Filter by multiple phases (comma-separated, OR logic)
+    #[arg(long, conflicts_with_all = &["filter", "phase", "tag", "tags"], value_delimiter = ',')]
+    pub phases: Vec<String>,
+
+    /// Filter by tag (e.g., "web")
+    #[arg(long, conflicts_with_all = &["filter", "phase", "phases", "tags"])]
+    pub tag: Option<String>,
+
+    /// Filter by multiple tags (comma-separated, OR logic)
+    #[arg(long, conflicts_with_all = &["filter", "phase", "phases", "tag"], value_delimiter = ',')]
+    pub tags: Vec<String>,
 
     /// Quiet mode - suppress subprocess output
     #[arg(short, long)]
@@ -33,11 +49,21 @@ pub struct BuildResult {
 }
 
 impl BuildArgs {
+    fn get_filter_expression(&self) -> Result<Option<String>> {
+        crate::filter_helpers::build_filter_expression(
+            self.filter.as_deref(),
+            self.phase.as_deref(),
+            &self.phases,
+            self.tag.as_deref(),
+            &self.tags,
+        )
+    }
+
     fn resolve_hosts(&self, flake: &Flake, nix_backend: &dyn NixBackend) -> Result<Vec<String>> {
         crate::host_selection::resolve_hosts_from_args(
             flake,
             nix_backend,
-            self.filter.as_deref(),
+            self.get_filter_expression()?.as_deref(),
             &self.hosts,
         )
     }
@@ -169,6 +195,10 @@ mod tests {
         let args = BuildArgs {
             hosts: vec![],
             filter: None,
+            phase: None,
+            phases: vec![],
+            tag: None,
+            tags: vec![],
             quiet: false,
             concurrency: 3,
             #[cfg(debug_assertions)]
@@ -177,6 +207,10 @@ mod tests {
 
         assert_eq!(args.hosts.len(), 0);
         assert!(args.filter.is_none());
+        assert!(args.phase.is_none());
+        assert!(args.phases.is_empty());
+        assert!(args.tag.is_none());
+        assert!(args.tags.is_empty());
         assert!(!args.quiet);
         assert_eq!(args.concurrency, 3);
     }
@@ -186,6 +220,10 @@ mod tests {
         let args = BuildArgs {
             hosts: vec!["host1".to_string(), "host2".to_string()],
             filter: None,
+            phase: None,
+            phases: vec![],
+            tag: None,
+            tags: vec![],
             quiet: true,
             concurrency: 5,
             #[cfg(debug_assertions)]
@@ -263,5 +301,96 @@ mod tests {
             .assert()
             .success() // 0 hosts to build = success
             .stdout(predicate::str::contains("Building 0 host"));
+    }
+
+    #[test]
+    fn test_build_with_phase_production() {
+        // hydrogen and nitrogen have phase=production
+        snow_cmd()
+            .arg("build")
+            .arg("--phase")
+            .arg("production")
+            .assert()
+            .failure() // Build will fail (unbuildable flake)
+            .stdout(predicate::str::contains("Building 2 host"));
+    }
+
+    #[test]
+    fn test_build_with_phase_staging() {
+        // Only oxygen has phase=staging
+        snow_cmd()
+            .arg("build")
+            .arg("--phase")
+            .arg("staging")
+            .assert()
+            .failure()
+            .stdout(predicate::str::contains("Building 1 host"));
+    }
+
+    #[test]
+    fn test_build_with_multiple_phases() {
+        // production (hydrogen, nitrogen) + staging (oxygen) = 3 hosts
+        snow_cmd()
+            .arg("build")
+            .arg("--phases")
+            .arg("production,staging")
+            .assert()
+            .failure()
+            .stdout(predicate::str::contains("Building 3 host"));
+    }
+
+    #[test]
+    fn test_build_with_tag_web() {
+        // hydrogen and oxygen have tag=web
+        snow_cmd()
+            .arg("build")
+            .arg("--tag")
+            .arg("web")
+            .assert()
+            .failure()
+            .stdout(predicate::str::contains("Building 2 host"));
+    }
+
+    #[test]
+    fn test_build_with_multiple_tags() {
+        // web (hydrogen, oxygen) + database (nitrogen) = 3 hosts
+        snow_cmd()
+            .arg("build")
+            .arg("--tags")
+            .arg("web,database")
+            .assert()
+            .failure()
+            .stdout(predicate::str::contains("Building 3 host"));
+    }
+
+    #[test]
+    fn test_build_phase_with_explicit_hosts() {
+        // Test intersection: --phase production + explicit hosts (hydrogen, helium)
+        // Only hydrogen matches both (helium is dev phase)
+        snow_cmd()
+            .arg("build")
+            .arg("--phase")
+            .arg("production")
+            .arg("hydrogen")
+            .arg("helium")
+            .assert()
+            .failure()
+            .stdout(predicate::str::contains("Building 1 host"));
+    }
+
+    #[test]
+    fn test_build_tag_with_explicit_hosts() {
+        // Test intersection: --tag web + explicit hosts (hydrogen, nitrogen, helium)
+        // Only hydrogen matches both (nitrogen has database tag, helium has test tag)
+        snow_cmd()
+            .arg("build")
+            .arg("--tag")
+            .arg("web")
+            .arg("hydrogen")
+            .arg("nitrogen")
+            .arg("helium")
+            .assert()
+            .failure()
+            .stdout(predicate::str::contains("Building 1 host"));
     }
 }

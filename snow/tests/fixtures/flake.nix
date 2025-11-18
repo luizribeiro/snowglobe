@@ -41,6 +41,10 @@
           networking.hostName = "oxygen";
           networking.domain = "";
           nixpkgs.hostPlatform = "x86_64-linux";
+
+          # For mock testing
+          core.pushPhase = "staging";
+          core.tags = [ "web" "backend" ];
         };
       };
 
@@ -52,6 +56,10 @@
           networking.hostName = "helium";
           networking.domain = "local";
           nixpkgs.hostPlatform = "aarch64-linux";
+
+          # For mock testing
+          core.pushPhase = "dev";
+          core.tags = [ "test" ];
         };
       };
     };
