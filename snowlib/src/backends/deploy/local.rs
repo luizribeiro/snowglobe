@@ -1,5 +1,5 @@
 use crate::error::{DeployError, Result};
-use crate::nix::{ActivationMode, StorePath};
+use crate::nix::{ActivationMode, StorePath, SystemType};
 use crate::process::{OutputMode, StreamingExecutor};
 use std::process::Command;
 
@@ -42,18 +42,58 @@ impl DeployBackend for LocalDeployBackend {
         store_path: &StorePath,
         mode: ActivationMode,
     ) -> Result<()> {
-        let switch_to_configuration =
-            format!("{}/bin/switch-to-configuration", store_path.as_str());
-
-        let mode_arg = match mode {
-            ActivationMode::Switch => "switch",
-            ActivationMode::Boot => "boot",
-            ActivationMode::Test => "test",
-            ActivationMode::DryActivate => "dry-activate",
-        };
+        let system_type = SystemType::detect_current();
 
         let mut cmd = Command::new("sudo");
-        cmd.args([&switch_to_configuration, mode_arg]);
+
+        match system_type {
+            SystemType::NixOS => {
+                let switch_to_configuration =
+                    format!("{}/bin/switch-to-configuration", store_path.as_str());
+
+                let mode_arg = match mode {
+                    ActivationMode::Switch => "switch",
+                    ActivationMode::Boot => "boot",
+                    ActivationMode::Test => "test",
+                    ActivationMode::DryActivate => "dry-activate",
+                };
+
+                cmd.args([&switch_to_configuration, mode_arg]);
+            }
+            SystemType::Darwin => {
+                let activate_script = format!("{}/activate", store_path.as_str());
+
+                match mode {
+                    ActivationMode::Switch => {
+                        cmd.arg(&activate_script);
+                    }
+                    ActivationMode::Boot => {
+                        return Err(DeployError::Failed {
+                            host: target.hostname.clone(),
+                            source: std::io::Error::other(
+                                "Boot mode not supported on Darwin - use switch mode instead",
+                            ),
+                        }
+                        .into());
+                    }
+                    ActivationMode::Test => {
+                        tracing::warn!(
+                            "Test mode not natively supported on Darwin - using switch instead"
+                        );
+                        cmd.arg(&activate_script);
+                    }
+                    ActivationMode::DryActivate => {
+                        return Err(DeployError::Failed {
+                            host: target.hostname.clone(),
+                            source: std::io::Error::other(
+                                "Dry-activate mode not supported on Darwin",
+                            ),
+                        }
+                        .into());
+                    }
+                }
+            }
+        }
 
         let result = StreamingExecutor::new(&mut cmd)
             .output_mode(self.output_mode)
@@ -130,6 +170,91 @@ mod tests {
         assert!(
             err_string.contains("DeployError") || err_string.contains("Failed"),
             "Error should indicate deployment failure: {}",
+            err_string
+        );
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn test_activate_darwin_boot_mode_errors() {
+        let backend = LocalDeployBackend::new().with_quiet();
+        let target = DeployTarget {
+            user: None,
+            hostname: "localhost".to_string(),
+            port: None,
+        };
+        let store_path = StorePath::new("/nix/store/test-darwin-system".to_string());
+
+        let result = backend.activate(&target, &store_path, ActivationMode::Boot);
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+
+        // Check both Display and Debug representations for the error message
+        let err_display = err.to_string();
+        let err_debug = format!("{:?}", err);
+
+        let contains_boot_error = err_display.contains("Boot mode not supported on Darwin")
+            || err_debug.contains("Boot mode not supported on Darwin");
+
+        assert!(
+            contains_boot_error,
+            "Error should mention Boot mode not supported. Display: {}, Debug: {}",
+            err_display, err_debug
+        );
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn test_activate_darwin_dry_activate_errors() {
+        let backend = LocalDeployBackend::new().with_quiet();
+        let target = DeployTarget {
+            user: None,
+            hostname: "localhost".to_string(),
+            port: None,
+        };
+        let store_path = StorePath::new("/nix/store/test-darwin-system".to_string());
+
+        let result = backend.activate(&target, &store_path, ActivationMode::DryActivate);
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+
+        // Check both Display and Debug representations for the error message
+        let err_display = err.to_string();
+        let err_debug = format!("{:?}", err);
+
+        let contains_dry_activate_error = err_display
+            .contains("Dry-activate mode not supported on Darwin")
+            || err_debug.contains("Dry-activate mode not supported on Darwin");
+
+        assert!(
+            contains_dry_activate_error,
+            "Error should mention Dry-activate mode not supported. Display: {}, Debug: {}",
+            err_display, err_debug
+        );
+    }
+
+    #[test]
+    #[cfg(not(target_os = "macos"))]
+    fn test_activate_nixos_uses_switch_to_configuration() {
+        let backend = LocalDeployBackend::new().with_quiet();
+        let target = DeployTarget {
+            user: None,
+            hostname: "localhost".to_string(),
+            port: None,
+        };
+        let store_path = StorePath::new("/nix/store/nonexistent-nixos-system".to_string());
+
+        let result = backend.activate(&target, &store_path, ActivationMode::Switch);
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        let err_string = err.to_string();
+
+        assert!(
+            err_string.contains("switch-to-configuration"),
+            "NixOS should try to use switch-to-configuration: {}",
             err_string
         );
     }
