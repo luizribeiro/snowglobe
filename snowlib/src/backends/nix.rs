@@ -181,7 +181,9 @@ impl NixBackend for SystemNixBackend {
         struct MetadataJson {
             #[serde(rename = "hostName")]
             hostname: String,
-            domain: String,
+            // Domain can be null for hosts that connect to different networks (like laptops)
+            // or when not configured in the NixOS/nix-darwin configuration
+            domain: Option<String>,
             phase: Option<String>,
             tags: Vec<String>,
             #[serde(rename = "rebootPolicy")]
@@ -195,10 +197,9 @@ impl NixBackend for SystemNixBackend {
             }
         })?;
 
-        let fqdn = if meta.domain.is_empty() {
-            meta.hostname.clone()
-        } else {
-            format!("{}.{}", meta.hostname, meta.domain)
+        let fqdn = match meta.domain {
+            Some(domain) if !domain.is_empty() => format!("{}.{}", meta.hostname, domain),
+            _ => meta.hostname.clone(),
         };
 
         let reboot_policy = crate::nix::RebootPolicy::from_str(&meta.reboot_policy)?;
@@ -253,5 +254,144 @@ impl NixBackend for SystemNixBackend {
             .to_string();
 
         Ok(StorePath::new(path))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_metadata_json_with_null_domain() {
+        let json = r#"{
+            "hostName": "macbook",
+            "domain": null,
+            "phase": null,
+            "tags": [],
+            "rebootPolicy": "auto"
+        }"#;
+
+        #[derive(serde::Deserialize)]
+        struct MetadataJson {
+            #[serde(rename = "hostName")]
+            hostname: String,
+            domain: Option<String>,
+            phase: Option<String>,
+            tags: Vec<String>,
+            #[serde(rename = "rebootPolicy")]
+            reboot_policy: String,
+        }
+
+        let meta: MetadataJson = serde_json::from_str(json).unwrap();
+        assert_eq!(meta.hostname, "macbook");
+        assert_eq!(meta.domain, None);
+        assert_eq!(meta.phase, None);
+        assert_eq!(meta.tags, Vec::<String>::new());
+        assert_eq!(meta.reboot_policy, "auto");
+
+        let fqdn = match meta.domain {
+            Some(domain) if !domain.is_empty() => format!("{}.{}", meta.hostname, domain),
+            _ => meta.hostname.clone(),
+        };
+        assert_eq!(fqdn, "macbook");
+    }
+
+    #[test]
+    fn test_metadata_json_with_empty_domain() {
+        let json = r#"{
+            "hostName": "server",
+            "domain": "",
+            "phase": "p1",
+            "tags": ["web"],
+            "rebootPolicy": "never"
+        }"#;
+
+        #[derive(serde::Deserialize)]
+        struct MetadataJson {
+            #[serde(rename = "hostName")]
+            hostname: String,
+            domain: Option<String>,
+            phase: Option<String>,
+            tags: Vec<String>,
+            #[serde(rename = "rebootPolicy")]
+            reboot_policy: String,
+        }
+
+        let meta: MetadataJson = serde_json::from_str(json).unwrap();
+        assert_eq!(meta.hostname, "server");
+        assert_eq!(meta.domain, Some("".to_string()));
+        assert_eq!(meta.phase, Some("p1".to_string()));
+        assert_eq!(meta.tags, vec!["web"]);
+        assert_eq!(meta.reboot_policy, "never");
+
+        let fqdn = match meta.domain {
+            Some(domain) if !domain.is_empty() => format!("{}.{}", meta.hostname, domain),
+            _ => meta.hostname.clone(),
+        };
+        assert_eq!(fqdn, "server");
+    }
+
+    #[test]
+    fn test_metadata_json_with_valid_domain() {
+        let json = r#"{
+            "hostName": "web01",
+            "domain": "example.com",
+            "phase": "p2",
+            "tags": ["mysql", "ldap"],
+            "rebootPolicy": "always"
+        }"#;
+
+        #[derive(serde::Deserialize)]
+        struct MetadataJson {
+            #[serde(rename = "hostName")]
+            hostname: String,
+            domain: Option<String>,
+            phase: Option<String>,
+            tags: Vec<String>,
+            #[serde(rename = "rebootPolicy")]
+            reboot_policy: String,
+        }
+
+        let meta: MetadataJson = serde_json::from_str(json).unwrap();
+        assert_eq!(meta.hostname, "web01");
+        assert_eq!(meta.domain, Some("example.com".to_string()));
+        assert_eq!(meta.phase, Some("p2".to_string()));
+        assert_eq!(meta.tags, vec!["mysql", "ldap"]);
+        assert_eq!(meta.reboot_policy, "always");
+
+        let fqdn = match meta.domain {
+            Some(domain) if !domain.is_empty() => format!("{}.{}", meta.hostname, domain),
+            _ => meta.hostname.clone(),
+        };
+        assert_eq!(fqdn, "web01.example.com");
+    }
+
+    #[test]
+    fn test_parse_hostnames_valid() {
+        let json = br#"["host1", "host2", "host3"]"#;
+        let hosts = parse_hostnames(json).unwrap();
+
+        assert_eq!(hosts.len(), 3);
+        assert_eq!(hosts[0].name, "host1");
+        assert_eq!(hosts[1].name, "host2");
+        assert_eq!(hosts[2].name, "host3");
+    }
+
+    #[test]
+    fn test_parse_hostnames_empty() {
+        let json = br#"[]"#;
+        let hosts = parse_hostnames(json).unwrap();
+        assert_eq!(hosts.len(), 0);
+    }
+
+    #[test]
+    fn test_parse_hostnames_invalid_json() {
+        let json = b"not json";
+        let result = parse_hostnames(json);
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            crate::error::SnowError::Nix(NixError::OutputParseFailed { .. })
+        ));
     }
 }
