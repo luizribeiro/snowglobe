@@ -95,12 +95,20 @@ impl DeployBackend for LocalDeployBackend {
             }
         }
 
+        let command_name = match system_type {
+            SystemType::NixOS => "switch-to-configuration",
+            SystemType::Darwin => "activate script",
+        };
+
         let result = StreamingExecutor::new(&mut cmd)
             .output_mode(self.output_mode)
             .execute()
             .map_err(|e| DeployError::Failed {
                 host: target.hostname.clone(),
-                source: e,
+                source: std::io::Error::new(
+                    e.kind(),
+                    format!("Failed to execute {}: {}", command_name, e),
+                ),
             })?;
 
         if !result.status.success() {
@@ -250,12 +258,18 @@ mod tests {
 
         assert!(result.is_err());
         let err = result.unwrap_err();
-        let err_string = err.to_string();
+
+        // Check both Display and Debug representations for the error message
+        let err_display = err.to_string();
+        let err_debug = format!("{:?}", err);
+
+        let contains_switch_to_config = err_display.contains("switch-to-configuration")
+            || err_debug.contains("switch-to-configuration");
 
         assert!(
-            err_string.contains("switch-to-configuration"),
-            "NixOS should try to use switch-to-configuration: {}",
-            err_string
+            contains_switch_to_config,
+            "NixOS should try to use switch-to-configuration. Display: {}, Debug: {}",
+            err_display, err_debug
         );
     }
 }

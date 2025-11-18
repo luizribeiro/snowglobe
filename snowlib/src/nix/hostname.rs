@@ -101,8 +101,7 @@ mod tests {
     fn test_get_hostname_nixos() {
         let result = get_hostname();
 
-        if result.is_ok() {
-            let hostname = result.unwrap();
+        if let Ok(hostname) = result {
             assert!(!hostname.is_empty());
             assert!(!hostname.contains('\n'));
         }
