@@ -259,12 +259,12 @@ snow push myhost
 # → Shows "Deployed & Rebooted" in results
 ```
 
-#### `--no-reboot` - Inform Only
+#### `--skip-reboot` - Inform Only
 
 Detects reboot requirements but doesn't automatically reboot:
 
 ```bash
-snow push myhost --no-reboot
+snow push myhost --skip-reboot
 # → Detects kernel upgrade
 # → Uses boot mode
 # → Deploys configuration
@@ -314,13 +314,13 @@ snow push myhost --reboot
 |------|-------------|-----------------|
 | (none) | Auto-reboot if boot mode used | When boot mode is chosen |
 | `--reboot` | Force reboot after boot deploy | When boot mode is used |
-| `--no-reboot` | Never auto-reboot | Always |
+| `--skip-reboot` | Never auto-reboot | Always |
 
 ### Safety Flags
 
 | Flag | Description |
 |------|-------------|
-| `--force` | Override safety checks (use with `--switch` to force immediate activation despite reboot requirement) |
+| `--force` | Override policies and safety checks (use with `--switch` to ignore reboot policies and detection) |
 
 ### Other Flags
 
@@ -337,11 +337,11 @@ snow push myhost --reboot
 | Command | Detection? | Activation | Auto-reboot? | Use Case |
 |---------|-----------|------------|--------------|----------|
 | `snow push myhost` | Yes | Auto (boot/switch) | Yes (if boot) | **Default**: Do the right thing automatically |
-| `snow push myhost --no-reboot` | Yes | Auto (boot/switch) | No | Deploy now, reboot manually later |
-| `snow push myhost --switch` | Yes | Switch (if safe) or Error | N/A | Force immediate activation (blocked if reboot required) |
-| `snow push myhost --switch --force` | Yes (shows warning) | Switch | N/A | Force immediate activation despite reboot requirement |
+| `snow push myhost --skip-reboot` | Yes | Auto (boot/switch) | No | Deploy now, reboot manually later |
+| `snow push myhost --switch` | Yes | Switch (if safe) or Error | N/A | Force immediate activation (blocked if reboot required or policy) |
+| `snow push myhost --switch --force` | Yes (shows warning) | Switch | N/A | Force immediate activation despite reboot requirement or policy |
 | `snow push myhost --boot` | No | Boot | Yes | Set for next boot and reboot now |
-| `snow push myhost --boot --no-reboot` | No | Boot | No | Set for next boot, reboot manually later |
+| `snow push myhost --boot --skip-reboot` | No | Boot | No | Set for next boot, reboot manually later |
 | `snow push myhost --boot --reboot` | No | Boot | Yes | Same as `--boot` (redundant) |
 | `snow push myhost --dry-run` | Yes | None | N/A | Preview what would change |
 | `snow push myhost --test` | No | Test | N/A | Test configuration (reverts on reboot) |
@@ -404,7 +404,7 @@ Push Results
 ### Example 3: Kernel Upgrade (Manual Reboot)
 
 ```bash
-$ snow push hydrogen --no-reboot
+$ snow push hydrogen --skip-reboot
 
 → Building configurations...
 ✓ Built 1 configuration(s)
@@ -496,7 +496,7 @@ Options:
   3. Use --boot to set for next boot without immediate activation
 ```
 
-### Example 7: Force Switch Despite Reboot Need
+### Example 7: Force Switch Despite Reboot Need or Policy
 
 ```bash
 $ snow push hydrogen --switch --force
@@ -527,6 +527,8 @@ Push Results
    - Consider rebooting soon
 ```
 
+**Note**: `--force` also overrides reboot policies. If a host has `rebootPolicy = "always"` or `"never"`, using `--switch --force` will use switch mode anyway.
+
 ---
 
 ## Design Philosophy
@@ -548,7 +550,8 @@ This matches how production deployments actually work: you want the tool to hand
 Power users have full control via explicit flags:
 
 - `--switch` - "I know this is safe to activate immediately"
-- `--boot --no-reboot` - "I'll reboot during my maintenance window"
+- `--switch --force` - "Override policies and force immediate activation"
+- `--boot --skip-reboot` - "I'll reboot during my maintenance window"
 - `--dry-run` - "Let me see what would happen first"
 
 ### Safe by Default

@@ -50,24 +50,27 @@ fn handle_switch_mode(
     reboot_backend: &dyn RebootBackend,
     force: bool,
 ) -> Result<ActivationStrategy> {
-    // Check reboot policy - 'never' and 'always' policies override switch mode
-    match metadata.reboot_policy {
-        RebootPolicy::Never => {
-            // Never policy: use boot mode without reboot
-            return Ok(ActivationStrategy::Deploy(
-                ActivationMode::Boot,
-                Some(RebootCheck::not_required()),
-            ));
-        }
-        RebootPolicy::Always => {
-            // Always policy: use boot mode and will reboot
-            return Ok(ActivationStrategy::Deploy(
-                ActivationMode::Boot,
-                Some(RebootCheck::required(RebootReason::Policy)),
-            ));
-        }
-        RebootPolicy::Auto => {
-            // Continue with normal switch mode logic
+    // If force is set, override policies and proceed with switch mode
+    if !force {
+        // Check reboot policy - 'never' and 'always' policies override switch mode
+        match metadata.reboot_policy {
+            RebootPolicy::Never => {
+                // Never policy: use boot mode without reboot
+                return Ok(ActivationStrategy::Deploy(
+                    ActivationMode::Boot,
+                    Some(RebootCheck::not_required()),
+                ));
+            }
+            RebootPolicy::Always => {
+                // Always policy: use boot mode and will reboot
+                return Ok(ActivationStrategy::Deploy(
+                    ActivationMode::Boot,
+                    Some(RebootCheck::required(RebootReason::Policy)),
+                ));
+            }
+            RebootPolicy::Auto => {
+                // Continue with normal switch mode logic
+            }
         }
     }
 

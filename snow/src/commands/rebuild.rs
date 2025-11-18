@@ -28,9 +28,13 @@ pub struct RebuildArgs {
     #[arg(long)]
     pub test: bool,
 
-    /// Never automatically reboot (even if reboot is required)
+    /// Skip automatic reboot execution (still respects reboot policies for activation mode)
     #[arg(long)]
-    pub no_reboot: bool,
+    pub skip_reboot: bool,
+
+    /// Override policies and safety checks (skip interactive prompts and force requested mode)
+    #[arg(long)]
+    pub force: bool,
 
     /// Quiet mode - suppress subprocess output
     #[arg(short, long)]
@@ -87,9 +91,15 @@ impl RebuildArgs {
 
     /// Show interactive reboot prompt and return the selected activation mode
     fn prompt_reboot_action(&self, reason: &str) -> Result<RebootAction> {
-        if self.no_reboot {
+        if self.force {
+            println!("⚠️  Reboot required ({}), but --force specified", reason);
+            println!("   Forcing switch mode (may leave system in inconsistent state)");
+            return Ok(RebootAction::SwitchRisky);
+        }
+
+        if self.skip_reboot {
             println!(
-                "⚠️  Reboot required ({}), but --no-reboot specified",
+                "⚠️  Reboot required ({}), but --skip-reboot specified",
                 reason
             );
             println!("   Using boot mode (changes will apply on next boot)");
@@ -244,7 +254,8 @@ mod tests {
             switch: true,
             boot: false,
             test: false,
-            no_reboot: false,
+            skip_reboot: false,
+            force: false,
             quiet: false,
             #[cfg(debug_assertions)]
             mock_fixture: None,
@@ -261,7 +272,8 @@ mod tests {
             switch: true,
             boot: false,
             test: false,
-            no_reboot: false,
+            skip_reboot: false,
+            force: false,
             quiet: false,
             #[cfg(debug_assertions)]
             mock_fixture: None,
@@ -278,7 +290,8 @@ mod tests {
             switch: true,
             boot: false,
             test: false,
-            no_reboot: false,
+            skip_reboot: false,
+            force: false,
             quiet: false,
             #[cfg(debug_assertions)]
             mock_fixture: None,
@@ -295,7 +308,8 @@ mod tests {
             switch: false,
             boot: true,
             test: false,
-            no_reboot: false,
+            skip_reboot: false,
+            force: false,
             quiet: false,
             #[cfg(debug_assertions)]
             mock_fixture: None,
@@ -312,7 +326,8 @@ mod tests {
             switch: false,
             boot: false,
             test: false,
-            no_reboot: false,
+            skip_reboot: false,
+            force: false,
             quiet: false,
             #[cfg(debug_assertions)]
             mock_fixture: None,
@@ -329,7 +344,8 @@ mod tests {
             switch: false,
             boot: false,
             test: false,
-            no_reboot: false,
+            skip_reboot: false,
+            force: false,
             quiet: false,
             #[cfg(debug_assertions)]
             mock_fixture: None,

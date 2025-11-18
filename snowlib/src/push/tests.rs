@@ -424,6 +424,48 @@ fn test_reboot_policy_always_overrides_switch_mode() {
     assert!(plans[0].reboot_check.as_ref().unwrap().required);
 }
 
+#[test]
+fn test_force_overrides_never_policy_with_switch() {
+    let config = RebootDetectionConfig {
+        critical_services: vec![],
+        check_kernel: false,
+        check_initrd: false,
+        ..Default::default()
+    };
+    let detector = SystemRebootBackend::new(config);
+
+    let hosts = vec![make_host("host1", None, crate::nix::RebootPolicy::Never)];
+
+    let (plans, blocked) =
+        create_deployment_plans(hosts, &detector, PushStrategy::Switch, true).unwrap();
+
+    assert_eq!(plans.len(), 1);
+    assert_eq!(blocked.len(), 0);
+    // Force flag should override 'never' policy and use switch mode
+    assert_eq!(plans[0].activation_mode, ActivationMode::Switch);
+}
+
+#[test]
+fn test_force_overrides_always_policy_with_switch() {
+    let config = RebootDetectionConfig {
+        critical_services: vec![],
+        check_kernel: false,
+        check_initrd: false,
+        ..Default::default()
+    };
+    let detector = SystemRebootBackend::new(config);
+
+    let hosts = vec![make_host("host1", None, crate::nix::RebootPolicy::Always)];
+
+    let (plans, blocked) =
+        create_deployment_plans(hosts, &detector, PushStrategy::Switch, true).unwrap();
+
+    assert_eq!(plans.len(), 1);
+    assert_eq!(blocked.len(), 0);
+    // Force flag should override 'always' policy and use switch mode
+    assert_eq!(plans[0].activation_mode, ActivationMode::Switch);
+}
+
 // Tests for the new push() function with observer support
 use crate::observer::{NoopObserver, PushObserver};
 use std::sync::{Arc, Mutex};
@@ -1894,7 +1936,7 @@ fn test_push_reboot_execution_failure() {
 }
 
 #[test]
-fn test_push_no_reboot_when_not_required() {
+fn test_push_skip_reboot_when_not_required() {
     // Test that reboot hooks are NOT called when reboot is not required
     let flake = Flake::test_context();
     let nix_backend = MockNixBackend::new();
@@ -2143,13 +2185,13 @@ fn test_push_reboot_policy_never() {
 }
 
 #[test]
-fn test_push_no_reboot_flag_overrides_always_policy() {
+fn test_push_skip_reboot_flag_overrides_always_policy() {
     // Test that allow_reboot=false prevents reboot even with RebootPolicy::Always
     let flake = Flake::test_context();
     let nix_backend = MockNixBackend::new();
     let deployer = MockDeployBackend::new();
 
-    // Policy is Always, but user says --no-reboot
+    // Policy is Always, but user says --skip-reboot
     use crate::backends::mock::MockRebootBackend;
     let reboot_backend = MockRebootBackend::new();
 
@@ -2168,7 +2210,7 @@ fn test_push_no_reboot_flag_overrides_always_policy() {
         ignore_phases: false,
         output_mode: crate::process::OutputMode::Capture,
         ssh_user: None,
-        allow_reboot: false, // User says --no-reboot
+        allow_reboot: false, // User says --skip-reboot
     };
 
     let results = {
@@ -2200,13 +2242,13 @@ fn test_push_no_reboot_flag_overrides_always_policy() {
 }
 
 #[test]
-fn test_push_no_reboot_flag_with_detected_reboot() {
+fn test_push_skip_reboot_flag_with_detected_reboot() {
     // Test that allow_reboot=false prevents reboot even when detection says it's needed
     let flake = Flake::test_context();
     let nix_backend = MockNixBackend::new();
     let deployer = MockDeployBackend::new();
 
-    // Reboot detected as required but user says --no-reboot
+    // Reboot detected as required but user says --skip-reboot
     use crate::backends::mock::MockRebootBackend;
     use crate::backends::reboot::RebootReason;
     let mut reboot_required = std::collections::HashMap::new();
@@ -2234,7 +2276,7 @@ fn test_push_no_reboot_flag_with_detected_reboot() {
         ignore_phases: false,
         output_mode: crate::process::OutputMode::Capture,
         ssh_user: None,
-        allow_reboot: false, // User says --no-reboot
+        allow_reboot: false, // User says --skip-reboot
     };
 
     let results = {

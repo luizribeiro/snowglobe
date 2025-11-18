@@ -25,11 +25,11 @@ pub struct PushArgs {
     #[arg(long)]
     pub test: bool,
 
-    /// Never automatically reboot (even if reboot is required)
+    /// Skip automatic reboot execution (still respects reboot policies for activation mode)
     #[arg(long)]
-    pub no_reboot: bool,
+    pub skip_reboot: bool,
 
-    /// Force operation despite safety checks (use with --switch to override reboot detection)
+    /// Override policies and safety checks (use with --switch to ignore reboot policies and detection)
     #[arg(long)]
     pub force: bool,
 
@@ -198,7 +198,7 @@ impl PushArgs {
             ignore_phases: self.ignore_phases,
             output_mode,
             ssh_user: self.user.clone(),
-            allow_reboot: !self.no_reboot, // Invert: no_reboot=true means allow_reboot=false
+            allow_reboot: !self.skip_reboot, // Invert: skip_reboot=true means allow_reboot=false
         };
 
         let push_ctx = snowlib::PushContext::new(
@@ -371,7 +371,7 @@ mod tests {
             switch: true,
             boot: false,
             test: false,
-            no_reboot: false,
+            skip_reboot: false,
             force: false,
             quiet: false,
             user: None,
@@ -392,7 +392,7 @@ mod tests {
             switch: false,
             boot: false,
             test: false,
-            no_reboot: false,
+            skip_reboot: false,
             force: true,
             quiet: false,
             user: None,
@@ -413,7 +413,7 @@ mod tests {
             switch: false,
             boot: false,
             test: false,
-            no_reboot: false,
+            skip_reboot: false,
             force: false,
             quiet: false,
             user: None,
@@ -434,7 +434,7 @@ mod tests {
             switch: false,
             boot: false,
             test: false,
-            no_reboot: false,
+            skip_reboot: false,
             force: false,
             quiet: false,
             user: None,
@@ -455,7 +455,7 @@ mod tests {
             switch: true,
             boot: false,
             test: false,
-            no_reboot: false,
+            skip_reboot: false,
             force: false,
             quiet: false,
             user: None,
