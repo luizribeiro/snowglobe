@@ -8,6 +8,10 @@ pub struct BuildArgs {
     /// Hosts to build (defaults to all hosts if not specified)
     pub hosts: Vec<String>,
 
+    /// Filter hosts using a Nix expression (e.g., "config: config.services.nginx.enable or false")
+    #[arg(short = 'e', long)]
+    pub filter: Option<String>,
+
     /// Quiet mode - suppress subprocess output
     #[arg(short, long)]
     pub quiet: bool,
@@ -30,31 +34,12 @@ pub struct BuildResult {
 
 impl BuildArgs {
     fn resolve_hosts(&self, flake: &Flake, nix_backend: &dyn NixBackend) -> Result<Vec<String>> {
-        let all_hosts = nix_backend.list_all_hosts(flake, None)?;
-
-        if self.hosts.is_empty() {
-            Ok(all_hosts.iter().map(|h| h.name.clone()).collect())
-        } else {
-            let valid_hosts: std::collections::HashSet<String> =
-                all_hosts.iter().map(|h| h.name.clone()).collect();
-
-            let invalid_hosts: Vec<String> = self
-                .hosts
-                .iter()
-                .filter(|h| !valid_hosts.contains(*h))
-                .cloned()
-                .collect();
-
-            if !invalid_hosts.is_empty() {
-                return Err(snowlib::error::FlakeError::InvalidHosts {
-                    invalid_hosts: invalid_hosts.join(", "),
-                    available_hosts: valid_hosts.iter().cloned().collect::<Vec<_>>().join(", "),
-                }
-                .into());
-            }
-
-            Ok(self.hosts.clone())
-        }
+        crate::host_selection::resolve_hosts_from_args(
+            flake,
+            nix_backend,
+            self.filter.as_deref(),
+            &self.hosts,
+        )
     }
 
     fn print_results(&self, results: &[BuildResult]) {
@@ -183,6 +168,7 @@ mod tests {
     fn test_build_args_defaults() {
         let args = BuildArgs {
             hosts: vec![],
+            filter: None,
             quiet: false,
             concurrency: 3,
             #[cfg(debug_assertions)]
@@ -190,6 +176,7 @@ mod tests {
         };
 
         assert_eq!(args.hosts.len(), 0);
+        assert!(args.filter.is_none());
         assert!(!args.quiet);
         assert_eq!(args.concurrency, 3);
     }
@@ -198,6 +185,7 @@ mod tests {
     fn test_build_args_with_hosts() {
         let args = BuildArgs {
             hosts: vec!["host1".to_string(), "host2".to_string()],
+            filter: None,
             quiet: true,
             concurrency: 5,
             #[cfg(debug_assertions)]
@@ -220,5 +208,60 @@ mod tests {
             .failure()
             .stderr(predicate::str::contains("Invalid host(s)"))
             .stderr(predicate::str::contains("nonexistent"));
+    }
+
+    #[test]
+    fn test_build_with_filter_and_nonexistent_host() {
+        snow_cmd()
+            .arg("build")
+            .arg("-e")
+            .arg("config: config.services.postgresql.enable or false")
+            .arg("nonexistent")
+            .assert()
+            .failure()
+            .stderr(predicate::str::contains("Invalid host(s)"))
+            .stderr(predicate::str::contains("nonexistent"));
+    }
+
+    #[test]
+    fn test_build_with_invalid_filter() {
+        snow_cmd()
+            .arg("build")
+            .arg("-e")
+            .arg("config: { invalid syntax")
+            .assert()
+            .failure()
+            .stderr(predicate::str::contains(
+                "Failed to evaluate Nix expression",
+            ));
+    }
+
+    #[test]
+    fn test_build_intersection_filter_and_explicit_hosts() {
+        // Test that combining filter with explicit hosts returns intersection
+        // hydrogen and oxygen have postgresql, nitrogen does not
+        snow_cmd()
+            .arg("build")
+            .arg("-e")
+            .arg("config: config.services.postgresql.enable or false")
+            .arg("hydrogen")
+            .arg("nitrogen")
+            .assert()
+            .failure() // Build will fail (unbuildable test flake), but we can check the host selection
+            .stdout(predicate::str::contains("Building 1 host")); // Only hydrogen matches both filter AND explicit list
+    }
+
+    #[test]
+    fn test_build_empty_intersection() {
+        // Test that when no hosts match both filter and explicit list, we get 0 hosts
+        // helium doesn't have postgresql
+        snow_cmd()
+            .arg("build")
+            .arg("-e")
+            .arg("config: config.services.postgresql.enable or false")
+            .arg("helium")
+            .assert()
+            .success() // 0 hosts to build = success
+            .stdout(predicate::str::contains("Building 0 host"));
     }
 }

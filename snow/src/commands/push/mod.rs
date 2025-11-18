@@ -9,6 +9,10 @@ pub struct PushArgs {
     /// Hosts to push (defaults to all hosts if not specified)
     pub hosts: Vec<String>,
 
+    /// Filter hosts using a Nix expression (e.g., "config: config.services.nginx.enable or false")
+    #[arg(short = 'e', long)]
+    pub filter: Option<String>,
+
     /// Dry run - show what would change without activating
     #[arg(long)]
     pub dry_run: bool,
@@ -106,38 +110,19 @@ impl PushArgs {
 
     /// Resolve and validate the hosts to push
     ///
-    /// If no hosts are provided, returns all hosts from the flake.
-    /// If hosts are provided, validates they exist in the flake.
+    /// If no hosts are provided, returns all hosts from the flake (optionally filtered).
+    /// If hosts are provided, validates they exist in the flake (and match the filter if provided).
     fn resolve_hosts(
         &self,
         flake: &Flake,
         nix_backend: &dyn snowlib::NixBackend,
     ) -> Result<Vec<String>> {
-        let all_hosts = nix_backend.list_all_hosts(flake, None)?;
-
-        if self.hosts.is_empty() {
-            Ok(all_hosts.iter().map(|h| h.name.clone()).collect())
-        } else {
-            let valid_hosts: std::collections::HashSet<String> =
-                all_hosts.iter().map(|h| h.name.clone()).collect();
-
-            let invalid_hosts: Vec<String> = self
-                .hosts
-                .iter()
-                .filter(|h| !valid_hosts.contains(*h))
-                .cloned()
-                .collect();
-
-            if !invalid_hosts.is_empty() {
-                return Err(snowlib::error::FlakeError::InvalidHosts {
-                    invalid_hosts: invalid_hosts.join(", "),
-                    available_hosts: valid_hosts.iter().cloned().collect::<Vec<_>>().join(", "),
-                }
-                .into());
-            }
-
-            Ok(self.hosts.clone())
-        }
+        crate::host_selection::resolve_hosts_from_args(
+            flake,
+            nix_backend,
+            self.filter.as_deref(),
+            &self.hosts,
+        )
     }
 
     /// Main entry point for the push command
@@ -372,6 +357,7 @@ mod tests {
     fn test_validate_mutually_exclusive_modes() {
         let args = PushArgs {
             hosts: vec![],
+            filter: None,
             dry_run: true,
             switch: true,
             boot: false,
@@ -393,6 +379,7 @@ mod tests {
     fn test_validate_force_without_switch() {
         let args = PushArgs {
             hosts: vec![],
+            filter: None,
             dry_run: false,
             switch: false,
             boot: false,
@@ -414,6 +401,7 @@ mod tests {
     fn test_validate_valid_combination() {
         let args = PushArgs {
             hosts: vec![],
+            filter: None,
             dry_run: false,
             switch: false,
             boot: false,
@@ -435,6 +423,7 @@ mod tests {
     fn test_push_strategy_auto() {
         let args = PushArgs {
             hosts: vec![],
+            filter: None,
             dry_run: false,
             switch: false,
             boot: false,
@@ -456,6 +445,7 @@ mod tests {
     fn test_push_strategy_switch() {
         let args = PushArgs {
             hosts: vec![],
+            filter: None,
             dry_run: false,
             switch: true,
             boot: false,

@@ -59,3 +59,27 @@ fn test_build_help() {
             "Build NixOS configurations for one or more hosts",
         ));
 }
+
+#[test]
+fn test_build_filter_flag_in_help() {
+    snow_cmd()
+        .arg("build")
+        .arg("--help")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Filter hosts using a Nix expression",
+        ));
+}
+
+#[test]
+fn test_push_filter_flag_in_help() {
+    snow_cmd()
+        .arg("push")
+        .arg("--help")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Filter hosts using a Nix expression",
+        ));
+}
