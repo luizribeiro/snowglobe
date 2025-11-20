@@ -10,19 +10,13 @@ use crate::process::StreamingExecutor;
 use std::process::Command;
 
 /// Convert a Command to a shell-like string representation for error messages
+///
+/// Uses proper shell escaping to safely represent the command that was executed.
 fn command_to_string(cmd: &Command) -> String {
-    let program = cmd.get_program().to_string_lossy();
-    let args: Vec<String> = cmd
+    let program = shell_escape::escape(cmd.get_program().to_string_lossy());
+    let args: Vec<_> = cmd
         .get_args()
-        .map(|arg| {
-            let s = arg.to_string_lossy();
-            // Simple quoting: if contains space, wrap in quotes
-            if s.contains(' ') {
-                format!("\"{}\"", s)
-            } else {
-                s.to_string()
-            }
-        })
+        .map(|arg| shell_escape::escape(arg.to_string_lossy()))
         .collect();
 
     if args.is_empty() {
@@ -377,7 +371,8 @@ mod tests {
     fn test_command_to_string_basic() {
         let mut cmd = Command::new("ssh");
         cmd.arg("user@host");
-        assert_eq!(command_to_string(&cmd), "ssh user@host");
+        // shell-escape quotes args with @ symbol for safety
+        assert_eq!(command_to_string(&cmd), "ssh 'user@host'");
     }
 
     #[test]
@@ -387,7 +382,7 @@ mod tests {
         cmd.arg("some command with spaces");
         assert_eq!(
             command_to_string(&cmd),
-            r#"ssh user@host "some command with spaces""#
+            "ssh 'user@host' 'some command with spaces'"
         );
     }
 
@@ -403,7 +398,51 @@ mod tests {
         cmd.args(["copy", "--to", "ssh://host", "/nix/store/path"]);
         assert_eq!(
             command_to_string(&cmd),
-            "nix copy --to ssh://host /nix/store/path"
+            "nix copy --to 'ssh://host' /nix/store/path"
         );
+    }
+
+    #[test]
+    fn test_command_to_string_with_quotes() {
+        let mut cmd = Command::new("echo");
+        cmd.arg(r#"value with "quotes""#);
+        // shell-escape uses single quotes which don't need escaping for double quotes
+        assert_eq!(command_to_string(&cmd), r#"echo 'value with "quotes"'"#);
+    }
+
+    #[test]
+    fn test_command_to_string_with_dollar_signs() {
+        let mut cmd = Command::new("sh");
+        cmd.arg("-c");
+        cmd.arg("echo $HOME");
+        // Single quotes prevent variable expansion
+        assert_eq!(command_to_string(&cmd), "sh -c 'echo $HOME'");
+    }
+
+    #[test]
+    fn test_command_to_string_with_backslashes() {
+        let mut cmd = Command::new("echo");
+        cmd.arg(r#"path\with\backslashes"#);
+        // Single quotes preserve backslashes literally
+        assert_eq!(command_to_string(&cmd), r#"echo 'path\with\backslashes'"#);
+    }
+
+    #[test]
+    fn test_command_to_string_with_pipes_and_redirects() {
+        let mut cmd = Command::new("sh");
+        cmd.arg("-c");
+        cmd.arg("cat file | grep pattern > output");
+        // Single quotes protect shell metacharacters
+        assert_eq!(
+            command_to_string(&cmd),
+            "sh -c 'cat file | grep pattern > output'"
+        );
+    }
+
+    #[test]
+    fn test_command_to_string_empty_arg() {
+        let mut cmd = Command::new("test");
+        cmd.arg("");
+        assert_eq!(command_to_string(&cmd), "test ''");
     }
 }
