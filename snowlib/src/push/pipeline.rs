@@ -203,19 +203,22 @@ fn execute_activation_step(
     })?;
 
     // Execute activation
-    let activate_result = match push_ctx
-        .deploy_backend
-        .deploy(&plan.target, &plan.store_path, plan.activation_mode)
-    {
-        Ok(result) => {
-            push_ctx.observer.on_activation_complete(hostname, result.success);
-            result
-        }
-        Err(e) => {
-            push_ctx.observer.on_activation_complete(hostname, false);
-            return Err(e);
-        }
-    };
+    let activate_result =
+        match push_ctx
+            .deploy_backend
+            .deploy(&plan.target, &plan.store_path, plan.activation_mode)
+        {
+            Ok(result) => {
+                push_ctx
+                    .observer
+                    .on_activation_complete(hostname, result.success);
+                result
+            }
+            Err(e) => {
+                push_ctx.observer.on_activation_complete(hostname, false);
+                return Err(e);
+            }
+        };
 
     Ok((plan, activate_result))
 }

@@ -2,7 +2,7 @@
 
 use super::planning::create_deployment_plans;
 use super::*;
-use crate::backends::deploy::{DeployResult, DeployTarget};
+use crate::backends::deploy::DeployTarget;
 use crate::backends::mock::{MockDeployBackend, MockNixBackend};
 use crate::nix::{ActivationMode, Flake, HostMetadata, StorePath, SystemType};
 

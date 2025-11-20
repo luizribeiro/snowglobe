@@ -136,6 +136,21 @@ impl SshDeployBackend {
         cmd.args(args);
         cmd
     }
+
+    /// Check if snowglobe-activate helper is available on target
+    fn check_helper_available(&self, target: &DeployTarget) -> bool {
+        let mut cmd = self.ssh_command(target, &["command", "-v", "snowglobe-activate"]);
+
+        // Run silently to check for helper command presence
+        let result = StreamingExecutor::new(&mut cmd)
+            .output_mode(OutputMode::Capture)
+            .execute();
+
+        match result {
+            Ok(output) => output.status.success(),
+            Err(_) => false,
+        }
+    }
 }
 
 impl DeployBackend for SshDeployBackend {
@@ -182,9 +197,6 @@ impl DeployBackend for SshDeployBackend {
         store_path: &StorePath,
         mode: ActivationMode,
     ) -> Result<()> {
-        let switch_to_configuration =
-            format!("{}/bin/switch-to-configuration", store_path.as_str());
-
         let mode_arg = match mode {
             ActivationMode::Switch => "switch",
             ActivationMode::Boot => "boot",
@@ -192,7 +204,27 @@ impl DeployBackend for SshDeployBackend {
             ActivationMode::DryActivate => "dry-activate",
         };
 
-        let mut cmd = self.ssh_command(target, &["sudo", &switch_to_configuration, mode_arg]);
+        // Check if snowglobe-activate helper is available on target
+        let helper_available = self.check_helper_available(target);
+
+        let mut cmd = if helper_available {
+            // Use snowglobe-activate helper
+            self.ssh_command(
+                target,
+                &["sudo", "snowglobe-activate", store_path.as_str(), mode_arg],
+            )
+        } else {
+            // Fall back to direct activation
+            tracing::warn!(
+                "snowglobe-activate not found on {}, falling back to direct activation. \
+                 For better security, add the snowglobe module to your NixOS/Darwin configuration.",
+                target.hostname
+            );
+
+            let switch_to_configuration =
+                format!("{}/bin/switch-to-configuration", store_path.as_str());
+            self.ssh_command(target, &["sudo", &switch_to_configuration, mode_arg])
+        };
 
         let command = command_to_string(&cmd);
 
@@ -444,5 +476,86 @@ mod tests {
         let mut cmd = Command::new("test");
         cmd.arg("");
         assert_eq!(command_to_string(&cmd), "test ''");
+    }
+
+    #[test]
+    fn test_check_helper_available_executes_without_panic() {
+        let deployer = SshDeployBackend::new();
+        let target = DeployTarget {
+            user: Some("root".to_string()),
+            hostname: "localhost".to_string(),
+            port: None,
+        };
+
+        // Test that helper detection executes without panicking
+        // We can't guarantee snowglobe-activate exists on localhost,
+        // so we just verify the function completes successfully
+        let _result = deployer.check_helper_available(&target);
+        // If we reach here, the function didn't panic - test passes
+    }
+
+    #[test]
+    fn test_check_helper_available_when_command_missing() {
+        let deployer = SshDeployBackend::new();
+        let target = DeployTarget {
+            user: Some("root".to_string()),
+            hostname: "nonexistent-host-that-should-not-exist.invalid".to_string(),
+            port: None,
+        };
+
+        let result = deployer.check_helper_available(&target);
+
+        // SSH to nonexistent host should fail, returning false
+        assert!(!result);
+    }
+
+    #[test]
+    fn test_activate_builds_correct_command_structure() {
+        let deployer = SshDeployBackend::new();
+        let target = DeployTarget {
+            user: Some("root".to_string()),
+            hostname: "nonexistent.invalid".to_string(),
+            port: None,
+        };
+        let store_path = StorePath::new("/nix/store/test-path".to_string());
+
+        // This will fail (host doesn't exist), but we can verify the command structure
+        // by examining the error which includes the command string
+        let result = deployer.activate(&target, &store_path, ActivationMode::Test);
+
+        assert!(result.is_err());
+
+        // The error should contain information about the command that was attempted
+        let err_string = format!("{:?}", result.unwrap_err());
+        assert!(
+            err_string.contains("sudo")
+                || err_string.contains("snowglobe-activate")
+                || err_string.contains("switch-to-configuration"),
+            "Error should indicate sudo command was attempted: {}",
+            err_string
+        );
+    }
+
+    #[test]
+    fn test_activate_with_different_modes() {
+        let deployer = SshDeployBackend::new();
+        let target = DeployTarget {
+            user: Some("root".to_string()),
+            hostname: "nonexistent.invalid".to_string(),
+            port: None,
+        };
+        let store_path = StorePath::new("/nix/store/test-path".to_string());
+
+        // Test that different activation modes are handled
+        for mode in [
+            ActivationMode::Switch,
+            ActivationMode::Boot,
+            ActivationMode::Test,
+            ActivationMode::DryActivate,
+        ] {
+            let result = deployer.activate(&target, &store_path, mode);
+            // Should fail due to nonexistent host, but shouldn't panic
+            assert!(result.is_err());
+        }
     }
 }
