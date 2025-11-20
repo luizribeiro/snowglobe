@@ -5,7 +5,8 @@
 
 use crate::backends::deploy::{DeployResult, DeployTarget};
 use crate::error::Result;
-use crate::nix::{HostMetadata, StorePath};
+use crate::nix::{HookStage, HostMetadata, StorePath};
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use super::context::PushContext;
@@ -28,6 +29,70 @@ struct CopyOutput {
     store_path: StorePath,
 }
 
+/// Execute hooks for a specific stage
+fn execute_hooks(
+    push_ctx: &PushContext,
+    hostname: &str,
+    stage: HookStage,
+    target: Option<&DeployTarget>,
+    phase: Option<&str>,
+    store_path: Option<&StorePath>,
+) -> Result<()> {
+    if let Some(executor) = push_ctx.hook_executor {
+        let mut env = HashMap::new();
+        env.insert("SNOW_HOSTNAME".to_string(), hostname.to_string());
+        if let Some(phase) = phase {
+            env.insert("SNOW_PHASE".to_string(), phase.to_string());
+        }
+        if let Some(store_path) = store_path {
+            env.insert(
+                "SNOW_STORE_PATH".to_string(),
+                store_path.as_str().to_string(),
+            );
+        }
+
+        executor.execute_hooks_for_stage(hostname, stage, target, &env)?;
+    }
+    Ok(())
+}
+
+/// Helper to handle pipeline failures consistently
+fn handle_pipeline_failure(
+    push_ctx: &PushContext,
+    hostname: &str,
+    target: Option<&DeployTarget>,
+    phase: Option<&str>,
+    store_path: Option<&StorePath>,
+    step: PipelineStep,
+    error: crate::error::SnowError,
+) -> HostDeploymentResult {
+    // Execute on-failure hooks (log errors but don't fail)
+    if let Err(e) = execute_hooks(
+        push_ctx,
+        hostname,
+        HookStage::OnFailure,
+        target,
+        phase,
+        store_path,
+    ) {
+        tracing::warn!(
+            target: "hooks",
+            "On-failure hook execution failed for {}: {}",
+            hostname,
+            e
+        );
+    }
+
+    HostDeploymentResult {
+        hostname: hostname.to_string(),
+        success: false,
+        failed_at_step: Some(step),
+        activation_mode: None,
+        rebooted: false,
+        error_message: Some(error.to_string()),
+    }
+}
+
 /// Execute the full deployment pipeline for a single host
 ///
 /// Runs: Build → Copy → Plan → Activate → Reboot
@@ -48,39 +113,131 @@ pub fn execute_host_pipeline(
     let push_ctx_ref = push_ctx.as_ref();
     let hostname = host_metadata.name.clone();
 
-    // Helper to convert errors into HostDeploymentResult
-    let make_failure = |step: PipelineStep, error: crate::error::SnowError| HostDeploymentResult {
-        hostname: hostname.clone(),
-        success: false,
-        failed_at_step: Some(step),
-        activation_mode: None,
-        rebooted: false,
-        error_message: Some(error.to_string()),
-    };
-
     // Step 1: Build
     let build_output = match execute_build_step(push_ctx_ref, host_metadata) {
         Ok(output) => output,
-        Err(e) => return Ok(make_failure(PipelineStep::Build, e)),
+        Err(e) => {
+            return Ok(handle_pipeline_failure(
+                push_ctx_ref,
+                &hostname,
+                None,
+                host_metadata.phase.as_deref(),
+                None,
+                PipelineStep::Build,
+                e,
+            ));
+        }
     };
 
     // Step 2: Copy
     let copy_output = match execute_copy_step(push_ctx_ref, build_output) {
         Ok(output) => output,
-        Err(e) => return Ok(make_failure(PipelineStep::Copy, e)),
+        Err(e) => {
+            return Ok(handle_pipeline_failure(
+                push_ctx_ref,
+                &hostname,
+                None,
+                host_metadata.phase.as_deref(),
+                None,
+                PipelineStep::Copy,
+                e,
+            ));
+        }
     };
 
+    // Step 2.5: Pre-activate hooks
+    if let Err(e) = execute_hooks(
+        push_ctx_ref,
+        &hostname,
+        HookStage::PreActivate,
+        Some(&copy_output.target),
+        host_metadata.phase.as_deref(),
+        Some(&copy_output.store_path),
+    ) {
+        return Ok(handle_pipeline_failure(
+            push_ctx_ref,
+            &hostname,
+            Some(&copy_output.target),
+            host_metadata.phase.as_deref(),
+            Some(&copy_output.store_path),
+            PipelineStep::Activate,
+            e,
+        ));
+    }
+
     // Step 3: Activate (includes planning + activation)
-    let (plan, activate_result) = match execute_activation_step(push_ctx_ref, copy_output) {
+    let (plan, activate_result) = match execute_activation_step(push_ctx_ref, copy_output.clone()) {
         Ok(result) => result,
-        Err(e) => return Ok(make_failure(PipelineStep::Activate, e)),
+        Err(e) => {
+            return Ok(handle_pipeline_failure(
+                push_ctx_ref,
+                &hostname,
+                Some(&copy_output.target),
+                host_metadata.phase.as_deref(),
+                Some(&copy_output.store_path),
+                PipelineStep::Activate,
+                e,
+            ));
+        }
     };
+
+    // Step 3.5: Post-activate hooks
+    if let Err(e) = execute_hooks(
+        push_ctx_ref,
+        &hostname,
+        HookStage::PostActivate,
+        Some(&plan.target),
+        host_metadata.phase.as_deref(),
+        Some(&plan.store_path),
+    ) {
+        return Ok(handle_pipeline_failure(
+            push_ctx_ref,
+            &hostname,
+            Some(&plan.target),
+            host_metadata.phase.as_deref(),
+            Some(&plan.store_path),
+            PipelineStep::Activate,
+            e,
+        ));
+    }
 
     // Step 4: Reboot (if needed)
     let (final_result, rebooted) = match execute_reboot_step(push_ctx_ref, &plan, activate_result) {
         Ok(result) => result,
-        Err(e) => return Ok(make_failure(PipelineStep::Reboot, e)),
+        Err(e) => {
+            return Ok(handle_pipeline_failure(
+                push_ctx_ref,
+                &hostname,
+                Some(&plan.target),
+                host_metadata.phase.as_deref(),
+                Some(&plan.store_path),
+                PipelineStep::Reboot,
+                e,
+            ));
+        }
     };
+
+    // Step 4.5: Post-reboot hooks (only if actually rebooted)
+    if rebooted {
+        if let Err(e) = execute_hooks(
+            push_ctx_ref,
+            &hostname,
+            HookStage::PostReboot,
+            Some(&plan.target),
+            host_metadata.phase.as_deref(),
+            Some(&plan.store_path),
+        ) {
+            return Ok(handle_pipeline_failure(
+                push_ctx_ref,
+                &hostname,
+                Some(&plan.target),
+                host_metadata.phase.as_deref(),
+                Some(&plan.store_path),
+                PipelineStep::Reboot,
+                e,
+            ));
+        }
+    }
 
     // Build success result
     Ok(HostDeploymentResult {

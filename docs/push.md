@@ -5,6 +5,7 @@ The `push` command is the primary deployment mechanism in Snowglobe. It builds N
 ## Table of Contents
 
 - [Basic Usage](#basic-usage)
+- [Lifecycle Hooks](#lifecycle-hooks)
 - [Reboot Policies](#reboot-policies)
 - [Activation Modes](#activation-modes)
 - [Reboot Detection & Handling](#reboot-detection--handling)
@@ -30,6 +31,58 @@ snow push hydrogen --user deploy
 # Control parallelism
 snow push --concurrency 5
 ```
+
+---
+
+## Lifecycle Hooks
+
+Lifecycle hooks allow you to execute custom commands at specific points in the deployment pipeline, enabling sophisticated orchestration like draining Kubernetes nodes, coordinating with service discovery systems, or performing custom validation.
+
+### Overview
+
+Hooks are configured in your NixOS configuration and execute automatically during deployment at four stages:
+
+- **`pre-activate`**: Before activation (e.g., drain cluster nodes)
+- **`post-activate`**: After activation (e.g., uncordon nodes, verify deployment)
+- **`post-reboot`**: After host reboots (e.g., wait for services)
+- **`on-failure`**: When deployment fails (e.g., cleanup, alerts)
+
+### Quick Example
+
+```nix
+{
+  config.snowglobe.hooks = {
+    pre-activate = [
+      {
+        location = "local";  # Run on machine executing snow
+        command = "kubectl drain ${config.networking.hostName}";
+        timeout = 300;
+        continueOnFailure = false;
+      }
+    ];
+    post-activate = [
+      {
+        location = "local";
+        command = "kubectl uncordon ${config.networking.hostName}";
+        timeout = 60;
+        continueOnFailure = true;  # Always uncordon
+      }
+    ];
+  };
+}
+```
+
+### Documentation
+
+For comprehensive documentation including:
+- All hook stages and when they execute
+- Local vs remote execution
+- Error handling and `continueOnFailure`
+- Environment variables available to hooks
+- Complete examples (Kubernetes, Consul, load balancers, etc.)
+- Best practices and troubleshooting
+
+See **[docs/hooks.md](hooks.md)** for full details.
 
 ---
 

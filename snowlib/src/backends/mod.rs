@@ -4,10 +4,12 @@
 //! - `NixBackend`: Nix evaluation and building
 //! - `DeployBackend`: Deployment and activation
 //! - `RebootBackend`: Reboot detection and execution
+//! - `HookBackend`: Lifecycle hook execution
 //!
 //! Each backend has both production (system) and mock implementations for testing.
 
 pub mod deploy;
+pub mod hook;
 pub mod local_reboot;
 pub mod nix;
 pub mod reboot;

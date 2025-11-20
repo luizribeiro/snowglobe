@@ -4,7 +4,8 @@
 //! based on command-line arguments and build configuration.
 
 use snowlib::{
-    DeployBackend, NixBackend, OutputMode, Result, SshDeployBackend, SystemRebootBackend,
+    DeployBackend, HookBackend, NixBackend, OutputMode, Result, SshDeployBackend,
+    SystemHookBackend, SystemRebootBackend,
 };
 
 #[cfg(debug_assertions)]
@@ -62,4 +63,14 @@ pub fn create_reboot_backend(ssh_user: Option<&str>) -> Result<SystemRebootBacke
     }
 
     Ok(backend)
+}
+
+/// Create the HookBackend with appropriate configuration
+///
+/// Returns a SystemHookBackend configured with SSH user and output mode.
+pub fn create_hook_backend(
+    ssh_user: Option<String>,
+    output_mode: OutputMode,
+) -> std::sync::Arc<dyn HookBackend> {
+    std::sync::Arc::new(SystemHookBackend::new(ssh_user, output_mode))
 }

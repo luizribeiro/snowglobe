@@ -99,6 +99,7 @@ impl NixBackend for MockNixBackend {
                 fqdn: meta_fix.fqdn.clone(),
                 reboot_policy: crate::nix::RebootPolicy::Auto,
                 system_type,
+                hooks: Vec::new(),
             })
         } else {
             Ok(HostMetadata {
@@ -108,6 +109,7 @@ impl NixBackend for MockNixBackend {
                 fqdn: format!("{}.example.com", host),
                 reboot_policy: crate::nix::RebootPolicy::Auto,
                 system_type,
+                hooks: Vec::new(),
             })
         }
     }

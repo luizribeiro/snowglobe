@@ -161,6 +161,7 @@ impl NixBackend for SystemNixBackend {
           phase = config.config.core.pushPhase or null;
           tags = config.config.core.tags or [];
           rebootPolicy = config.config.core.rebootPolicy or "auto";
+          hooks = config.config.snowglobe.hooks or {};
         }"#;
 
         let stdout = NixCommand::eval(flake, &flake_ref)
@@ -178,6 +179,20 @@ impl NixBackend for SystemNixBackend {
             })?;
 
         #[derive(serde::Deserialize)]
+        struct HookConfigWithoutStage {
+            location: crate::nix::HookLocation,
+            command: String,
+            #[serde(default = "default_hook_timeout")]
+            timeout: u64,
+            #[serde(default, rename = "continueOnFailure")]
+            continue_on_failure: bool,
+        }
+
+        fn default_hook_timeout() -> u64 {
+            300
+        }
+
+        #[derive(serde::Deserialize)]
         struct MetadataJson {
             #[serde(rename = "hostName")]
             hostname: String,
@@ -188,6 +203,8 @@ impl NixBackend for SystemNixBackend {
             tags: Vec<String>,
             #[serde(rename = "rebootPolicy")]
             reboot_policy: String,
+            #[serde(default)]
+            hooks: std::collections::HashMap<String, Vec<HookConfigWithoutStage>>,
         }
 
         let meta: MetadataJson = serde_json::from_slice(&stdout).map_err(|e| {
@@ -204,6 +221,21 @@ impl NixBackend for SystemNixBackend {
 
         let reboot_policy = crate::nix::RebootPolicy::from_str(&meta.reboot_policy)?;
 
+        // Convert hooks from stage-grouped HashMap to flat Vec
+        let mut hooks = Vec::new();
+        for (stage_str, stage_hooks) in meta.hooks {
+            let stage = crate::nix::HookStage::from_str(&stage_str)?;
+            for hook in stage_hooks {
+                hooks.push(crate::nix::HookConfig {
+                    stage,
+                    location: hook.location,
+                    command: hook.command,
+                    timeout: hook.timeout,
+                    continue_on_failure: hook.continue_on_failure,
+                });
+            }
+        }
+
         Ok(HostMetadata {
             name: host.to_string(),
             phase: meta.phase,
@@ -211,6 +243,7 @@ impl NixBackend for SystemNixBackend {
             fqdn,
             reboot_policy,
             system_type,
+            hooks,
         })
     }
 

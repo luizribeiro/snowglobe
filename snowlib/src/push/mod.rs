@@ -16,6 +16,7 @@
 
 mod config;
 mod context;
+mod hooks;
 mod pipeline;
 mod planning;
 mod results;
@@ -23,6 +24,7 @@ mod results;
 // Re-export public types
 pub use config::{PushConfiguration, PushStrategy};
 pub use context::PushContext;
+pub use hooks::HookExecutor;
 pub use results::{
     BlockedHost, HostDeploymentResult, PhaseResult, PipelineStep, PushPlan, PushResults,
     SkippedPhase,
@@ -91,7 +93,7 @@ fn skip_remaining_phases(
 /// let reboot_backend = SystemRebootBackend::default();
 /// let config = PushConfiguration::default();
 /// let observer = NoopObserver;
-/// let push_ctx = PushContext::new(&flake, &nix_backend, &deploy_backend, &reboot_backend, &config, &observer);
+/// let push_ctx = PushContext::new(&flake, &nix_backend, &deploy_backend, &reboot_backend, &config, &observer, None);
 ///
 /// let results = push(&push_ctx, hosts)?;
 /// # Ok(())

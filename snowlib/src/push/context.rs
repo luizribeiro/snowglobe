@@ -9,6 +9,7 @@ use crate::backends::reboot::RebootBackend;
 use crate::nix::Flake;
 use crate::observer::PushObserver;
 use crate::push::config::PushConfiguration;
+use crate::push::hooks::HookExecutor;
 
 /// Context for push deployment operations
 ///
@@ -21,6 +22,7 @@ pub struct PushContext<'a> {
     pub reboot_backend: &'a dyn RebootBackend,
     pub config: &'a PushConfiguration,
     pub observer: &'a dyn PushObserver,
+    pub hook_executor: Option<&'a HookExecutor>,
 }
 
 impl<'a> PushContext<'a> {
@@ -31,6 +33,7 @@ impl<'a> PushContext<'a> {
         reboot_backend: &'a dyn RebootBackend,
         config: &'a PushConfiguration,
         observer: &'a dyn PushObserver,
+        hook_executor: Option<&'a HookExecutor>,
     ) -> Self {
         Self {
             flake,
@@ -39,6 +42,7 @@ impl<'a> PushContext<'a> {
             reboot_backend,
             config,
             observer,
+            hook_executor,
         }
     }
 }

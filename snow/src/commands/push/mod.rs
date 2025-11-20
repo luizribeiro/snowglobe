@@ -217,6 +217,15 @@ impl PushArgs {
             allow_reboot: !self.skip_reboot,
         };
 
+        // Create hook executor from host metadata
+        let hook_backend =
+            crate::backend_factory::create_hook_backend(self.user.clone(), output_mode);
+        let hooks_by_host = hosts
+            .iter()
+            .map(|h| (h.name.clone(), h.hooks.clone()))
+            .collect();
+        let hook_executor = snowlib::HookExecutor::new(hook_backend, hooks_by_host);
+
         let push_ctx = snowlib::PushContext::new(
             flake,
             nix_backend.as_ref(),
@@ -224,6 +233,7 @@ impl PushArgs {
             &reboot_backend,
             &config,
             &observer,
+            Some(&hook_executor),
         );
 
         // Execute the push - snowlib handles everything!
