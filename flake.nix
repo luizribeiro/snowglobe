@@ -8,14 +8,19 @@
 
   outputs = { self, nixpkgs, systems, ... }@inputs:
     let
-      forEachSystem = nixpkgs.lib.genAttrs (import systems);
+      # Define forEachSystem without referencing nixpkgs.lib to avoid circular deps
+      allSystems = import systems;
+      forEachSystem = f: builtins.listToAttrs (map
+        (system: { name = system; value = f system; })
+        allSystems
+      );
     in
     {
       # NixOS module for snowglobe deployment support
-      nixosModules.default = import ./modules/default.nix;
+      nixosModules.default = import ./modules/nixos.nix;
 
       # nix-darwin module for snowglobe deployment support
-      darwinModules.default = import ./modules/default.nix;
+      darwinModules.default = import ./modules/darwin.nix;
 
       packages = forEachSystem (system:
         let

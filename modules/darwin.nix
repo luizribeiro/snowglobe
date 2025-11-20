@@ -86,16 +86,11 @@ in
     environment.systemPackages = [ activationHelper ];
 
     # Configure passwordless sudo for specified users
-    security.sudo.extraRules = mkIf (cfg.allowedUsers != []) [
-      {
-        users = cfg.allowedUsers;
-        commands = [
-          {
-            command = "/run/current-system/sw/bin/snowglobe-activate";
-            options = [ "NOPASSWD" ];
-          }
-        ];
-      }
-    ];
+    # Note: nix-darwin uses extraConfig (string), not extraRules (list)
+    security.sudo.extraConfig = mkIf (cfg.allowedUsers != []) (
+      concatMapStringsSep "\n" (user:
+        "${user} ALL=(root) NOPASSWD: /run/current-system/sw/bin/snowglobe-activate"
+      ) cfg.allowedUsers
+    );
   };
 }
