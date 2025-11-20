@@ -4,7 +4,7 @@
 //! including phase, step, and host-level spans.
 
 use parking_lot::Mutex;
-use snowlib::{DeployResult, PushObserver};
+use snowlib::PushObserver;
 use std::collections::HashMap;
 use tracing::info_span;
 use tracing_indicatif::span_ext::IndicatifSpanExt;

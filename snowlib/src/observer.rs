@@ -13,7 +13,7 @@
 //! # Example
 //!
 //! ```
-//! use snowlib::{PushObserver, DeployResult};
+//! use snowlib::PushObserver;
 //!
 //! struct MyObserver;
 //!
@@ -23,8 +23,6 @@
 //!     }
 //! }
 //! ```
-
-use crate::backends::deploy::DeployResult;
 
 /// Observer trait for push deployment lifecycle events
 ///
