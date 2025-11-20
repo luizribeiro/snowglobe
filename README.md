@@ -10,14 +10,56 @@ Self-contained cluster orchestration for NixOS.
 
 snowglobe is a NixOS-native cluster orchestration tool that provides:
 - **Declarative cluster configuration** - Define your cluster in Nix
-- **Agent-based deployment** - Nodes manage themselves (pull-based)
-- **Built-in health checking** - Know when things break
-- **etcd-backed state** - Distributed state management
-- **VM testing** - Test deployments safely before production
+- **Push-based deployment** - Deploy configurations to NixOS and nix-darwin hosts
+- **Secure activation helper** - Passwordless deployment without compromising security
+- **Reboot detection** - Automatically handle system updates requiring reboots
+- **Agent-based deployment** (planned) - Nodes manage themselves (pull-based)
+- **Built-in health checking** (planned) - Know when things break
+- **etcd-backed state** (planned) - Distributed state management
+- **VM testing** (planned) - Test deployments safely before production
 
-Think: `deploy-rs` + `gatus` + custom orchestration scripts, redesigned as a cohesive system.
+Think: A modern, security-focused alternative to `deploy-rs` with cluster awareness.
 
-## Commands (Planned)
+## Features
+
+### Secure Passwordless Deployment
+
+Snowglobe includes NixOS and nix-darwin modules that provide secure passwordless system activation:
+
+```nix
+{
+  imports = [ inputs.snowglobe.nixosModules.default ];
+
+  snowglobe.push.allowedUsers = [ "deploy-user" ];
+}
+```
+
+This installs the `snowglobe-activate` command that:
+- Works around sudoers wildcard limitations on macOS
+- Validates all inputs before execution
+- Provides a stable path for sudo configuration
+- Is more secure than `NOPASSWD: ALL`
+
+Snowglobe automatically detects and uses `snowglobe-activate` when available, falling back gracefully for compatibility.
+
+See [docs/activation-helper.md](docs/activation-helper.md) for details.
+
+### Smart Reboot Detection
+
+Snowglobe automatically detects when deployments require system reboots by checking:
+- Kernel and initrd changes (symlink comparison)
+- Critical service restarts (systemd analysis)
+- Per-host reboot policies
+
+Hosts can configure their own reboot behavior:
+
+```nix
+{
+  config.core.rebootPolicy = "auto";  # or "never", "always"
+}
+```
+
+## Commands
 
 ```bash
 # Cluster management
