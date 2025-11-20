@@ -11,6 +11,12 @@
       forEachSystem = nixpkgs.lib.genAttrs (import systems);
     in
     {
+      # NixOS module for snowglobe deployment support
+      nixosModules.default = import ./modules/default.nix;
+
+      # nix-darwin module for snowglobe deployment support
+      darwinModules.default = import ./modules/default.nix;
+
       packages = forEachSystem (system:
         let
           pkgs = nixpkgs.legacyPackages.${system};
