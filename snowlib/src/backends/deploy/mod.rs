@@ -9,6 +9,29 @@ use crate::nix::{ActivationMode, StorePath};
 use crate::process::StreamingExecutor;
 use std::process::Command;
 
+/// Convert a Command to a shell-like string representation for error messages
+fn command_to_string(cmd: &Command) -> String {
+    let program = cmd.get_program().to_string_lossy();
+    let args: Vec<String> = cmd
+        .get_args()
+        .map(|arg| {
+            let s = arg.to_string_lossy();
+            // Simple quoting: if contains space, wrap in quotes
+            if s.contains(' ') {
+                format!("\"{}\"", s)
+            } else {
+                s.to_string()
+            }
+        })
+        .collect();
+
+    if args.is_empty() {
+        program.to_string()
+    } else {
+        format!("{} {}", program, args.join(" "))
+    }
+}
+
 /// Result of a deployment operation
 #[derive(Debug, Clone)]
 pub struct DeployResult {
@@ -131,6 +154,8 @@ impl DeployBackend for SshDeployBackend {
         // Configure SSH to disable interactive prompts for nix copy
         cmd.env("NIX_SSHOPTS", "-o BatchMode=yes");
 
+        let command = command_to_string(&cmd);
+
         let result = StreamingExecutor::new(&mut cmd)
             .output_mode(self.output_mode)
             .execute()
@@ -141,21 +166,15 @@ impl DeployBackend for SshDeployBackend {
 
         if !result.status.success() {
             let stderr = String::from_utf8_lossy(&result.stderr).trim().to_string();
-            let error_msg = if stderr.is_empty() {
-                "nix copy failed".to_string()
-            } else {
-                // Include the last few lines of stderr for context (up to 3 lines)
-                let lines: Vec<&str> = stderr.lines().collect();
-                let relevant_lines = if lines.len() <= 3 {
-                    lines.join("\n")
-                } else {
-                    lines[lines.len() - 3..].join("\n")
-                };
-                format!("nix copy failed:\n{}", relevant_lines)
-            };
-            return Err(DeployError::Failed {
+            let stdout = String::from_utf8_lossy(&result.stdout).trim().to_string();
+            let exit_code = result.status.code().unwrap_or(-1);
+
+            return Err(DeployError::CommandFailed {
                 host: target.hostname.clone(),
-                source: std::io::Error::other(error_msg),
+                command,
+                exit_code,
+                stderr,
+                stdout,
             }
             .into());
         }
@@ -181,6 +200,8 @@ impl DeployBackend for SshDeployBackend {
 
         let mut cmd = self.ssh_command(target, &["sudo", &switch_to_configuration, mode_arg]);
 
+        let command = command_to_string(&cmd);
+
         let result = StreamingExecutor::new(&mut cmd)
             .output_mode(self.output_mode)
             .execute()
@@ -191,21 +212,15 @@ impl DeployBackend for SshDeployBackend {
 
         if !result.status.success() {
             let stderr = String::from_utf8_lossy(&result.stderr).trim().to_string();
-            let error_msg = if stderr.is_empty() {
-                "Activation failed".to_string()
-            } else {
-                // Include the last few lines of stderr for context (up to 3 lines)
-                let lines: Vec<&str> = stderr.lines().collect();
-                let relevant_lines = if lines.len() <= 3 {
-                    lines.join("\n")
-                } else {
-                    lines[lines.len() - 3..].join("\n")
-                };
-                format!("Activation failed:\n{}", relevant_lines)
-            };
-            return Err(DeployError::Failed {
+            let stdout = String::from_utf8_lossy(&result.stdout).trim().to_string();
+            let exit_code = result.status.code().unwrap_or(-1);
+
+            return Err(DeployError::CommandFailed {
                 host: target.hostname.clone(),
-                source: std::io::Error::other(error_msg),
+                command,
+                exit_code,
+                stderr,
+                stdout,
             }
             .into());
         }
@@ -355,6 +370,40 @@ mod tests {
             cmd_string.contains("2222"),
             "SSH command should include port: {}",
             cmd_string
+        );
+    }
+
+    #[test]
+    fn test_command_to_string_basic() {
+        let mut cmd = Command::new("ssh");
+        cmd.arg("user@host");
+        assert_eq!(command_to_string(&cmd), "ssh user@host");
+    }
+
+    #[test]
+    fn test_command_to_string_with_spaces() {
+        let mut cmd = Command::new("ssh");
+        cmd.arg("user@host");
+        cmd.arg("some command with spaces");
+        assert_eq!(
+            command_to_string(&cmd),
+            r#"ssh user@host "some command with spaces""#
+        );
+    }
+
+    #[test]
+    fn test_command_to_string_no_args() {
+        let cmd = Command::new("nix");
+        assert_eq!(command_to_string(&cmd), "nix");
+    }
+
+    #[test]
+    fn test_command_to_string_multiple_args() {
+        let mut cmd = Command::new("nix");
+        cmd.args(["copy", "--to", "ssh://host", "/nix/store/path"]);
+        assert_eq!(
+            command_to_string(&cmd),
+            "nix copy --to ssh://host /nix/store/path"
         );
     }
 }

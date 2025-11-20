@@ -203,31 +203,19 @@ fn execute_activation_step(
     })?;
 
     // Execute activation
-    let activate_result = push_ctx
+    let activate_result = match push_ctx
         .deploy_backend
         .deploy(&plan.target, &plan.store_path, plan.activation_mode)
-        .unwrap_or_else(|e| {
-            // Build comprehensive error message with error chain
-            let mut error_msg = e.to_string();
-            let mut source = std::error::Error::source(&e);
-            while let Some(err) = source {
-                error_msg.push_str(&format!("\n  Caused by: {}", err));
-                source = std::error::Error::source(err);
-            }
-            DeployResult::failure(error_msg)
-        });
-    push_ctx
-        .observer
-        .on_activation_complete(hostname, &activate_result);
-
-    if !activate_result.success {
-        return Err(crate::error::SnowError::Deploy(
-            crate::error::DeployError::Failed {
-                host: hostname.clone(),
-                source: std::io::Error::other(activate_result.message.clone()),
-            },
-        ));
-    }
+    {
+        Ok(result) => {
+            push_ctx.observer.on_activation_complete(hostname, result.success);
+            result
+        }
+        Err(e) => {
+            push_ctx.observer.on_activation_complete(hostname, false);
+            return Err(e);
+        }
+    };
 
     Ok((plan, activate_result))
 }

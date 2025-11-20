@@ -127,8 +127,8 @@ pub trait PushObserver: Send + Sync {
     ///
     /// # Arguments
     /// - `hostname`: The host that was activated
-    /// - `result`: The activation result (success or failure)
-    fn on_activation_complete(&self, _hostname: &str, _result: &DeployResult) {}
+    /// - `success`: Whether activation succeeded
+    fn on_activation_complete(&self, _hostname: &str, _success: bool) {}
 
     /// Called when the deploy/activate step completes for a phase
     ///
@@ -283,9 +283,9 @@ impl PushObserver for CompositeObserver {
         }
     }
 
-    fn on_activation_complete(&self, hostname: &str, result: &DeployResult) {
+    fn on_activation_complete(&self, hostname: &str, success: bool) {
         for observer in &self.observers {
-            observer.on_activation_complete(hostname, result);
+            observer.on_activation_complete(hostname, success);
         }
     }
 
@@ -355,11 +355,11 @@ mod tests {
             self.log(format!("activation_start:{}", hostname));
         }
 
-        fn on_activation_complete(&self, hostname: &str, result: &DeployResult) {
+        fn on_activation_complete(&self, hostname: &str, success: bool) {
             self.log(format!(
                 "activation_complete:{}:{}",
                 hostname,
-                if result.success { "ok" } else { "failed" }
+                if success { "ok" } else { "failed" }
             ));
         }
     }
@@ -369,7 +369,7 @@ mod tests {
         let observer = NoopObserver;
         observer.on_phase_start("p1", &[]);
         observer.on_activation_start("host1");
-        observer.on_activation_complete("host1", &DeployResult::success("ok"));
+        observer.on_activation_complete("host1", true);
     }
 
     #[test]
@@ -378,7 +378,7 @@ mod tests {
 
         log.on_phase_start("p1", &["host1".to_string(), "host2".to_string()]);
         log.on_activation_start("host1");
-        log.on_activation_complete("host1", &DeployResult::success("ok"));
+        log.on_activation_complete("host1", true);
 
         let events = log.get_events();
         assert_eq!(events.len(), 3);

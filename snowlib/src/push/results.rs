@@ -159,13 +159,11 @@ impl PushResults {
                     } else {
                         "failed".to_string()
                     };
+                    // Inline summary: show first line only for quick scanning
                     let error_msg = host
                         .error_message
                         .as_ref()
-                        .map(|e| {
-                            // Take first line of error for inline display
-                            e.lines().next().unwrap_or("")
-                        })
+                        .map(|e| e.lines().next().unwrap_or(""))
                         .unwrap_or("");
                     println!("  ✗ {} - {}: {}", host.hostname, step_msg, error_msg);
                 }
@@ -219,7 +217,31 @@ impl PushResults {
                         .failed_at_step
                         .map(|s| format!(" ({})", s))
                         .unwrap_or_default();
-                    println!("  {}{}: {}", host.hostname, step_label, error_msg);
+
+                    let lines: Vec<&str> = error_msg.lines().collect();
+
+                    if lines.len() <= 1 {
+                        println!("  {}{}: {}", host.hostname, step_label, error_msg);
+                    } else {
+                        println!("  {}{}:", host.hostname, step_label);
+
+                        // Detailed errors: show up to 30 lines for debugging
+                        let max_lines = 30;
+                        let truncated = lines.len() > max_lines;
+                        let lines_to_show = if truncated {
+                            &lines[..max_lines]
+                        } else {
+                            &lines[..]
+                        };
+
+                        for line in lines_to_show {
+                            println!("    {}", line);
+                        }
+
+                        if truncated {
+                            println!("    ... ({} more lines omitted)", lines.len() - max_lines);
+                        }
+                    }
                 }
             }
         }

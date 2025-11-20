@@ -250,7 +250,7 @@ impl PushObserver for CliObserver {
             .insert(hostname.to_string(), host_span);
     }
 
-    fn on_activation_complete(&self, hostname: &str, result: &DeployResult) {
+    fn on_activation_complete(&self, hostname: &str, success: bool) {
         let mut state = self.state.lock();
 
         // Log completion within the host span
@@ -259,10 +259,10 @@ impl PushObserver for CliObserver {
             .get(hostname)
             .expect("host span must exist - on_activation_start() should be called first");
         let _guard = span.enter();
-        if result.success {
+        if success {
             tracing::info!("✓ Activation completed");
         } else {
-            tracing::error!(message = %result.message, "✗ Activation failed");
+            tracing::error!("✗ Activation failed");
         }
         drop(_guard);
 

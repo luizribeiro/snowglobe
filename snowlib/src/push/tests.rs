@@ -78,7 +78,7 @@ fn activate_plans_for_test(
             .unwrap_or_else(|e| DeployResult::failure(e.to_string()));
 
         // Notify activation complete
-        observer.on_activation_complete(&hostname, &result);
+        observer.on_activation_complete(&hostname, result.success);
 
         host_results.push(HostDeploymentResult {
             hostname,
@@ -570,11 +570,11 @@ impl PushObserver for TestObserver {
             .push(format!("activation_start:{}", hostname));
     }
 
-    fn on_activation_complete(&self, hostname: &str, result: &DeployResult) {
+    fn on_activation_complete(&self, hostname: &str, success: bool) {
         self.events.lock().unwrap().push(format!(
             "activation_complete:{}:{}",
             hostname,
-            if result.success { "ok" } else { "failed" }
+            if success { "ok" } else { "failed" }
         ));
     }
 

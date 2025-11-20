@@ -133,6 +133,16 @@ pub enum DeployError {
         source: std::io::Error,
     },
 
+    #[error("Command failed on host '{host}'\n\nCommand: {command}\nExit code: {exit_code}\n\nStderr:\n{stderr}{}", if stdout.is_empty() { String::new() } else { format!("\n\nStdout:\n{}", stdout) })]
+    #[diagnostic(code(snow::deploy::command_failed))]
+    CommandFailed {
+        host: String,
+        command: String,
+        exit_code: i32,
+        stderr: String,
+        stdout: String,
+    },
+
     #[error("SSH connection failed to {destination}")]
     #[diagnostic(
         code(snow::deploy::ssh_failed),
