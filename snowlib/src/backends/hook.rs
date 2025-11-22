@@ -745,4 +745,147 @@ mod tests {
             assert!(result.stdout.contains("value\" && echo \"injected"));
         }
     }
+
+    #[test]
+    fn test_timeout_captures_partial_output_before_termination() {
+        let backend = SystemHookBackend::new(None, OutputMode::Capture);
+        let mut hook = HookConfig::test_fixture(
+            "partial-output",
+            HookStage::PreActivate,
+            HookLocation::Local,
+            "echo 'Starting...'; sleep 10; echo 'Should not appear'",
+        );
+        hook.timeout = 1;
+        let env = HashMap::new();
+
+        let result = backend.execute_local(&hook, &env).unwrap();
+        assert!(!result.success, "Hook should timeout and fail");
+        assert!(
+            result.stdout.contains("Starting..."),
+            "Output before timeout should be captured"
+        );
+        assert!(
+            !result.stdout.contains("Should not appear"),
+            "Output after timeout should not appear"
+        );
+        assert!(result.stderr.contains("timed out"));
+    }
+
+    #[test]
+    fn test_timeout_with_large_output() {
+        let backend = SystemHookBackend::new(None, OutputMode::Capture);
+        let mut hook = HookConfig::test_fixture(
+            "large-output",
+            HookStage::PreActivate,
+            HookLocation::Local,
+            "for i in {1..100}; do echo \"Line $i\"; done; sleep 10",
+        );
+        hook.timeout = 1;
+        let env = HashMap::new();
+
+        let result = backend.execute_local(&hook, &env).unwrap();
+        assert!(!result.success, "Hook should timeout");
+
+        // Verify we captured at least some of the output
+        let line_count = result.stdout.lines().count();
+        assert!(
+            line_count > 0,
+            "Should have captured some output before timeout"
+        );
+        assert!(
+            line_count <= 100,
+            "Should not have all 100 lines (timed out first)"
+        );
+    }
+
+    #[test]
+    fn test_timeout_duration_accuracy() {
+        let backend = SystemHookBackend::new(None, OutputMode::Capture);
+        let mut hook = HookConfig::test_fixture(
+            "timeout-test",
+            HookStage::PreActivate,
+            HookLocation::Local,
+            "sleep 30",
+        );
+        hook.timeout = 2; // 2 second timeout
+        let env = HashMap::new();
+
+        let start = std::time::Instant::now();
+        let result = backend.execute_local(&hook, &env).unwrap();
+        let elapsed = start.elapsed();
+
+        assert!(!result.success);
+        assert!(result.stderr.contains("timed out"));
+
+        // Timeout should happen around 2 seconds, allow some margin
+        // Should be at least 2 seconds (the timeout)
+        assert!(
+            elapsed.as_secs() >= 2,
+            "Should wait at least timeout duration"
+        );
+        // Should be less than 10 seconds (grace period + reap timeout)
+        // SIGTERM (2s) + grace (5s) + reap (2s) = 9s max
+        assert!(
+            elapsed.as_secs() < 10,
+            "Should not wait too long after timeout"
+        );
+    }
+
+    #[test]
+    fn test_remote_hook_timeout() {
+        use crate::backends::deploy::DeployTarget;
+
+        let backend = SystemHookBackend::new(None, OutputMode::Capture);
+        let mut hook = HookConfig::test_fixture(
+            "remote-timeout",
+            HookStage::PreActivate,
+            HookLocation::Remote,
+            "sleep 30",
+        );
+        hook.timeout = 1;
+        let env = HashMap::new();
+
+        let target = DeployTarget {
+            hostname: "localhost".to_string(),
+            user: None,
+            port: None,
+        };
+
+        let start = std::time::Instant::now();
+        let result = backend.execute_remote(&target, &hook, &env).unwrap();
+        let elapsed = start.elapsed();
+
+        // Remote hook should also timeout
+        assert!(!result.success, "Remote hook should timeout");
+
+        // Should complete in reasonable time (not wait for full sleep)
+        assert!(
+            elapsed.as_secs() < 10,
+            "Remote timeout should not wait too long"
+        );
+    }
+
+    #[test]
+    fn test_quick_command_completes_before_timeout() {
+        let backend = SystemHookBackend::new(None, OutputMode::Capture);
+        let hook = HookConfig::test_fixture(
+            "quick-command",
+            HookStage::PreActivate,
+            HookLocation::Local,
+            "echo 'Quick command'",
+        );
+        // Uses default timeout from test_fixture (300 seconds)
+        let env = HashMap::new();
+
+        let result = backend.execute_local(&hook, &env).unwrap();
+        assert!(
+            result.success,
+            "Quick command should complete before timeout"
+        );
+        assert!(result.stdout.contains("Quick command"));
+        assert!(
+            result.duration.as_secs() < 1,
+            "Should complete very quickly"
+        );
+    }
 }

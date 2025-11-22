@@ -118,8 +118,9 @@ impl HookExecutor {
             if !result.success && !hook.continue_on_failure {
                 tracing::error!(
                     target: "hooks",
-                    "Hook '{}' failed for {} (exit code: {:?}): {}",
+                    "Hook '{}' ({:?} stage) failed for {} (exit code: {:?}): {}",
                     hook.name,
+                    stage,
                     hostname,
                     result.exit_code,
                     result.stderr
@@ -128,7 +129,10 @@ impl HookExecutor {
                 return Err(crate::error::SnowError::Deploy(
                     crate::error::DeployError::CommandFailed {
                         host: hostname.to_string(),
-                        command: format!("Hook '{}': {}", hook.name, hook.command),
+                        command: format!(
+                            "Hook '{}' ({:?} stage): {}",
+                            hook.name, stage, hook.command
+                        ),
                         exit_code: result.exit_code.unwrap_or(-1),
                         stderr: result.stderr.clone(),
                         stdout: result.stdout.clone(),
@@ -137,8 +141,9 @@ impl HookExecutor {
             } else if !result.success {
                 tracing::warn!(
                     target: "hooks",
-                    "Hook '{}' failed for {} but continuing (continueOnFailure=true): {}",
+                    "Hook '{}' ({:?} stage) failed for {} but continuing (continueOnFailure=true): {}",
                     hook.name,
+                    stage,
                     hostname,
                     result.stderr
                 );
@@ -166,7 +171,6 @@ impl HookExecutor {
             .unwrap_or(false)
     }
 
-    /// Load environment variables from a file (KEY=VALUE format, one per line)
     pub(crate) fn load_env_file(path: &std::path::Path) -> Result<HashMap<String, String>> {
         let contents = std::fs::read_to_string(path).map_err(|e| {
             crate::error::SnowError::Deploy(crate::error::DeployError::Failed {
@@ -182,12 +186,10 @@ impl HookExecutor {
         for (line_num, line) in contents.lines().enumerate() {
             let line = line.trim();
 
-            // Skip empty lines and comments
             if line.is_empty() || line.starts_with('#') {
                 continue;
             }
 
-            // Parse KEY=VALUE
             if let Some((key, value)) = line.split_once('=') {
                 env_vars.insert(key.trim().to_string(), value.trim().to_string());
             } else {
@@ -240,20 +242,20 @@ mod tests {
 
     #[test]
     fn test_executor_with_local_hook() {
-        let backend = Arc::new(SystemHookBackend::new(None, OutputMode::Capture));
+        let backend = Arc::new(MockHookBackend::new());
 
         let mut hooks_by_host = HashMap::new();
         hooks_by_host.insert(
             "test-host".to_string(),
             vec![HookConfig::test_fixture(
-                "test-hook",
+                "drain-node",
                 HookStage::PreActivate,
                 HookLocation::Local,
-                "echo 'test'",
+                "kubectl drain test-host --ignore-daemonsets --timeout=5m",
             )],
         );
 
-        let executor = HookExecutor::new(backend, hooks_by_host);
+        let executor = HookExecutor::new(backend.clone(), hooks_by_host);
 
         let results = executor
             .execute_hooks_for_stage("test-host", HookStage::PreActivate, None, &HashMap::new())
@@ -261,47 +263,54 @@ mod tests {
 
         assert_eq!(results.len(), 1);
         assert!(results[0].success);
-        assert!(results[0].stdout.contains("test"));
+
+        let executed = backend.get_executed_hooks();
+        assert_eq!(executed.len(), 1);
+        assert!(executed[0].3.contains("kubectl drain"));
     }
 
     #[test]
     fn test_executor_with_multiple_hooks() {
-        let backend = Arc::new(SystemHookBackend::new(None, OutputMode::Capture));
+        let backend = Arc::new(MockHookBackend::new());
 
         let mut hooks_by_host = HashMap::new();
         hooks_by_host.insert(
             "test-host".to_string(),
             vec![
                 HookConfig::test_fixture(
-                    "test-hook",
+                    "drain-node",
                     HookStage::PreActivate,
                     HookLocation::Local,
-                    "echo 'hook1'",
+                    "kubectl drain test-host --ignore-daemonsets --timeout=5m",
                 ),
                 HookConfig::test_fixture(
-                    "test-hook",
+                    "consul-maint",
                     HookStage::PreActivate,
                     HookLocation::Local,
-                    "echo 'hook2'",
+                    "consul maint -enable -reason='NixOS upgrade'",
                 ),
                 HookConfig::test_fixture(
-                    "test-hook",
+                    "health-check",
                     HookStage::PostActivate,
                     HookLocation::Local,
-                    "echo 'hook3'",
+                    "systemctl is-active nginx postgresql redis",
                 ),
             ],
         );
 
-        let executor = HookExecutor::new(backend, hooks_by_host);
+        let executor = HookExecutor::new(backend.clone(), hooks_by_host);
 
         let results = executor
             .execute_hooks_for_stage("test-host", HookStage::PreActivate, None, &HashMap::new())
             .unwrap();
 
         assert_eq!(results.len(), 2);
-        assert!(results[0].stdout.contains("hook1"));
-        assert!(results[1].stdout.contains("hook2"));
+
+        let executed = backend.get_executed_hooks();
+        assert_eq!(executed.len(), 2);
+        // Hooks execute alphabetically by name: "consul-maint" < "drain-node"
+        assert!(executed[0].3.contains("consul maint"));
+        assert!(executed[1].3.contains("kubectl drain"));
     }
 
     #[test]
@@ -363,10 +372,10 @@ mod tests {
         hooks_by_host.insert(
             "test-host".to_string(),
             vec![HookConfig::test_fixture(
-                "test-hook",
+                "drain-node",
                 HookStage::PreActivate,
                 HookLocation::Local,
-                "echo 'test'",
+                "kubectl drain test-host --ignore-daemonsets",
             )],
         );
 
@@ -625,29 +634,29 @@ mod tests {
     #[test]
     fn test_executor_multiple_hooks_first_failure_aborts_remaining() {
         let backend =
-            Arc::new(MockHookBackend::new().with_local_failures(vec!["fail".to_string()]));
+            Arc::new(MockHookBackend::new().with_local_failures(vec!["consul".to_string()]));
 
         let mut hooks_by_host = HashMap::new();
         hooks_by_host.insert(
             "test-host".to_string(),
             vec![
                 HookConfig::test_fixture(
-                    "test-hook",
+                    "drain-node",
                     HookStage::PreActivate,
                     HookLocation::Local,
-                    "echo 'hook1'",
+                    "kubectl drain test-host --ignore-daemonsets",
                 ),
                 HookConfig::test_fixture(
-                    "test-hook",
+                    "failing-check",
                     HookStage::PreActivate,
                     HookLocation::Local,
-                    "fail command",
+                    "consul lock check/readiness",
                 ),
                 HookConfig::test_fixture(
-                    "test-hook",
+                    "should-not-run",
                     HookStage::PreActivate,
                     HookLocation::Local,
-                    "echo 'should not run'",
+                    "systemctl stop critical-service",
                 ),
             ],
         );
@@ -1055,7 +1064,7 @@ mod tests {
             "z-last-alphabetically",
             HookStage::PreActivate,
             HookLocation::Local,
-            "echo 'hook1'",
+            "etcdctl set /deploy/status preparing",
         );
         hook1.priority = 10; // Should execute first
 
@@ -1063,7 +1072,7 @@ mod tests {
             "a-first-alphabetically",
             HookStage::PreActivate,
             HookLocation::Local,
-            "echo 'hook2'",
+            "consul lock acquire deploy-lock",
         );
         hook2.priority = 50; // Should execute second
 
@@ -1071,7 +1080,7 @@ mod tests {
             "m-middle-alphabetically",
             HookStage::PreActivate,
             HookLocation::Local,
-            "echo 'hook3'",
+            "kubectl drain node --ignore-daemonsets",
         );
         hook3.priority = 100; // Should execute third
 
@@ -1089,15 +1098,15 @@ mod tests {
         let executed = backend.get_executed_hooks();
         assert_eq!(executed.len(), 3);
         assert!(
-            executed[0].3.contains("hook1"),
+            executed[0].3.contains("etcdctl"),
             "First hook should be priority 10"
         );
         assert!(
-            executed[1].3.contains("hook2"),
+            executed[1].3.contains("consul"),
             "Second hook should be priority 50"
         );
         assert!(
-            executed[2].3.contains("hook3"),
+            executed[2].3.contains("kubectl"),
             "Third hook should be priority 100"
         );
     }
@@ -1110,7 +1119,7 @@ mod tests {
             "z-last",
             HookStage::PreActivate,
             HookLocation::Local,
-            "echo 'hook-z'",
+            "systemctl stop z-service",
         );
         hook1.priority = 100;
 
@@ -1118,7 +1127,7 @@ mod tests {
             "a-first",
             HookStage::PreActivate,
             HookLocation::Local,
-            "echo 'hook-a'",
+            "systemctl stop a-service",
         );
         hook2.priority = 100;
 
@@ -1126,7 +1135,7 @@ mod tests {
             "m-middle",
             HookStage::PreActivate,
             HookLocation::Local,
-            "echo 'hook-m'",
+            "systemctl stop m-service",
         );
         hook3.priority = 100;
 
@@ -1144,15 +1153,15 @@ mod tests {
         let executed = backend.get_executed_hooks();
         assert_eq!(executed.len(), 3);
         assert!(
-            executed[0].3.contains("hook-a"),
+            executed[0].3.contains("a-service"),
             "First hook should be 'a-first' (alphabetical)"
         );
         assert!(
-            executed[1].3.contains("hook-m"),
+            executed[1].3.contains("m-service"),
             "Second hook should be 'm-middle' (alphabetical)"
         );
         assert!(
-            executed[2].3.contains("hook-z"),
+            executed[2].3.contains("z-service"),
             "Third hook should be 'z-last' (alphabetical)"
         );
     }
@@ -1162,26 +1171,26 @@ mod tests {
         let backend = Arc::new(MockHookBackend::new());
 
         let mut hook1 = HookConfig::test_fixture(
-            "hook1",
+            "normal-priority",
             HookStage::PreActivate,
             HookLocation::Local,
-            "echo 'normal'",
+            "consul maint -enable",
         );
         hook1.priority = 100;
 
         let mut hook2 = HookConfig::test_fixture(
-            "hook2",
+            "early-priority",
             HookStage::PreActivate,
             HookLocation::Local,
-            "echo 'early'",
+            "kubectl cordon node",
         );
         hook2.priority = -10; // Negative priority should execute first
 
         let mut hook3 = HookConfig::test_fixture(
-            "hook3",
+            "late-priority",
             HookStage::PreActivate,
             HookLocation::Local,
-            "echo 'late'",
+            "curl -X POST https://webhook.site/notify",
         );
         hook3.priority = 200;
 
@@ -1199,16 +1208,83 @@ mod tests {
         let executed = backend.get_executed_hooks();
         assert_eq!(executed.len(), 3);
         assert!(
-            executed[0].3.contains("early"),
+            executed[0].3.contains("kubectl cordon"),
             "First hook should be priority -10"
         );
         assert!(
-            executed[1].3.contains("normal"),
+            executed[1].3.contains("consul maint"),
             "Second hook should be priority 100"
         );
         assert!(
-            executed[2].3.contains("late"),
+            executed[2].3.contains("curl"),
             "Third hook should be priority 200"
         );
+    }
+
+    #[test]
+    fn test_environment_file_with_shell_injection_is_escaped() {
+        use crate::backends::hook::SystemHookBackend;
+        use crate::process::OutputMode;
+        use std::sync::Arc;
+
+        let backend = Arc::new(SystemHookBackend::new(None, OutputMode::Capture));
+
+        let temp_dir = std::env::temp_dir();
+        let temp_file = temp_dir.join("test_shell_injection.env");
+        let marker_file = temp_dir.join("injection_test_marker");
+
+        std::fs::remove_file(&marker_file).ok();
+
+        std::fs::write(
+            &temp_file,
+            "MALICIOUS=$(rm -rf /tmp/test_injection_target)\n\
+             INJECTION='; touch /tmp/injection_marker; echo 'pwned\n\
+             BACKTICKS=`id`\n\
+             COMMAND_SUB=$(whoami)\n",
+        )
+        .unwrap();
+
+        let mut hook = HookConfig::test_fixture(
+            "injection-test",
+            HookStage::PreActivate,
+            HookLocation::Local,
+            &format!("test ! -f {} && echo $MALICIOUS && echo $INJECTION && echo $BACKTICKS && echo $COMMAND_SUB", marker_file.display()),
+        );
+        hook.environment_files = vec![temp_file.clone()];
+
+        let mut hooks_by_host = HashMap::new();
+        hooks_by_host.insert("test-host".to_string(), vec![hook]);
+
+        let executor = HookExecutor::new(backend, hooks_by_host);
+
+        let mut env = HashMap::new();
+        env.insert("SNOW_HOSTNAME".to_string(), "test-host".to_string());
+
+        let results = executor
+            .execute_hooks_for_stage("test-host", HookStage::PreActivate, None, &env)
+            .unwrap();
+
+        assert_eq!(results.len(), 1);
+        assert!(
+            results[0].success,
+            "Hook should succeed - injection should be escaped"
+        );
+
+        // Verify the malicious commands were NOT executed
+        assert!(
+            !marker_file.exists(),
+            "Injection marker file should not exist - shell injection should be escaped"
+        );
+
+        // Verify the values were treated as literal strings
+        let stdout = &results[0].stdout;
+        assert!(
+            stdout.contains("$(rm -rf /tmp/test_injection_target)")
+                || stdout.contains("rm -rf /tmp/test_injection_target"),
+            "Malicious command should appear as literal string in output, not be executed"
+        );
+
+        std::fs::remove_file(&temp_file).ok();
+        std::fs::remove_file(&marker_file).ok();
     }
 }

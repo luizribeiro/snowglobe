@@ -3465,3 +3465,384 @@ fn test_push_hook_with_explicit_environment() {
     assert_eq!(executed[0].0, "test-host");
     assert_eq!(executed[0].1, HookStage::PreActivate);
 }
+
+// ============================================================================
+// Integration Tests: Full Pipeline with Hooks
+// ============================================================================
+
+#[test]
+fn test_full_pipeline_all_hook_stages_execute_in_order() {
+    let flake = Flake::test_context();
+    let nix_backend = MockNixBackend::new();
+    let deployer = MockDeployBackend::new();
+
+    use crate::backends::mock::MockRebootBackend;
+    let reboot_backend = MockRebootBackend::new();
+
+    let observer = TestObserver::new();
+    let hook_backend = Arc::new(MockHookBackend::new());
+
+    let hosts = vec![HostMetadata {
+        name: "k8s-node-01".to_string(),
+        fqdn: "k8s-node-01.cluster.local".to_string(),
+        phase: Some("production".to_string()),
+        tags: vec![],
+        reboot_policy: crate::nix::RebootPolicy::Always,
+        system_type: SystemType::NixOS,
+        hooks: vec![
+            HookConfig::test_fixture(
+                "drain-node",
+                HookStage::PreActivate,
+                HookLocation::Local,
+                "kubectl drain k8s-node-01 --ignore-daemonsets --timeout=5m",
+            ),
+            HookConfig::test_fixture(
+                "stop-services",
+                HookStage::PreActivate,
+                HookLocation::Remote,
+                "systemctl stop kubelet containerd",
+            ),
+            HookConfig::test_fixture(
+                "health-check",
+                HookStage::PostActivate,
+                HookLocation::Remote,
+                "systemctl is-active kubelet containerd",
+            ),
+            HookConfig::test_fixture(
+                "uncordon-node",
+                HookStage::PostReboot,
+                HookLocation::Local,
+                "kubectl uncordon k8s-node-01",
+            ),
+            HookConfig::test_fixture(
+                "slack-notify",
+                HookStage::PostReboot,
+                HookLocation::Local,
+                "curl -X POST https://hooks.slack.com/services/XXX -d '{\"text\":\"Deploy complete\"}'",
+            ),
+        ],
+    }];
+
+    let hook_executor = make_hook_executor(hook_backend.clone(), &hosts);
+
+    let config = PushConfiguration {
+        strategy: PushStrategy::Switch,
+        force: false,
+        concurrency: 1,
+        ignore_phases: false,
+        output_mode: crate::process::OutputMode::Capture,
+        ssh_user: None,
+        allow_reboot: true,
+    };
+
+    let results = {
+        let push_ctx = PushContext::new(
+            &flake,
+            &nix_backend,
+            &deployer,
+            &reboot_backend,
+            &config,
+            &observer,
+            Some(&hook_executor),
+        );
+        push(&push_ctx, hosts)
+    }
+    .unwrap();
+
+    assert!(results.all_succeeded());
+
+    let phase_result = &results.phases[0];
+    assert!(
+        phase_result.hosts[0].rebooted,
+        "Host should have rebooted due to reboot_policy=Always"
+    );
+
+    let executed_hooks = hook_backend.get_executed_hooks();
+    assert_eq!(executed_hooks.len(), 5, "All 5 hooks should have executed");
+
+    // Verify hooks executed in correct order
+    // Within each stage, hooks execute alphabetically by name
+    assert_eq!(executed_hooks[0].1, HookStage::PreActivate);
+    assert!(executed_hooks[0].3.contains("kubectl drain"));
+
+    assert_eq!(executed_hooks[1].1, HookStage::PreActivate);
+    assert!(executed_hooks[1].3.contains("systemctl stop"));
+
+    assert_eq!(executed_hooks[2].1, HookStage::PostActivate);
+    assert!(executed_hooks[2].3.contains("systemctl is-active"));
+
+    // PostReboot hooks execute alphabetically: "slack-notify" < "uncordon-node"
+    assert_eq!(executed_hooks[3].1, HookStage::PostReboot);
+    assert!(executed_hooks[3].3.contains("curl"));
+
+    assert_eq!(executed_hooks[4].1, HookStage::PostReboot);
+    assert!(executed_hooks[4].3.contains("kubectl uncordon"));
+}
+
+#[test]
+fn test_pipeline_environment_variables_propagated_correctly() {
+    let flake = Flake::test_context();
+    let nix_backend = MockNixBackend::new();
+    let deployer = MockDeployBackend::new();
+
+    use crate::backends::mock::MockRebootBackend;
+    let reboot_backend = MockRebootBackend::new();
+
+    let observer = TestObserver::new();
+
+    // Use SystemHookBackend to actually execute commands and verify env vars
+    use crate::backends::hook::SystemHookBackend;
+    let real_hook_backend = Arc::new(SystemHookBackend::new(
+        None,
+        crate::process::OutputMode::Capture,
+    ));
+
+    let hosts = vec![HostMetadata {
+        name: "web-server-01".to_string(),
+        fqdn: "web-server-01.example.com".to_string(),
+        phase: Some("staging".to_string()),
+        tags: vec![],
+        reboot_policy: crate::nix::RebootPolicy::Always,
+        system_type: SystemType::NixOS,
+        hooks: vec![
+            HookConfig::test_fixture(
+                "check-env-vars",
+                HookStage::PreActivate,
+                HookLocation::Local,
+                "test -n \"$SNOW_HOSTNAME\" && test -n \"$SNOW_PHASE\" && test \"$SNOW_HOSTNAME\" = \"web-server-01\" && test \"$SNOW_PHASE\" = \"staging\"",
+            ),
+            HookConfig::test_fixture(
+                "check-store-path",
+                HookStage::PostActivate,
+                HookLocation::Local,
+                "test -n \"$SNOW_STORE_PATH\" && echo \"$SNOW_STORE_PATH\" | grep -q '^/nix/store/'",
+            ),
+        ],
+    }];
+
+    // Create hook executor manually since we're using real backend
+    let mut hooks_by_host = std::collections::HashMap::new();
+    for host in &hosts {
+        hooks_by_host.insert(host.name.clone(), host.hooks.clone());
+    }
+    let hook_executor = crate::push::hooks::HookExecutor::new(real_hook_backend, hooks_by_host);
+
+    let config = PushConfiguration {
+        strategy: PushStrategy::Switch,
+        force: false,
+        concurrency: 1,
+        ignore_phases: false,
+        output_mode: crate::process::OutputMode::Capture,
+        ssh_user: None,
+        allow_reboot: true,
+    };
+
+    let results = {
+        let push_ctx = PushContext::new(
+            &flake,
+            &nix_backend,
+            &deployer,
+            &reboot_backend,
+            &config,
+            &observer,
+            Some(&hook_executor),
+        );
+        push(&push_ctx, hosts)
+    }
+    .unwrap();
+
+    assert!(
+        results.all_succeeded(),
+        "All environment variables should be set correctly in hooks"
+    );
+}
+
+#[test]
+fn test_pipeline_hooks_execute_by_priority_order() {
+    let flake = Flake::test_context();
+    let nix_backend = MockNixBackend::new();
+    let deployer = MockDeployBackend::new();
+    let reboot_config = crate::backends::reboot::RebootDetectionConfig {
+        critical_services: vec![],
+        check_kernel: false,
+        check_initrd: false,
+        ..Default::default()
+    };
+    let reboot_backend = crate::backends::reboot::SystemRebootBackend::new(reboot_config);
+    let observer = TestObserver::new();
+    let hook_backend = Arc::new(MockHookBackend::new());
+
+    let mut hook1 = HookConfig::test_fixture(
+        "third-priority",
+        HookStage::PreActivate,
+        HookLocation::Local,
+        "echo third",
+    );
+    hook1.priority = 30;
+
+    let mut hook2 = HookConfig::test_fixture(
+        "first-priority",
+        HookStage::PreActivate,
+        HookLocation::Local,
+        "echo first",
+    );
+    hook2.priority = 10;
+
+    let mut hook3 = HookConfig::test_fixture(
+        "second-priority",
+        HookStage::PreActivate,
+        HookLocation::Local,
+        "echo second",
+    );
+    hook3.priority = 20;
+
+    let hosts = vec![HostMetadata {
+        name: "priority-test".to_string(),
+        fqdn: "priority-test.local".to_string(),
+        phase: Some("test".to_string()),
+        tags: vec![],
+        reboot_policy: crate::nix::RebootPolicy::Never,
+        system_type: SystemType::NixOS,
+        hooks: vec![hook1, hook2, hook3],
+    }];
+
+    let hook_executor = make_hook_executor(hook_backend.clone(), &hosts);
+
+    let config = PushConfiguration {
+        strategy: PushStrategy::Switch,
+        force: false,
+        concurrency: 1,
+        ignore_phases: false,
+        output_mode: crate::process::OutputMode::Capture,
+        ssh_user: None,
+        allow_reboot: false,
+    };
+
+    let results = {
+        let push_ctx = PushContext::new(
+            &flake,
+            &nix_backend,
+            &deployer,
+            &reboot_backend,
+            &config,
+            &observer,
+            Some(&hook_executor),
+        );
+        push(&push_ctx, hosts)
+    }
+    .unwrap();
+
+    assert!(results.all_succeeded());
+
+    let executed_hooks = hook_backend.get_executed_hooks();
+    assert_eq!(executed_hooks.len(), 3);
+
+    // Verify execution order matches priority (lower priority number = executes first)
+    assert!(
+        executed_hooks[0].3.contains("first"),
+        "Hook with priority=10 should execute first"
+    );
+    assert!(
+        executed_hooks[1].3.contains("second"),
+        "Hook with priority=20 should execute second"
+    );
+    assert!(
+        executed_hooks[2].3.contains("third"),
+        "Hook with priority=30 should execute third"
+    );
+}
+
+#[test]
+fn test_post_reboot_hooks_not_executed_when_no_reboot_needed() {
+    let flake = Flake::test_context();
+    let nix_backend = MockNixBackend::new();
+    let deployer = MockDeployBackend::new();
+    let reboot_config = crate::backends::reboot::RebootDetectionConfig {
+        critical_services: vec![],
+        check_kernel: false,
+        check_initrd: false,
+        ..Default::default()
+    };
+    let reboot_backend = crate::backends::reboot::SystemRebootBackend::new(reboot_config);
+    let observer = TestObserver::new();
+    let hook_backend = Arc::new(MockHookBackend::new());
+
+    let hosts = vec![HostMetadata {
+        name: "no-reboot-host".to_string(),
+        fqdn: "no-reboot-host.local".to_string(),
+        phase: Some("test".to_string()),
+        tags: vec![],
+        reboot_policy: crate::nix::RebootPolicy::Never,
+        system_type: SystemType::NixOS,
+        hooks: vec![
+            HookConfig::test_fixture(
+                "pre-activate-hook",
+                HookStage::PreActivate,
+                HookLocation::Local,
+                "echo pre-activate",
+            ),
+            HookConfig::test_fixture(
+                "post-activate-hook",
+                HookStage::PostActivate,
+                HookLocation::Local,
+                "echo post-activate",
+            ),
+            HookConfig::test_fixture(
+                "post-reboot-hook",
+                HookStage::PostReboot,
+                HookLocation::Local,
+                "kubectl uncordon no-reboot-host",
+            ),
+        ],
+    }];
+
+    let hook_executor = make_hook_executor(hook_backend.clone(), &hosts);
+
+    let config = PushConfiguration {
+        strategy: PushStrategy::Switch,
+        force: false,
+        concurrency: 1,
+        ignore_phases: false,
+        output_mode: crate::process::OutputMode::Capture,
+        ssh_user: None,
+        allow_reboot: false,
+    };
+
+    let results = {
+        let push_ctx = PushContext::new(
+            &flake,
+            &nix_backend,
+            &deployer,
+            &reboot_backend,
+            &config,
+            &observer,
+            Some(&hook_executor),
+        );
+        push(&push_ctx, hosts)
+    }
+    .unwrap();
+
+    assert!(results.all_succeeded());
+
+    let phase_result = &results.phases[0];
+    assert!(
+        !phase_result.hosts[0].rebooted,
+        "Host should not have rebooted with reboot_policy=Never"
+    );
+
+    let executed_hooks = hook_backend.get_executed_hooks();
+    assert_eq!(
+        executed_hooks.len(),
+        2,
+        "Only pre-activate and post-activate hooks should execute"
+    );
+
+    assert_eq!(executed_hooks[0].1, HookStage::PreActivate);
+    assert_eq!(executed_hooks[1].1, HookStage::PostActivate);
+
+    // Verify post-reboot hook did NOT execute
+    assert!(
+        !executed_hooks.iter().any(|h| h.1 == HookStage::PostReboot),
+        "Post-reboot hooks should not execute when host doesn't reboot"
+    );
+}
