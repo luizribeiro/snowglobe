@@ -163,6 +163,20 @@ fn default_hook_timeout() -> u64 {
     300 // 5 minutes
 }
 
+#[cfg(test)]
+impl HookConfig {
+    /// Create a hook config for testing with default timeout and failure behavior
+    pub(crate) fn test_fixture(stage: HookStage, location: HookLocation, command: &str) -> Self {
+        Self {
+            stage,
+            location,
+            command: command.to_string(),
+            timeout: 300,
+            continue_on_failure: false,
+        }
+    }
+}
+
 /// Metadata about a host for deployment
 #[derive(Debug, Clone)]
 pub struct HostMetadata {

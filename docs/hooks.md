@@ -211,6 +211,20 @@ Each hook has a timeout (default: 300 seconds / 5 minutes). If the command doesn
 }
 ```
 
+**Choosing Timeout Values:**
+
+Set timeouts conservatively but realistically to avoid resource exhaustion:
+
+- **Quick health checks**: 10-30 seconds
+- **Service coordination** (DNS updates, service discovery): 30-60 seconds
+- **Node draining** (Kubernetes, Nomad): 5-10 minutes (300-600 seconds)
+- **Load balancer operations**: 1-2 minutes (60-120 seconds)
+- **Custom validation scripts**: 2-5 minutes (120-300 seconds)
+
+**Avoid very long timeouts** (>15 minutes) as timed-out hook processes cannot be killed from safe Rust and will continue running in the background. While this is monitored internally, pathological cases (many slow hooks timing out) could exhaust system resources.
+
+If a hook consistently times out, investigate the underlying command rather than increasing the timeout indefinitely.
+
 ## Environment Variables
 
 Hooks receive these environment variables:

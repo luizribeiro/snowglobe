@@ -345,8 +345,7 @@ mod tests {
         assert!(!result.success);
         assert!(result.stderr.contains("timed out"));
         assert!(result.duration.as_secs() >= 1);
-        // Note: Duration may be slightly longer than timeout due to cleanup attempts
-        // The important thing is that it returns (doesn't hang for 10 seconds)
+        // Verify timeout mechanism works - without it, this would hang for 10 seconds
         assert!(result.duration.as_secs() < 5);
     }
 

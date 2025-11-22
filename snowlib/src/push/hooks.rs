@@ -129,16 +129,6 @@ mod tests {
     use crate::backends::mock::MockHookBackend;
     use crate::process::OutputMode;
 
-    fn make_test_hook(stage: HookStage, location: HookLocation, command: &str) -> HookConfig {
-        HookConfig {
-            stage,
-            location,
-            command: command.to_string(),
-            timeout: 300,
-            continue_on_failure: false,
-        }
-    }
-
     #[test]
     fn test_executor_with_no_hooks() {
         let backend = Arc::new(SystemHookBackend::new(None, OutputMode::Capture));
@@ -172,7 +162,7 @@ mod tests {
         let mut hooks_by_host = HashMap::new();
         hooks_by_host.insert(
             "test-host".to_string(),
-            vec![make_test_hook(
+            vec![HookConfig::test_fixture(
                 HookStage::PreActivate,
                 HookLocation::Local,
                 "echo 'test'",
@@ -198,9 +188,21 @@ mod tests {
         hooks_by_host.insert(
             "test-host".to_string(),
             vec![
-                make_test_hook(HookStage::PreActivate, HookLocation::Local, "echo 'hook1'"),
-                make_test_hook(HookStage::PreActivate, HookLocation::Local, "echo 'hook2'"),
-                make_test_hook(HookStage::PostActivate, HookLocation::Local, "echo 'hook3'"),
+                HookConfig::test_fixture(
+                    HookStage::PreActivate,
+                    HookLocation::Local,
+                    "echo 'hook1'",
+                ),
+                HookConfig::test_fixture(
+                    HookStage::PreActivate,
+                    HookLocation::Local,
+                    "echo 'hook2'",
+                ),
+                HookConfig::test_fixture(
+                    HookStage::PostActivate,
+                    HookLocation::Local,
+                    "echo 'hook3'",
+                ),
             ],
         );
 
@@ -222,7 +224,7 @@ mod tests {
         let mut hooks_by_host = HashMap::new();
         hooks_by_host.insert(
             "test-host".to_string(),
-            vec![make_test_hook(
+            vec![HookConfig::test_fixture(
                 HookStage::PreActivate,
                 HookLocation::Local,
                 "exit 1",
@@ -246,7 +248,8 @@ mod tests {
         let backend = Arc::new(SystemHookBackend::new(None, OutputMode::Capture));
 
         let mut hooks_by_host = HashMap::new();
-        let mut hook = make_test_hook(HookStage::PreActivate, HookLocation::Local, "exit 1");
+        let mut hook =
+            HookConfig::test_fixture(HookStage::PreActivate, HookLocation::Local, "exit 1");
         hook.continue_on_failure = true;
         hooks_by_host.insert("test-host".to_string(), vec![hook]);
 
@@ -267,7 +270,7 @@ mod tests {
         let mut hooks_by_host = HashMap::new();
         hooks_by_host.insert(
             "test-host".to_string(),
-            vec![make_test_hook(
+            vec![HookConfig::test_fixture(
                 HookStage::PreActivate,
                 HookLocation::Local,
                 "echo 'test'",
@@ -292,7 +295,7 @@ mod tests {
         let mut hooks_by_host = HashMap::new();
         hooks_by_host.insert(
             "test-host".to_string(),
-            vec![make_test_hook(
+            vec![HookConfig::test_fixture(
                 HookStage::PostActivate,
                 HookLocation::Remote,
                 "systemctl restart nginx",
@@ -334,7 +337,7 @@ mod tests {
         let mut hooks_by_host = HashMap::new();
         hooks_by_host.insert(
             "test-host".to_string(),
-            vec![make_test_hook(
+            vec![HookConfig::test_fixture(
                 HookStage::PostActivate,
                 HookLocation::Remote,
                 "systemctl restart nginx",
@@ -365,7 +368,7 @@ mod tests {
         let mut hooks_by_host = HashMap::new();
         hooks_by_host.insert(
             "test-host".to_string(),
-            vec![make_test_hook(
+            vec![HookConfig::test_fixture(
                 HookStage::PostActivate,
                 HookLocation::Remote,
                 "systemctl restart nginx",
@@ -392,12 +395,12 @@ mod tests {
         hooks_by_host.insert(
             "test-host".to_string(),
             vec![
-                make_test_hook(
+                HookConfig::test_fixture(
                     HookStage::PreActivate,
                     HookLocation::Local,
                     "kubectl drain ${SNOW_HOSTNAME}",
                 ),
-                make_test_hook(
+                HookConfig::test_fixture(
                     HookStage::PreActivate,
                     HookLocation::Remote,
                     "systemctl stop important-service",
@@ -437,14 +440,18 @@ mod tests {
         hooks_by_host.insert(
             "test-host".to_string(),
             vec![
-                make_test_hook(HookStage::PreActivate, HookLocation::Local, "pre-activate"),
-                make_test_hook(
+                HookConfig::test_fixture(
+                    HookStage::PreActivate,
+                    HookLocation::Local,
+                    "pre-activate",
+                ),
+                HookConfig::test_fixture(
                     HookStage::PostActivate,
                     HookLocation::Local,
                     "post-activate",
                 ),
-                make_test_hook(HookStage::PostReboot, HookLocation::Local, "post-reboot"),
-                make_test_hook(HookStage::OnFailure, HookLocation::Local, "on-failure"),
+                HookConfig::test_fixture(HookStage::PostReboot, HookLocation::Local, "post-reboot"),
+                HookConfig::test_fixture(HookStage::OnFailure, HookLocation::Local, "on-failure"),
             ],
         );
 
@@ -478,7 +485,7 @@ mod tests {
         let mut hooks_by_host = HashMap::new();
         hooks_by_host.insert(
             "test-host".to_string(),
-            vec![make_test_hook(
+            vec![HookConfig::test_fixture(
                 HookStage::PreActivate,
                 HookLocation::Local,
                 "echo $SNOW_HOSTNAME $SNOW_PHASE $SNOW_STORE_PATH",
@@ -513,9 +520,17 @@ mod tests {
         hooks_by_host.insert(
             "test-host".to_string(),
             vec![
-                make_test_hook(HookStage::PreActivate, HookLocation::Local, "echo 'hook1'"),
-                make_test_hook(HookStage::PreActivate, HookLocation::Local, "fail command"),
-                make_test_hook(
+                HookConfig::test_fixture(
+                    HookStage::PreActivate,
+                    HookLocation::Local,
+                    "echo 'hook1'",
+                ),
+                HookConfig::test_fixture(
+                    HookStage::PreActivate,
+                    HookLocation::Local,
+                    "fail command",
+                ),
+                HookConfig::test_fixture(
                     HookStage::PreActivate,
                     HookLocation::Local,
                     "echo 'should not run'",
