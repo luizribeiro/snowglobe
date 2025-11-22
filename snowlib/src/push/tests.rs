@@ -2386,6 +2386,7 @@ fn test_push_skip_reboot_flag_with_detected_reboot() {
     assert!(events.iter().any(|e| e.starts_with("activation_complete")));
 }
 
+
 // ============================================================================
 // Integration Tests for Profile Update Feature
 // ============================================================================
@@ -2419,6 +2420,7 @@ fn create_nixos_host_metadata(name: &str, fqdn: &str) -> HostMetadata {
         tags: vec![],
         reboot_policy: crate::nix::RebootPolicy::Auto,
         system_type: SystemType::NixOS,
+        hooks: vec![],
     }
 }
 
@@ -2452,6 +2454,7 @@ fn test_push_profile_update_for_switch_mode() {
             &reboot_detector,
             &config,
             &observer,
+            None,
         );
         push(&push_ctx, hosts)
     }
@@ -2495,6 +2498,7 @@ fn test_push_profile_update_skipped_for_test_mode() {
             &reboot_detector,
             &config,
             &observer,
+            None,
         );
         push(&push_ctx, hosts)
     }
@@ -2536,6 +2540,7 @@ fn test_push_profile_update_multiple_hosts() {
             &reboot_detector,
             &config,
             &observer,
+            None,
         );
         push(&push_ctx, hosts)
     }
@@ -2572,4 +2577,761 @@ fn test_push_profile_update_multiple_hosts() {
             host
         );
     }
+}
+
+// ============================================================================
+// Hook Integration Tests
+// ============================================================================
+
+use crate::backends::mock::MockHookBackend;
+use crate::nix::{HookConfig, HookLocation, HookStage};
+
+fn make_hook(stage: HookStage, location: HookLocation, command: &str) -> HookConfig {
+    HookConfig {
+        stage,
+        location,
+        command: command.to_string(),
+        timeout: 300,
+        continue_on_failure: false,
+    }
+}
+
+#[test]
+fn test_push_with_pre_activate_hooks() {
+    let flake = Flake::test_context();
+    let nix_backend = MockNixBackend::new();
+    let deployer = MockDeployBackend::new();
+    let reboot_config = crate::backends::reboot::RebootDetectionConfig {
+        critical_services: vec![],
+        check_kernel: false,
+        check_initrd: false,
+        ..Default::default()
+    };
+    let reboot_backend = crate::backends::reboot::SystemRebootBackend::new(reboot_config);
+    let observer = TestObserver::new();
+
+    let hook_backend = Arc::new(MockHookBackend::new());
+
+    let hosts = vec![HostMetadata {
+        name: "test-host".to_string(),
+        fqdn: "test-host.example.com".to_string(),
+        phase: Some("production".to_string()),
+        tags: vec![],
+        reboot_policy: crate::nix::RebootPolicy::Auto,
+        system_type: SystemType::NixOS,
+        hooks: vec![
+            make_hook(
+                HookStage::PreActivate,
+                HookLocation::Local,
+                "kubectl drain ${SNOW_HOSTNAME} --timeout=300s",
+            ),
+            make_hook(
+                HookStage::PreActivate,
+                HookLocation::Remote,
+                "systemctl stop important-service",
+            ),
+        ],
+    }];
+
+    let mut hooks_by_host = std::collections::HashMap::new();
+    hooks_by_host.insert("test-host".to_string(), hosts[0].hooks.clone());
+
+    let hook_executor = crate::push::hooks::HookExecutor::new(hook_backend.clone(), hooks_by_host);
+
+    let config = PushConfiguration {
+        strategy: PushStrategy::Switch,
+        force: false,
+        concurrency: 1,
+        ignore_phases: false,
+        output_mode: crate::process::OutputMode::Capture,
+        ssh_user: None,
+        allow_reboot: true,
+    };
+
+    let results = {
+        let push_ctx = PushContext::new(
+            &flake,
+            &nix_backend,
+            &deployer,
+            &reboot_backend,
+            &config,
+            &observer,
+            Some(&hook_executor),
+        );
+        push(&push_ctx, hosts)
+    }
+    .unwrap();
+
+    assert!(results.all_succeeded());
+
+    let executed_hooks = hook_backend.get_executed_hooks();
+    assert_eq!(executed_hooks.len(), 2);
+    assert_eq!(executed_hooks[0].1, HookStage::PreActivate);
+    assert_eq!(executed_hooks[0].2, HookLocation::Local);
+    assert!(executed_hooks[0].3.contains("kubectl drain"));
+    assert_eq!(executed_hooks[1].1, HookStage::PreActivate);
+    assert_eq!(executed_hooks[1].2, HookLocation::Remote);
+    assert!(executed_hooks[1].3.contains("systemctl stop"));
+}
+
+#[test]
+fn test_push_with_post_activate_hooks() {
+    let flake = Flake::test_context();
+    let nix_backend = MockNixBackend::new();
+    let deployer = MockDeployBackend::new();
+    let reboot_config = crate::backends::reboot::RebootDetectionConfig {
+        critical_services: vec![],
+        check_kernel: false,
+        check_initrd: false,
+        ..Default::default()
+    };
+    let reboot_backend = crate::backends::reboot::SystemRebootBackend::new(reboot_config);
+    let observer = TestObserver::new();
+
+    let hook_backend = Arc::new(MockHookBackend::new());
+
+    let hosts = vec![HostMetadata {
+        name: "test-host".to_string(),
+        fqdn: "test-host.example.com".to_string(),
+        phase: Some("production".to_string()),
+        tags: vec![],
+        reboot_policy: crate::nix::RebootPolicy::Auto,
+        system_type: SystemType::NixOS,
+        hooks: vec![make_hook(
+            HookStage::PostActivate,
+            HookLocation::Remote,
+            "systemctl start important-service",
+        )],
+    }];
+
+    let mut hooks_by_host = std::collections::HashMap::new();
+    hooks_by_host.insert("test-host".to_string(), hosts[0].hooks.clone());
+
+    let hook_executor = crate::push::hooks::HookExecutor::new(hook_backend.clone(), hooks_by_host);
+
+    let config = PushConfiguration {
+        strategy: PushStrategy::Switch,
+        force: false,
+        concurrency: 1,
+        ignore_phases: false,
+        output_mode: crate::process::OutputMode::Capture,
+        ssh_user: None,
+        allow_reboot: true,
+    };
+
+    let results = {
+        let push_ctx = PushContext::new(
+            &flake,
+            &nix_backend,
+            &deployer,
+            &reboot_backend,
+            &config,
+            &observer,
+            Some(&hook_executor),
+        );
+        push(&push_ctx, hosts)
+    }
+    .unwrap();
+
+    assert!(results.all_succeeded());
+
+    let executed_hooks = hook_backend.get_executed_hooks();
+    assert_eq!(executed_hooks.len(), 1);
+    assert_eq!(executed_hooks[0].1, HookStage::PostActivate);
+    assert_eq!(executed_hooks[0].2, HookLocation::Remote);
+    assert!(executed_hooks[0].3.contains("systemctl start"));
+}
+
+#[test]
+fn test_push_with_post_reboot_hooks() {
+    let flake = Flake::test_context();
+    let nix_backend = MockNixBackend::new();
+    let deployer = MockDeployBackend::new();
+
+    use crate::backends::mock::MockRebootBackend;
+    let reboot_backend = MockRebootBackend::new();
+
+    let observer = TestObserver::new();
+
+    let hook_backend = Arc::new(MockHookBackend::new());
+
+    let hosts = vec![HostMetadata {
+        name: "test-host".to_string(),
+        fqdn: "test-host.example.com".to_string(),
+        phase: Some("production".to_string()),
+        tags: vec![],
+        reboot_policy: crate::nix::RebootPolicy::Always,
+        system_type: SystemType::NixOS,
+        hooks: vec![make_hook(
+            HookStage::PostReboot,
+            HookLocation::Local,
+            "kubectl uncordon ${SNOW_HOSTNAME}",
+        )],
+    }];
+
+    let mut hooks_by_host = std::collections::HashMap::new();
+    hooks_by_host.insert("test-host".to_string(), hosts[0].hooks.clone());
+
+    let hook_executor = crate::push::hooks::HookExecutor::new(hook_backend.clone(), hooks_by_host);
+
+    let config = PushConfiguration {
+        strategy: PushStrategy::Switch,
+        force: false,
+        concurrency: 1,
+        ignore_phases: false,
+        output_mode: crate::process::OutputMode::Capture,
+        ssh_user: None,
+        allow_reboot: true,
+    };
+
+    let results = {
+        let push_ctx = PushContext::new(
+            &flake,
+            &nix_backend,
+            &deployer,
+            &reboot_backend,
+            &config,
+            &observer,
+            Some(&hook_executor),
+        );
+        push(&push_ctx, hosts)
+    }
+    .unwrap();
+
+    assert!(results.all_succeeded());
+
+    let phase_result = &results.phases[0];
+    assert!(
+        phase_result.hosts[0].rebooted,
+        "Host should have rebooted due to reboot_policy=Always"
+    );
+
+    let executed_hooks = hook_backend.get_executed_hooks();
+    assert_eq!(executed_hooks.len(), 1);
+    assert_eq!(executed_hooks[0].1, HookStage::PostReboot);
+    assert_eq!(executed_hooks[0].2, HookLocation::Local);
+    assert!(executed_hooks[0].3.contains("kubectl uncordon"));
+}
+
+#[test]
+fn test_push_pre_activate_hook_failure_aborts_deployment() {
+    let flake = Flake::test_context();
+    let nix_backend = MockNixBackend::new();
+    let deployer = MockDeployBackend::new();
+    let reboot_config = crate::backends::reboot::RebootDetectionConfig {
+        critical_services: vec![],
+        check_kernel: false,
+        check_initrd: false,
+        ..Default::default()
+    };
+    let reboot_backend = crate::backends::reboot::SystemRebootBackend::new(reboot_config);
+    let observer = TestObserver::new();
+
+    let hook_backend =
+        Arc::new(MockHookBackend::new().with_local_failures(vec!["kubectl".to_string()]));
+
+    let hosts = vec![HostMetadata {
+        name: "test-host".to_string(),
+        fqdn: "test-host.example.com".to_string(),
+        phase: Some("production".to_string()),
+        tags: vec![],
+        reboot_policy: crate::nix::RebootPolicy::Auto,
+        system_type: SystemType::NixOS,
+        hooks: vec![make_hook(
+            HookStage::PreActivate,
+            HookLocation::Local,
+            "kubectl drain ${SNOW_HOSTNAME}",
+        )],
+    }];
+
+    let mut hooks_by_host = std::collections::HashMap::new();
+    hooks_by_host.insert("test-host".to_string(), hosts[0].hooks.clone());
+
+    let hook_executor = crate::push::hooks::HookExecutor::new(hook_backend.clone(), hooks_by_host);
+
+    let config = PushConfiguration {
+        strategy: PushStrategy::Switch,
+        force: false,
+        concurrency: 1,
+        ignore_phases: false,
+        output_mode: crate::process::OutputMode::Capture,
+        ssh_user: None,
+        allow_reboot: true,
+    };
+
+    let results = {
+        let push_ctx = PushContext::new(
+            &flake,
+            &nix_backend,
+            &deployer,
+            &reboot_backend,
+            &config,
+            &observer,
+            Some(&hook_executor),
+        );
+        push(&push_ctx, hosts)
+    }
+    .unwrap();
+
+    assert!(!results.all_succeeded());
+    assert_eq!(results.failure_count(), 1);
+
+    let phase_result = &results.phases[0];
+    assert_eq!(
+        phase_result.hosts[0].failed_at_step,
+        Some(PipelineStep::Activate),
+        "Pre-activate hook failure should be reported as Activate step failure"
+    );
+
+    let executed_hooks = hook_backend.get_executed_hooks();
+    assert_eq!(executed_hooks.len(), 1);
+}
+
+#[test]
+fn test_push_hook_failure_with_continue_on_failure() {
+    let flake = Flake::test_context();
+    let nix_backend = MockNixBackend::new();
+    let deployer = MockDeployBackend::new();
+    let reboot_config = crate::backends::reboot::RebootDetectionConfig {
+        critical_services: vec![],
+        check_kernel: false,
+        check_initrd: false,
+        ..Default::default()
+    };
+    let reboot_backend = crate::backends::reboot::SystemRebootBackend::new(reboot_config);
+    let observer = TestObserver::new();
+
+    let hook_backend =
+        Arc::new(MockHookBackend::new().with_local_failures(vec!["kubectl".to_string()]));
+
+    let mut hook = make_hook(
+        HookStage::PreActivate,
+        HookLocation::Local,
+        "kubectl drain ${SNOW_HOSTNAME}",
+    );
+    hook.continue_on_failure = true;
+
+    let hosts = vec![HostMetadata {
+        name: "test-host".to_string(),
+        fqdn: "test-host.example.com".to_string(),
+        phase: Some("production".to_string()),
+        tags: vec![],
+        reboot_policy: crate::nix::RebootPolicy::Auto,
+        system_type: SystemType::NixOS,
+        hooks: vec![hook],
+    }];
+
+    let mut hooks_by_host = std::collections::HashMap::new();
+    hooks_by_host.insert("test-host".to_string(), hosts[0].hooks.clone());
+
+    let hook_executor = crate::push::hooks::HookExecutor::new(hook_backend.clone(), hooks_by_host);
+
+    let config = PushConfiguration {
+        strategy: PushStrategy::Switch,
+        force: false,
+        concurrency: 1,
+        ignore_phases: false,
+        output_mode: crate::process::OutputMode::Capture,
+        ssh_user: None,
+        allow_reboot: true,
+    };
+
+    let results = {
+        let push_ctx = PushContext::new(
+            &flake,
+            &nix_backend,
+            &deployer,
+            &reboot_backend,
+            &config,
+            &observer,
+            Some(&hook_executor),
+        );
+        push(&push_ctx, hosts)
+    }
+    .unwrap();
+
+    assert!(results.all_succeeded());
+
+    let executed_hooks = hook_backend.get_executed_hooks();
+    assert_eq!(executed_hooks.len(), 1);
+}
+
+#[test]
+fn test_push_on_failure_hooks_execute_when_build_fails() {
+    let flake = Flake::test_context();
+    let nix_backend = MockNixBackend::new().with_build_failures(vec!["test-host".to_string()]);
+    let deployer = MockDeployBackend::new();
+    let reboot_backend = crate::backends::reboot::SystemRebootBackend::default();
+    let observer = TestObserver::new();
+
+    let hook_backend = Arc::new(MockHookBackend::new());
+
+    let hosts = vec![HostMetadata {
+        name: "test-host".to_string(),
+        fqdn: "test-host.example.com".to_string(),
+        phase: Some("production".to_string()),
+        tags: vec![],
+        reboot_policy: crate::nix::RebootPolicy::Auto,
+        system_type: SystemType::NixOS,
+        hooks: vec![
+            make_hook(
+                HookStage::PreActivate,
+                HookLocation::Local,
+                "pre-activate hook",
+            ),
+            make_hook(
+                HookStage::OnFailure,
+                HookLocation::Local,
+                "cleanup on failure",
+            ),
+        ],
+    }];
+
+    let mut hooks_by_host = std::collections::HashMap::new();
+    hooks_by_host.insert("test-host".to_string(), hosts[0].hooks.clone());
+
+    let hook_executor = crate::push::hooks::HookExecutor::new(hook_backend.clone(), hooks_by_host);
+
+    let config = PushConfiguration {
+        strategy: PushStrategy::Switch,
+        force: false,
+        concurrency: 1,
+        ignore_phases: false,
+        output_mode: crate::process::OutputMode::Capture,
+        ssh_user: None,
+        allow_reboot: true,
+    };
+
+    let results = {
+        let push_ctx = PushContext::new(
+            &flake,
+            &nix_backend,
+            &deployer,
+            &reboot_backend,
+            &config,
+            &observer,
+            Some(&hook_executor),
+        );
+        push(&push_ctx, hosts)
+    }
+    .unwrap();
+
+    assert!(!results.all_succeeded());
+    assert_eq!(results.failure_count(), 1);
+
+    let executed_hooks = hook_backend.get_executed_hooks();
+    assert!(
+        executed_hooks.iter().any(|h| h.1 == HookStage::OnFailure),
+        "OnFailure hook should execute when build fails"
+    );
+    assert!(
+        !executed_hooks.iter().any(|h| h.1 == HookStage::PreActivate),
+        "PreActivate hook should not execute when build fails"
+    );
+}
+
+#[test]
+fn test_push_on_failure_hooks_execute_when_copy_fails() {
+    let flake = Flake::test_context();
+    let nix_backend = MockNixBackend::new();
+    let deployer =
+        MockDeployBackend::new().with_copy_failures(vec!["test-host.example.com".to_string()]);
+    let reboot_backend = crate::backends::reboot::SystemRebootBackend::default();
+    let observer = TestObserver::new();
+
+    let hook_backend = Arc::new(MockHookBackend::new());
+
+    let hosts = vec![HostMetadata {
+        name: "test-host".to_string(),
+        fqdn: "test-host.example.com".to_string(),
+        phase: Some("production".to_string()),
+        tags: vec![],
+        reboot_policy: crate::nix::RebootPolicy::Auto,
+        system_type: SystemType::NixOS,
+        hooks: vec![make_hook(
+            HookStage::OnFailure,
+            HookLocation::Local,
+            "rollback on failure",
+        )],
+    }];
+
+    let mut hooks_by_host = std::collections::HashMap::new();
+    hooks_by_host.insert("test-host".to_string(), hosts[0].hooks.clone());
+
+    let hook_executor = crate::push::hooks::HookExecutor::new(hook_backend.clone(), hooks_by_host);
+
+    let config = PushConfiguration {
+        strategy: PushStrategy::Switch,
+        force: false,
+        concurrency: 1,
+        ignore_phases: false,
+        output_mode: crate::process::OutputMode::Capture,
+        ssh_user: None,
+        allow_reboot: true,
+    };
+
+    let results = {
+        let push_ctx = PushContext::new(
+            &flake,
+            &nix_backend,
+            &deployer,
+            &reboot_backend,
+            &config,
+            &observer,
+            Some(&hook_executor),
+        );
+        push(&push_ctx, hosts)
+    }
+    .unwrap();
+
+    assert!(!results.all_succeeded());
+
+    let executed_hooks = hook_backend.get_executed_hooks();
+    assert_eq!(executed_hooks.len(), 1);
+    assert_eq!(executed_hooks[0].1, HookStage::OnFailure);
+}
+
+#[test]
+fn test_push_environment_variables_passed_to_hooks() {
+    let flake = Flake::test_context();
+    let nix_backend = MockNixBackend::new();
+    let deployer = MockDeployBackend::new();
+    let reboot_config = crate::backends::reboot::RebootDetectionConfig {
+        critical_services: vec![],
+        check_kernel: false,
+        check_initrd: false,
+        ..Default::default()
+    };
+    let reboot_backend = crate::backends::reboot::SystemRebootBackend::new(reboot_config);
+    let observer = TestObserver::new();
+
+    let hook_backend = Arc::new(MockHookBackend::new());
+
+    let hosts = vec![HostMetadata {
+        name: "test-host".to_string(),
+        fqdn: "test-host.example.com".to_string(),
+        phase: Some("production".to_string()),
+        tags: vec![],
+        reboot_policy: crate::nix::RebootPolicy::Auto,
+        system_type: SystemType::NixOS,
+        hooks: vec![make_hook(
+            HookStage::PreActivate,
+            HookLocation::Local,
+            "echo $SNOW_HOSTNAME $SNOW_PHASE $SNOW_STORE_PATH",
+        )],
+    }];
+
+    let mut hooks_by_host = std::collections::HashMap::new();
+    hooks_by_host.insert("test-host".to_string(), hosts[0].hooks.clone());
+
+    let hook_executor = crate::push::hooks::HookExecutor::new(hook_backend.clone(), hooks_by_host);
+
+    let config = PushConfiguration {
+        strategy: PushStrategy::Switch,
+        force: false,
+        concurrency: 1,
+        ignore_phases: false,
+        output_mode: crate::process::OutputMode::Capture,
+        ssh_user: None,
+        allow_reboot: true,
+    };
+
+    let results = {
+        let push_ctx = PushContext::new(
+            &flake,
+            &nix_backend,
+            &deployer,
+            &reboot_backend,
+            &config,
+            &observer,
+            Some(&hook_executor),
+        );
+        push(&push_ctx, hosts)
+    }
+    .unwrap();
+
+    assert!(results.all_succeeded());
+
+    let executed_hooks = hook_backend.get_executed_hooks();
+    assert_eq!(executed_hooks.len(), 1);
+    assert_eq!(executed_hooks[0].0, "test-host");
+}
+
+#[test]
+fn test_push_hooks_execute_in_parallel_for_multiple_hosts() {
+    let flake = Flake::test_context();
+    let nix_backend = MockNixBackend::new();
+    let deployer = MockDeployBackend::new();
+    let reboot_config = crate::backends::reboot::RebootDetectionConfig {
+        critical_services: vec![],
+        check_kernel: false,
+        check_initrd: false,
+        ..Default::default()
+    };
+    let reboot_backend = crate::backends::reboot::SystemRebootBackend::new(reboot_config);
+    let observer = TestObserver::new();
+
+    let hook_backend = Arc::new(MockHookBackend::new());
+
+    let hosts = vec![
+        HostMetadata {
+            name: "host1".to_string(),
+            fqdn: "host1.example.com".to_string(),
+            phase: Some("production".to_string()),
+            tags: vec![],
+            reboot_policy: crate::nix::RebootPolicy::Auto,
+            system_type: SystemType::NixOS,
+            hooks: vec![make_hook(
+                HookStage::PreActivate,
+                HookLocation::Local,
+                "hook for host1",
+            )],
+        },
+        HostMetadata {
+            name: "host2".to_string(),
+            fqdn: "host2.example.com".to_string(),
+            phase: Some("production".to_string()),
+            tags: vec![],
+            reboot_policy: crate::nix::RebootPolicy::Auto,
+            system_type: SystemType::NixOS,
+            hooks: vec![make_hook(
+                HookStage::PreActivate,
+                HookLocation::Local,
+                "hook for host2",
+            )],
+        },
+    ];
+
+    let mut hooks_by_host = std::collections::HashMap::new();
+    hooks_by_host.insert("host1".to_string(), hosts[0].hooks.clone());
+    hooks_by_host.insert("host2".to_string(), hosts[1].hooks.clone());
+
+    let hook_executor = crate::push::hooks::HookExecutor::new(hook_backend.clone(), hooks_by_host);
+
+    let config = PushConfiguration {
+        strategy: PushStrategy::Switch,
+        force: false,
+        concurrency: 2,
+        ignore_phases: false,
+        output_mode: crate::process::OutputMode::Capture,
+        ssh_user: None,
+        allow_reboot: true,
+    };
+
+    let results = {
+        let push_ctx = PushContext::new(
+            &flake,
+            &nix_backend,
+            &deployer,
+            &reboot_backend,
+            &config,
+            &observer,
+            Some(&hook_executor),
+        );
+        push(&push_ctx, hosts)
+    }
+    .unwrap();
+
+    assert!(results.all_succeeded());
+
+    let executed_hooks = hook_backend.get_executed_hooks();
+    assert_eq!(executed_hooks.len(), 2);
+    assert!(executed_hooks.iter().any(|h| h.0 == "host1"));
+    assert!(executed_hooks.iter().any(|h| h.0 == "host2"));
+}
+
+#[test]
+fn test_push_hook_failure_in_one_host_doesnt_affect_others() {
+    let flake = Flake::test_context();
+    let nix_backend = MockNixBackend::new();
+    let deployer = MockDeployBackend::new();
+    let reboot_config = crate::backends::reboot::RebootDetectionConfig {
+        critical_services: vec![],
+        check_kernel: false,
+        check_initrd: false,
+        ..Default::default()
+    };
+    let reboot_backend = crate::backends::reboot::SystemRebootBackend::new(reboot_config);
+    let observer = TestObserver::new();
+
+    let hook_backend = Arc::new(
+        MockHookBackend::new().with_remote_failures(vec!["host1.example.com".to_string()]),
+    );
+
+    let hosts = vec![
+        HostMetadata {
+            name: "host1".to_string(),
+            fqdn: "host1.example.com".to_string(),
+            phase: Some("production".to_string()),
+            tags: vec![],
+            reboot_policy: crate::nix::RebootPolicy::Auto,
+            system_type: SystemType::NixOS,
+            hooks: vec![make_hook(
+                HookStage::PreActivate,
+                HookLocation::Remote,
+                "will fail",
+            )],
+        },
+        HostMetadata {
+            name: "host2".to_string(),
+            fqdn: "host2.example.com".to_string(),
+            phase: Some("production".to_string()),
+            tags: vec![],
+            reboot_policy: crate::nix::RebootPolicy::Auto,
+            system_type: SystemType::NixOS,
+            hooks: vec![make_hook(
+                HookStage::PreActivate,
+                HookLocation::Remote,
+                "will succeed",
+            )],
+        },
+    ];
+
+    let mut hooks_by_host = std::collections::HashMap::new();
+    hooks_by_host.insert("host1".to_string(), hosts[0].hooks.clone());
+    hooks_by_host.insert("host2".to_string(), hosts[1].hooks.clone());
+
+    let hook_executor = crate::push::hooks::HookExecutor::new(hook_backend.clone(), hooks_by_host);
+
+    let config = PushConfiguration {
+        strategy: PushStrategy::Switch,
+        force: false,
+        concurrency: 2,
+        ignore_phases: false,
+        output_mode: crate::process::OutputMode::Capture,
+        ssh_user: None,
+        allow_reboot: true,
+    };
+
+    let results = {
+        let push_ctx = PushContext::new(
+            &flake,
+            &nix_backend,
+            &deployer,
+            &reboot_backend,
+            &config,
+            &observer,
+            Some(&hook_executor),
+        );
+        push(&push_ctx, hosts)
+    }
+    .unwrap();
+
+    assert_eq!(results.success_count(), 1);
+    assert_eq!(results.failure_count(), 1);
+
+    let phase_result = &results.phases[0];
+    let host1_result = phase_result
+        .hosts
+        .iter()
+        .find(|h| h.hostname == "host1")
+        .unwrap();
+    let host2_result = phase_result
+        .hosts
+        .iter()
+        .find(|h| h.hostname == "host2")
+        .unwrap();
+
+    assert!(!host1_result.success);
+    assert!(host2_result.success);
 }

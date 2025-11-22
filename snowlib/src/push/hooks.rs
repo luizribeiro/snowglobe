@@ -126,6 +126,7 @@ impl HookExecutor {
 mod tests {
     use super::*;
     use crate::backends::hook::SystemHookBackend;
+    use crate::backends::mock::MockHookBackend;
     use crate::process::OutputMode;
 
     fn make_test_hook(stage: HookStage, location: HookLocation, command: &str) -> HookConfig {
@@ -264,5 +265,261 @@ mod tests {
         assert!(executor.has_hooks_for_stage("test-host", HookStage::PreActivate));
         assert!(!executor.has_hooks_for_stage("test-host", HookStage::PostActivate));
         assert!(!executor.has_hooks_for_stage("other-host", HookStage::PreActivate));
+    }
+
+    // ========================================================================
+    // Remote hook execution tests using MockHookBackend
+    // ========================================================================
+
+    #[test]
+    fn test_executor_with_remote_hook_success() {
+        let backend = Arc::new(MockHookBackend::new());
+
+        let mut hooks_by_host = HashMap::new();
+        hooks_by_host.insert(
+            "test-host".to_string(),
+            vec![make_test_hook(
+                HookStage::PostActivate,
+                HookLocation::Remote,
+                "systemctl restart nginx",
+            )],
+        );
+
+        let executor = HookExecutor::new(backend.clone(), hooks_by_host);
+        let target = DeployTarget {
+            hostname: "test-host".to_string(),
+            user: Some("deploy".to_string()),
+            port: None,
+        };
+
+        let results = executor
+            .execute_hooks_for_stage(
+                "test-host",
+                HookStage::PostActivate,
+                Some(&target),
+                &HashMap::new(),
+            )
+            .unwrap();
+
+        assert_eq!(results.len(), 1);
+        assert!(results[0].success);
+
+        let executed = backend.get_executed_hooks();
+        assert_eq!(executed.len(), 1);
+        assert_eq!(executed[0].0, "test-host");
+        assert_eq!(executed[0].1, HookStage::PostActivate);
+        assert_eq!(executed[0].2, HookLocation::Remote);
+        assert_eq!(executed[0].3, "systemctl restart nginx");
+    }
+
+    #[test]
+    fn test_executor_with_remote_hook_failure() {
+        let backend =
+            Arc::new(MockHookBackend::new().with_remote_failures(vec!["test-host".to_string()]));
+
+        let mut hooks_by_host = HashMap::new();
+        hooks_by_host.insert(
+            "test-host".to_string(),
+            vec![make_test_hook(
+                HookStage::PostActivate,
+                HookLocation::Remote,
+                "systemctl restart nginx",
+            )],
+        );
+
+        let executor = HookExecutor::new(backend, hooks_by_host);
+        let target = DeployTarget {
+            hostname: "test-host".to_string(),
+            user: Some("deploy".to_string()),
+            port: None,
+        };
+
+        let result = executor.execute_hooks_for_stage(
+            "test-host",
+            HookStage::PostActivate,
+            Some(&target),
+            &HashMap::new(),
+        );
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_executor_remote_hook_without_target() {
+        let backend = Arc::new(MockHookBackend::new());
+
+        let mut hooks_by_host = HashMap::new();
+        hooks_by_host.insert(
+            "test-host".to_string(),
+            vec![make_test_hook(
+                HookStage::PostActivate,
+                HookLocation::Remote,
+                "systemctl restart nginx",
+            )],
+        );
+
+        let executor = HookExecutor::new(backend, hooks_by_host);
+
+        let result = executor.execute_hooks_for_stage(
+            "test-host",
+            HookStage::PostActivate,
+            None,
+            &HashMap::new(),
+        );
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_executor_with_mixed_local_and_remote_hooks() {
+        let backend = Arc::new(MockHookBackend::new());
+
+        let mut hooks_by_host = HashMap::new();
+        hooks_by_host.insert(
+            "test-host".to_string(),
+            vec![
+                make_test_hook(
+                    HookStage::PreActivate,
+                    HookLocation::Local,
+                    "kubectl drain ${SNOW_HOSTNAME}",
+                ),
+                make_test_hook(
+                    HookStage::PreActivate,
+                    HookLocation::Remote,
+                    "systemctl stop important-service",
+                ),
+            ],
+        );
+
+        let executor = HookExecutor::new(backend.clone(), hooks_by_host);
+        let target = DeployTarget {
+            hostname: "test-host".to_string(),
+            user: None,
+            port: None,
+        };
+
+        let mut env = HashMap::new();
+        env.insert("SNOW_HOSTNAME".to_string(), "test-host".to_string());
+
+        let results = executor
+            .execute_hooks_for_stage("test-host", HookStage::PreActivate, Some(&target), &env)
+            .unwrap();
+
+        assert_eq!(results.len(), 2);
+        assert!(results[0].success);
+        assert!(results[1].success);
+
+        let executed = backend.get_executed_hooks();
+        assert_eq!(executed.len(), 2);
+        assert_eq!(executed[0].2, HookLocation::Local);
+        assert_eq!(executed[1].2, HookLocation::Remote);
+    }
+
+    #[test]
+    fn test_executor_all_hook_stages() {
+        let backend = Arc::new(MockHookBackend::new());
+
+        let mut hooks_by_host = HashMap::new();
+        hooks_by_host.insert(
+            "test-host".to_string(),
+            vec![
+                make_test_hook(HookStage::PreActivate, HookLocation::Local, "pre-activate"),
+                make_test_hook(
+                    HookStage::PostActivate,
+                    HookLocation::Local,
+                    "post-activate",
+                ),
+                make_test_hook(HookStage::PostReboot, HookLocation::Local, "post-reboot"),
+                make_test_hook(HookStage::OnFailure, HookLocation::Local, "on-failure"),
+            ],
+        );
+
+        let executor = HookExecutor::new(backend.clone(), hooks_by_host);
+
+        executor
+            .execute_hooks_for_stage("test-host", HookStage::PreActivate, None, &HashMap::new())
+            .unwrap();
+        executor
+            .execute_hooks_for_stage("test-host", HookStage::PostActivate, None, &HashMap::new())
+            .unwrap();
+        executor
+            .execute_hooks_for_stage("test-host", HookStage::PostReboot, None, &HashMap::new())
+            .unwrap();
+        executor
+            .execute_hooks_for_stage("test-host", HookStage::OnFailure, None, &HashMap::new())
+            .unwrap();
+
+        let executed = backend.get_executed_hooks();
+        assert_eq!(executed.len(), 4);
+        assert_eq!(executed[0].1, HookStage::PreActivate);
+        assert_eq!(executed[1].1, HookStage::PostActivate);
+        assert_eq!(executed[2].1, HookStage::PostReboot);
+        assert_eq!(executed[3].1, HookStage::OnFailure);
+    }
+
+    #[test]
+    fn test_executor_environment_variables_passed() {
+        let backend = Arc::new(MockHookBackend::new());
+
+        let mut hooks_by_host = HashMap::new();
+        hooks_by_host.insert(
+            "test-host".to_string(),
+            vec![make_test_hook(
+                HookStage::PreActivate,
+                HookLocation::Local,
+                "echo $SNOW_HOSTNAME $SNOW_PHASE $SNOW_STORE_PATH",
+            )],
+        );
+
+        let executor = HookExecutor::new(backend.clone(), hooks_by_host);
+
+        let mut env = HashMap::new();
+        env.insert("SNOW_HOSTNAME".to_string(), "test-host".to_string());
+        env.insert("SNOW_PHASE".to_string(), "production".to_string());
+        env.insert("SNOW_STORE_PATH".to_string(), "/nix/store/test".to_string());
+
+        let results = executor
+            .execute_hooks_for_stage("test-host", HookStage::PreActivate, None, &env)
+            .unwrap();
+
+        assert_eq!(results.len(), 1);
+        assert!(results[0].success);
+
+        let executed = backend.get_executed_hooks();
+        assert_eq!(executed.len(), 1);
+        assert_eq!(executed[0].0, "test-host");
+    }
+
+    #[test]
+    fn test_executor_multiple_hooks_first_failure_aborts_remaining() {
+        let backend =
+            Arc::new(MockHookBackend::new().with_local_failures(vec!["fail".to_string()]));
+
+        let mut hooks_by_host = HashMap::new();
+        hooks_by_host.insert(
+            "test-host".to_string(),
+            vec![
+                make_test_hook(HookStage::PreActivate, HookLocation::Local, "echo 'hook1'"),
+                make_test_hook(HookStage::PreActivate, HookLocation::Local, "fail command"),
+                make_test_hook(
+                    HookStage::PreActivate,
+                    HookLocation::Local,
+                    "echo 'should not run'",
+                ),
+            ],
+        );
+
+        let executor = HookExecutor::new(backend.clone(), hooks_by_host);
+
+        let mut env = HashMap::new();
+        env.insert("SNOW_HOSTNAME".to_string(), "test-host".to_string());
+
+        let result =
+            executor.execute_hooks_for_stage("test-host", HookStage::PreActivate, None, &env);
+
+        assert!(result.is_err());
+
+        let executed = backend.get_executed_hooks();
+        assert_eq!(executed.len(), 2);
     }
 }
