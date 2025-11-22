@@ -2811,6 +2811,84 @@ fn test_push_with_post_reboot_hooks() {
 }
 
 #[test]
+fn test_push_post_reboot_hooks_not_executed_when_reboot_fails() {
+    let flake = Flake::test_context();
+    let nix_backend = MockNixBackend::new();
+    let deployer = MockDeployBackend::new();
+
+    use crate::backends::mock::MockRebootBackend;
+    let reboot_backend =
+        MockRebootBackend::new().with_reboot_failures(vec!["test-host".to_string()]);
+
+    let observer = TestObserver::new();
+
+    let hook_backend = Arc::new(MockHookBackend::new());
+
+    let hosts = vec![HostMetadata {
+        name: "test-host".to_string(),
+        fqdn: "test-host.example.com".to_string(),
+        phase: Some("production".to_string()),
+        tags: vec![],
+        reboot_policy: crate::nix::RebootPolicy::Always,
+        system_type: SystemType::NixOS,
+        hooks: vec![HookConfig::test_fixture(
+            "test-hook",
+            HookStage::PostReboot,
+            HookLocation::Local,
+            "kubectl uncordon ${SNOW_HOSTNAME}",
+        )],
+    }];
+
+    let hook_executor = make_hook_executor(hook_backend.clone(), &hosts);
+
+    let config = PushConfiguration {
+        strategy: PushStrategy::Switch,
+        force: false,
+        concurrency: 1,
+        ignore_phases: false,
+        output_mode: crate::process::OutputMode::Capture,
+        ssh_user: None,
+        allow_reboot: true,
+    };
+
+    let results = {
+        let push_ctx = PushContext::new(
+            &flake,
+            &nix_backend,
+            &deployer,
+            &reboot_backend,
+            &config,
+            &observer,
+            Some(&hook_executor),
+        );
+        push(&push_ctx, hosts)
+    }
+    .unwrap();
+
+    assert!(
+        !results.all_succeeded(),
+        "Push should fail when reboot fails"
+    );
+
+    let phase_result = &results.phases[0];
+    assert!(
+        !phase_result.hosts[0].rebooted,
+        "Host should not be marked as rebooted when reboot fails"
+    );
+    assert!(
+        !phase_result.hosts[0].success,
+        "Host deployment should fail when reboot fails"
+    );
+
+    let executed_hooks = hook_backend.get_executed_hooks();
+    assert_eq!(
+        executed_hooks.len(),
+        0,
+        "Post-reboot hooks should not execute when reboot fails"
+    );
+}
+
+#[test]
 fn test_push_pre_activate_hook_failure_aborts_deployment() {
     let flake = Flake::test_context();
     let nix_backend = MockNixBackend::new();

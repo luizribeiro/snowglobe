@@ -94,14 +94,11 @@ impl SystemHookBackend {
         }
     }
 
-    fn execute_command(
-        &self,
+    /// Spawn a hook process with the given command and environment
+    fn spawn_hook_process(
         command: &str,
         env: &HashMap<String, String>,
-        timeout_secs: u64,
-    ) -> Result<HookResult> {
-        let start = Instant::now();
-
+    ) -> Result<(std::process::Child, Pid)> {
         let mut cmd = Command::new("sh");
         cmd.arg("-c").arg(command);
         cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
@@ -110,7 +107,7 @@ impl SystemHookBackend {
             cmd.env(key, value);
         }
 
-        let mut child = cmd.spawn().map_err(|e| {
+        let child = cmd.spawn().map_err(|e| {
             crate::error::SnowError::Deploy(crate::error::DeployError::Failed {
                 host: "local".to_string(),
                 source: std::io::Error::new(e.kind(), format!("Failed to spawn hook: {}", e)),
@@ -118,7 +115,20 @@ impl SystemHookBackend {
         })?;
 
         let child_pid = Pid::from_raw(child.id() as i32);
+        Ok((child, child_pid))
+    }
 
+    /// Spawn threads to read stdout and stderr from the child process
+    #[allow(clippy::type_complexity)]
+    fn spawn_output_readers(
+        child: &mut std::process::Child,
+        output_mode: OutputMode,
+    ) -> (
+        std::thread::JoinHandle<()>,
+        std::thread::JoinHandle<()>,
+        Arc<Mutex<Vec<u8>>>,
+        Arc<Mutex<Vec<u8>>>,
+    ) {
         let stdout = child.stdout.take().expect("stdout was piped");
         let stderr = child.stderr.take().expect("stderr was piped");
 
@@ -127,9 +137,7 @@ impl SystemHookBackend {
 
         let stdout_lines_clone = Arc::clone(&stdout_lines);
         let stderr_lines_clone = Arc::clone(&stderr_lines);
-        let output_mode = self.output_mode;
 
-        // Spawn threads to read stdout/stderr
         let stdout_thread = std::thread::spawn(move || {
             let reader = BufReader::new(stdout);
             for line in reader.lines().map_while(|r| r.ok()) {
@@ -154,26 +162,27 @@ impl SystemHookBackend {
             }
         });
 
-        // Wait for process to complete or timeout
+        (stdout_thread, stderr_thread, stdout_lines, stderr_lines)
+    }
+
+    /// Wait for process completion with timeout handling
+    ///
+    /// Returns None if the process timed out, Some(ExitStatus) if it completed normally.
+    /// On timeout, attempts graceful termination with SIGTERM, then SIGKILL if needed.
+    fn wait_for_completion_or_timeout(
+        mut child: std::process::Child,
+        child_pid: Pid,
+        timeout_secs: u64,
+    ) -> Option<std::process::ExitStatus> {
         let (tx, rx) = mpsc::channel();
         std::thread::spawn(move || {
             let status = child.wait();
             let _ = tx.send(status);
         });
 
-        let exit_status = match rx.recv_timeout(Duration::from_secs(timeout_secs)) {
+        match rx.recv_timeout(Duration::from_secs(timeout_secs)) {
             Ok(Ok(status)) => Some(status),
-            Ok(Err(e)) => {
-                stdout_thread.join().ok();
-                stderr_thread.join().ok();
-                let duration = start.elapsed();
-                return Ok(HookResult::failure(
-                    None,
-                    String::new(),
-                    format!("Failed to wait for hook: {}", e),
-                    duration,
-                ));
-            }
+            Ok(Err(_)) => None,
             Err(mpsc::RecvTimeoutError::Timeout) => {
                 tracing::warn!(
                     target: "hooks",
@@ -182,12 +191,10 @@ impl SystemHookBackend {
                     child_pid
                 );
 
-                // Send SIGTERM to gracefully terminate
                 if let Err(e) = signal::kill(child_pid, Signal::SIGTERM) {
                     tracing::warn!(target: "hooks", "Failed to send SIGTERM: {}", e);
                 }
 
-                // Wait for graceful shutdown
                 let grace_period = Duration::from_secs(SIGTERM_GRACE_PERIOD_SECS);
                 match rx.recv_timeout(grace_period) {
                     Ok(Ok(_status)) => {
@@ -198,12 +205,10 @@ impl SystemHookBackend {
                             target: "hooks",
                             "Process did not exit after SIGTERM, sending SIGKILL"
                         );
-                        // Force kill with SIGKILL
                         if let Err(e) = signal::kill(child_pid, Signal::SIGKILL) {
                             tracing::error!(target: "hooks", "Failed to send SIGKILL: {}", e);
                         }
 
-                        // Wait for process to be reaped after SIGKILL
                         let reap_deadline =
                             Instant::now() + Duration::from_secs(SIGKILL_REAP_TIMEOUT_SECS);
                         loop {
@@ -242,28 +247,23 @@ impl SystemHookBackend {
 
                 None
             }
-            Err(mpsc::RecvTimeoutError::Disconnected) => {
-                stdout_thread.join().ok();
-                stderr_thread.join().ok();
-                let duration = start.elapsed();
-                return Ok(HookResult::failure(
-                    None,
-                    String::new(),
-                    "Hook wait thread disconnected unexpectedly".to_string(),
-                    duration,
-                ));
-            }
-        };
+            Err(mpsc::RecvTimeoutError::Disconnected) => None,
+        }
+    }
 
-        // Wait for output threads to complete
+    /// Collect output from stdout and stderr threads
+    fn collect_output(
+        stdout_thread: std::thread::JoinHandle<()>,
+        stderr_thread: std::thread::JoinHandle<()>,
+        stdout_lines: Arc<Mutex<Vec<u8>>>,
+        stderr_lines: Arc<Mutex<Vec<u8>>>,
+    ) -> (String, String) {
         if let Err(e) = stdout_thread.join() {
             tracing::warn!(target: "hooks", "stdout thread panicked: {:?}", e);
         }
         if let Err(e) = stderr_thread.join() {
             tracing::warn!(target: "hooks", "stderr thread panicked: {:?}", e);
         }
-
-        let duration = start.elapsed();
 
         let stdout_bytes = Arc::try_unwrap(stdout_lines)
             .expect("stdout Arc has multiple references")
@@ -277,28 +277,38 @@ impl SystemHookBackend {
         let stdout = String::from_utf8_lossy(&stdout_bytes).to_string();
         let stderr = String::from_utf8_lossy(&stderr_bytes).to_string();
 
-        // Handle timeout case
-        let exit_status = match exit_status {
-            Some(status) => status,
-            None => {
-                return Ok(HookResult::failure(
-                    None,
-                    stdout,
-                    format!("Hook timed out after {} seconds", timeout_secs),
-                    duration,
-                ));
-            }
-        };
+        (stdout, stderr)
+    }
 
-        if exit_status.success() {
-            Ok(HookResult::success(stdout, stderr, duration))
-        } else {
-            Ok(HookResult::failure(
-                exit_status.code(),
+    fn execute_command(
+        &self,
+        command: &str,
+        env: &HashMap<String, String>,
+        timeout_secs: u64,
+    ) -> Result<HookResult> {
+        let start = Instant::now();
+
+        let (mut child, child_pid) = Self::spawn_hook_process(command, env)?;
+
+        let (stdout_thread, stderr_thread, stdout_lines, stderr_lines) =
+            Self::spawn_output_readers(&mut child, self.output_mode);
+
+        let exit_status = Self::wait_for_completion_or_timeout(child, child_pid, timeout_secs);
+
+        let (stdout, stderr) =
+            Self::collect_output(stdout_thread, stderr_thread, stdout_lines, stderr_lines);
+
+        let duration = start.elapsed();
+
+        match exit_status {
+            Some(status) if status.success() => Ok(HookResult::success(stdout, stderr, duration)),
+            Some(status) => Ok(HookResult::failure(status.code(), stdout, stderr, duration)),
+            None => Ok(HookResult::failure(
+                None,
                 stdout,
-                stderr,
+                format!("Hook timed out after {} seconds", timeout_secs),
                 duration,
-            ))
+            )),
         }
     }
 }

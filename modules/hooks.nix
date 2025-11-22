@@ -95,6 +95,27 @@ let
           nodes even if activation failed).
         '';
       };
+
+      priority = mkOption {
+        type = types.int;
+        default = 100;
+        description = ''
+          Execution priority for hooks within the same stage.
+
+          Hooks are executed in order of priority (lower values first).
+          Hooks with the same priority are executed in alphabetical order
+          by name.
+
+          Default: 100
+
+          Common patterns:
+          - Use negative values (-10, -5) for hooks that must run first
+          - Use 0-50 for early hooks (e.g., pre-checks, validations)
+          - Use 50-150 for normal hooks (default range)
+          - Use 150-200 for late hooks (e.g., cleanup, notifications)
+        '';
+        example = 50;
+      };
     };
   };
 in
@@ -122,6 +143,7 @@ in
             command = "kubectl drain --ignore-daemonsets \${config.networking.hostName}";
             timeout = 360;
             continueOnFailure = false;
+            priority = 50; # Run before other hooks
           };
         }
       '';

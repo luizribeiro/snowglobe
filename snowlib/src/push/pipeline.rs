@@ -56,6 +56,32 @@ fn execute_hooks(
     Ok(())
 }
 
+/// Execute hooks for a specific stage, returning HostDeploymentResult on failure
+///
+/// This is a convenience wrapper around execute_hooks that automatically handles
+/// failures by calling handle_pipeline_failure and returning an Err with the result.
+fn execute_hooks_or_fail(
+    push_ctx: &PushContext,
+    hostname: &str,
+    stage: HookStage,
+    target: Option<&DeployTarget>,
+    phase: Option<&str>,
+    store_path: Option<&StorePath>,
+    failed_step: PipelineStep,
+) -> std::result::Result<(), HostDeploymentResult> {
+    execute_hooks(push_ctx, hostname, stage, target, phase, store_path).map_err(|e| {
+        handle_pipeline_failure(
+            push_ctx,
+            hostname,
+            target,
+            phase,
+            store_path,
+            failed_step,
+            e,
+        )
+    })
+}
+
 /// Helper to handle pipeline failures consistently
 fn handle_pipeline_failure(
     push_ctx: &PushContext,
@@ -146,23 +172,16 @@ pub fn execute_host_pipeline(
     };
 
     // Step 2.5: Pre-activate hooks
-    if let Err(e) = execute_hooks(
+    if let Err(result) = execute_hooks_or_fail(
         push_ctx_ref,
         &hostname,
         HookStage::PreActivate,
         Some(&copy_output.target),
         host_metadata.phase.as_deref(),
         Some(&copy_output.store_path),
+        PipelineStep::Activate,
     ) {
-        return Ok(handle_pipeline_failure(
-            push_ctx_ref,
-            &hostname,
-            Some(&copy_output.target),
-            host_metadata.phase.as_deref(),
-            Some(&copy_output.store_path),
-            PipelineStep::Activate,
-            e,
-        ));
+        return Ok(result);
     }
 
     // Step 3: Activate (includes planning + activation)
@@ -182,23 +201,16 @@ pub fn execute_host_pipeline(
     };
 
     // Step 3.5: Post-activate hooks
-    if let Err(e) = execute_hooks(
+    if let Err(result) = execute_hooks_or_fail(
         push_ctx_ref,
         &hostname,
         HookStage::PostActivate,
         Some(&plan.target),
         host_metadata.phase.as_deref(),
         Some(&plan.store_path),
+        PipelineStep::Activate,
     ) {
-        return Ok(handle_pipeline_failure(
-            push_ctx_ref,
-            &hostname,
-            Some(&plan.target),
-            host_metadata.phase.as_deref(),
-            Some(&plan.store_path),
-            PipelineStep::Activate,
-            e,
-        ));
+        return Ok(result);
     }
 
     // Step 4: Reboot (if needed)
@@ -219,23 +231,16 @@ pub fn execute_host_pipeline(
 
     // Step 4.5: Post-reboot hooks (only if actually rebooted)
     if rebooted {
-        if let Err(e) = execute_hooks(
+        if let Err(result) = execute_hooks_or_fail(
             push_ctx_ref,
             &hostname,
             HookStage::PostReboot,
             Some(&plan.target),
             host_metadata.phase.as_deref(),
             Some(&plan.store_path),
+            PipelineStep::Reboot,
         ) {
-            return Ok(handle_pipeline_failure(
-                push_ctx_ref,
-                &hostname,
-                Some(&plan.target),
-                host_metadata.phase.as_deref(),
-                Some(&plan.store_path),
-                PipelineStep::Reboot,
-                e,
-            ));
+            return Ok(result);
         }
     }
 

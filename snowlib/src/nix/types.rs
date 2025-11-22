@@ -165,10 +165,18 @@ pub struct HookConfig {
     /// Whether to continue deployment if the hook fails
     #[serde(default)]
     pub continue_on_failure: bool,
+    /// Execution priority (lower values execute first, default: 100)
+    /// Used to control hook execution order within a stage
+    #[serde(default = "default_hook_priority")]
+    pub priority: i32,
 }
 
 fn default_hook_timeout() -> u64 {
     300 // 5 minutes
+}
+
+fn default_hook_priority() -> i32 {
+    100
 }
 
 #[cfg(test)]
@@ -189,6 +197,7 @@ impl HookConfig {
             environment_files: Vec::new(),
             timeout: 300,
             continue_on_failure: false,
+            priority: 100,
         }
     }
 }

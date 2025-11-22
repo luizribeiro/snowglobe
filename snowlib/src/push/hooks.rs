@@ -41,7 +41,12 @@ impl HookExecutor {
             None => return Ok(Vec::new()),
         };
 
-        let stage_hooks: Vec<&HookConfig> = hooks.iter().filter(|h| h.stage == stage).collect();
+        let mut stage_hooks: Vec<&HookConfig> = hooks.iter().filter(|h| h.stage == stage).collect();
+        stage_hooks.sort_by(|a, b| {
+            a.priority
+                .cmp(&b.priority)
+                .then_with(|| a.name.cmp(&b.name))
+        });
 
         if stage_hooks.is_empty() {
             return Ok(Vec::new());
@@ -940,5 +945,270 @@ mod tests {
         assert_eq!(result.get("MESSAGE"), Some(&"Hello World".to_string()));
 
         std::fs::remove_file(&temp_file).ok();
+    }
+
+    #[test]
+    fn test_load_env_file_with_shell_injection_attempts() {
+        let temp_dir = std::env::temp_dir();
+        let temp_file = temp_dir.join("test_env_injection.env");
+
+        std::fs::write(
+            &temp_file,
+            concat!(
+                "CMD1=$(rm -rf /)\n",
+                "CMD2=`cat /etc/passwd`\n",
+                "CMD3=; rm -rf /\n",
+                "CMD4=value && echo hacked\n",
+                "CMD5=value | cat /etc/shadow\n",
+                "CMD6='value'; echo malicious\n",
+                "CMD7=\"value\"; echo injection\n"
+            ),
+        )
+        .unwrap();
+
+        let result = HookExecutor::load_env_file(&temp_file).unwrap();
+
+        assert_eq!(result.get("CMD1"), Some(&"$(rm -rf /)".to_string()));
+        assert_eq!(result.get("CMD2"), Some(&"`cat /etc/passwd`".to_string()));
+        assert_eq!(result.get("CMD3"), Some(&"; rm -rf /".to_string()));
+        assert_eq!(
+            result.get("CMD4"),
+            Some(&"value && echo hacked".to_string())
+        );
+        assert_eq!(
+            result.get("CMD5"),
+            Some(&"value | cat /etc/shadow".to_string())
+        );
+        assert_eq!(
+            result.get("CMD6"),
+            Some(&"'value'; echo malicious".to_string())
+        );
+        assert_eq!(
+            result.get("CMD7"),
+            Some(&"\"value\"; echo injection".to_string())
+        );
+
+        std::fs::remove_file(&temp_file).ok();
+    }
+
+    #[test]
+    fn test_load_env_file_with_unicode() {
+        let temp_dir = std::env::temp_dir();
+        let temp_file = temp_dir.join("test_env_unicode.env");
+
+        std::fs::write(&temp_file, "GREETING=Hello 世界\nEMOJI=🚀\nARROW=→\n").unwrap();
+
+        let result = HookExecutor::load_env_file(&temp_file).unwrap();
+
+        assert_eq!(result.get("GREETING"), Some(&"Hello 世界".to_string()));
+        assert_eq!(result.get("EMOJI"), Some(&"🚀".to_string()));
+        assert_eq!(result.get("ARROW"), Some(&"→".to_string()));
+
+        std::fs::remove_file(&temp_file).ok();
+    }
+
+    #[test]
+    fn test_load_env_file_large_file() {
+        let temp_dir = std::env::temp_dir();
+        let temp_file = temp_dir.join("test_env_large.env");
+
+        let mut content = String::new();
+        for i in 0..10000 {
+            content.push_str(&format!("KEY{}=value{}\n", i, i));
+        }
+
+        std::fs::write(&temp_file, &content).unwrap();
+
+        let result = HookExecutor::load_env_file(&temp_file).unwrap();
+
+        assert_eq!(result.len(), 10000);
+        assert_eq!(result.get("KEY0"), Some(&"value0".to_string()));
+        assert_eq!(result.get("KEY9999"), Some(&"value9999".to_string()));
+
+        std::fs::remove_file(&temp_file).ok();
+    }
+
+    #[test]
+    fn test_load_env_file_with_newlines_in_values() {
+        let temp_dir = std::env::temp_dir();
+        let temp_file = temp_dir.join("test_env_newlines.env");
+
+        std::fs::write(
+            &temp_file,
+            "KEY1=value with\nnewline should only get first part\nKEY2=second value\n",
+        )
+        .unwrap();
+
+        let result = HookExecutor::load_env_file(&temp_file).unwrap();
+
+        assert_eq!(result.get("KEY1"), Some(&"value with".to_string()));
+        assert_eq!(result.get("KEY2"), Some(&"second value".to_string()));
+
+        std::fs::remove_file(&temp_file).ok();
+    }
+
+    #[test]
+    fn test_hook_execution_order_by_priority() {
+        let backend = Arc::new(MockHookBackend::new());
+
+        let mut hook1 = HookConfig::test_fixture(
+            "z-last-alphabetically",
+            HookStage::PreActivate,
+            HookLocation::Local,
+            "echo 'hook1'",
+        );
+        hook1.priority = 10; // Should execute first
+
+        let mut hook2 = HookConfig::test_fixture(
+            "a-first-alphabetically",
+            HookStage::PreActivate,
+            HookLocation::Local,
+            "echo 'hook2'",
+        );
+        hook2.priority = 50; // Should execute second
+
+        let mut hook3 = HookConfig::test_fixture(
+            "m-middle-alphabetically",
+            HookStage::PreActivate,
+            HookLocation::Local,
+            "echo 'hook3'",
+        );
+        hook3.priority = 100; // Should execute third
+
+        let mut hooks_by_host = HashMap::new();
+        hooks_by_host.insert("test-host".to_string(), vec![hook3, hook1, hook2]);
+
+        let executor = HookExecutor::new(backend.clone(), hooks_by_host);
+
+        let results = executor
+            .execute_hooks_for_stage("test-host", HookStage::PreActivate, None, &HashMap::new())
+            .unwrap();
+
+        assert_eq!(results.len(), 3);
+
+        let executed = backend.get_executed_hooks();
+        assert_eq!(executed.len(), 3);
+        assert!(
+            executed[0].3.contains("hook1"),
+            "First hook should be priority 10"
+        );
+        assert!(
+            executed[1].3.contains("hook2"),
+            "Second hook should be priority 50"
+        );
+        assert!(
+            executed[2].3.contains("hook3"),
+            "Third hook should be priority 100"
+        );
+    }
+
+    #[test]
+    fn test_hook_execution_order_same_priority_sorted_by_name() {
+        let backend = Arc::new(MockHookBackend::new());
+
+        let mut hook1 = HookConfig::test_fixture(
+            "z-last",
+            HookStage::PreActivate,
+            HookLocation::Local,
+            "echo 'hook-z'",
+        );
+        hook1.priority = 100;
+
+        let mut hook2 = HookConfig::test_fixture(
+            "a-first",
+            HookStage::PreActivate,
+            HookLocation::Local,
+            "echo 'hook-a'",
+        );
+        hook2.priority = 100;
+
+        let mut hook3 = HookConfig::test_fixture(
+            "m-middle",
+            HookStage::PreActivate,
+            HookLocation::Local,
+            "echo 'hook-m'",
+        );
+        hook3.priority = 100;
+
+        let mut hooks_by_host = HashMap::new();
+        hooks_by_host.insert("test-host".to_string(), vec![hook1, hook3, hook2]);
+
+        let executor = HookExecutor::new(backend.clone(), hooks_by_host);
+
+        let results = executor
+            .execute_hooks_for_stage("test-host", HookStage::PreActivate, None, &HashMap::new())
+            .unwrap();
+
+        assert_eq!(results.len(), 3);
+
+        let executed = backend.get_executed_hooks();
+        assert_eq!(executed.len(), 3);
+        assert!(
+            executed[0].3.contains("hook-a"),
+            "First hook should be 'a-first' (alphabetical)"
+        );
+        assert!(
+            executed[1].3.contains("hook-m"),
+            "Second hook should be 'm-middle' (alphabetical)"
+        );
+        assert!(
+            executed[2].3.contains("hook-z"),
+            "Third hook should be 'z-last' (alphabetical)"
+        );
+    }
+
+    #[test]
+    fn test_hook_execution_order_negative_priorities() {
+        let backend = Arc::new(MockHookBackend::new());
+
+        let mut hook1 = HookConfig::test_fixture(
+            "hook1",
+            HookStage::PreActivate,
+            HookLocation::Local,
+            "echo 'normal'",
+        );
+        hook1.priority = 100;
+
+        let mut hook2 = HookConfig::test_fixture(
+            "hook2",
+            HookStage::PreActivate,
+            HookLocation::Local,
+            "echo 'early'",
+        );
+        hook2.priority = -10; // Negative priority should execute first
+
+        let mut hook3 = HookConfig::test_fixture(
+            "hook3",
+            HookStage::PreActivate,
+            HookLocation::Local,
+            "echo 'late'",
+        );
+        hook3.priority = 200;
+
+        let mut hooks_by_host = HashMap::new();
+        hooks_by_host.insert("test-host".to_string(), vec![hook1, hook2, hook3]);
+
+        let executor = HookExecutor::new(backend.clone(), hooks_by_host);
+
+        let results = executor
+            .execute_hooks_for_stage("test-host", HookStage::PreActivate, None, &HashMap::new())
+            .unwrap();
+
+        assert_eq!(results.len(), 3);
+
+        let executed = backend.get_executed_hooks();
+        assert_eq!(executed.len(), 3);
+        assert!(
+            executed[0].3.contains("early"),
+            "First hook should be priority -10"
+        );
+        assert!(
+            executed[1].3.contains("normal"),
+            "Second hook should be priority 100"
+        );
+        assert!(
+            executed[2].3.contains("late"),
+            "Third hook should be priority 200"
+        );
     }
 }

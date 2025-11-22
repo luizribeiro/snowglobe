@@ -190,10 +190,16 @@ impl NixBackend for SystemNixBackend {
             timeout: u64,
             #[serde(default, rename = "continueOnFailure")]
             continue_on_failure: bool,
+            #[serde(default = "default_hook_priority")]
+            priority: i32,
         }
 
         fn default_hook_timeout() -> u64 {
             300
+        }
+
+        fn default_hook_priority() -> i32 {
+            100
         }
 
         #[derive(serde::Deserialize)]
@@ -242,6 +248,7 @@ impl NixBackend for SystemNixBackend {
                     environment_files: hook.environment_files,
                     timeout: hook.timeout,
                     continue_on_failure: hook.continue_on_failure,
+                    priority: hook.priority,
                 });
             }
         }
