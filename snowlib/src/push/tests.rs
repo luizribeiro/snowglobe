@@ -42,6 +42,18 @@ fn make_host(
     (metadata, target, store_path)
 }
 
+/// Helper to create a HookExecutor from a list of hosts
+fn make_hook_executor(
+    hook_backend: Arc<crate::backends::mock::MockHookBackend>,
+    hosts: &[HostMetadata],
+) -> crate::push::hooks::HookExecutor {
+    let mut hooks_by_host = std::collections::HashMap::new();
+    for host in hosts {
+        hooks_by_host.insert(host.name.clone(), host.hooks.clone());
+    }
+    crate::push::hooks::HookExecutor::new(hook_backend, hooks_by_host)
+}
+
 /// Helper function to activate hosts (simplified for tests)
 fn activate_plans_for_test(
     deploy_backend: &dyn crate::backends::deploy::DeployBackend,
@@ -2633,10 +2645,7 @@ fn test_push_with_pre_activate_hooks() {
         ],
     }];
 
-    let mut hooks_by_host = std::collections::HashMap::new();
-    hooks_by_host.insert("test-host".to_string(), hosts[0].hooks.clone());
-
-    let hook_executor = crate::push::hooks::HookExecutor::new(hook_backend.clone(), hooks_by_host);
+    let hook_executor = make_hook_executor(hook_backend.clone(), &hosts);
 
     let config = PushConfiguration {
         strategy: PushStrategy::Switch,
@@ -2704,10 +2713,7 @@ fn test_push_with_post_activate_hooks() {
         )],
     }];
 
-    let mut hooks_by_host = std::collections::HashMap::new();
-    hooks_by_host.insert("test-host".to_string(), hosts[0].hooks.clone());
-
-    let hook_executor = crate::push::hooks::HookExecutor::new(hook_backend.clone(), hooks_by_host);
+    let hook_executor = make_hook_executor(hook_backend.clone(), &hosts);
 
     let config = PushConfiguration {
         strategy: PushStrategy::Switch,
@@ -2769,10 +2775,7 @@ fn test_push_with_post_reboot_hooks() {
         )],
     }];
 
-    let mut hooks_by_host = std::collections::HashMap::new();
-    hooks_by_host.insert("test-host".to_string(), hosts[0].hooks.clone());
-
-    let hook_executor = crate::push::hooks::HookExecutor::new(hook_backend.clone(), hooks_by_host);
+    let hook_executor = make_hook_executor(hook_backend.clone(), &hosts);
 
     let config = PushConfiguration {
         strategy: PushStrategy::Switch,
@@ -2844,10 +2847,7 @@ fn test_push_pre_activate_hook_failure_aborts_deployment() {
         )],
     }];
 
-    let mut hooks_by_host = std::collections::HashMap::new();
-    hooks_by_host.insert("test-host".to_string(), hosts[0].hooks.clone());
-
-    let hook_executor = crate::push::hooks::HookExecutor::new(hook_backend.clone(), hooks_by_host);
+    let hook_executor = make_hook_executor(hook_backend.clone(), &hosts);
 
     let config = PushConfiguration {
         strategy: PushStrategy::Switch,
@@ -2921,10 +2921,7 @@ fn test_push_hook_failure_with_continue_on_failure() {
         hooks: vec![hook],
     }];
 
-    let mut hooks_by_host = std::collections::HashMap::new();
-    hooks_by_host.insert("test-host".to_string(), hosts[0].hooks.clone());
-
-    let hook_executor = crate::push::hooks::HookExecutor::new(hook_backend.clone(), hooks_by_host);
+    let hook_executor = make_hook_executor(hook_backend.clone(), &hosts);
 
     let config = PushConfiguration {
         strategy: PushStrategy::Switch,
@@ -2987,10 +2984,7 @@ fn test_push_on_failure_hooks_execute_when_build_fails() {
         ],
     }];
 
-    let mut hooks_by_host = std::collections::HashMap::new();
-    hooks_by_host.insert("test-host".to_string(), hosts[0].hooks.clone());
-
-    let hook_executor = crate::push::hooks::HookExecutor::new(hook_backend.clone(), hooks_by_host);
+    let hook_executor = make_hook_executor(hook_backend.clone(), &hosts);
 
     let config = PushConfiguration {
         strategy: PushStrategy::Switch,
@@ -3055,10 +3049,7 @@ fn test_push_on_failure_hooks_execute_when_copy_fails() {
         )],
     }];
 
-    let mut hooks_by_host = std::collections::HashMap::new();
-    hooks_by_host.insert("test-host".to_string(), hosts[0].hooks.clone());
-
-    let hook_executor = crate::push::hooks::HookExecutor::new(hook_backend.clone(), hooks_by_host);
+    let hook_executor = make_hook_executor(hook_backend.clone(), &hosts);
 
     let config = PushConfiguration {
         strategy: PushStrategy::Switch,
@@ -3121,10 +3112,7 @@ fn test_push_environment_variables_passed_to_hooks() {
         )],
     }];
 
-    let mut hooks_by_host = std::collections::HashMap::new();
-    hooks_by_host.insert("test-host".to_string(), hosts[0].hooks.clone());
-
-    let hook_executor = crate::push::hooks::HookExecutor::new(hook_backend.clone(), hooks_by_host);
+    let hook_executor = make_hook_executor(hook_backend.clone(), &hosts);
 
     let config = PushConfiguration {
         strategy: PushStrategy::Switch,
@@ -3202,11 +3190,7 @@ fn test_push_hooks_execute_in_parallel_for_multiple_hosts() {
         },
     ];
 
-    let mut hooks_by_host = std::collections::HashMap::new();
-    hooks_by_host.insert("host1".to_string(), hosts[0].hooks.clone());
-    hooks_by_host.insert("host2".to_string(), hosts[1].hooks.clone());
-
-    let hook_executor = crate::push::hooks::HookExecutor::new(hook_backend.clone(), hooks_by_host);
+    let hook_executor = make_hook_executor(hook_backend.clone(), &hosts);
 
     let config = PushConfiguration {
         strategy: PushStrategy::Switch,
@@ -3287,11 +3271,7 @@ fn test_push_hook_failure_in_one_host_doesnt_affect_others() {
         },
     ];
 
-    let mut hooks_by_host = std::collections::HashMap::new();
-    hooks_by_host.insert("host1".to_string(), hosts[0].hooks.clone());
-    hooks_by_host.insert("host2".to_string(), hosts[1].hooks.clone());
-
-    let hook_executor = crate::push::hooks::HookExecutor::new(hook_backend.clone(), hooks_by_host);
+    let hook_executor = make_hook_executor(hook_backend.clone(), &hosts);
 
     let config = PushConfiguration {
         strategy: PushStrategy::Switch,

@@ -20,8 +20,13 @@ use crate::error::Result;
 use crate::nix::HookConfig;
 use crate::process::{OutputMode, StreamingExecutor};
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
+
+/// Global counter for orphaned threads from timed-out hooks
+/// This helps track resource leaks and provides visibility into hook timeout frequency
+static ORPHANED_HOOK_THREADS: AtomicUsize = AtomicUsize::new(0);
 
 /// Result of executing a hook
 #[derive(Debug, Clone)]
@@ -131,11 +136,15 @@ impl SystemHookBackend {
             Err(mpsc::RecvTimeoutError::Timeout) => {
                 // WARNING: Thread continues running in background - cannot be killed from safe Rust
                 // The spawned shell process will eventually complete but is no longer monitored
+                let orphaned_count = ORPHANED_HOOK_THREADS.fetch_add(1, Ordering::Relaxed) + 1;
+
                 tracing::warn!(
                     target: "hooks",
-                    "Hook timed out after {} seconds - process continues in background (cannot be killed from safe Rust)",
-                    timeout_secs
+                    "Hook timed out after {} seconds - process continues in background (total orphaned: {})",
+                    timeout_secs,
+                    orphaned_count
                 );
+
                 None
             }
             Err(mpsc::RecvTimeoutError::Disconnected) => {
@@ -223,6 +232,8 @@ impl HookBackend for SystemHookBackend {
             })
             .collect();
 
+        // Security: hook.command is from NixOS config (trusted, declarative source).
+        // Environment variables are escaped because they come from runtime deployment context.
         let remote_command = if env_vars.is_empty() {
             hook.command.clone()
         } else {
@@ -337,5 +348,121 @@ mod tests {
         // Note: Duration may be slightly longer than timeout due to cleanup attempts
         // The important thing is that it returns (doesn't hang for 10 seconds)
         assert!(result.duration.as_secs() < 5);
+    }
+
+    #[test]
+    fn test_execute_local_escapes_env_vars_with_shell_metacharacters() {
+        let backend = SystemHookBackend::new(None, OutputMode::Capture);
+        let hook = HookConfig {
+            stage: HookStage::PreActivate,
+            location: HookLocation::Local,
+            command: "echo \"VAR=$MALICIOUS\"".to_string(),
+            timeout: 300,
+            continue_on_failure: false,
+        };
+        let mut env = HashMap::new();
+        // Attempt command injection via semicolon
+        env.insert(
+            "MALICIOUS".to_string(),
+            "value'; rm -rf /tmp/test; echo 'pwned".to_string(),
+        );
+
+        let result = backend.execute_local(&hook, &env).unwrap();
+        assert!(result.success);
+        // The malicious command should be printed as a literal string, not executed
+        assert!(result
+            .stdout
+            .contains("value'; rm -rf /tmp/test; echo 'pwned"));
+        // Verify the injection did NOT execute by checking we don't see "pwned" on its own line
+        assert!(!result.stdout.lines().any(|line| line.trim() == "pwned"));
+    }
+
+    #[test]
+    fn test_execute_local_escapes_env_vars_with_quotes() {
+        let backend = SystemHookBackend::new(None, OutputMode::Capture);
+        let hook = HookConfig {
+            stage: HookStage::PreActivate,
+            location: HookLocation::Local,
+            command: "echo \"VAR=$TEST\"".to_string(),
+            timeout: 300,
+            continue_on_failure: false,
+        };
+        let mut env = HashMap::new();
+        // Environment variable with quotes that could break out of string context
+        env.insert("TEST".to_string(), "value\" && echo \"injected".to_string());
+
+        let result = backend.execute_local(&hook, &env).unwrap();
+        assert!(result.success);
+        // The quotes should be part of the value, not shell syntax
+        assert!(result.stdout.contains("value\" && echo \"injected"));
+    }
+
+    #[test]
+    fn test_execute_local_escapes_env_vars_with_pipe() {
+        let backend = SystemHookBackend::new(None, OutputMode::Capture);
+        let hook = HookConfig {
+            stage: HookStage::PreActivate,
+            location: HookLocation::Local,
+            command: "echo \"VAR=$PIPE_TEST\"".to_string(),
+            timeout: 300,
+            continue_on_failure: false,
+        };
+        let mut env = HashMap::new();
+        // Attempt to pipe to another command
+        env.insert("PIPE_TEST".to_string(), "data | base64".to_string());
+
+        let result = backend.execute_local(&hook, &env).unwrap();
+        assert!(result.success);
+        // The pipe should be literal, not execute base64
+        assert!(result.stdout.contains("data | base64"));
+        // Verify base64 encoding did NOT happen (output is not base64)
+        assert!(!result.stdout.contains("ZGF0YQ=="));
+    }
+
+    #[test]
+    fn test_execute_local_escapes_env_vars_with_backticks() {
+        let backend = SystemHookBackend::new(None, OutputMode::Capture);
+        let hook = HookConfig {
+            stage: HookStage::PreActivate,
+            location: HookLocation::Local,
+            command: "echo \"VAR=$BACKTICK\"".to_string(),
+            timeout: 300,
+            continue_on_failure: false,
+        };
+        let mut env = HashMap::new();
+        // Attempt command substitution with backticks
+        env.insert("BACKTICK".to_string(), "`whoami`".to_string());
+
+        let result = backend.execute_local(&hook, &env).unwrap();
+        assert!(result.success);
+        // Backticks should be literal, not execute whoami
+        assert!(result.stdout.contains("`whoami`"));
+        // The output should contain the literal backticks, not the result of whoami
+        let current_user = std::env::var("USER").unwrap_or_default();
+        if !current_user.is_empty() {
+            // If backticks were executed, we'd see just the username
+            // Since they're escaped, we see the literal "`whoami`"
+            assert!(!result.stdout.trim().ends_with(&current_user));
+        }
+    }
+
+    #[test]
+    fn test_execute_local_escapes_env_vars_with_dollar_paren() {
+        let backend = SystemHookBackend::new(None, OutputMode::Capture);
+        let hook = HookConfig {
+            stage: HookStage::PreActivate,
+            location: HookLocation::Local,
+            command: "echo \"VAR=$SUBSHELL\"".to_string(),
+            timeout: 300,
+            continue_on_failure: false,
+        };
+        let mut env = HashMap::new();
+        // Attempt command substitution with $()
+        env.insert("SUBSHELL".to_string(), "$(echo injected)".to_string());
+
+        let result = backend.execute_local(&hook, &env).unwrap();
+        assert!(result.success);
+        // The $() should be literal, not execute the subshell
+        assert!(result.stdout.contains("$(echo injected)"));
     }
 }

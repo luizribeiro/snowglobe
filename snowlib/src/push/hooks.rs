@@ -152,6 +152,20 @@ mod tests {
     }
 
     #[test]
+    fn test_executor_with_empty_hooks_array() {
+        let backend = Arc::new(SystemHookBackend::new(None, OutputMode::Capture));
+        let mut hooks_by_host = HashMap::new();
+        hooks_by_host.insert("test-host".to_string(), Vec::new());
+        let executor = HookExecutor::new(backend, hooks_by_host);
+
+        let results = executor
+            .execute_hooks_for_stage("test-host", HookStage::PreActivate, None, &HashMap::new())
+            .unwrap();
+
+        assert_eq!(results.len(), 0);
+    }
+
+    #[test]
     fn test_executor_with_local_hook() {
         let backend = Arc::new(SystemHookBackend::new(None, OutputMode::Capture));
 
