@@ -182,6 +182,10 @@ impl NixBackend for SystemNixBackend {
         struct HookConfigWithoutStage {
             location: crate::nix::HookLocation,
             command: String,
+            #[serde(default)]
+            environment: std::collections::HashMap<String, String>,
+            #[serde(default, rename = "environmentFiles")]
+            environment_files: Vec<std::path::PathBuf>,
             #[serde(default = "default_hook_timeout")]
             timeout: u64,
             #[serde(default, rename = "continueOnFailure")]
@@ -204,7 +208,10 @@ impl NixBackend for SystemNixBackend {
             #[serde(rename = "rebootPolicy")]
             reboot_policy: String,
             #[serde(default)]
-            hooks: std::collections::HashMap<String, Vec<HookConfigWithoutStage>>,
+            hooks: std::collections::HashMap<
+                String,
+                std::collections::HashMap<String, HookConfigWithoutStage>,
+            >,
         }
 
         let meta: MetadataJson = serde_json::from_slice(&stdout).map_err(|e| {
@@ -225,11 +232,14 @@ impl NixBackend for SystemNixBackend {
         let mut hooks = Vec::new();
         for (stage_str, stage_hooks) in meta.hooks {
             let stage = crate::nix::HookStage::from_str(&stage_str)?;
-            for hook in stage_hooks {
+            for (hook_name, hook) in stage_hooks {
                 hooks.push(crate::nix::HookConfig {
+                    name: hook_name,
                     stage,
                     location: hook.location,
                     command: hook.command,
+                    environment: hook.environment,
+                    environment_files: hook.environment_files,
                     timeout: hook.timeout,
                     continue_on_failure: hook.continue_on_failure,
                 });

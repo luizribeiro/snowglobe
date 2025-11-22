@@ -906,13 +906,12 @@ mod tests {
     #[test]
     fn test_mock_hook_backend_local_success() {
         let backend = MockHookBackend::new();
-        let hook = HookConfig {
-            stage: HookStage::PreActivate,
-            location: HookLocation::Local,
-            command: "kubectl drain node".to_string(),
-            timeout: 300,
-            continue_on_failure: false,
-        };
+        let hook = HookConfig::test_fixture(
+            "test-hook",
+            HookStage::PreActivate,
+            HookLocation::Local,
+            "kubectl drain node",
+        );
         let mut env = HashMap::new();
         env.insert("SNOW_HOSTNAME".to_string(), "test-host".to_string());
 
@@ -931,13 +930,12 @@ mod tests {
     #[test]
     fn test_mock_hook_backend_local_failure() {
         let backend = MockHookBackend::new().with_local_failures(vec!["kubectl".to_string()]);
-        let hook = HookConfig {
-            stage: HookStage::PreActivate,
-            location: HookLocation::Local,
-            command: "kubectl drain node".to_string(),
-            timeout: 300,
-            continue_on_failure: false,
-        };
+        let hook = HookConfig::test_fixture(
+            "test-hook",
+            HookStage::PreActivate,
+            HookLocation::Local,
+            "kubectl drain node",
+        );
         let mut env = HashMap::new();
         env.insert("SNOW_HOSTNAME".to_string(), "test-host".to_string());
 
@@ -958,13 +956,12 @@ mod tests {
             user: Some("deploy".to_string()),
             port: None,
         };
-        let hook = HookConfig {
-            stage: HookStage::PostActivate,
-            location: HookLocation::Remote,
-            command: "systemctl restart nginx".to_string(),
-            timeout: 300,
-            continue_on_failure: false,
-        };
+        let hook = HookConfig::test_fixture(
+            "test-hook",
+            HookStage::PostActivate,
+            HookLocation::Remote,
+            "systemctl restart nginx",
+        );
         let env = HashMap::new();
 
         let result = backend.execute_remote(&target, &hook, &env).unwrap();
@@ -987,13 +984,12 @@ mod tests {
             user: Some("deploy".to_string()),
             port: None,
         };
-        let hook = HookConfig {
-            stage: HookStage::PostActivate,
-            location: HookLocation::Remote,
-            command: "systemctl restart nginx".to_string(),
-            timeout: 300,
-            continue_on_failure: false,
-        };
+        let hook = HookConfig::test_fixture(
+            "test-hook",
+            HookStage::PostActivate,
+            HookLocation::Remote,
+            "systemctl restart nginx",
+        );
         let env = HashMap::new();
 
         let result = backend.execute_remote(&target, &hook, &env).unwrap();
@@ -1019,20 +1015,18 @@ mod tests {
             port: None,
         };
 
-        let hook1 = HookConfig {
-            stage: HookStage::PreActivate,
-            location: HookLocation::Remote,
-            command: "pre-activate hook".to_string(),
-            timeout: 300,
-            continue_on_failure: false,
-        };
-        let hook2 = HookConfig {
-            stage: HookStage::PostActivate,
-            location: HookLocation::Remote,
-            command: "post-activate hook".to_string(),
-            timeout: 300,
-            continue_on_failure: false,
-        };
+        let hook1 = HookConfig::test_fixture(
+            "test-hook",
+            HookStage::PreActivate,
+            HookLocation::Remote,
+            "pre-activate hook",
+        );
+        let hook2 = HookConfig::test_fixture(
+            "test-hook",
+            HookStage::PostActivate,
+            HookLocation::Remote,
+            "post-activate hook",
+        );
 
         backend
             .execute_remote(&target1, &hook1, &HashMap::new())

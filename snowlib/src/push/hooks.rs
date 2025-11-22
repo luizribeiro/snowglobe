@@ -52,14 +52,51 @@ impl HookExecutor {
         for hook in stage_hooks {
             tracing::info!(
                 target: "hooks",
-                "Executing {:?} hook for {}: {}",
+                "Executing {:?} hook '{}' for {}: {}",
                 stage,
+                hook.name,
                 hostname,
                 hook.command
             );
 
+            // Merge hook-specific environment variables with base environment
+            let mut merged_env = env.clone();
+
+            // Load environment files first (so explicit env vars can override)
+            for env_file in &hook.environment_files {
+                match Self::load_env_file(env_file) {
+                    Ok(file_env) => {
+                        merged_env.extend(file_env);
+                    }
+                    Err(e) => {
+                        tracing::error!(
+                            target: "hooks",
+                            "Failed to load environment file {:?} for hook '{}' on {}: {}",
+                            env_file,
+                            hook.name,
+                            hostname,
+                            e
+                        );
+                        if !hook.continue_on_failure {
+                            return Err(crate::error::SnowError::Deploy(
+                                crate::error::DeployError::Failed {
+                                    host: hostname.to_string(),
+                                    source: std::io::Error::other(format!(
+                                        "Hook '{}' failed to load environment file {:?}: {}",
+                                        hook.name, env_file, e
+                                    )),
+                                },
+                            ));
+                        }
+                    }
+                }
+            }
+
+            // Then merge explicit environment variables (these take precedence)
+            merged_env.extend(hook.environment.clone());
+
             let result = match hook.location {
-                HookLocation::Local => self.backend.execute_local(hook, env)?,
+                HookLocation::Local => self.backend.execute_local(hook, &merged_env)?,
                 HookLocation::Remote => {
                     let target = target.ok_or_else(|| {
                         crate::error::SnowError::Deploy(crate::error::DeployError::Failed {
@@ -69,14 +106,15 @@ impl HookExecutor {
                             ),
                         })
                     })?;
-                    self.backend.execute_remote(target, hook, env)?
+                    self.backend.execute_remote(target, hook, &merged_env)?
                 }
             };
 
             if !result.success && !hook.continue_on_failure {
                 tracing::error!(
                     target: "hooks",
-                    "Hook failed for {} (exit code: {:?}): {}",
+                    "Hook '{}' failed for {} (exit code: {:?}): {}",
+                    hook.name,
                     hostname,
                     result.exit_code,
                     result.stderr
@@ -85,7 +123,7 @@ impl HookExecutor {
                 return Err(crate::error::SnowError::Deploy(
                     crate::error::DeployError::CommandFailed {
                         host: hostname.to_string(),
-                        command: hook.command.clone(),
+                        command: format!("Hook '{}': {}", hook.name, hook.command),
                         exit_code: result.exit_code.unwrap_or(-1),
                         stderr: result.stderr.clone(),
                         stdout: result.stdout.clone(),
@@ -94,14 +132,16 @@ impl HookExecutor {
             } else if !result.success {
                 tracing::warn!(
                     target: "hooks",
-                    "Hook failed for {} but continuing (continueOnFailure=true): {}",
+                    "Hook '{}' failed for {} but continuing (continueOnFailure=true): {}",
+                    hook.name,
                     hostname,
                     result.stderr
                 );
             } else {
                 tracing::info!(
                     target: "hooks",
-                    "Hook completed successfully for {} in {:?}",
+                    "Hook '{}' completed successfully for {} in {:?}",
+                    hook.name,
                     hostname,
                     result.duration
                 );
@@ -119,6 +159,44 @@ impl HookExecutor {
             .get(hostname)
             .map(|hooks| hooks.iter().any(|h| h.stage == stage))
             .unwrap_or(false)
+    }
+
+    /// Load environment variables from a file (KEY=VALUE format, one per line)
+    pub(crate) fn load_env_file(path: &std::path::Path) -> Result<HashMap<String, String>> {
+        let contents = std::fs::read_to_string(path).map_err(|e| {
+            crate::error::SnowError::Deploy(crate::error::DeployError::Failed {
+                host: "local".to_string(),
+                source: std::io::Error::new(
+                    e.kind(),
+                    format!("Failed to read environment file {:?}: {}", path, e),
+                ),
+            })
+        })?;
+
+        let mut env_vars = HashMap::new();
+        for (line_num, line) in contents.lines().enumerate() {
+            let line = line.trim();
+
+            // Skip empty lines and comments
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
+
+            // Parse KEY=VALUE
+            if let Some((key, value)) = line.split_once('=') {
+                env_vars.insert(key.trim().to_string(), value.trim().to_string());
+            } else {
+                tracing::warn!(
+                    target: "hooks",
+                    "Skipping invalid line {} in {:?}: {}",
+                    line_num + 1,
+                    path,
+                    line
+                );
+            }
+        }
+
+        Ok(env_vars)
     }
 }
 
@@ -163,6 +241,7 @@ mod tests {
         hooks_by_host.insert(
             "test-host".to_string(),
             vec![HookConfig::test_fixture(
+                "test-hook",
                 HookStage::PreActivate,
                 HookLocation::Local,
                 "echo 'test'",
@@ -189,16 +268,19 @@ mod tests {
             "test-host".to_string(),
             vec![
                 HookConfig::test_fixture(
+                    "test-hook",
                     HookStage::PreActivate,
                     HookLocation::Local,
                     "echo 'hook1'",
                 ),
                 HookConfig::test_fixture(
+                    "test-hook",
                     HookStage::PreActivate,
                     HookLocation::Local,
                     "echo 'hook2'",
                 ),
                 HookConfig::test_fixture(
+                    "test-hook",
                     HookStage::PostActivate,
                     HookLocation::Local,
                     "echo 'hook3'",
@@ -225,6 +307,7 @@ mod tests {
         hooks_by_host.insert(
             "test-host".to_string(),
             vec![HookConfig::test_fixture(
+                "test-hook",
                 HookStage::PreActivate,
                 HookLocation::Local,
                 "exit 1",
@@ -248,8 +331,12 @@ mod tests {
         let backend = Arc::new(SystemHookBackend::new(None, OutputMode::Capture));
 
         let mut hooks_by_host = HashMap::new();
-        let mut hook =
-            HookConfig::test_fixture(HookStage::PreActivate, HookLocation::Local, "exit 1");
+        let mut hook = HookConfig::test_fixture(
+            "test-hook",
+            HookStage::PreActivate,
+            HookLocation::Local,
+            "exit 1",
+        );
         hook.continue_on_failure = true;
         hooks_by_host.insert("test-host".to_string(), vec![hook]);
 
@@ -271,6 +358,7 @@ mod tests {
         hooks_by_host.insert(
             "test-host".to_string(),
             vec![HookConfig::test_fixture(
+                "test-hook",
                 HookStage::PreActivate,
                 HookLocation::Local,
                 "echo 'test'",
@@ -296,6 +384,7 @@ mod tests {
         hooks_by_host.insert(
             "test-host".to_string(),
             vec![HookConfig::test_fixture(
+                "test-hook",
                 HookStage::PostActivate,
                 HookLocation::Remote,
                 "systemctl restart nginx",
@@ -338,6 +427,7 @@ mod tests {
         hooks_by_host.insert(
             "test-host".to_string(),
             vec![HookConfig::test_fixture(
+                "test-hook",
                 HookStage::PostActivate,
                 HookLocation::Remote,
                 "systemctl restart nginx",
@@ -369,6 +459,7 @@ mod tests {
         hooks_by_host.insert(
             "test-host".to_string(),
             vec![HookConfig::test_fixture(
+                "test-hook",
                 HookStage::PostActivate,
                 HookLocation::Remote,
                 "systemctl restart nginx",
@@ -396,11 +487,13 @@ mod tests {
             "test-host".to_string(),
             vec![
                 HookConfig::test_fixture(
+                    "test-hook",
                     HookStage::PreActivate,
                     HookLocation::Local,
                     "kubectl drain ${SNOW_HOSTNAME}",
                 ),
                 HookConfig::test_fixture(
+                    "test-hook",
                     HookStage::PreActivate,
                     HookLocation::Remote,
                     "systemctl stop important-service",
@@ -441,17 +534,29 @@ mod tests {
             "test-host".to_string(),
             vec![
                 HookConfig::test_fixture(
+                    "test-hook",
                     HookStage::PreActivate,
                     HookLocation::Local,
                     "pre-activate",
                 ),
                 HookConfig::test_fixture(
+                    "test-hook",
                     HookStage::PostActivate,
                     HookLocation::Local,
                     "post-activate",
                 ),
-                HookConfig::test_fixture(HookStage::PostReboot, HookLocation::Local, "post-reboot"),
-                HookConfig::test_fixture(HookStage::OnFailure, HookLocation::Local, "on-failure"),
+                HookConfig::test_fixture(
+                    "test-hook",
+                    HookStage::PostReboot,
+                    HookLocation::Local,
+                    "post-reboot",
+                ),
+                HookConfig::test_fixture(
+                    "test-hook",
+                    HookStage::OnFailure,
+                    HookLocation::Local,
+                    "on-failure",
+                ),
             ],
         );
 
@@ -486,6 +591,7 @@ mod tests {
         hooks_by_host.insert(
             "test-host".to_string(),
             vec![HookConfig::test_fixture(
+                "test-hook",
                 HookStage::PreActivate,
                 HookLocation::Local,
                 "echo $SNOW_HOSTNAME $SNOW_PHASE $SNOW_STORE_PATH",
@@ -521,16 +627,19 @@ mod tests {
             "test-host".to_string(),
             vec![
                 HookConfig::test_fixture(
+                    "test-hook",
                     HookStage::PreActivate,
                     HookLocation::Local,
                     "echo 'hook1'",
                 ),
                 HookConfig::test_fixture(
+                    "test-hook",
                     HookStage::PreActivate,
                     HookLocation::Local,
                     "fail command",
                 ),
                 HookConfig::test_fixture(
+                    "test-hook",
                     HookStage::PreActivate,
                     HookLocation::Local,
                     "echo 'should not run'",
@@ -550,5 +659,286 @@ mod tests {
 
         let executed = backend.get_executed_hooks();
         assert_eq!(executed.len(), 2);
+    }
+
+    // Integration tests for environment file loading in executor
+
+    #[test]
+    fn test_executor_with_environment_file() {
+        let backend = Arc::new(SystemHookBackend::new(None, OutputMode::Capture));
+
+        let temp_dir = std::env::temp_dir();
+        let temp_file = temp_dir.join("test_hook_env_integration.env");
+        std::fs::write(&temp_file, "SECRET_KEY=secret123\nAPI_TOKEN=token456\n").unwrap();
+
+        let mut hook = HookConfig::test_fixture(
+            "env-test-hook",
+            HookStage::PreActivate,
+            HookLocation::Local,
+            "echo $SECRET_KEY $API_TOKEN",
+        );
+        hook.environment_files = vec![temp_file.clone()];
+
+        let mut hooks_by_host = HashMap::new();
+        hooks_by_host.insert("test-host".to_string(), vec![hook]);
+
+        let executor = HookExecutor::new(backend, hooks_by_host);
+
+        let results = executor
+            .execute_hooks_for_stage("test-host", HookStage::PreActivate, None, &HashMap::new())
+            .unwrap();
+
+        assert_eq!(results.len(), 1);
+        assert!(results[0].success);
+        assert!(results[0].stdout.contains("secret123"));
+        assert!(results[0].stdout.contains("token456"));
+
+        std::fs::remove_file(&temp_file).ok();
+    }
+
+    #[test]
+    fn test_executor_environment_file_overrides_precedence() {
+        let backend = Arc::new(SystemHookBackend::new(None, OutputMode::Capture));
+
+        let temp_dir = std::env::temp_dir();
+        let temp_file = temp_dir.join("test_hook_env_precedence.env");
+        std::fs::write(&temp_file, "VAR=from_file\n").unwrap();
+
+        let mut hook = HookConfig::test_fixture(
+            "precedence-test",
+            HookStage::PreActivate,
+            HookLocation::Local,
+            "echo $VAR",
+        );
+        hook.environment_files = vec![temp_file.clone()];
+        // Explicit env vars should override file values
+        hook.environment
+            .insert("VAR".to_string(), "from_explicit".to_string());
+
+        let mut hooks_by_host = HashMap::new();
+        hooks_by_host.insert("test-host".to_string(), vec![hook]);
+
+        let executor = HookExecutor::new(backend, hooks_by_host);
+
+        let results = executor
+            .execute_hooks_for_stage("test-host", HookStage::PreActivate, None, &HashMap::new())
+            .unwrap();
+
+        assert_eq!(results.len(), 1);
+        assert!(results[0].success);
+        // Explicit variable should win
+        assert!(results[0].stdout.contains("from_explicit"));
+        assert!(!results[0].stdout.contains("from_file"));
+
+        std::fs::remove_file(&temp_file).ok();
+    }
+
+    #[test]
+    fn test_executor_environment_file_not_found_fails_deployment() {
+        let backend = Arc::new(SystemHookBackend::new(None, OutputMode::Capture));
+
+        let mut hook = HookConfig::test_fixture(
+            "missing-env-file",
+            HookStage::PreActivate,
+            HookLocation::Local,
+            "echo test",
+        );
+        hook.environment_files = vec![std::path::PathBuf::from("/nonexistent/file.env")];
+        hook.continue_on_failure = false; // Should fail deployment
+
+        let mut hooks_by_host = HashMap::new();
+        hooks_by_host.insert("test-host".to_string(), vec![hook]);
+
+        let executor = HookExecutor::new(backend, hooks_by_host);
+
+        let result = executor.execute_hooks_for_stage(
+            "test-host",
+            HookStage::PreActivate,
+            None,
+            &HashMap::new(),
+        );
+
+        assert!(result.is_err());
+        // Error should indicate deployment failed for test-host
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("test-host"));
+    }
+
+    #[test]
+    fn test_executor_environment_file_not_found_continues_with_flag() {
+        let backend = Arc::new(SystemHookBackend::new(None, OutputMode::Capture));
+
+        let mut hook = HookConfig::test_fixture(
+            "missing-env-file-continue",
+            HookStage::PreActivate,
+            HookLocation::Local,
+            "echo test",
+        );
+        hook.environment_files = vec![std::path::PathBuf::from("/nonexistent/file.env")];
+        hook.continue_on_failure = true; // Should continue even with missing file
+
+        let mut hooks_by_host = HashMap::new();
+        hooks_by_host.insert("test-host".to_string(), vec![hook]);
+
+        let executor = HookExecutor::new(backend, hooks_by_host);
+
+        let results = executor
+            .execute_hooks_for_stage("test-host", HookStage::PreActivate, None, &HashMap::new())
+            .unwrap();
+
+        // Hook should execute even though env file failed to load
+        assert_eq!(results.len(), 1);
+        assert!(results[0].success);
+    }
+
+    #[test]
+    fn test_executor_multiple_environment_files() {
+        let backend = Arc::new(SystemHookBackend::new(None, OutputMode::Capture));
+
+        let temp_dir = std::env::temp_dir();
+        let temp_file1 = temp_dir.join("test_hook_env_multi_1.env");
+        let temp_file2 = temp_dir.join("test_hook_env_multi_2.env");
+
+        std::fs::write(&temp_file1, "VAR1=value1\n").unwrap();
+        std::fs::write(&temp_file2, "VAR2=value2\n").unwrap();
+
+        let mut hook = HookConfig::test_fixture(
+            "multi-env-file",
+            HookStage::PreActivate,
+            HookLocation::Local,
+            "echo $VAR1 $VAR2",
+        );
+        hook.environment_files = vec![temp_file1.clone(), temp_file2.clone()];
+
+        let mut hooks_by_host = HashMap::new();
+        hooks_by_host.insert("test-host".to_string(), vec![hook]);
+
+        let executor = HookExecutor::new(backend, hooks_by_host);
+
+        let results = executor
+            .execute_hooks_for_stage("test-host", HookStage::PreActivate, None, &HashMap::new())
+            .unwrap();
+
+        assert_eq!(results.len(), 1);
+        assert!(results[0].success);
+        assert!(results[0].stdout.contains("value1"));
+        assert!(results[0].stdout.contains("value2"));
+
+        std::fs::remove_file(&temp_file1).ok();
+        std::fs::remove_file(&temp_file2).ok();
+    }
+
+    #[test]
+    fn test_load_env_file_valid() {
+        let temp_dir = std::env::temp_dir();
+        let temp_file = temp_dir.join("test_env_valid.env");
+        std::fs::write(&temp_file, "KEY1=value1\nKEY2=value2\n").unwrap();
+
+        let result = HookExecutor::load_env_file(&temp_file).unwrap();
+
+        assert_eq!(result.get("KEY1"), Some(&"value1".to_string()));
+        assert_eq!(result.get("KEY2"), Some(&"value2".to_string()));
+        assert_eq!(result.len(), 2);
+
+        std::fs::remove_file(&temp_file).ok();
+    }
+
+    #[test]
+    fn test_load_env_file_with_comments() {
+        let temp_dir = std::env::temp_dir();
+        let temp_file = temp_dir.join("test_env_comments.env");
+        std::fs::write(
+            &temp_file,
+            "# This is a comment\nKEY=value\n# Another comment\n",
+        )
+        .unwrap();
+
+        let result = HookExecutor::load_env_file(&temp_file).unwrap();
+
+        assert_eq!(result.len(), 1);
+        assert_eq!(result.get("KEY"), Some(&"value".to_string()));
+
+        std::fs::remove_file(&temp_file).ok();
+    }
+
+    #[test]
+    fn test_load_env_file_with_empty_lines() {
+        let temp_dir = std::env::temp_dir();
+        let temp_file = temp_dir.join("test_env_empty.env");
+        std::fs::write(&temp_file, "KEY1=value1\n\n\nKEY2=value2\n\n").unwrap();
+
+        let result = HookExecutor::load_env_file(&temp_file).unwrap();
+
+        assert_eq!(result.len(), 2);
+        assert_eq!(result.get("KEY1"), Some(&"value1".to_string()));
+        assert_eq!(result.get("KEY2"), Some(&"value2".to_string()));
+
+        std::fs::remove_file(&temp_file).ok();
+    }
+
+    #[test]
+    fn test_load_env_file_invalid_line_skipped() {
+        let temp_dir = std::env::temp_dir();
+        let temp_file = temp_dir.join("test_env_invalid.env");
+        std::fs::write(
+            &temp_file,
+            "KEY=value\ninvalid_line_no_equals\nKEY2=value2\n",
+        )
+        .unwrap();
+
+        let result = HookExecutor::load_env_file(&temp_file).unwrap();
+
+        // Invalid line should be skipped
+        assert_eq!(result.len(), 2);
+        assert_eq!(result.get("KEY"), Some(&"value".to_string()));
+        assert_eq!(result.get("KEY2"), Some(&"value2".to_string()));
+
+        std::fs::remove_file(&temp_file).ok();
+    }
+
+    #[test]
+    fn test_load_env_file_not_found() {
+        let result = HookExecutor::load_env_file(std::path::Path::new("/nonexistent/file.env"));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_load_env_file_value_with_equals() {
+        let temp_dir = std::env::temp_dir();
+        let temp_file = temp_dir.join("test_env_equals.env");
+        std::fs::write(&temp_file, "KEY=value=with=equals\n").unwrap();
+
+        let result = HookExecutor::load_env_file(&temp_file).unwrap();
+
+        assert_eq!(result.get("KEY"), Some(&"value=with=equals".to_string()));
+
+        std::fs::remove_file(&temp_file).ok();
+    }
+
+    #[test]
+    fn test_load_env_file_whitespace_trimmed() {
+        let temp_dir = std::env::temp_dir();
+        let temp_file = temp_dir.join("test_env_whitespace.env");
+        std::fs::write(&temp_file, "  KEY1  =  value1  \n\tKEY2\t=\tvalue2\t\n").unwrap();
+
+        let result = HookExecutor::load_env_file(&temp_file).unwrap();
+
+        assert_eq!(result.get("KEY1"), Some(&"value1".to_string()));
+        assert_eq!(result.get("KEY2"), Some(&"value2".to_string()));
+
+        std::fs::remove_file(&temp_file).ok();
+    }
+
+    #[test]
+    fn test_load_env_file_value_with_spaces() {
+        let temp_dir = std::env::temp_dir();
+        let temp_file = temp_dir.join("test_env_spaces.env");
+        std::fs::write(&temp_file, "MESSAGE=Hello World\n").unwrap();
+
+        let result = HookExecutor::load_env_file(&temp_file).unwrap();
+
+        assert_eq!(result.get("MESSAGE"), Some(&"Hello World".to_string()));
+
+        std::fs::remove_file(&temp_file).ok();
     }
 }

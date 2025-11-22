@@ -145,12 +145,20 @@ impl std::str::FromStr for HookLocation {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HookConfig {
+    /// Name of the hook (from attribute name)
+    pub name: String,
     /// When the hook should execute
     pub stage: HookStage,
     /// Where the hook should execute (local or remote)
     pub location: HookLocation,
     /// Command to execute (Nix-interpolated string)
     pub command: String,
+    /// Environment variables to set
+    #[serde(default)]
+    pub environment: std::collections::HashMap<String, String>,
+    /// Paths to files containing environment variables
+    #[serde(default)]
+    pub environment_files: Vec<std::path::PathBuf>,
     /// Timeout in seconds
     #[serde(default = "default_hook_timeout")]
     pub timeout: u64,
@@ -166,11 +174,19 @@ fn default_hook_timeout() -> u64 {
 #[cfg(test)]
 impl HookConfig {
     /// Create a hook config for testing with default timeout and failure behavior
-    pub(crate) fn test_fixture(stage: HookStage, location: HookLocation, command: &str) -> Self {
+    pub(crate) fn test_fixture(
+        name: &str,
+        stage: HookStage,
+        location: HookLocation,
+        command: &str,
+    ) -> Self {
         Self {
+            name: name.to_string(),
             stage,
             location,
             command: command.to_string(),
+            environment: std::collections::HashMap::new(),
+            environment_files: Vec::new(),
             timeout: 300,
             continue_on_failure: false,
         }
@@ -351,13 +367,14 @@ mod tests {
 
     #[test]
     fn test_hook_config_construction() {
-        let hook = HookConfig {
-            stage: HookStage::PreActivate,
-            location: HookLocation::Local,
-            command: "kubectl drain node1".to_string(),
-            timeout: 600,
-            continue_on_failure: true,
-        };
+        let mut hook = HookConfig::test_fixture(
+            "test-hook",
+            HookStage::PreActivate,
+            HookLocation::Local,
+            "kubectl drain node1",
+        );
+        hook.timeout = 600;
+        hook.continue_on_failure = true;
         assert_eq!(hook.stage, HookStage::PreActivate);
         assert_eq!(hook.location, HookLocation::Local);
         assert_eq!(hook.command, "kubectl drain node1");
@@ -367,13 +384,12 @@ mod tests {
 
     #[test]
     fn test_hook_config_with_defaults() {
-        let hook = HookConfig {
-            stage: HookStage::PostActivate,
-            location: HookLocation::Remote,
-            command: "systemctl status".to_string(),
-            timeout: 300,
-            continue_on_failure: false,
-        };
+        let hook = HookConfig::test_fixture(
+            "test-hook",
+            HookStage::PostActivate,
+            HookLocation::Remote,
+            "systemctl status",
+        );
         assert_eq!(hook.stage, HookStage::PostActivate);
         assert_eq!(hook.location, HookLocation::Remote);
         assert_eq!(hook.command, "systemctl status");

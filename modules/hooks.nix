@@ -28,8 +28,46 @@ let
           - SNOW_HOSTNAME: Target hostname
           - SNOW_PHASE: Deployment phase (if configured)
           - SNOW_STORE_PATH: Path to the new system in /nix/store
+
+          Additional environment variables can be set via the `environment`
+          and `environmentFiles` options.
         '';
         example = "kubectl drain \${config.networking.hostName}";
+      };
+
+      environment = mkOption {
+        type = types.attrsOf types.str;
+        default = {};
+        description = ''
+          Environment variables to set when executing the hook.
+
+          These are merged with the default Snow environment variables
+          (SNOW_HOSTNAME, SNOW_PHASE, SNOW_STORE_PATH).
+        '';
+        example = literalExpression ''
+          {
+            KUBECONFIG = "/home/user/.kube/config";
+            LOG_LEVEL = "debug";
+          }
+        '';
+      };
+
+      environmentFiles = mkOption {
+        type = types.listOf types.path;
+        default = [];
+        description = ''
+          List of files containing environment variables (one per line,
+          KEY=VALUE format). Useful for secrets management.
+
+          Files are sourced in order before executing the hook command.
+          Later files override earlier ones.
+        '';
+        example = literalExpression ''
+          [
+            config.age.secrets.slack-webhook.path
+            /run/secrets/deploy-tokens
+          ]
+        '';
       };
 
       timeout = mkOption {
@@ -39,6 +77,8 @@ let
           Maximum time (in seconds) to wait for the hook to complete.
           If the hook exceeds this timeout, it will be terminated and
           treated as a failure (unless continueOnFailure is true).
+
+          Default: 300 seconds (5 minutes)
         '';
       };
 
@@ -61,8 +101,8 @@ in
 {
   options.snowglobe.hooks = {
     pre-activate = mkOption {
-      type = types.listOf hookSubmodule;
-      default = [];
+      type = types.attrsOf hookSubmodule;
+      default = {};
       description = ''
         Hooks to run after copying the new system but before activation.
 
@@ -76,20 +116,20 @@ in
         configuration is still running.
       '';
       example = literalExpression ''
-        [
-          {
+        {
+          drain-node = {
             location = "local";
             command = "kubectl drain --ignore-daemonsets \${config.networking.hostName}";
             timeout = 360;
             continueOnFailure = false;
-          }
-        ]
+          };
+        }
       '';
     };
 
     post-activate = mkOption {
-      type = types.listOf hookSubmodule;
-      default = [];
+      type = types.attrsOf hookSubmodule;
+      default = {};
       description = ''
         Hooks to run after activation completes, before any reboot.
 
@@ -103,20 +143,20 @@ in
         before any required reboot.
       '';
       example = literalExpression ''
-        [
-          {
+        {
+          uncordon-node = {
             location = "local";
             command = "kubectl uncordon \${config.networking.hostName}";
             timeout = 60;
             continueOnFailure = true;
-          }
-        ]
+          };
+        }
       '';
     };
 
     post-reboot = mkOption {
-      type = types.listOf hookSubmodule;
-      default = [];
+      type = types.attrsOf hookSubmodule;
+      default = {};
       description = ''
         Hooks to run after the host reboots (only if a reboot occurred).
 
@@ -130,20 +170,20 @@ in
         They run after the host comes back online.
       '';
       example = literalExpression ''
-        [
-          {
+        {
+          wait-system-running = {
             location = "remote";
             command = "systemctl is-system-running --wait";
             timeout = 120;
             continueOnFailure = false;
-          }
-        ]
+          };
+        }
       '';
     };
 
     on-failure = mkOption {
-      type = types.listOf hookSubmodule;
-      default = [];
+      type = types.attrsOf hookSubmodule;
+      default = {};
       description = ''
         Hooks to run if the deployment fails at any stage.
 
@@ -157,20 +197,20 @@ in
         activation, or other hooks). Useful for cleanup and rollback.
       '';
       example = literalExpression ''
-        [
-          {
+        {
+          uncordon-on-failure = {
             location = "local";
             command = "kubectl uncordon \${config.networking.hostName}";
             timeout = 60;
             continueOnFailure = true;
-          }
-          {
+          };
+          send-notification = {
             location = "local";
             command = "notify-send 'Deployment failed for \${config.networking.hostName}'";
             timeout = 10;
             continueOnFailure = true;
-          }
-        ]
+          };
+        }
       '';
     };
   };

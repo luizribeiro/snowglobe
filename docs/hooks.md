@@ -27,17 +27,17 @@ Hooks are configured under `config.snowglobe.hooks` in your NixOS configuration:
 ```nix
 {
   config.snowglobe.hooks = {
-    pre-activate = [
-      {
+    pre-activate = {
+      drain-node = {
         location = "local";  # or "remote"
         command = "kubectl drain ${config.networking.hostName}";
         timeout = 300;  # seconds (default: 300)
         continueOnFailure = false;  # default: false
-      }
-    ];
-    post-activate = [ /* ... */ ];
-    post-reboot = [ /* ... */ ];
-    on-failure = [ /* ... */ ];
+      };
+    };
+    post-activate = { /* ... */ };
+    post-reboot = { /* ... */ };
+    on-failure = { /* ... */ };
   };
 }
 ```
@@ -56,14 +56,14 @@ Runs **after copying** the new system but **before activation**.
 
 **Example:**
 ```nix
-pre-activate = [
-  {
+pre-activate = {
+  drain-node = {
     location = "local";
     command = "kubectl drain --delete-emptydir-data --ignore-daemonsets --timeout=5m ${config.networking.hostName}";
     timeout = 360;
     continueOnFailure = false;
-  }
-];
+  };
+};
 ```
 
 #### `post-activate`
@@ -78,14 +78,14 @@ Runs **after activation completes**, before any reboot.
 
 **Example:**
 ```nix
-post-activate = [
-  {
+post-activate = {
+  uncordon-node = {
     location = "local";
     command = "kubectl uncordon ${config.networking.hostName}";
     timeout = 60;
     continueOnFailure = true;  # Always uncordon, even if activation had issues
-  }
-];
+  };
+};
 ```
 
 #### `post-reboot`
@@ -100,14 +100,14 @@ Runs **after the host reboots** and comes back online (only if a reboot actually
 
 **Example:**
 ```nix
-post-reboot = [
-  {
+post-reboot = {
+  wait-node-ready = {
     location = "local";
     command = "kubectl wait --for=condition=Ready node/${config.networking.hostName} --timeout=5m";
     timeout = 360;
     continueOnFailure = false;
-  }
-];
+  };
+};
 ```
 
 #### `on-failure`
@@ -122,14 +122,14 @@ Runs **when deployment or reboot fails** at any stage.
 
 **Example:**
 ```nix
-on-failure = [
-  {
+on-failure = {
+  send-alert = {
     location = "local";
     command = "curl -X POST https://alerts.example.com/webhook -d '{\"host\": \"${config.networking.hostName}\", \"status\": \"failed\"}'";
     timeout = 30;
     continueOnFailure = true;  # Don't fail the failure handler
-  }
-];
+  };
+};
 ```
 
 ## Execution Location
@@ -191,18 +191,24 @@ Controls what happens when a hook fails (non-zero exit code or timeout).
 
 **Example:**
 ```nix
-post-activate = [
-  {
+post-activate = {
+  uncordon-node = {
     location = "local";
     command = "kubectl uncordon ${config.networking.hostName}";
     continueOnFailure = true;  # Always uncordon, even if activation failed
-  }
-];
+  };
+};
 ```
 
 ### Timeout
 
-Each hook has a timeout (default: 300 seconds / 5 minutes). If the command doesn't complete within the timeout, it's terminated and treated as a failure.
+Each hook has a timeout (default: 300 seconds). If the command doesn't complete within the timeout, it's terminated and treated as a failure.
+
+**Timeout behavior:**
+1. When a hook exceeds its timeout, `snow` sends `SIGTERM` to gracefully terminate the process
+2. If the process doesn't exit within 5 seconds, `SIGKILL` is sent to force termination
+3. `snow` waits up to 2 seconds for the process to be reaped by the kernel
+4. The hook is marked as failed and any output captured up to the timeout is included in error messages
 
 ```nix
 {
@@ -211,23 +217,15 @@ Each hook has a timeout (default: 300 seconds / 5 minutes). If the command doesn
 }
 ```
 
-**Choosing Timeout Values:**
-
-Set timeouts conservatively but realistically to avoid resource exhaustion:
-
-- **Quick health checks**: 10-30 seconds
-- **Service coordination** (DNS updates, service discovery): 30-60 seconds
-- **Node draining** (Kubernetes, Nomad): 5-10 minutes (300-600 seconds)
-- **Load balancer operations**: 1-2 minutes (60-120 seconds)
-- **Custom validation scripts**: 2-5 minutes (120-300 seconds)
-
-**Avoid very long timeouts** (>15 minutes) as timed-out hook processes cannot be killed from safe Rust and will continue running in the background. While this is monitored internally, pathological cases (many slow hooks timing out) could exhaust system resources.
-
-If a hook consistently times out, investigate the underlying command rather than increasing the timeout indefinitely.
+**Notes:**
+- For hooks that perform cleanup or have side effects, ensure they handle `SIGTERM` gracefully to avoid leaving resources in an inconsistent state
+- In rare cases (zombie processes or uninterruptible sleep states), a process may not be killable; `snow` will log an error but continue with the deployment
 
 ## Environment Variables
 
-Hooks receive these environment variables:
+### Default Environment
+
+Hooks receive these environment variables automatically:
 
 | Variable | Description | Example |
 |----------|-------------|---------|
@@ -237,13 +235,42 @@ Hooks receive these environment variables:
 
 Plus any environment variables from your shell or CI/CD workflow (e.g., `KUBECONFIG`).
 
-**Using environment variables:**
+### Custom Environment Variables
+
+You can set additional environment variables for hooks using `environment` and `environmentFiles`:
+
 ```nix
 {
-  location = "local";
-  command = "echo Deploying to $SNOW_HOSTNAME in phase $SNOW_PHASE";
+  notify-deploy = {
+    location = "local";
+    command = ./scripts/notify-slack.sh;
+    environment = {
+      SLACK_CHANNEL = "#deploys";
+    };
+    environmentFiles = [
+      config.age.secrets.slack-webhook.path
+    ];
+  };
 }
 ```
+
+**`environment`**: Attrset of environment variables to set:
+```nix
+environment = {
+  KUBECONFIG = "/home/user/.kube/config";
+  LOG_LEVEL = "debug";
+};
+```
+
+**`environmentFiles`**: List of files containing environment variables (KEY=VALUE format, one per line). Useful for secrets:
+```nix
+environmentFiles = [
+  config.age.secrets.deploy-tokens.path
+  /run/secrets/api-keys
+];
+```
+
+Environment files are loaded first, then `environment` variables are applied (allowing explicit variables to override file contents).
 
 ## Variable Substitution
 
@@ -272,41 +299,41 @@ Zero-downtime rolling updates for Kubernetes nodes:
 {
   config = lib.mkIf config.features.kubernetes.enable {
     snowglobe.hooks = {
-      pre-activate = [
-        {
+      pre-activate = {
+        drain-node = {
           location = "local";
           command = "kubectl drain --delete-emptydir-data --ignore-daemonsets --timeout=5m ${config.networking.hostName}";
           timeout = 360;
           continueOnFailure = false;
-        }
-      ];
+        };
+      };
 
-      post-activate = [
-        {
+      post-activate = {
+        uncordon-node = {
           location = "local";
           command = "kubectl uncordon ${config.networking.hostName}";
           timeout = 60;
           continueOnFailure = true;  # Always uncordon
-        }
-      ];
+        };
+      };
 
-      post-reboot = [
-        {
+      post-reboot = {
+        wait-node-ready = {
           location = "local";
           command = "kubectl wait --for=condition=Ready node/${config.networking.hostName} --timeout=5m";
           timeout = 360;
           continueOnFailure = false;
-        }
-      ];
+        };
+      };
 
-      on-failure = [
-        {
+      on-failure = {
+        uncordon-node = {
           location = "local";
           command = "kubectl uncordon ${config.networking.hostName}";
           timeout = 60;
           continueOnFailure = true;  # Cleanup: uncordon even on failure
-        }
-      ];
+        };
+      };
     };
   };
 }
@@ -319,23 +346,23 @@ Gracefully leave and rejoin Consul cluster:
 ```nix
 {
   snowglobe.hooks = {
-    pre-activate = [
-      {
+    pre-activate = {
+      leave-cluster = {
         location = "remote";
         command = "consul leave";
         timeout = 30;
         continueOnFailure = true;  # Leave is best-effort
-      }
-    ];
+      };
+    };
 
-    post-reboot = [
-      {
+    post-reboot = {
+      wait-cluster-rejoin = {
         location = "remote";
         command = "until consul members | grep ${config.networking.hostName}; do sleep 2; done";
         timeout = 120;
         continueOnFailure = false;
-      }
-    ];
+      };
+    };
   };
 }
 ```
@@ -347,38 +374,38 @@ Remove from and add back to load balancer:
 ```nix
 {
   snowglobe.hooks = {
-    pre-activate = [
-      {
+    pre-activate = {
+      remove-from-pool = {
         location = "local";
         command = "curl -X POST https://lb.example.com/api/pool/remove -d '{\"host\": \"${config.networking.hostName}\"}'";
         timeout = 30;
         continueOnFailure = false;
-      }
-      {
+      };
+      drain-connections = {
         location = "local";
         command = "sleep 10";  # Wait for connections to drain
         timeout = 15;
         continueOnFailure = false;
-      }
-    ];
+      };
+    };
 
-    post-activate = [
-      {
+    post-activate = {
+      add-to-pool = {
         location = "local";
         command = "curl -X POST https://lb.example.com/api/pool/add -d '{\"host\": \"${config.networking.hostName}\"}'";
         timeout = 30;
         continueOnFailure = false;
-      }
-    ];
+      };
+    };
 
-    on-failure = [
-      {
+    on-failure = {
+      add-to-pool = {
         location = "local";
         command = "curl -X POST https://lb.example.com/api/pool/add -d '{\"host\": \"${config.networking.hostName}\"}'";
         timeout = 30;
         continueOnFailure = true;  # Always re-add to pool
-      }
-    ];
+      };
+    };
   };
 }
 ```
@@ -390,51 +417,81 @@ Validate deployment before considering it successful:
 ```nix
 {
   snowglobe.hooks = {
-    post-activate = [
-      {
+    post-activate = {
+      check-services = {
         location = "remote";
         command = "systemctl is-active nginx postgresql";
         timeout = 30;
         continueOnFailure = false;  # Fail deployment if services aren't running
-      }
-    ];
+      };
+    };
 
-    post-reboot = [
-      {
+    post-reboot = {
+      check-health = {
         location = "remote";
         command = "curl --fail http://localhost:8080/health";
         timeout = 60;
         continueOnFailure = false;  # Fail if health check fails
-      }
-    ];
+      };
+    };
   };
 }
 ```
 
 ### Notifications and Alerts
 
-Send notifications during deployment:
+Send notifications during deployment using environment files for secrets:
 
 ```nix
+{ pkgs, config, ... }:
+
+let
+  notifySlack = pkgs.writeShellScript "notify-slack.sh" ''
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    MESSAGE="$1"
+
+    curl -X POST https://slack.com/api/chat.postMessage \
+      -H "Authorization: Bearer $SLACK_WEBHOOK_TOKEN" \
+      -H "Content-Type: application/json" \
+      -d "{
+        \"channel\": \"$SLACK_CHANNEL\",
+        \"text\": \"$MESSAGE\"
+      }"
+  '';
+in
 {
   snowglobe.hooks = {
-    pre-activate = [
-      {
+    pre-activate = {
+      notify-start = {
         location = "local";
-        command = "curl -X POST https://slack.com/api/chat.postMessage -H 'Authorization: Bearer $SLACK_TOKEN' -d '{\"channel\": \"#deploys\", \"text\": \"Starting deployment to ${config.networking.hostName}\"}'";
+        command = "${notifySlack} 'Starting deployment to ${config.networking.hostName}'";
+        environment = {
+          SLACK_CHANNEL = "#deploys";
+        };
+        environmentFiles = [
+          config.age.secrets.slack-webhook.path  # Contains SLACK_WEBHOOK_TOKEN=...
+        ];
         timeout = 10;
         continueOnFailure = true;  # Don't fail deployment if notification fails
-      }
-    ];
+      };
+    };
 
-    on-failure = [
-      {
+    on-failure = {
+      notify-failure = {
         location = "local";
-        command = "curl -X POST https://pagerduty.com/api/incidents -d '{\"title\": \"Deployment failed: ${config.networking.hostName}\"}'";
+        command = "${notifySlack} 'Deployment failed for ${config.networking.hostName}'";
+        environment = {
+          SLACK_CHANNEL = "#alerts";
+        };
+        environmentFiles = [
+          config.age.secrets.slack-webhook.path
+        ];
         timeout = 30;
         continueOnFailure = true;
-      }
-    ];
+      };
+    };
   };
 }
 ```
@@ -445,16 +502,20 @@ Send notifications during deployment:
 
 ```nix
 # Critical pre-deployment checks: fail fast
-pre-activate = [{
-  command = "check-cluster-health";
-  continueOnFailure = false;
-}];
+pre-activate = {
+  check-health = {
+    command = "check-cluster-health";
+    continueOnFailure = false;
+  };
+};
 
 # Cleanup operations: always run
-post-activate = [{
-  command = "kubectl uncordon ${config.networking.hostName}";
-  continueOnFailure = true;
-}];
+post-activate = {
+  uncordon-node = {
+    command = "kubectl uncordon ${config.networking.hostName}";
+    continueOnFailure = true;
+  };
+};
 ```
 
 ### 2. Set Realistic Timeouts
@@ -472,11 +533,13 @@ post-activate = [{
 Always uncordon nodes or re-add to pools even if deployment fails:
 
 ```nix
-on-failure = [{
-  location = "local";
-  command = "kubectl uncordon ${config.networking.hostName}";
-  continueOnFailure = true;
-}];
+on-failure = {
+  uncordon-node = {
+    location = "local";
+    command = "kubectl uncordon ${config.networking.hostName}";
+    continueOnFailure = true;
+  };
+};
 ```
 
 ### 4. Organize Hooks in Feature Modules
@@ -489,8 +552,12 @@ Define hooks alongside the feature they support:
 {
   config = lib.mkIf config.features.kubernetes.enable {
     snowglobe.hooks = {
-      pre-activate = [ /* kubectl drain */ ];
-      post-activate = [ /* kubectl uncordon */ ];
+      pre-activate = {
+        drain-node = { /* kubectl drain */ };
+      };
+      post-activate = {
+        uncordon-node = { /* kubectl uncordon */ };
+      };
     };
   };
 }
@@ -584,8 +651,12 @@ push-k8s:
 ```nix
 # features/linux/kubernetes.nix
 config.snowglobe.hooks = {
-  pre-activate = [{ location = "local"; command = "kubectl drain ${config.networking.hostName}"; }];
-  post-activate = [{ location = "local"; command = "kubectl uncordon ${config.networking.hostName}"; }];
+  pre-activate = {
+    drain-node = { location = "local"; command = "kubectl drain ${config.networking.hostName}"; };
+  };
+  post-activate = {
+    uncordon-node = { location = "local"; command = "kubectl uncordon ${config.networking.hostName}"; };
+  };
 };
 ```
 
@@ -599,6 +670,55 @@ snow push --hosts node1,node2,node3
 - Better error handling
 - Integrated logging
 - No external wrapper scripts needed
+
+## Migration Guide
+
+### Breaking Change: Named Hooks (Attrsets)
+
+Hooks were changed from lists to named attrsets to improve debugging and clarity. Each hook now requires a unique name.
+
+**Before (lists):**
+```nix
+snowglobe.hooks = {
+  pre-activate = [
+    {
+      location = "local";
+      command = "kubectl drain ${config.networking.hostName}";
+      timeout = 360;
+    }
+  ];
+};
+```
+
+**After (named attrsets):**
+```nix
+snowglobe.hooks = {
+  pre-activate = {
+    drain-node = {  # ← Hook now has a name
+      location = "local";
+      command = "kubectl drain ${config.networking.hostName}";
+      timeout = 360;
+    };
+  };
+};
+```
+
+**Why this change?**
+- Hook names appear in logs, making debugging easier
+- Better organization when you have multiple hooks per stage
+- Clearer configuration structure
+
+**Migration steps:**
+1. Wrap each hook list in an attrset
+2. Give each hook a descriptive kebab-case name
+3. Use names that describe what the hook does (e.g., `drain-node`, `check-health`, `notify-deploy`)
+
+Hook names appear in all log messages:
+```
+INFO  Executing PreActivate hook 'drain-node' for web01: kubectl drain...
+INFO  Hook 'drain-node' completed successfully for web01 in 12.3s
+ERROR Hook 'uncordon-node' failed for web01 (exit code: 1): ...
+```
 
 ## Logging and Observability
 

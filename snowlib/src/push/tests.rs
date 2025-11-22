@@ -2623,11 +2623,13 @@ fn test_push_with_pre_activate_hooks() {
         system_type: SystemType::NixOS,
         hooks: vec![
             HookConfig::test_fixture(
+                "test-hook",
                 HookStage::PreActivate,
                 HookLocation::Local,
                 "kubectl drain ${SNOW_HOSTNAME} --timeout=300s",
             ),
             HookConfig::test_fixture(
+                "test-hook",
                 HookStage::PreActivate,
                 HookLocation::Remote,
                 "systemctl stop important-service",
@@ -2697,6 +2699,7 @@ fn test_push_with_post_activate_hooks() {
         reboot_policy: crate::nix::RebootPolicy::Auto,
         system_type: SystemType::NixOS,
         hooks: vec![HookConfig::test_fixture(
+            "test-hook",
             HookStage::PostActivate,
             HookLocation::Remote,
             "systemctl start important-service",
@@ -2759,6 +2762,7 @@ fn test_push_with_post_reboot_hooks() {
         reboot_policy: crate::nix::RebootPolicy::Always,
         system_type: SystemType::NixOS,
         hooks: vec![HookConfig::test_fixture(
+            "test-hook",
             HookStage::PostReboot,
             HookLocation::Local,
             "kubectl uncordon ${SNOW_HOSTNAME}",
@@ -2831,6 +2835,7 @@ fn test_push_pre_activate_hook_failure_aborts_deployment() {
         reboot_policy: crate::nix::RebootPolicy::Auto,
         system_type: SystemType::NixOS,
         hooks: vec![HookConfig::test_fixture(
+            "test-hook",
             HookStage::PreActivate,
             HookLocation::Local,
             "kubectl drain ${SNOW_HOSTNAME}",
@@ -2895,6 +2900,7 @@ fn test_push_hook_failure_with_continue_on_failure() {
         Arc::new(MockHookBackend::new().with_local_failures(vec!["kubectl".to_string()]));
 
     let mut hook = HookConfig::test_fixture(
+        "test-hook",
         HookStage::PreActivate,
         HookLocation::Local,
         "kubectl drain ${SNOW_HOSTNAME}",
@@ -2962,11 +2968,13 @@ fn test_push_on_failure_hooks_execute_when_build_fails() {
         system_type: SystemType::NixOS,
         hooks: vec![
             HookConfig::test_fixture(
+                "test-hook",
                 HookStage::PreActivate,
                 HookLocation::Local,
                 "pre-activate hook",
             ),
             HookConfig::test_fixture(
+                "test-hook",
                 HookStage::OnFailure,
                 HookLocation::Local,
                 "cleanup on failure",
@@ -3033,6 +3041,7 @@ fn test_push_on_failure_hooks_execute_when_copy_fails() {
         reboot_policy: crate::nix::RebootPolicy::Auto,
         system_type: SystemType::NixOS,
         hooks: vec![HookConfig::test_fixture(
+            "test-hook",
             HookStage::OnFailure,
             HookLocation::Local,
             "rollback on failure",
@@ -3096,6 +3105,7 @@ fn test_push_environment_variables_passed_to_hooks() {
         reboot_policy: crate::nix::RebootPolicy::Auto,
         system_type: SystemType::NixOS,
         hooks: vec![HookConfig::test_fixture(
+            "test-hook",
             HookStage::PreActivate,
             HookLocation::Local,
             "echo $SNOW_HOSTNAME $SNOW_PHASE $SNOW_STORE_PATH",
@@ -3160,6 +3170,7 @@ fn test_push_hooks_execute_in_parallel_for_multiple_hosts() {
             reboot_policy: crate::nix::RebootPolicy::Auto,
             system_type: SystemType::NixOS,
             hooks: vec![HookConfig::test_fixture(
+                "test-hook",
                 HookStage::PreActivate,
                 HookLocation::Local,
                 "hook for host1",
@@ -3173,6 +3184,7 @@ fn test_push_hooks_execute_in_parallel_for_multiple_hosts() {
             reboot_policy: crate::nix::RebootPolicy::Auto,
             system_type: SystemType::NixOS,
             hooks: vec![HookConfig::test_fixture(
+                "test-hook",
                 HookStage::PreActivate,
                 HookLocation::Local,
                 "hook for host2",
@@ -3241,6 +3253,7 @@ fn test_push_hook_failure_in_one_host_doesnt_affect_others() {
             reboot_policy: crate::nix::RebootPolicy::Auto,
             system_type: SystemType::NixOS,
             hooks: vec![HookConfig::test_fixture(
+                "test-hook",
                 HookStage::PreActivate,
                 HookLocation::Remote,
                 "will fail",
@@ -3254,6 +3267,7 @@ fn test_push_hook_failure_in_one_host_doesnt_affect_others() {
             reboot_policy: crate::nix::RebootPolicy::Auto,
             system_type: SystemType::NixOS,
             hooks: vec![HookConfig::test_fixture(
+                "test-hook",
                 HookStage::PreActivate,
                 HookLocation::Remote,
                 "will succeed",
@@ -3304,4 +3318,72 @@ fn test_push_hook_failure_in_one_host_doesnt_affect_others() {
 
     assert!(!host1_result.success);
     assert!(host2_result.success);
+}
+
+#[test]
+fn test_push_hook_with_explicit_environment() {
+    let flake = Flake::test_context();
+    let nix_backend = MockNixBackend::new();
+    let deployer = MockDeployBackend::new();
+    let reboot_config = crate::backends::reboot::RebootDetectionConfig {
+        critical_services: vec![],
+        check_kernel: false,
+        check_initrd: false,
+        ..Default::default()
+    };
+    let reboot_backend = crate::backends::reboot::SystemRebootBackend::new(reboot_config);
+    let observer = TestObserver::new();
+
+    let hook_backend = Arc::new(MockHookBackend::new());
+
+    let mut hook = HookConfig::test_fixture(
+        "env-test",
+        HookStage::PreActivate,
+        HookLocation::Local,
+        "echo $CUSTOM_VAR",
+    );
+    hook.environment
+        .insert("CUSTOM_VAR".to_string(), "custom_value".to_string());
+
+    let hosts = vec![HostMetadata {
+        name: "test-host".to_string(),
+        fqdn: "test-host.local".to_string(),
+        phase: Some("test".to_string()),
+        tags: vec![],
+        reboot_policy: crate::nix::RebootPolicy::Never,
+        system_type: SystemType::NixOS,
+        hooks: vec![hook],
+    }];
+
+    let hook_executor = make_hook_executor(hook_backend.clone(), &hosts);
+
+    let config = PushConfiguration {
+        strategy: PushStrategy::Switch,
+        force: false,
+        concurrency: 1,
+        ignore_phases: false,
+        output_mode: crate::process::OutputMode::Capture,
+        ssh_user: None,
+        allow_reboot: false,
+    };
+
+    let _results = {
+        let push_ctx = PushContext::new(
+            &flake,
+            &nix_backend,
+            &deployer,
+            &reboot_backend,
+            &config,
+            &observer,
+            Some(&hook_executor),
+        );
+        push(&push_ctx, hosts)
+    }
+    .unwrap();
+
+    // Verify hook was executed (environment variable merging is tested in unit tests)
+    let executed = hook_backend.get_executed_hooks();
+    assert_eq!(executed.len(), 1);
+    assert_eq!(executed[0].0, "test-host");
+    assert_eq!(executed[0].1, HookStage::PreActivate);
 }
