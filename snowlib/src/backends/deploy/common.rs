@@ -348,3 +348,30 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+pub(crate) mod test_utils {
+    use super::super::DeployTarget;
+    use crate::nix::StorePath;
+
+    pub(crate) fn create_test_target(hostname: &str) -> DeployTarget {
+        DeployTarget {
+            user: None,
+            hostname: hostname.to_string(),
+            port: None,
+        }
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn create_test_target_with_port(hostname: &str, port: Option<u16>) -> DeployTarget {
+        DeployTarget {
+            user: None,
+            hostname: hostname.to_string(),
+            port,
+        }
+    }
+
+    pub(crate) fn create_test_store_path(path: &str) -> StorePath {
+        StorePath::new(path.to_string())
+    }
+}

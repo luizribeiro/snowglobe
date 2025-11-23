@@ -47,7 +47,7 @@ impl DeployBackend for LocalDeployBackend {
     ) -> Result<()> {
         let system_type = SystemType::detect_current();
 
-        // Update system profile for NixOS (creates generation)
+        // Create NixOS system profile generation for rollback support (persistent modes only)
         if system_type == SystemType::NixOS && should_update_profile(mode) {
             update_system_profile(store_path, &target.hostname, |args| {
                 let mut cmd = Command::new("sudo");
@@ -248,20 +248,10 @@ mod tests {
         );
     }
 
+    use super::super::common::test_utils::{create_test_store_path, create_test_target};
+
     fn create_test_backend() -> LocalDeployBackend {
         LocalDeployBackend::new().with_quiet()
-    }
-
-    fn create_test_target(hostname: &str) -> DeployTarget {
-        DeployTarget {
-            user: None,
-            hostname: hostname.to_string(),
-            port: None,
-        }
-    }
-
-    fn create_test_store_path(path: &str) -> StorePath {
-        StorePath::new(path.to_string())
     }
 
     #[test]
