@@ -83,13 +83,19 @@ impl HookExecutor {
                             e
                         );
                         if !hook.continue_on_failure {
+                            let error_msg = format!(
+                                "Hook '{}' failed to load environment file {:?}: {}\n\n\
+                                 Troubleshooting:\n\
+                                 - Verify the file exists and is readable\n\
+                                 - Check file permissions (should be readable by deploy user)\n\
+                                 - If using agenix or sops-nix, ensure secrets are properly decrypted\n\
+                                 - Verify the file path is absolute or relative to the deployment context",
+                                hook.name, env_file, e
+                            );
                             return Err(crate::error::SnowError::Deploy(
                                 crate::error::DeployError::Failed {
                                     host: hostname.to_string(),
-                                    source: std::io::Error::other(format!(
-                                        "Hook '{}' failed to load environment file {:?}: {}",
-                                        hook.name, env_file, e
-                                    )),
+                                    source: std::io::Error::other(error_msg),
                                 },
                             ));
                         }
@@ -171,7 +177,7 @@ impl HookExecutor {
             .unwrap_or(false)
     }
 
-    pub(crate) fn load_env_file(path: &std::path::Path) -> Result<HashMap<String, String>> {
+    fn load_env_file(path: &std::path::Path) -> Result<HashMap<String, String>> {
         let contents = std::fs::read_to_string(path).map_err(|e| {
             crate::error::SnowError::Deploy(crate::error::DeployError::Failed {
                 host: "local".to_string(),
@@ -843,117 +849,86 @@ mod tests {
     }
 
     #[test]
-    fn test_load_env_file_valid() {
+    fn test_load_env_file_parsing() {
+        struct TestCase {
+            name: &'static str,
+            content: &'static str,
+            expected: Vec<(&'static str, &'static str)>,
+        }
+
+        let test_cases = vec![
+            TestCase {
+                name: "basic key-value pairs",
+                content: "KEY1=value1\nKEY2=value2\n",
+                expected: vec![("KEY1", "value1"), ("KEY2", "value2")],
+            },
+            TestCase {
+                name: "comments are ignored",
+                content: "# This is a comment\nKEY=value\n# Another comment\n",
+                expected: vec![("KEY", "value")],
+            },
+            TestCase {
+                name: "empty lines are ignored",
+                content: "KEY1=value1\n\n\nKEY2=value2\n\n",
+                expected: vec![("KEY1", "value1"), ("KEY2", "value2")],
+            },
+            TestCase {
+                name: "invalid lines are skipped",
+                content: "KEY=value\ninvalid_line_no_equals\nKEY2=value2\n",
+                expected: vec![("KEY", "value"), ("KEY2", "value2")],
+            },
+            TestCase {
+                name: "values can contain equals signs",
+                content: "KEY=value=with=equals\n",
+                expected: vec![("KEY", "value=with=equals")],
+            },
+            TestCase {
+                name: "whitespace is trimmed from keys and values",
+                content: "  KEY1  =  value1  \n\tKEY2\t=\tvalue2\t\n",
+                expected: vec![("KEY1", "value1"), ("KEY2", "value2")],
+            },
+            TestCase {
+                name: "values can contain spaces",
+                content: "MESSAGE=Hello World\n",
+                expected: vec![("MESSAGE", "Hello World")],
+            },
+        ];
+
         let temp_dir = std::env::temp_dir();
-        let temp_file = temp_dir.join("test_env_valid.env");
-        std::fs::write(&temp_file, "KEY1=value1\nKEY2=value2\n").unwrap();
 
-        let result = HookExecutor::load_env_file(&temp_file).unwrap();
+        for (idx, test_case) in test_cases.iter().enumerate() {
+            let temp_file = temp_dir.join(format!("test_env_parsing_{}.env", idx));
+            std::fs::write(&temp_file, test_case.content).unwrap();
 
-        assert_eq!(result.get("KEY1"), Some(&"value1".to_string()));
-        assert_eq!(result.get("KEY2"), Some(&"value2".to_string()));
-        assert_eq!(result.len(), 2);
+            let result = HookExecutor::load_env_file(&temp_file).unwrap();
 
-        std::fs::remove_file(&temp_file).ok();
-    }
+            assert_eq!(
+                result.len(),
+                test_case.expected.len(),
+                "Failed case '{}': expected {} entries, got {}",
+                test_case.name,
+                test_case.expected.len(),
+                result.len()
+            );
 
-    #[test]
-    fn test_load_env_file_with_comments() {
-        let temp_dir = std::env::temp_dir();
-        let temp_file = temp_dir.join("test_env_comments.env");
-        std::fs::write(
-            &temp_file,
-            "# This is a comment\nKEY=value\n# Another comment\n",
-        )
-        .unwrap();
+            for (key, expected_value) in &test_case.expected {
+                assert_eq!(
+                    result.get(*key),
+                    Some(&expected_value.to_string()),
+                    "Failed case '{}': key '{}' mismatch",
+                    test_case.name,
+                    key
+                );
+            }
 
-        let result = HookExecutor::load_env_file(&temp_file).unwrap();
-
-        assert_eq!(result.len(), 1);
-        assert_eq!(result.get("KEY"), Some(&"value".to_string()));
-
-        std::fs::remove_file(&temp_file).ok();
-    }
-
-    #[test]
-    fn test_load_env_file_with_empty_lines() {
-        let temp_dir = std::env::temp_dir();
-        let temp_file = temp_dir.join("test_env_empty.env");
-        std::fs::write(&temp_file, "KEY1=value1\n\n\nKEY2=value2\n\n").unwrap();
-
-        let result = HookExecutor::load_env_file(&temp_file).unwrap();
-
-        assert_eq!(result.len(), 2);
-        assert_eq!(result.get("KEY1"), Some(&"value1".to_string()));
-        assert_eq!(result.get("KEY2"), Some(&"value2".to_string()));
-
-        std::fs::remove_file(&temp_file).ok();
-    }
-
-    #[test]
-    fn test_load_env_file_invalid_line_skipped() {
-        let temp_dir = std::env::temp_dir();
-        let temp_file = temp_dir.join("test_env_invalid.env");
-        std::fs::write(
-            &temp_file,
-            "KEY=value\ninvalid_line_no_equals\nKEY2=value2\n",
-        )
-        .unwrap();
-
-        let result = HookExecutor::load_env_file(&temp_file).unwrap();
-
-        // Invalid line should be skipped
-        assert_eq!(result.len(), 2);
-        assert_eq!(result.get("KEY"), Some(&"value".to_string()));
-        assert_eq!(result.get("KEY2"), Some(&"value2".to_string()));
-
-        std::fs::remove_file(&temp_file).ok();
+            std::fs::remove_file(&temp_file).ok();
+        }
     }
 
     #[test]
     fn test_load_env_file_not_found() {
         let result = HookExecutor::load_env_file(std::path::Path::new("/nonexistent/file.env"));
         assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_load_env_file_value_with_equals() {
-        let temp_dir = std::env::temp_dir();
-        let temp_file = temp_dir.join("test_env_equals.env");
-        std::fs::write(&temp_file, "KEY=value=with=equals\n").unwrap();
-
-        let result = HookExecutor::load_env_file(&temp_file).unwrap();
-
-        assert_eq!(result.get("KEY"), Some(&"value=with=equals".to_string()));
-
-        std::fs::remove_file(&temp_file).ok();
-    }
-
-    #[test]
-    fn test_load_env_file_whitespace_trimmed() {
-        let temp_dir = std::env::temp_dir();
-        let temp_file = temp_dir.join("test_env_whitespace.env");
-        std::fs::write(&temp_file, "  KEY1  =  value1  \n\tKEY2\t=\tvalue2\t\n").unwrap();
-
-        let result = HookExecutor::load_env_file(&temp_file).unwrap();
-
-        assert_eq!(result.get("KEY1"), Some(&"value1".to_string()));
-        assert_eq!(result.get("KEY2"), Some(&"value2".to_string()));
-
-        std::fs::remove_file(&temp_file).ok();
-    }
-
-    #[test]
-    fn test_load_env_file_value_with_spaces() {
-        let temp_dir = std::env::temp_dir();
-        let temp_file = temp_dir.join("test_env_spaces.env");
-        std::fs::write(&temp_file, "MESSAGE=Hello World\n").unwrap();
-
-        let result = HookExecutor::load_env_file(&temp_file).unwrap();
-
-        assert_eq!(result.get("MESSAGE"), Some(&"Hello World".to_string()));
-
-        std::fs::remove_file(&temp_file).ok();
     }
 
     #[test]
@@ -1221,6 +1196,16 @@ mod tests {
         );
     }
 
+    /// End-to-end integration test preventing shell injection via environment files.
+    ///
+    /// Attack vector: Environment files could be controlled by attackers (e.g., through
+    /// compromised secrets management or malicious configuration). Shell metacharacters
+    /// in these files must not be interpreted during hook execution.
+    ///
+    /// This integration test verifies the complete flow: loading environment files,
+    /// passing variables through the executor, and executing hooks. It confirms that
+    /// multiple types of shell injection attempts (command substitution, semicolons,
+    /// backticks) are all treated as literal strings and not executed.
     #[test]
     fn test_environment_variables_are_literal_strings_not_shell_interpreted() {
         use crate::backends::hook::SystemHookBackend;
@@ -1270,13 +1255,11 @@ mod tests {
             "Hook should succeed - environment variables are literal strings"
         );
 
-        // Verify the malicious commands were NOT executed
         assert!(
             !marker_file.exists(),
             "Environment variables should be literal strings, not shell-interpreted"
         );
 
-        // Verify the values were treated as literal strings
         let stdout = &results[0].stdout;
         assert!(
             stdout.contains("$(rm -rf /tmp/test_injection_target)")
