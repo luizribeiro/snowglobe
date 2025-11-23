@@ -1,4 +1,4 @@
-use crate::backends::deploy::{DeployBackend, DeployTarget};
+use crate::backends::deploy::{should_update_profile, DeployBackend, DeployTarget};
 use crate::backends::nix::NixBackend;
 use crate::backends::reboot::{RebootBackend, RebootCheck, RebootReason};
 use crate::error::Result;
@@ -6,6 +6,7 @@ use crate::nix::{ActivationMode, Flake, HostMetadata, StorePath, SystemType};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
@@ -174,7 +175,7 @@ impl NixBackend for MockNixBackend {
 /// Can operate in two modes:
 /// 1. Simple mode (no fixture): Always succeeds with configurable delays
 /// 2. Fixture mode: Auto-generates realistic output, only fails hosts specified in fixture
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct MockDeployBackend {
     fixture: Option<DeploymentFixture>,
     /// List of hostnames that should fail when not using fixtures (simple mode) - both copy and activate
@@ -183,6 +184,20 @@ pub struct MockDeployBackend {
     copy_failures: Vec<String>,
     /// List of hostnames that should fail during activate only
     activate_failures: Vec<String>,
+    /// Track which hosts had profile updates (hostname, mode)
+    profile_updates: Arc<Mutex<Vec<(String, ActivationMode)>>>,
+}
+
+impl Default for MockDeployBackend {
+    fn default() -> Self {
+        Self {
+            fixture: None,
+            should_fail: Vec::new(),
+            copy_failures: Vec::new(),
+            activate_failures: Vec::new(),
+            profile_updates: Arc::new(Mutex::new(Vec::new())),
+        }
+    }
 }
 
 impl MockDeployBackend {
@@ -198,6 +213,7 @@ impl MockDeployBackend {
             should_fail: vec![],
             copy_failures: vec![],
             activate_failures: vec![],
+            profile_updates: Arc::new(Mutex::new(Vec::new())),
         }
     }
 
@@ -205,6 +221,20 @@ impl MockDeployBackend {
     pub fn from_file(path: &Path) -> Result<Self> {
         let fixture = DeploymentFixture::from_file(path)?;
         Ok(Self::from_fixture(fixture))
+    }
+
+    /// Get a list of hosts and modes where profile updates were called
+    pub fn get_profile_updates(&self) -> Vec<(String, ActivationMode)> {
+        self.profile_updates.lock().unwrap().clone()
+    }
+
+    /// Check if profile update was called for a specific host
+    pub fn profile_update_called_for(&self, hostname: &str) -> bool {
+        self.profile_updates
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|(h, _)| h == hostname)
     }
 
     /// Set failures for simple mode (when not using fixtures) - fails during both copy and activate
@@ -327,8 +357,16 @@ impl DeployBackend for MockDeployBackend {
         &self,
         target: &DeployTarget,
         _store_path: &StorePath,
-        _mode: ActivationMode,
+        mode: ActivationMode,
     ) -> Result<()> {
+        // Track profile updates for modes that should update profile
+        if should_update_profile(mode) {
+            self.profile_updates
+                .lock()
+                .unwrap()
+                .push((target.hostname.clone(), mode));
+        }
+
         let (should_fail, error_msg) = self.should_fail_at(&target.hostname, "activate");
 
         if !cfg!(debug_assertions) {

@@ -3,7 +3,10 @@ use crate::nix::{ActivationMode, StorePath};
 use crate::process::{OutputMode, StreamingExecutor};
 use std::process::Command;
 
-use super::{DeployBackend, DeployTarget};
+use super::{
+    activation_mode_to_string, execute_command, should_update_profile, update_system_profile,
+    DeployBackend, DeployTarget,
+};
 
 /// Convert a Command to a shell-like string representation for error messages
 ///
@@ -137,12 +140,18 @@ impl DeployBackend for SshDeployBackend {
         store_path: &StorePath,
         mode: ActivationMode,
     ) -> Result<()> {
-        let mode_arg = match mode {
-            ActivationMode::Switch => "switch",
-            ActivationMode::Boot => "boot",
-            ActivationMode::Test => "test",
-            ActivationMode::DryActivate => "dry-activate",
-        };
+        // Create NixOS system profile generation for rollback support (persistent modes only)
+        if should_update_profile(mode) {
+            update_system_profile(store_path, &target.hostname, |args| {
+                // Wrap nix-env command in sudo and execute via SSH
+                let mut ssh_args = vec!["sudo"];
+                ssh_args.extend_from_slice(args);
+                let mut cmd = self.ssh_command(target, &ssh_args);
+                execute_command(&mut cmd, self.output_mode)
+            })?;
+        }
+
+        let mode_arg = activation_mode_to_string(mode);
 
         // Check if snowglobe-activate helper is available on target
         let helper_available = self.check_helper_available(target);
@@ -497,5 +506,119 @@ mod tests {
             // Should fail due to nonexistent host, but shouldn't panic
             assert!(result.is_err());
         }
+    }
+
+    use super::super::common::test_utils::{create_test_store_path, create_test_target_with_port};
+
+    fn create_test_backend() -> SshDeployBackend {
+        SshDeployBackend::new().with_quiet()
+    }
+
+    fn create_test_target(hostname: &str, port: Option<u16>) -> DeployTarget {
+        let mut target = create_test_target_with_port(hostname, port);
+        target.user = Some("root".to_string());
+        target
+    }
+
+    #[test]
+    fn test_activate_switch_attempts_profile_update_via_ssh() {
+        let deployer = create_test_backend();
+        let target = create_test_target("nonexistent.invalid", None);
+        let store_path = create_test_store_path("/nix/store/test-system");
+
+        let result = deployer.activate(&target, &store_path, ActivationMode::Switch);
+
+        assert!(result.is_err());
+        let err_string = format!("{:?}", result.unwrap_err());
+
+        // Should fail during SSH profile update attempt
+        assert!(
+            err_string.contains("profile") || err_string.contains("SshFailed"),
+            "Expected error to mention profile update or SSH failure: {}",
+            err_string
+        );
+    }
+
+    #[test]
+    fn test_activate_boot_attempts_profile_update_via_ssh() {
+        let deployer = create_test_backend();
+        let target = create_test_target("nonexistent.invalid", None);
+        let store_path = create_test_store_path("/nix/store/test-system");
+
+        let result = deployer.activate(&target, &store_path, ActivationMode::Boot);
+
+        assert!(result.is_err());
+        let err_string = format!("{:?}", result.unwrap_err());
+
+        // Should fail during SSH profile update attempt
+        assert!(
+            err_string.contains("profile") || err_string.contains("SshFailed"),
+            "Expected error to mention profile update or SSH failure: {}",
+            err_string
+        );
+    }
+
+    #[test]
+    fn test_activate_test_skips_profile_update_via_ssh() {
+        let deployer = create_test_backend();
+        let target = create_test_target("nonexistent.invalid", None);
+        let store_path = create_test_store_path("/nix/store/test-system");
+
+        // Test mode should skip profile update and attempt activation directly
+        let result = deployer.activate(&target, &store_path, ActivationMode::Test);
+
+        assert!(result.is_err());
+        let err_string = format!("{:?}", result.unwrap_err());
+
+        // Should fail at SSH connection or activation, not at profile update
+        assert!(
+            err_string.contains("SshFailed")
+                || err_string.contains("CommandFailed")
+                || err_string.contains("DeployError"),
+            "Expected SSH/activation error (not profile update): {}",
+            err_string
+        );
+    }
+
+    #[test]
+    fn test_activate_dry_activate_skips_profile_update_via_ssh() {
+        let deployer = create_test_backend();
+        let target = create_test_target("nonexistent.invalid", None);
+        let store_path = create_test_store_path("/nix/store/test-system");
+
+        // DryActivate mode should skip profile update
+        let result = deployer.activate(&target, &store_path, ActivationMode::DryActivate);
+
+        assert!(result.is_err());
+        let err_string = format!("{:?}", result.unwrap_err());
+
+        // Should fail at SSH/activation, not at profile update
+        assert!(
+            err_string.contains("SshFailed")
+                || err_string.contains("CommandFailed")
+                || err_string.contains("DeployError"),
+            "Expected SSH/activation error: {}",
+            err_string
+        );
+    }
+
+    #[test]
+    fn test_activate_with_realistic_store_paths() {
+        let deployer = create_test_backend();
+        let target = create_test_target("hydrogen.example.com", Some(22));
+        let store_path =
+            create_test_store_path("/nix/store/abc123def456-nixos-system-hydrogen-24.05");
+
+        let result = deployer.activate(&target, &store_path, ActivationMode::Switch);
+
+        assert!(result.is_err());
+        let err_string = format!("{:?}", result.unwrap_err());
+
+        // Should fail at SSH connection (host doesn't exist)
+        assert!(
+            err_string.contains("profile") || err_string.contains("SshFailed"),
+            "Expected SSH or profile error: {}",
+            err_string
+        );
     }
 }
