@@ -371,6 +371,34 @@ mod tests {
     }
 
     #[test]
+    fn test_hook_failure_with_continue_returns_failure_in_results() {
+        let backend =
+            Arc::new(MockHookBackend::new().with_local_failures(vec!["exit 1".to_string()]));
+
+        let mut hook = HookConfig::test_fixture(
+            "failing-hook",
+            HookStage::PreActivate,
+            HookLocation::Local,
+            "exit 1",
+        );
+        hook.continue_on_failure = true;
+
+        let mut hooks_by_host = HashMap::new();
+        hooks_by_host.insert("test-host".to_string(), vec![hook]);
+
+        let executor = HookExecutor::new(backend, hooks_by_host);
+
+        let results = executor
+            .execute_hooks_for_stage("test-host", HookStage::PreActivate, None, &HashMap::new())
+            .unwrap();
+
+        // Should return results even though hook failed
+        assert_eq!(results.len(), 1);
+        assert!(!results[0].success);
+        assert_eq!(results[0].exit_code, Some(1));
+    }
+
+    #[test]
     fn test_has_hooks_for_stage() {
         let backend = Arc::new(SystemHookBackend::new(None, OutputMode::Capture));
 
