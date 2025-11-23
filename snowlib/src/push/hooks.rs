@@ -1222,7 +1222,7 @@ mod tests {
     }
 
     #[test]
-    fn test_environment_file_with_shell_injection_is_escaped() {
+    fn test_environment_variables_are_literal_strings_not_shell_interpreted() {
         use crate::backends::hook::SystemHookBackend;
         use crate::process::OutputMode;
         use std::sync::Arc;
@@ -1267,13 +1267,13 @@ mod tests {
         assert_eq!(results.len(), 1);
         assert!(
             results[0].success,
-            "Hook should succeed - injection should be escaped"
+            "Hook should succeed - environment variables are literal strings"
         );
 
         // Verify the malicious commands were NOT executed
         assert!(
             !marker_file.exists(),
-            "Injection marker file should not exist - shell injection should be escaped"
+            "Environment variables should be literal strings, not shell-interpreted"
         );
 
         // Verify the values were treated as literal strings

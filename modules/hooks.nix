@@ -236,4 +236,71 @@ in
       '';
     };
   };
+
+  config.assertions =
+    let
+      # Hook name validation - ensures hook names are safe for use in logs and scripts
+      validateHookNames = stageName: hooks:
+        map (hookName: {
+          assertion =
+            hookName != "" &&
+            builtins.match "[a-zA-Z0-9_-]+" hookName != null;
+          message = ''
+            Hook name "${hookName}" in ${stageName} is invalid.
+            Hook names must contain only alphanumeric characters (a-z, A-Z, 0-9),
+            hyphens (-), and underscores (_).
+
+            Valid examples: "drain-node", "check_health", "notify-deploy"
+            Invalid: "${hookName}"
+          '';
+        }) (attrNames hooks);
+
+      # Hook command validation - ensures commands are non-empty
+      validateHookCommands = stageName: hooks:
+        lib.flatten (map (hookName:
+          let
+            hook = hooks.${hookName};
+          in {
+            assertion = hook.command != "";
+            message = ''
+              Hook "${hookName}" in ${stageName} has an empty command.
+              Hooks must specify a non-empty command to execute.
+            '';
+          }
+        ) (attrNames hooks));
+
+      # Hook timeout validation - ensures timeouts are reasonable
+      validateHookTimeouts = stageName: hooks:
+        lib.flatten (map (hookName:
+          let
+            hook = hooks.${hookName};
+          in {
+            assertion = hook.timeout >= 1 && hook.timeout <= 7200;
+            message = ''
+              Hook "${hookName}" in ${stageName} has an invalid timeout of ${toString hook.timeout} seconds.
+              Timeouts must be between 1 and 7200 seconds (2 hours).
+
+              If you need longer timeouts, consider breaking the operation into smaller steps
+              or running it asynchronously outside of the deployment pipeline.
+            '';
+          }
+        ) (attrNames hooks));
+
+      # Collect all validations across all stages
+      nameAssertions = lib.flatten (
+        map (stage: validateHookNames stage config.snowglobe.hooks.${stage})
+            (attrNames config.snowglobe.hooks)
+      );
+
+      commandAssertions = lib.flatten (
+        map (stage: validateHookCommands stage config.snowglobe.hooks.${stage})
+            (attrNames config.snowglobe.hooks)
+      );
+
+      timeoutAssertions = lib.flatten (
+        map (stage: validateHookTimeouts stage config.snowglobe.hooks.${stage})
+            (attrNames config.snowglobe.hooks)
+      );
+    in
+      nameAssertions ++ commandAssertions ++ timeoutAssertions;
 }

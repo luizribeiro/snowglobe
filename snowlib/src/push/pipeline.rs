@@ -56,32 +56,6 @@ fn execute_hooks(
     Ok(())
 }
 
-/// Execute hooks for a specific stage, returning HostDeploymentResult on failure
-///
-/// This is a convenience wrapper around execute_hooks that automatically handles
-/// failures by calling handle_pipeline_failure and returning an Err with the result.
-fn execute_hooks_or_fail(
-    push_ctx: &PushContext,
-    hostname: &str,
-    stage: HookStage,
-    target: Option<&DeployTarget>,
-    phase: Option<&str>,
-    store_path: Option<&StorePath>,
-    failed_step: PipelineStep,
-) -> std::result::Result<(), HostDeploymentResult> {
-    execute_hooks(push_ctx, hostname, stage, target, phase, store_path).map_err(|e| {
-        handle_pipeline_failure(
-            push_ctx,
-            hostname,
-            target,
-            phase,
-            store_path,
-            failed_step,
-            e,
-        )
-    })
-}
-
 /// Helper to handle pipeline failures consistently
 fn handle_pipeline_failure(
     push_ctx: &PushContext,
@@ -139,6 +113,36 @@ pub fn execute_host_pipeline(
     let push_ctx_ref = push_ctx.as_ref();
     let hostname = host_metadata.name.clone();
 
+    // Macro to execute hooks and return early on failure
+    //
+    // Automatically handles:
+    // - Phase/hostname context from outer scope
+    // - Error conversion to HostDeploymentResult via handle_pipeline_failure
+    // - On-failure hooks execution (triggered by handle_pipeline_failure)
+    // - Early return from execute_host_pipeline on hook failure
+    macro_rules! execute_hooks_or_return {
+        ($stage:expr, $target:expr, $store_path:expr, $step:expr) => {
+            if let Err(e) = execute_hooks(
+                push_ctx_ref,
+                &hostname,
+                $stage,
+                $target,
+                host_metadata.phase.as_deref(),
+                $store_path,
+            ) {
+                return Ok(handle_pipeline_failure(
+                    push_ctx_ref,
+                    &hostname,
+                    $target,
+                    host_metadata.phase.as_deref(),
+                    $store_path,
+                    $step,
+                    e,
+                ));
+            }
+        };
+    }
+
     // Step 1: Build
     let build_output = match execute_build_step(push_ctx_ref, host_metadata) {
         Ok(output) => output,
@@ -172,17 +176,12 @@ pub fn execute_host_pipeline(
     };
 
     // Step 2.5: Pre-activate hooks
-    if let Err(result) = execute_hooks_or_fail(
-        push_ctx_ref,
-        &hostname,
+    execute_hooks_or_return!(
         HookStage::PreActivate,
         Some(&copy_output.target),
-        host_metadata.phase.as_deref(),
         Some(&copy_output.store_path),
-        PipelineStep::Activate,
-    ) {
-        return Ok(result);
-    }
+        PipelineStep::Activate
+    );
 
     // Step 3: Activate (includes planning + activation)
     let (plan, activate_result) = match execute_activation_step(push_ctx_ref, copy_output.clone()) {
@@ -201,17 +200,12 @@ pub fn execute_host_pipeline(
     };
 
     // Step 3.5: Post-activate hooks
-    if let Err(result) = execute_hooks_or_fail(
-        push_ctx_ref,
-        &hostname,
+    execute_hooks_or_return!(
         HookStage::PostActivate,
         Some(&plan.target),
-        host_metadata.phase.as_deref(),
         Some(&plan.store_path),
-        PipelineStep::Activate,
-    ) {
-        return Ok(result);
-    }
+        PipelineStep::Activate
+    );
 
     // Step 4: Reboot (if needed)
     let (final_result, rebooted) = match execute_reboot_step(push_ctx_ref, &plan, activate_result) {
@@ -231,17 +225,12 @@ pub fn execute_host_pipeline(
 
     // Step 4.5: Post-reboot hooks (only if actually rebooted)
     if rebooted {
-        if let Err(result) = execute_hooks_or_fail(
-            push_ctx_ref,
-            &hostname,
+        execute_hooks_or_return!(
             HookStage::PostReboot,
             Some(&plan.target),
-            host_metadata.phase.as_deref(),
             Some(&plan.store_path),
-            PipelineStep::Reboot,
-        ) {
-            return Ok(result);
-        }
+            PipelineStep::Reboot
+        );
     }
 
     // Build success result
