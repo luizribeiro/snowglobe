@@ -1,6 +1,8 @@
+mod common;
 mod local;
 mod target;
 
+pub use common::*;
 pub use local::LocalDeployBackend;
 pub use target::DeployTarget;
 

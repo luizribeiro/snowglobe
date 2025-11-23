@@ -3,7 +3,10 @@ use crate::nix::{ActivationMode, StorePath, SystemType};
 use crate::process::{OutputMode, StreamingExecutor};
 use std::process::Command;
 
-use super::{DeployBackend, DeployTarget};
+use super::{
+    activation_mode_to_string, execute_command, should_update_profile, update_system_profile,
+    DeployBackend, DeployTarget,
+};
 
 /// Local deployment backend for rebuilding the current host
 ///
@@ -44,20 +47,22 @@ impl DeployBackend for LocalDeployBackend {
     ) -> Result<()> {
         let system_type = SystemType::detect_current();
 
+        // Update system profile for NixOS (creates generation)
+        if system_type == SystemType::NixOS && should_update_profile(mode) {
+            update_system_profile(store_path, &target.hostname, |args| {
+                let mut cmd = Command::new("sudo");
+                cmd.args(args);
+                execute_command(&mut cmd, self.output_mode)
+            })?;
+        }
+
         let mut cmd = Command::new("sudo");
 
         match system_type {
             SystemType::NixOS => {
                 let switch_to_configuration =
                     format!("{}/bin/switch-to-configuration", store_path.as_str());
-
-                let mode_arg = match mode {
-                    ActivationMode::Switch => "switch",
-                    ActivationMode::Boot => "boot",
-                    ActivationMode::Test => "test",
-                    ActivationMode::DryActivate => "dry-activate",
-                };
-
+                let mode_arg = activation_mode_to_string(mode);
                 cmd.args([&switch_to_configuration, mode_arg]);
             }
             SystemType::Darwin => {
@@ -243,18 +248,31 @@ mod tests {
         );
     }
 
+    fn create_test_backend() -> LocalDeployBackend {
+        LocalDeployBackend::new().with_quiet()
+    }
+
+    fn create_test_target(hostname: &str) -> DeployTarget {
+        DeployTarget {
+            user: None,
+            hostname: hostname.to_string(),
+            port: None,
+        }
+    }
+
+    fn create_test_store_path(path: &str) -> StorePath {
+        StorePath::new(path.to_string())
+    }
+
     #[test]
     #[cfg(not(target_os = "macos"))]
     fn test_activate_nixos_uses_switch_to_configuration() {
-        let backend = LocalDeployBackend::new().with_quiet();
-        let target = DeployTarget {
-            user: None,
-            hostname: "localhost".to_string(),
-            port: None,
-        };
-        let store_path = StorePath::new("/nix/store/nonexistent-nixos-system".to_string());
+        let backend = create_test_backend();
+        let target = create_test_target("localhost");
+        let store_path = create_test_store_path("/nix/store/nonexistent-nixos-system");
 
-        let result = backend.activate(&target, &store_path, ActivationMode::Switch);
+        // Use Test mode to skip profile update (ephemeral activation)
+        let result = backend.activate(&target, &store_path, ActivationMode::Test);
 
         assert!(result.is_err());
         let err = result.unwrap_err();
@@ -270,6 +288,152 @@ mod tests {
             contains_switch_to_config,
             "NixOS should try to use switch-to-configuration. Display: {}, Debug: {}",
             err_display, err_debug
+        );
+    }
+
+    #[test]
+    #[cfg(not(target_os = "macos"))]
+    fn test_activate_switch_attempts_profile_update_on_nixos() {
+        let backend = create_test_backend();
+        let target = create_test_target("localhost");
+        let store_path = create_test_store_path("/nix/store/test-system");
+
+        let result = backend.activate(&target, &store_path, ActivationMode::Switch);
+
+        assert!(result.is_err());
+        let err_string = format!("{:?}", result.unwrap_err());
+
+        // Should fail during profile update step (before activation)
+        assert!(
+            err_string.contains("profile"),
+            "Expected error to mention profile update: {}",
+            err_string
+        );
+    }
+
+    #[test]
+    #[cfg(not(target_os = "macos"))]
+    fn test_activate_boot_attempts_profile_update_on_nixos() {
+        let backend = create_test_backend();
+        let target = create_test_target("localhost");
+        let store_path = create_test_store_path("/nix/store/test-system");
+
+        let result = backend.activate(&target, &store_path, ActivationMode::Boot);
+
+        assert!(result.is_err());
+        let err_string = format!("{:?}", result.unwrap_err());
+
+        // Should fail during profile update step (before activation)
+        assert!(
+            err_string.contains("profile"),
+            "Expected error to mention profile update: {}",
+            err_string
+        );
+    }
+
+    #[test]
+    #[cfg(not(target_os = "macos"))]
+    fn test_activate_test_skips_profile_update_on_nixos() {
+        let backend = create_test_backend();
+        let target = create_test_target("localhost");
+        let store_path = create_test_store_path("/nix/store/test-system");
+
+        // Test mode should skip profile update and go straight to activation
+        let result = backend.activate(&target, &store_path, ActivationMode::Test);
+
+        assert!(result.is_err());
+        let err_string = format!("{:?}", result.unwrap_err());
+
+        // Should fail at switch-to-configuration, not at nix-env
+        assert!(
+            err_string.contains("switch-to-configuration"),
+            "Expected error to mention switch-to-configuration (not profile update): {}",
+            err_string
+        );
+
+        // Should NOT have attempted profile update
+        assert!(
+            !err_string.contains("nix-env") && !err_string.contains("update system profile"),
+            "Test mode should skip profile update: {}",
+            err_string
+        );
+    }
+
+    #[test]
+    #[cfg(not(target_os = "macos"))]
+    fn test_activate_dry_activate_skips_profile_update_on_nixos() {
+        let backend = create_test_backend();
+        let target = create_test_target("localhost");
+        let store_path = create_test_store_path("/nix/store/test-system");
+
+        // DryActivate mode should skip profile update
+        let result = backend.activate(&target, &store_path, ActivationMode::DryActivate);
+
+        assert!(result.is_err());
+        let err_string = format!("{:?}", result.unwrap_err());
+
+        // Should fail at switch-to-configuration, not at nix-env
+        assert!(
+            err_string.contains("switch-to-configuration"),
+            "Expected error to mention switch-to-configuration: {}",
+            err_string
+        );
+
+        // Should NOT have attempted profile update
+        assert!(
+            !err_string.contains("nix-env") && !err_string.contains("update system profile"),
+            "DryActivate mode should skip profile update: {}",
+            err_string
+        );
+    }
+
+    #[test]
+    #[cfg(not(target_os = "macos"))]
+    fn test_activate_with_realistic_store_paths() {
+        let backend = create_test_backend();
+        let target = create_test_target("hydrogen");
+        let store_path =
+            create_test_store_path("/nix/store/abc123def456-nixos-system-hydrogen-24.05");
+
+        // Test that realistic store paths work correctly
+        let result = backend.activate(&target, &store_path, ActivationMode::Switch);
+
+        assert!(result.is_err());
+        let err_string = format!("{:?}", result.unwrap_err());
+
+        // Should fail at profile update (path doesn't actually exist)
+        assert!(
+            err_string.contains("profile"),
+            "Expected error to mention profile update: {}",
+            err_string
+        );
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn test_activate_switch_skips_profile_on_darwin() {
+        let backend = create_test_backend();
+        let target = create_test_target("localhost");
+        let store_path = create_test_store_path("/nix/store/test-darwin-system");
+
+        // Darwin doesn't use system profiles, should skip profile update entirely
+        let result = backend.activate(&target, &store_path, ActivationMode::Switch);
+
+        assert!(result.is_err());
+        let err_string = format!("{:?}", result.unwrap_err());
+
+        // Should fail at activate script, not at nix-env
+        assert!(
+            err_string.contains("activate") || err_string.contains("Failed to execute"),
+            "Expected error about activation: {}",
+            err_string
+        );
+
+        // Should NOT have attempted nix-env on Darwin
+        assert!(
+            !err_string.contains("nix-env") && !err_string.contains("profile"),
+            "Darwin should not attempt profile update: {}",
+            err_string
         );
     }
 }
