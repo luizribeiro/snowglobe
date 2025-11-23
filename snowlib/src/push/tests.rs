@@ -2340,7 +2340,7 @@ fn test_push_skip_reboot_flag_with_detected_reboot() {
 // Integration Tests for Profile Update Feature
 // ============================================================================
 
-fn create_profile_update_test_context() -> (
+fn create_profile_test_backends() -> (
     Flake,
     MockNixBackend,
     MockDeployBackend,
@@ -2361,7 +2361,7 @@ fn create_profile_update_test_context() -> (
     (flake, nix_backend, deployer, reboot_detector, observer)
 }
 
-fn create_test_host(name: &str, fqdn: &str) -> HostMetadata {
+fn create_nixos_host_metadata(name: &str, fqdn: &str) -> HostMetadata {
     HostMetadata {
         name: name.to_string(),
         fqdn: fqdn.to_string(),
@@ -2386,10 +2386,12 @@ fn create_push_config(strategy: PushStrategy, concurrency: usize) -> PushConfigu
 
 #[test]
 fn test_push_profile_update_for_switch_mode() {
-    let (flake, nix_backend, deployer, reboot_detector, observer) =
-        create_profile_update_test_context();
+    let (flake, nix_backend, deployer, reboot_detector, observer) = create_profile_test_backends();
 
-    let hosts = vec![create_test_host("test-host", "test-host.example.com")];
+    let hosts = vec![create_nixos_host_metadata(
+        "test-host",
+        "test-host.example.com",
+    )];
     let config = create_push_config(PushStrategy::Switch, 1);
 
     let results = {
@@ -2427,10 +2429,12 @@ fn test_push_profile_update_for_switch_mode() {
 
 #[test]
 fn test_push_profile_update_skipped_for_test_mode() {
-    let (flake, nix_backend, deployer, reboot_detector, observer) =
-        create_profile_update_test_context();
+    let (flake, nix_backend, deployer, reboot_detector, observer) = create_profile_test_backends();
 
-    let hosts = vec![create_test_host("test-host", "test-host.example.com")];
+    let hosts = vec![create_nixos_host_metadata(
+        "test-host",
+        "test-host.example.com",
+    )];
     let config = create_push_config(PushStrategy::Test, 1);
 
     let results = {
@@ -2465,13 +2469,12 @@ fn test_push_profile_update_skipped_for_test_mode() {
 
 #[test]
 fn test_push_profile_update_multiple_hosts() {
-    let (flake, nix_backend, deployer, reboot_detector, observer) =
-        create_profile_update_test_context();
+    let (flake, nix_backend, deployer, reboot_detector, observer) = create_profile_test_backends();
 
     let hosts = vec![
-        create_test_host("host1", "host1.example.com"),
-        create_test_host("host2", "host2.example.com"),
-        create_test_host("host3", "host3.example.com"),
+        create_nixos_host_metadata("host1", "host1.example.com"),
+        create_nixos_host_metadata("host2", "host2.example.com"),
+        create_nixos_host_metadata("host3", "host3.example.com"),
     ];
     let config = create_push_config(PushStrategy::Switch, 3);
 

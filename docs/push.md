@@ -209,6 +209,36 @@ snow push myhost --test
 - You want to test the new configuration without committing to it
 - The system will revert on next reboot
 
+### System Profile Generations
+
+Snowglobe automatically manages NixOS system profile generations during deployments. This ensures that successful deployments create visible generations that appear in `nixos-rebuild list-generations` and support system rollbacks.
+
+#### Which Modes Create Generations?
+
+**Persistent Modes (create generations):**
+- `switch` - Creates a generation and activates immediately
+- `boot` - Creates a generation for next boot
+
+**Ephemeral Modes (skip generations):**
+- `test` - Temporary activation, no generation created
+- `dry-activate` - Preview only, no changes made
+
+#### Verifying Generations
+
+After a successful deployment with `--switch` or `--boot`:
+
+```bash
+# On the target host
+nixos-rebuild list-generations
+
+# Output shows new generation:
+# Generation 142 (current): Mon Nov 23 12:00:00 2025
+```
+
+#### Why Ephemeral Modes Skip Generations
+
+Test and dry-activate modes are designed for experimentation and validation. Creating generations for these operations would pollute the generation list and make rollback history harder to navigate. These modes intentionally skip profile updates to keep your generation list clean and meaningful.
+
 ---
 
 ## Reboot Detection & Handling
