@@ -22,3 +22,6 @@ Cargo.lock
 
 # Work in progress documentation
 docs/wip/
+
+# Claude settings
+.claude/settings.local.json

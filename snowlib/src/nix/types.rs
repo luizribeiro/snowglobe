@@ -46,20 +46,15 @@ pub struct Host {
 }
 
 /// Reboot policy for a host
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum RebootPolicy {
     /// Never automatically reboot (use boot mode without reboot)
     Never,
     /// Always reboot after deployment (force reboot even without detection)
     Always,
     /// Automatically detect if reboot is needed (default)
+    #[default]
     Auto,
-}
-
-impl Default for RebootPolicy {
-    fn default() -> Self {
-        Self::Auto
-    }
 }
 
 impl std::str::FromStr for RebootPolicy {

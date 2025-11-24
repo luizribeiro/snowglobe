@@ -11,20 +11,15 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 
 /// Controls how command output is handled during execution
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum OutputMode {
     /// Capture output but don't display it
+    #[default]
     Capture,
     /// Display output via tracing at info level
     Display,
     /// Direct passthrough to terminal (inherit stdio)
     Inherit,
-}
-
-impl Default for OutputMode {
-    fn default() -> Self {
-        Self::Capture
-    }
 }
 
 /// Result of executing a command
