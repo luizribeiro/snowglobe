@@ -1,6 +1,7 @@
 use crate::backends::deploy::DeployTarget;
 use crate::backends::reboot::RebootCheck;
-use crate::nix::{ActivationMode, HostMetadata, StorePath};
+use crate::host::HostMetadata;
+use crate::nix::{ActivationMode, StorePath};
 use std::fmt;
 
 /// A push deployment plan for a single host

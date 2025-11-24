@@ -1,7 +1,7 @@
 use super::{HookBackend, HookResult};
 use crate::backends::deploy::DeployTarget;
 use crate::error::Result;
-use crate::nix::{HookConfig, HookLocation, HookStage};
+use crate::hooks::{HookConfig, HookLocation, HookStage};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;

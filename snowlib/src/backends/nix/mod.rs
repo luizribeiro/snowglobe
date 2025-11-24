@@ -7,7 +7,8 @@ pub use mock::MockNixBackend;
 pub use system::SystemNixBackend;
 
 use crate::error::{NixError, Result};
-use crate::nix::{Flake, Host, HostMetadata, StorePath, SystemType};
+use crate::host::{Host, HostMetadata};
+use crate::nix::{Flake, StorePath, SystemType};
 use crate::process::OutputMode;
 
 /// Parse hostnames from nix JSON output

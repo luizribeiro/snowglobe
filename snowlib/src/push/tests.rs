@@ -5,13 +5,15 @@ use super::*;
 use crate::backends::deploy::DeployTarget;
 use crate::backends::deploy::MockDeployBackend;
 use crate::backends::nix::MockNixBackend;
-use crate::nix::{ActivationMode, Flake, HostMetadata, StorePath, SystemType};
+use crate::host::HostMetadata;
+use crate::nix::{ActivationMode, Flake, StorePath, SystemType};
+use crate::reboot::RebootPolicy;
 
 /// Helper to create just HostMetadata for push tests
 fn make_host_metadata(
     name: &str,
     phase: Option<&str>,
-    reboot_policy: crate::nix::RebootPolicy,
+    reboot_policy: RebootPolicy,
 ) -> HostMetadata {
     HostMetadata {
         name: name.to_string(),
@@ -28,7 +30,7 @@ fn make_host_metadata(
 fn make_host(
     name: &str,
     phase: Option<&str>,
-    reboot_policy: crate::nix::RebootPolicy,
+    reboot_policy: RebootPolicy,
 ) -> (HostMetadata, DeployTarget, StorePath) {
     let metadata = make_host_metadata(name, phase, reboot_policy);
 
@@ -218,7 +220,7 @@ fn test_create_deployment_plans_auto_mode_no_reboot() {
     };
     let detector = SystemRebootBackend::new(config);
 
-    let hosts = vec![make_host("test", None, crate::nix::RebootPolicy::Auto)];
+    let hosts = vec![make_host("test", None, RebootPolicy::Auto)];
 
     let (plans, blocked) =
         create_deployment_plans(hosts, &detector, PushStrategy::Auto, false).unwrap();
@@ -235,7 +237,7 @@ fn test_create_deployment_plans_auto_mode_no_reboot() {
 #[test]
 fn test_create_deployment_plans_dry_run() {
     let detector = SystemRebootBackend::default();
-    let hosts = vec![make_host("test", None, crate::nix::RebootPolicy::Auto)];
+    let hosts = vec![make_host("test", None, RebootPolicy::Auto)];
 
     let (plans, blocked) =
         create_deployment_plans(hosts, &detector, PushStrategy::DryRun, false).unwrap();
@@ -249,7 +251,7 @@ fn test_create_deployment_plans_dry_run() {
 #[test]
 fn test_create_deployment_plans_boot_mode() {
     let detector = SystemRebootBackend::default();
-    let hosts = vec![make_host("test", None, crate::nix::RebootPolicy::Auto)];
+    let hosts = vec![make_host("test", None, RebootPolicy::Auto)];
 
     let (plans, blocked) =
         create_deployment_plans(hosts, &detector, PushStrategy::Boot, false).unwrap();
@@ -263,7 +265,7 @@ fn test_create_deployment_plans_boot_mode() {
 #[test]
 fn test_create_deployment_plans_test_mode() {
     let detector = SystemRebootBackend::default();
-    let hosts = vec![make_host("test", None, crate::nix::RebootPolicy::Auto)];
+    let hosts = vec![make_host("test", None, RebootPolicy::Auto)];
 
     let (plans, blocked) =
         create_deployment_plans(hosts, &detector, PushStrategy::Test, false).unwrap();
@@ -285,7 +287,7 @@ fn test_create_deployment_plans_switch_with_force() {
         ..Default::default()
     };
     let detector = SystemRebootBackend::new(config);
-    let hosts = vec![make_host("test", None, crate::nix::RebootPolicy::Auto)];
+    let hosts = vec![make_host("test", None, RebootPolicy::Auto)];
 
     let (plans, blocked) =
         create_deployment_plans(hosts, &detector, PushStrategy::Switch, true).unwrap();
@@ -308,9 +310,9 @@ fn test_create_deployment_plans_multiple_hosts_mixed_results() {
     let detector = SystemRebootBackend::new(config);
 
     let hosts = vec![
-        make_host("host1", None, crate::nix::RebootPolicy::Auto),
-        make_host("host2", None, crate::nix::RebootPolicy::Auto),
-        make_host("host3", None, crate::nix::RebootPolicy::Auto),
+        make_host("host1", None, RebootPolicy::Auto),
+        make_host("host2", None, RebootPolicy::Auto),
+        make_host("host3", None, RebootPolicy::Auto),
     ];
 
     let (plans, blocked) =
@@ -334,7 +336,7 @@ fn test_reboot_policy_never_uses_boot_mode() {
     };
     let detector = SystemRebootBackend::new(config);
 
-    let hosts = vec![make_host("host1", None, crate::nix::RebootPolicy::Never)];
+    let hosts = vec![make_host("host1", None, RebootPolicy::Never)];
 
     let (plans, blocked) =
         create_deployment_plans(hosts, &detector, PushStrategy::Auto, false).unwrap();
@@ -358,7 +360,7 @@ fn test_reboot_policy_always_uses_boot_mode_with_reboot() {
     };
     let detector = SystemRebootBackend::new(config);
 
-    let hosts = vec![make_host("host1", None, crate::nix::RebootPolicy::Always)];
+    let hosts = vec![make_host("host1", None, RebootPolicy::Always)];
 
     let (plans, blocked) =
         create_deployment_plans(hosts, &detector, PushStrategy::Auto, false).unwrap();
@@ -382,7 +384,7 @@ fn test_reboot_policy_auto_uses_detection() {
     };
     let detector = SystemRebootBackend::new(config);
 
-    let hosts = vec![make_host("host1", None, crate::nix::RebootPolicy::Auto)];
+    let hosts = vec![make_host("host1", None, RebootPolicy::Auto)];
 
     let (plans, blocked) =
         create_deployment_plans(hosts, &detector, PushStrategy::Auto, false).unwrap();
@@ -405,7 +407,7 @@ fn test_reboot_policy_never_overrides_switch_mode() {
     };
     let detector = SystemRebootBackend::new(config);
 
-    let hosts = vec![make_host("host1", None, crate::nix::RebootPolicy::Never)];
+    let hosts = vec![make_host("host1", None, RebootPolicy::Never)];
 
     let (plans, blocked) =
         create_deployment_plans(hosts, &detector, PushStrategy::Switch, false).unwrap();
@@ -427,7 +429,7 @@ fn test_reboot_policy_always_overrides_switch_mode() {
     };
     let detector = SystemRebootBackend::new(config);
 
-    let hosts = vec![make_host("host1", None, crate::nix::RebootPolicy::Always)];
+    let hosts = vec![make_host("host1", None, RebootPolicy::Always)];
 
     let (plans, blocked) =
         create_deployment_plans(hosts, &detector, PushStrategy::Switch, false).unwrap();
@@ -449,7 +451,7 @@ fn test_force_overrides_never_policy_with_switch() {
     };
     let detector = SystemRebootBackend::new(config);
 
-    let hosts = vec![make_host("host1", None, crate::nix::RebootPolicy::Never)];
+    let hosts = vec![make_host("host1", None, RebootPolicy::Never)];
 
     let (plans, blocked) =
         create_deployment_plans(hosts, &detector, PushStrategy::Switch, true).unwrap();
@@ -470,7 +472,7 @@ fn test_force_overrides_always_policy_with_switch() {
     };
     let detector = SystemRebootBackend::new(config);
 
-    let hosts = vec![make_host("host1", None, crate::nix::RebootPolicy::Always)];
+    let hosts = vec![make_host("host1", None, RebootPolicy::Always)];
 
     let (plans, blocked) =
         create_deployment_plans(hosts, &detector, PushStrategy::Switch, true).unwrap();
@@ -651,7 +653,7 @@ fn test_push_with_single_phase() {
                 phase: Some("p1".to_string()),
                 tags: vec![],
                 fqdn: "host1.example.com".to_string(),
-                reboot_policy: crate::nix::RebootPolicy::Auto,
+                reboot_policy: RebootPolicy::Auto,
                 system_type: SystemType::NixOS,
                 hooks: Vec::new(),
             },
@@ -670,7 +672,7 @@ fn test_push_with_single_phase() {
                 phase: Some("p1".to_string()),
                 tags: vec![],
                 fqdn: "host2.example.com".to_string(),
-                reboot_policy: crate::nix::RebootPolicy::Auto,
+                reboot_policy: RebootPolicy::Auto,
                 system_type: SystemType::NixOS,
                 hooks: Vec::new(),
             },
@@ -722,7 +724,7 @@ fn test_push_with_multiple_phases() {
             fqdn: "host3.example.com".to_string(),
             phase: Some("p2".to_string()),
             tags: vec![],
-            reboot_policy: crate::nix::RebootPolicy::Auto,
+            reboot_policy: RebootPolicy::Auto,
             system_type: SystemType::NixOS,
             hooks: Vec::new(),
         },
@@ -731,7 +733,7 @@ fn test_push_with_multiple_phases() {
             fqdn: "host1.example.com".to_string(),
             phase: Some("p1".to_string()),
             tags: vec![],
-            reboot_policy: crate::nix::RebootPolicy::Auto,
+            reboot_policy: RebootPolicy::Auto,
             system_type: SystemType::NixOS,
             hooks: Vec::new(),
         },
@@ -794,7 +796,7 @@ fn test_push_stops_on_phase_failure() {
             fqdn: "host1.example.com".to_string(),
             phase: Some("p1".to_string()),
             tags: vec![],
-            reboot_policy: crate::nix::RebootPolicy::Auto,
+            reboot_policy: RebootPolicy::Auto,
             system_type: SystemType::NixOS,
             hooks: Vec::new(),
         },
@@ -803,7 +805,7 @@ fn test_push_stops_on_phase_failure() {
             fqdn: "host2.example.com".to_string(),
             phase: Some("p2".to_string()),
             tags: vec![],
-            reboot_policy: crate::nix::RebootPolicy::Auto,
+            reboot_policy: RebootPolicy::Auto,
             system_type: SystemType::NixOS,
             hooks: Vec::new(),
         },
@@ -866,7 +868,7 @@ fn test_push_with_noop_observer() {
             phase: Some("p1".to_string()),
             tags: vec![],
             fqdn: "host1.example.com".to_string(),
-            reboot_policy: crate::nix::RebootPolicy::Auto,
+            reboot_policy: RebootPolicy::Auto,
             system_type: SystemType::NixOS,
             hooks: Vec::new(),
         },
@@ -895,7 +897,7 @@ fn test_push_with_default_phase() {
             phase: None, // No phase specified
             tags: vec![],
             fqdn: "host1.example.com".to_string(),
-            reboot_policy: crate::nix::RebootPolicy::Auto,
+            reboot_policy: RebootPolicy::Auto,
             system_type: SystemType::NixOS,
             hooks: Vec::new(),
         },
@@ -930,7 +932,7 @@ fn test_push_with_partial_failure_in_phase() {
                 phase: Some("p1".to_string()),
                 tags: vec![],
                 fqdn: "host1.example.com".to_string(),
-                reboot_policy: crate::nix::RebootPolicy::Auto,
+                reboot_policy: RebootPolicy::Auto,
                 system_type: SystemType::NixOS,
                 hooks: Vec::new(),
             },
@@ -949,7 +951,7 @@ fn test_push_with_partial_failure_in_phase() {
                 phase: Some("p1".to_string()),
                 tags: vec![],
                 fqdn: "host2.example.com".to_string(),
-                reboot_policy: crate::nix::RebootPolicy::Auto,
+                reboot_policy: RebootPolicy::Auto,
                 system_type: SystemType::NixOS,
                 hooks: Vec::new(),
             },
@@ -1021,7 +1023,7 @@ fn test_push_error_message_includes_source() {
         fqdn: "fail.example.com".to_string(),
         phase: Some("p1".to_string()),
         tags: vec![],
-        reboot_policy: crate::nix::RebootPolicy::Auto,
+        reboot_policy: RebootPolicy::Auto,
         system_type: SystemType::NixOS,
         hooks: Vec::new(),
     }];
@@ -1118,7 +1120,7 @@ fn test_push_error_message_format_with_activation_failure() {
         fqdn: "test.example.com".to_string(),
         phase: Some("p1".to_string()),
         tags: vec![],
-        reboot_policy: crate::nix::RebootPolicy::Auto,
+        reboot_policy: RebootPolicy::Auto,
         system_type: SystemType::NixOS,
         hooks: Vec::new(),
     }];
@@ -1196,7 +1198,7 @@ fn test_push_full_workflow_single_phase_success() {
             fqdn: "web1.example.com".to_string(),
             phase: Some("web".to_string()),
             tags: vec![],
-            reboot_policy: crate::nix::RebootPolicy::Never,
+            reboot_policy: RebootPolicy::Never,
             system_type: SystemType::NixOS,
             hooks: Vec::new(),
         },
@@ -1205,7 +1207,7 @@ fn test_push_full_workflow_single_phase_success() {
             fqdn: "web2.example.com".to_string(),
             phase: Some("web".to_string()),
             tags: vec![],
-            reboot_policy: crate::nix::RebootPolicy::Never,
+            reboot_policy: RebootPolicy::Never,
             system_type: SystemType::NixOS,
             hooks: Vec::new(),
         },
@@ -1278,7 +1280,7 @@ fn test_push_full_workflow_multi_phase_success() {
             fqdn: "db1.example.com".to_string(),
             phase: Some("database".to_string()),
             tags: vec![],
-            reboot_policy: crate::nix::RebootPolicy::Never,
+            reboot_policy: RebootPolicy::Never,
             system_type: SystemType::NixOS,
             hooks: Vec::new(),
         },
@@ -1287,7 +1289,7 @@ fn test_push_full_workflow_multi_phase_success() {
             fqdn: "web1.example.com".to_string(),
             phase: Some("web".to_string()),
             tags: vec![],
-            reboot_policy: crate::nix::RebootPolicy::Never,
+            reboot_policy: RebootPolicy::Never,
             system_type: SystemType::NixOS,
             hooks: Vec::new(),
         },
@@ -1353,7 +1355,7 @@ fn test_push_build_failure_stops_deployment() {
         fqdn: "fail-host.example.com".to_string(),
         phase: None,
         tags: vec![],
-        reboot_policy: crate::nix::RebootPolicy::Never,
+        reboot_policy: RebootPolicy::Never,
         system_type: SystemType::NixOS,
         hooks: Vec::new(),
     }];
@@ -1417,7 +1419,7 @@ fn test_push_copy_failure_stops_deployment() {
         fqdn: "fail-copy.example.com".to_string(),
         phase: None,
         tags: vec![],
-        reboot_policy: crate::nix::RebootPolicy::Never,
+        reboot_policy: RebootPolicy::Never,
         system_type: SystemType::NixOS,
         hooks: Vec::new(),
     }];
@@ -1484,7 +1486,7 @@ fn test_push_copy_observer_hooks_called() {
             fqdn: "host1.example.com".to_string(),
             phase: Some("p1".to_string()),
             tags: vec![],
-            reboot_policy: crate::nix::RebootPolicy::Never,
+            reboot_policy: RebootPolicy::Never,
             system_type: SystemType::NixOS,
             hooks: Vec::new(),
         },
@@ -1493,7 +1495,7 @@ fn test_push_copy_observer_hooks_called() {
             fqdn: "host2.example.com".to_string(),
             phase: Some("p1".to_string()),
             tags: vec![],
-            reboot_policy: crate::nix::RebootPolicy::Never,
+            reboot_policy: RebootPolicy::Never,
             system_type: SystemType::NixOS,
             hooks: Vec::new(),
         },
@@ -1557,7 +1559,7 @@ fn test_push_build_observer_hooks_called() {
             fqdn: "host1.example.com".to_string(),
             phase: Some("p1".to_string()),
             tags: vec![],
-            reboot_policy: crate::nix::RebootPolicy::Never,
+            reboot_policy: RebootPolicy::Never,
             system_type: SystemType::NixOS,
             hooks: Vec::new(),
         },
@@ -1566,7 +1568,7 @@ fn test_push_build_observer_hooks_called() {
             fqdn: "host2.example.com".to_string(),
             phase: Some("p1".to_string()),
             tags: vec![],
-            reboot_policy: crate::nix::RebootPolicy::Never,
+            reboot_policy: RebootPolicy::Never,
             system_type: SystemType::NixOS,
             hooks: Vec::new(),
         },
@@ -1636,7 +1638,7 @@ fn test_push_build_partial_failure() {
             fqdn: "host1.example.com".to_string(),
             phase: Some("p1".to_string()),
             tags: vec![],
-            reboot_policy: crate::nix::RebootPolicy::Never,
+            reboot_policy: RebootPolicy::Never,
             system_type: SystemType::NixOS,
             hooks: Vec::new(),
         },
@@ -1645,7 +1647,7 @@ fn test_push_build_partial_failure() {
             fqdn: "host2.example.com".to_string(),
             phase: Some("p1".to_string()),
             tags: vec![],
-            reboot_policy: crate::nix::RebootPolicy::Never,
+            reboot_policy: RebootPolicy::Never,
             system_type: SystemType::NixOS,
             hooks: Vec::new(),
         },
@@ -1716,7 +1718,7 @@ fn test_push_ignore_phases_flag() {
             fqdn: "db1.example.com".to_string(),
             phase: Some("database".to_string()),
             tags: vec![],
-            reboot_policy: crate::nix::RebootPolicy::Never,
+            reboot_policy: RebootPolicy::Never,
             system_type: SystemType::NixOS,
             hooks: Vec::new(),
         },
@@ -1725,7 +1727,7 @@ fn test_push_ignore_phases_flag() {
             fqdn: "web1.example.com".to_string(),
             phase: Some("web".to_string()),
             tags: vec![],
-            reboot_policy: crate::nix::RebootPolicy::Never,
+            reboot_policy: RebootPolicy::Never,
             system_type: SystemType::NixOS,
             hooks: Vec::new(),
         },
@@ -1783,7 +1785,7 @@ fn test_push_phase_failure_stops_next_phase() {
             fqdn: "phase1-host.example.com".to_string(),
             phase: Some("phase1".to_string()),
             tags: vec![],
-            reboot_policy: crate::nix::RebootPolicy::Never,
+            reboot_policy: RebootPolicy::Never,
             system_type: SystemType::NixOS,
             hooks: Vec::new(),
         },
@@ -1792,7 +1794,7 @@ fn test_push_phase_failure_stops_next_phase() {
             fqdn: "phase2-host.example.com".to_string(),
             phase: Some("phase2".to_string()),
             tags: vec![],
-            reboot_policy: crate::nix::RebootPolicy::Never,
+            reboot_policy: RebootPolicy::Never,
             system_type: SystemType::NixOS,
             hooks: Vec::new(),
         },
@@ -1870,7 +1872,7 @@ fn test_push_reboot_execution_success() {
     let hosts = vec![make_host_metadata(
         "reboot-host",
         Some("default"),
-        crate::nix::RebootPolicy::Auto,
+        RebootPolicy::Auto,
     )];
 
     let config = PushConfiguration {
@@ -1960,7 +1962,7 @@ fn test_push_reboot_execution_failure() {
     let hosts = vec![make_host_metadata(
         "fail-reboot",
         Some("default"),
-        crate::nix::RebootPolicy::Auto,
+        RebootPolicy::Auto,
     )];
 
     let config = PushConfiguration {
@@ -2037,7 +2039,7 @@ fn test_push_skip_reboot_when_not_required() {
     let hosts = vec![make_host_metadata(
         "no-reboot",
         Some("default"),
-        crate::nix::RebootPolicy::Auto,
+        RebootPolicy::Auto,
     )];
 
     let config = PushConfiguration {
@@ -2110,7 +2112,7 @@ fn test_push_reboot_with_boot_mode() {
     let hosts = vec![make_host_metadata(
         "boot-host",
         Some("default"),
-        crate::nix::RebootPolicy::Auto,
+        RebootPolicy::Auto,
     )];
 
     let config = PushConfiguration {
@@ -2165,7 +2167,7 @@ fn test_push_reboot_policy_always() {
     let hosts = vec![make_host_metadata(
         "always-reboot",
         Some("default"),
-        crate::nix::RebootPolicy::Always, // Always reboot
+        RebootPolicy::Always, // Always reboot
     )];
 
     let config = PushConfiguration {
@@ -2232,7 +2234,7 @@ fn test_push_reboot_policy_never() {
     let hosts = vec![make_host_metadata(
         "never-reboot",
         Some("default"),
-        crate::nix::RebootPolicy::Never, // Never reboot
+        RebootPolicy::Never, // Never reboot
     )];
 
     let config = PushConfiguration {
@@ -2290,7 +2292,7 @@ fn test_push_skip_reboot_flag_overrides_always_policy() {
     let hosts = vec![make_host_metadata(
         "always-reboot",
         Some("default"),
-        crate::nix::RebootPolicy::Always, // Policy says always reboot
+        RebootPolicy::Always, // Policy says always reboot
     )];
 
     let config = PushConfiguration {
@@ -2357,7 +2359,7 @@ fn test_push_skip_reboot_flag_with_detected_reboot() {
     let hosts = vec![make_host_metadata(
         "needs-reboot",
         Some("default"),
-        crate::nix::RebootPolicy::Auto, // Auto policy
+        RebootPolicy::Auto, // Auto policy
     )];
 
     let config = PushConfiguration {
@@ -2430,7 +2432,7 @@ fn create_nixos_host_metadata(name: &str, fqdn: &str) -> HostMetadata {
         fqdn: fqdn.to_string(),
         phase: Some("default".to_string()),
         tags: vec![],
-        reboot_policy: crate::nix::RebootPolicy::Auto,
+        reboot_policy: RebootPolicy::Auto,
         system_type: SystemType::NixOS,
         hooks: vec![],
     }
@@ -2596,7 +2598,7 @@ fn test_push_profile_update_multiple_hosts() {
 // ============================================================================
 
 use crate::backends::hook::MockHookBackend;
-use crate::nix::{HookConfig, HookLocation, HookStage};
+use crate::hooks::{HookConfig, HookLocation, HookStage};
 
 #[test]
 fn test_push_with_pre_activate_hooks() {
@@ -2619,7 +2621,7 @@ fn test_push_with_pre_activate_hooks() {
         fqdn: "test-host.example.com".to_string(),
         phase: Some("production".to_string()),
         tags: vec![],
-        reboot_policy: crate::nix::RebootPolicy::Auto,
+        reboot_policy: RebootPolicy::Auto,
         system_type: SystemType::NixOS,
         hooks: vec![
             HookConfig::test_fixture(
@@ -2696,7 +2698,7 @@ fn test_push_with_post_activate_hooks() {
         fqdn: "test-host.example.com".to_string(),
         phase: Some("production".to_string()),
         tags: vec![],
-        reboot_policy: crate::nix::RebootPolicy::Auto,
+        reboot_policy: RebootPolicy::Auto,
         system_type: SystemType::NixOS,
         hooks: vec![HookConfig::test_fixture(
             "test-hook",
@@ -2759,7 +2761,7 @@ fn test_push_with_post_reboot_hooks() {
         fqdn: "test-host.example.com".to_string(),
         phase: Some("production".to_string()),
         tags: vec![],
-        reboot_policy: crate::nix::RebootPolicy::Always,
+        reboot_policy: RebootPolicy::Always,
         system_type: SystemType::NixOS,
         hooks: vec![HookConfig::test_fixture(
             "test-hook",
@@ -2829,7 +2831,7 @@ fn test_push_post_reboot_hooks_not_executed_when_reboot_fails() {
         fqdn: "test-host.example.com".to_string(),
         phase: Some("production".to_string()),
         tags: vec![],
-        reboot_policy: crate::nix::RebootPolicy::Always,
+        reboot_policy: RebootPolicy::Always,
         system_type: SystemType::NixOS,
         hooks: vec![HookConfig::test_fixture(
             "test-hook",
@@ -2910,7 +2912,7 @@ fn test_push_pre_activate_hook_failure_aborts_deployment() {
         fqdn: "test-host.example.com".to_string(),
         phase: Some("production".to_string()),
         tags: vec![],
-        reboot_policy: crate::nix::RebootPolicy::Auto,
+        reboot_policy: RebootPolicy::Auto,
         system_type: SystemType::NixOS,
         hooks: vec![HookConfig::test_fixture(
             "test-hook",
@@ -2990,7 +2992,7 @@ fn test_push_hook_failure_with_continue_on_failure() {
         fqdn: "test-host.example.com".to_string(),
         phase: Some("production".to_string()),
         tags: vec![],
-        reboot_policy: crate::nix::RebootPolicy::Auto,
+        reboot_policy: RebootPolicy::Auto,
         system_type: SystemType::NixOS,
         hooks: vec![hook],
     }];
@@ -3042,7 +3044,7 @@ fn test_push_on_failure_hooks_execute_when_build_fails() {
         fqdn: "test-host.example.com".to_string(),
         phase: Some("production".to_string()),
         tags: vec![],
-        reboot_policy: crate::nix::RebootPolicy::Auto,
+        reboot_policy: RebootPolicy::Auto,
         system_type: SystemType::NixOS,
         hooks: vec![
             HookConfig::test_fixture(
@@ -3116,7 +3118,7 @@ fn test_push_on_failure_hooks_execute_when_copy_fails() {
         fqdn: "test-host.example.com".to_string(),
         phase: Some("production".to_string()),
         tags: vec![],
-        reboot_policy: crate::nix::RebootPolicy::Auto,
+        reboot_policy: RebootPolicy::Auto,
         system_type: SystemType::NixOS,
         hooks: vec![HookConfig::test_fixture(
             "test-hook",
@@ -3180,7 +3182,7 @@ fn test_push_environment_variables_passed_to_hooks() {
         fqdn: "test-host.example.com".to_string(),
         phase: Some("production".to_string()),
         tags: vec![],
-        reboot_policy: crate::nix::RebootPolicy::Auto,
+        reboot_policy: RebootPolicy::Auto,
         system_type: SystemType::NixOS,
         hooks: vec![HookConfig::test_fixture(
             "test-hook",
@@ -3245,7 +3247,7 @@ fn test_push_hooks_execute_in_parallel_for_multiple_hosts() {
             fqdn: "host1.example.com".to_string(),
             phase: Some("production".to_string()),
             tags: vec![],
-            reboot_policy: crate::nix::RebootPolicy::Auto,
+            reboot_policy: RebootPolicy::Auto,
             system_type: SystemType::NixOS,
             hooks: vec![HookConfig::test_fixture(
                 "test-hook",
@@ -3259,7 +3261,7 @@ fn test_push_hooks_execute_in_parallel_for_multiple_hosts() {
             fqdn: "host2.example.com".to_string(),
             phase: Some("production".to_string()),
             tags: vec![],
-            reboot_policy: crate::nix::RebootPolicy::Auto,
+            reboot_policy: RebootPolicy::Auto,
             system_type: SystemType::NixOS,
             hooks: vec![HookConfig::test_fixture(
                 "test-hook",
@@ -3328,7 +3330,7 @@ fn test_push_hook_failure_in_one_host_doesnt_affect_others() {
             fqdn: "host1.example.com".to_string(),
             phase: Some("production".to_string()),
             tags: vec![],
-            reboot_policy: crate::nix::RebootPolicy::Auto,
+            reboot_policy: RebootPolicy::Auto,
             system_type: SystemType::NixOS,
             hooks: vec![HookConfig::test_fixture(
                 "test-hook",
@@ -3342,7 +3344,7 @@ fn test_push_hook_failure_in_one_host_doesnt_affect_others() {
             fqdn: "host2.example.com".to_string(),
             phase: Some("production".to_string()),
             tags: vec![],
-            reboot_policy: crate::nix::RebootPolicy::Auto,
+            reboot_policy: RebootPolicy::Auto,
             system_type: SystemType::NixOS,
             hooks: vec![HookConfig::test_fixture(
                 "test-hook",
@@ -3428,7 +3430,7 @@ fn test_push_hook_with_explicit_environment() {
         fqdn: "test-host.local".to_string(),
         phase: Some("test".to_string()),
         tags: vec![],
-        reboot_policy: crate::nix::RebootPolicy::Never,
+        reboot_policy: RebootPolicy::Never,
         system_type: SystemType::NixOS,
         hooks: vec![hook],
     }];
@@ -3487,7 +3489,7 @@ fn test_full_pipeline_all_hook_stages_execute_in_order() {
         fqdn: "k8s-node-01.cluster.local".to_string(),
         phase: Some("production".to_string()),
         tags: vec![],
-        reboot_policy: crate::nix::RebootPolicy::Always,
+        reboot_policy: RebootPolicy::Always,
         system_type: SystemType::NixOS,
         hooks: vec![
             HookConfig::test_fixture(
@@ -3602,7 +3604,7 @@ fn test_pipeline_environment_variables_propagated_correctly() {
         fqdn: "web-server-01.example.com".to_string(),
         phase: Some("staging".to_string()),
         tags: vec![],
-        reboot_policy: crate::nix::RebootPolicy::Always,
+        reboot_policy: RebootPolicy::Always,
         system_type: SystemType::NixOS,
         hooks: vec![
             HookConfig::test_fixture(
@@ -3701,7 +3703,7 @@ fn test_pipeline_hooks_execute_by_priority_order() {
         fqdn: "priority-test.local".to_string(),
         phase: Some("test".to_string()),
         tags: vec![],
-        reboot_policy: crate::nix::RebootPolicy::Never,
+        reboot_policy: RebootPolicy::Never,
         system_type: SystemType::NixOS,
         hooks: vec![hook1, hook2, hook3],
     }];
@@ -3772,7 +3774,7 @@ fn test_post_reboot_hooks_not_executed_when_no_reboot_needed() {
         fqdn: "no-reboot-host.local".to_string(),
         phase: Some("test".to_string()),
         tags: vec![],
-        reboot_policy: crate::nix::RebootPolicy::Never,
+        reboot_policy: RebootPolicy::Never,
         system_type: SystemType::NixOS,
         hooks: vec![
             HookConfig::test_fixture(

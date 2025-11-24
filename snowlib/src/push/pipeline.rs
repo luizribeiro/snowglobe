@@ -5,7 +5,9 @@
 
 use crate::backends::deploy::{DeployResult, DeployTarget};
 use crate::error::Result;
-use crate::nix::{HookStage, HostMetadata, StorePath};
+use crate::hooks::HookStage;
+use crate::host::HostMetadata;
+use crate::nix::StorePath;
 use std::collections::HashMap;
 use std::sync::Arc;
 

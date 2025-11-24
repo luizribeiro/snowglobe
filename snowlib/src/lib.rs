@@ -9,10 +9,13 @@
 
 pub mod backends;
 pub mod error;
+pub mod hooks;
+pub mod host;
 pub mod nix;
 pub mod observer;
 pub mod process;
 pub mod push;
+pub mod reboot;
 
 pub use backends::deploy::{
     DeployBackend, DeployResult, DeployTarget, LocalDeployBackend, SshDeployBackend,
@@ -21,10 +24,13 @@ pub use backends::hook::{HookBackend, SystemHookBackend};
 pub use backends::nix::{NixBackend, SystemNixBackend};
 pub use backends::reboot::{LocalRebootBackend, RebootBackend, RebootCheck, SystemRebootBackend};
 pub use error::Result;
-pub use nix::{get_hostname, ActivationMode, Flake, StorePath, SystemType};
+pub use hooks::{HookConfig, HookLocation, HookStage};
+pub use host::{get_hostname, Host, HostMetadata};
+pub use nix::{ActivationMode, Flake, StorePath, SystemType};
 pub use observer::PushObserver;
 pub use process::OutputMode;
 pub use push::{push, HookExecutor, PushConfiguration, PushContext, PushResults, PushStrategy};
+pub use reboot::RebootPolicy;
 
 #[cfg(debug_assertions)]
 pub use backends::deploy::{DeploymentFixture, HostFixture, MockDeployBackend, OperationFixture};

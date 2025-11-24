@@ -6,7 +6,9 @@
 use crate::backends::deploy::DeployTarget;
 use crate::backends::reboot::{RebootBackend, RebootCheck, RebootReason};
 use crate::error::Result;
-use crate::nix::{ActivationMode, HostMetadata, RebootPolicy, StorePath};
+use crate::host::HostMetadata;
+use crate::nix::{ActivationMode, StorePath};
+use crate::reboot::RebootPolicy;
 
 use super::config::PushStrategy;
 use super::results::{BlockedHost, PushPlan};

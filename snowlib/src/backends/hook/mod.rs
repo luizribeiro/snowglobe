@@ -8,7 +8,7 @@ pub use system::SystemHookBackend;
 
 use crate::backends::deploy::DeployTarget;
 use crate::error::Result;
-use crate::nix::HookConfig;
+use crate::hooks::HookConfig;
 use std::collections::HashMap;
 use std::time::Duration;
 

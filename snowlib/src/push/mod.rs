@@ -31,7 +31,7 @@ pub use results::{
 };
 
 use crate::error::Result;
-use crate::nix::HostMetadata;
+use crate::host::HostMetadata;
 use pipeline::execute_host_pipeline;
 use rayon::prelude::*;
 use std::collections::HashMap;
@@ -82,9 +82,8 @@ fn skip_remaining_phases(
 /// # Example
 ///
 /// ```no_run
-/// use snowlib::{push, PushConfiguration, PushContext, Flake, SystemNixBackend, SshDeployBackend, SystemRebootBackend};
+/// use snowlib::{push, PushConfiguration, PushContext, Flake, SystemNixBackend, SshDeployBackend, SystemRebootBackend, HostMetadata};
 /// use snowlib::observer::NoopObserver;
-/// use snowlib::nix::HostMetadata;
 ///
 /// # fn example(hosts: Vec<HostMetadata>) -> snowlib::Result<()> {
 /// let flake = Flake::new(None)?;

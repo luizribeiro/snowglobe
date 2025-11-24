@@ -9,7 +9,7 @@
 use super::{HookBackend, HookResult};
 use crate::backends::deploy::DeployTarget;
 use crate::error::Result;
-use crate::nix::HookConfig;
+use crate::hooks::HookConfig;
 use crate::process::OutputMode;
 use nix::sys::signal::{self, Signal};
 use nix::sys::wait::{self, WaitPidFlag, WaitStatus};
@@ -325,7 +325,7 @@ impl HookBackend for SystemHookBackend {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::nix::{HookLocation, HookStage};
+    use crate::hooks::{HookLocation, HookStage};
 
     #[test]
     fn test_execute_local_success() {

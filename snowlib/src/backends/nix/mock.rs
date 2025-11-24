@@ -1,8 +1,10 @@
 use super::NixBackend;
 use crate::backends::deploy::{BuildFixture, DeploymentFixture, MetadataFixture};
 use crate::error::Result;
-use crate::nix::{Flake, Host, HostMetadata, StorePath, SystemType};
+use crate::host::{Host, HostMetadata};
+use crate::nix::{Flake, StorePath, SystemType};
 use crate::process::OutputMode;
+use crate::reboot::RebootPolicy;
 use std::thread;
 use std::time::Duration;
 
@@ -89,7 +91,7 @@ impl NixBackend for MockNixBackend {
                 phase: meta_fix.phase.clone(),
                 tags: meta_fix.tags.clone(),
                 fqdn: meta_fix.fqdn.clone(),
-                reboot_policy: crate::nix::RebootPolicy::Auto,
+                reboot_policy: RebootPolicy::Auto,
                 system_type,
                 hooks: Vec::new(),
             })
@@ -99,7 +101,7 @@ impl NixBackend for MockNixBackend {
                 phase: Some("production".to_string()),
                 tags: vec![],
                 fqdn: format!("{}.example.com", host),
-                reboot_policy: crate::nix::RebootPolicy::Auto,
+                reboot_policy: RebootPolicy::Auto,
                 system_type,
                 hooks: Vec::new(),
             })

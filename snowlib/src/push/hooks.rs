@@ -3,7 +3,7 @@
 use crate::backends::deploy::DeployTarget;
 use crate::backends::hook::{HookBackend, HookResult};
 use crate::error::Result;
-use crate::nix::{HookConfig, HookLocation, HookStage};
+use crate::hooks::{HookConfig, HookLocation, HookStage};
 use std::collections::HashMap;
 use std::sync::Arc;
 

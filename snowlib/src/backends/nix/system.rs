@@ -1,7 +1,10 @@
 use super::{parse_hostnames, NixBackend};
 use crate::error::Result;
-use crate::nix::{Flake, Host, HostMetadata, NixCommand, StorePath, SystemType};
+use crate::hooks::{HookConfig, HookLocation, HookStage};
+use crate::host::{Host, HostMetadata};
+use crate::nix::{Flake, NixCommand, StorePath, SystemType};
 use crate::process::OutputMode;
+use crate::reboot::RebootPolicy;
 use std::str::FromStr;
 
 /// System implementation of NixBackend that executes real Nix commands
@@ -88,7 +91,7 @@ impl NixBackend for SystemNixBackend {
 
         #[derive(serde::Deserialize)]
         struct HookConfigWithoutStage {
-            location: crate::nix::HookLocation,
+            location: HookLocation,
             command: String,
             #[serde(default)]
             environment: std::collections::HashMap<String, String>,
@@ -140,14 +143,14 @@ impl NixBackend for SystemNixBackend {
             _ => meta.hostname.clone(),
         };
 
-        let reboot_policy = crate::nix::RebootPolicy::from_str(&meta.reboot_policy)?;
+        let reboot_policy = RebootPolicy::from_str(&meta.reboot_policy)?;
 
         // Convert hooks from stage-grouped HashMap to flat Vec
         let mut hooks = Vec::new();
         for (stage_str, stage_hooks) in meta.hooks {
-            let stage = crate::nix::HookStage::from_str(&stage_str)?;
+            let stage = HookStage::from_str(&stage_str)?;
             for (hook_name, hook) in stage_hooks {
-                hooks.push(crate::nix::HookConfig {
+                hooks.push(HookConfig {
                     name: hook_name,
                     stage,
                     location: hook.location,
