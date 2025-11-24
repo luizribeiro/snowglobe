@@ -4,6 +4,7 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     systems.url = "github:nix-systems/default";
+    nixt.url = "github:nix-community/nixt";
   };
 
   outputs = { self, nixpkgs, systems, ... }@inputs:
@@ -66,6 +67,7 @@
               cargo-audit
               rust-analyzer
               pre-commit
+              inputs.nixt.packages.${system}.default
             ];
 
             shellHook = ''
@@ -87,5 +89,14 @@
           };
         }
       );
+
+      __nixt = inputs.nixt.lib.grow {
+        blocks = [
+          (import ./modules/hooks.test.nix {
+            inherit (inputs) nixt;
+            pkgs = nixpkgs.legacyPackages.x86_64-linux;
+          })
+        ];
+      };
     };
 }

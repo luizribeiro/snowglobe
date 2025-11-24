@@ -1,9 +1,6 @@
 # direnv
 .direnv
 
-# Nix flake
-flake.lock
-
 # Cargo workspace
 /target
 Cargo.lock
