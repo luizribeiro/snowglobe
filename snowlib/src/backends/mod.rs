@@ -12,6 +12,3 @@ pub mod deploy;
 pub mod hook;
 pub mod nix;
 pub mod reboot;
-
-#[cfg(any(debug_assertions, test))]
-pub mod mock;

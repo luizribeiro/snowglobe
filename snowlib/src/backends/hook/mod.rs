@@ -1,5 +1,9 @@
+#[cfg(any(debug_assertions, test))]
+mod mock;
 mod system;
 
+#[cfg(any(debug_assertions, test))]
+pub use mock::MockHookBackend;
 pub use system::SystemHookBackend;
 
 use crate::backends::deploy::DeployTarget;

@@ -1,0 +1,161 @@
+use super::NixBackend;
+use crate::backends::deploy::{BuildFixture, DeploymentFixture, MetadataFixture};
+use crate::error::Result;
+use crate::nix::{Flake, Host, HostMetadata, StorePath, SystemType};
+use crate::process::OutputMode;
+use std::thread;
+use std::time::Duration;
+
+/// Mock implementation of NixBackend that uses fixtures instead of real Nix commands
+///
+/// This allows testing the entire deployment pipeline without requiring Nix infrastructure.
+/// Fixtures can specify custom metadata, build successes/failures, timing, and output.
+#[derive(Debug, Clone)]
+pub struct MockNixBackend {
+    fixture: Option<DeploymentFixture>,
+    build_failures: Vec<String>,
+}
+
+impl MockNixBackend {
+    /// Create a new MockNixBackend with no fixture (uses defaults)
+    pub fn new() -> Self {
+        Self {
+            fixture: None,
+            build_failures: Vec::new(),
+        }
+    }
+
+    /// Create a MockNixBackend from a deployment fixture
+    pub fn from_fixture(fixture: DeploymentFixture) -> Self {
+        Self {
+            fixture: Some(fixture),
+            build_failures: Vec::new(),
+        }
+    }
+
+    /// Configure hosts that should fail during build
+    pub fn with_build_failures(mut self, failures: Vec<String>) -> Self {
+        self.build_failures = failures;
+        self
+    }
+
+    /// Get metadata fixture for a host
+    fn get_metadata_fixture(&self, host: &str) -> Option<&MetadataFixture> {
+        self.fixture.as_ref()?.get_metadata(host)
+    }
+
+    /// Get build fixture for a host
+    fn get_build_fixture(&self, host: &str) -> Option<&BuildFixture> {
+        self.fixture.as_ref()?.get_build(host)
+    }
+}
+
+impl Default for MockNixBackend {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl NixBackend for MockNixBackend {
+    fn list_hosts(
+        &self,
+        _ctx: &Flake,
+        _system_type: SystemType,
+        _filter_expr: Option<&str>,
+    ) -> Result<Vec<Host>> {
+        if let Some(fixture) = &self.fixture {
+            let hosts = fixture
+                .hosts
+                .iter()
+                .map(|h| Host {
+                    name: h.hostname.clone(),
+                })
+                .collect();
+            Ok(hosts)
+        } else {
+            Ok(vec![])
+        }
+    }
+
+    fn get_host_metadata(
+        &self,
+        _flake: &Flake,
+        host: &str,
+        system_type: SystemType,
+    ) -> Result<HostMetadata> {
+        if let Some(meta_fix) = self.get_metadata_fixture(host) {
+            Ok(HostMetadata {
+                name: host.to_string(),
+                phase: meta_fix.phase.clone(),
+                tags: meta_fix.tags.clone(),
+                fqdn: meta_fix.fqdn.clone(),
+                reboot_policy: crate::nix::RebootPolicy::Auto,
+                system_type,
+                hooks: Vec::new(),
+            })
+        } else {
+            Ok(HostMetadata {
+                name: host.to_string(),
+                phase: Some("production".to_string()),
+                tags: vec![],
+                fqdn: format!("{}.example.com", host),
+                reboot_policy: crate::nix::RebootPolicy::Auto,
+                system_type,
+                hooks: Vec::new(),
+            })
+        }
+    }
+
+    fn build_host(
+        &self,
+        _flake: &Flake,
+        host: &str,
+        _system_type: SystemType,
+        _output_mode: OutputMode,
+    ) -> Result<StorePath> {
+        // Check if this host should fail
+        if self.build_failures.contains(&host.to_string()) {
+            return Err(crate::error::NixError::BuildFailed {
+                host: host.to_string(),
+                stderr: "Mock build failure".to_string(),
+                source: std::io::Error::other("Build failed (mock)"),
+            }
+            .into());
+        }
+
+        if let Some(build_fix) = self.get_build_fixture(host) {
+            print!("Building {}... ", host);
+            if !cfg!(debug_assertions) {
+                thread::sleep(Duration::from_millis(build_fix.duration_ms));
+            }
+
+            if !build_fix.stdout.is_empty() {
+                print!("{}", build_fix.stdout);
+            }
+            if !build_fix.stderr.is_empty() {
+                eprint!("{}", build_fix.stderr);
+            }
+
+            if build_fix.success {
+                println!("✓");
+                // Use store path from fixture or generate fake one
+                let store_path = build_fix
+                    .store_path
+                    .clone()
+                    .unwrap_or_else(|| format!("/nix/store/mock-{}", host));
+                Ok(StorePath::new(store_path))
+            } else {
+                println!("✗ Build failed");
+                Err(crate::error::NixError::BuildFailed {
+                    host: host.to_string(),
+                    stderr: build_fix.stderr.clone(),
+                    source: std::io::Error::other("Build failed (from fixture)"),
+                }
+                .into())
+            }
+        } else {
+            // No build fixture - just create a fake store path
+            Ok(StorePath::new(format!("/nix/store/mock-{}", host)))
+        }
+    }
+}

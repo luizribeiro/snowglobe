@@ -27,6 +27,10 @@ pub use process::OutputMode;
 pub use push::{push, HookExecutor, PushConfiguration, PushContext, PushResults, PushStrategy};
 
 #[cfg(debug_assertions)]
-pub use backends::mock::{
-    DeploymentFixture, HostFixture, MockDeployBackend, MockNixBackend, OperationFixture,
-};
+pub use backends::deploy::{DeploymentFixture, HostFixture, MockDeployBackend, OperationFixture};
+#[cfg(debug_assertions)]
+pub use backends::hook::MockHookBackend;
+#[cfg(debug_assertions)]
+pub use backends::nix::MockNixBackend;
+#[cfg(debug_assertions)]
+pub use backends::reboot::MockRebootBackend;

@@ -1,7 +1,11 @@
 mod local;
+#[cfg(any(debug_assertions, test))]
+mod mock;
 mod system;
 
 pub use local::LocalRebootBackend;
+#[cfg(any(debug_assertions, test))]
+pub use mock::MockRebootBackend;
 pub use system::SystemRebootBackend;
 
 use crate::backends::deploy::DeployTarget;

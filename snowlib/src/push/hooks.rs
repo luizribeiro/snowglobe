@@ -216,8 +216,8 @@ impl HookExecutor {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::backends::hook::MockHookBackend;
     use crate::backends::hook::SystemHookBackend;
-    use crate::backends::mock::MockHookBackend;
     use crate::process::OutputMode;
 
     #[test]

@@ -3,7 +3,8 @@
 use super::planning::create_deployment_plans;
 use super::*;
 use crate::backends::deploy::DeployTarget;
-use crate::backends::mock::{MockDeployBackend, MockNixBackend};
+use crate::backends::deploy::MockDeployBackend;
+use crate::backends::nix::MockNixBackend;
 use crate::nix::{ActivationMode, Flake, HostMetadata, StorePath, SystemType};
 
 /// Helper to create just HostMetadata for push tests
@@ -44,7 +45,7 @@ fn make_host(
 
 /// Helper to create a HookExecutor from a list of hosts
 fn make_hook_executor(
-    hook_backend: Arc<crate::backends::mock::MockHookBackend>,
+    hook_backend: Arc<crate::backends::hook::MockHookBackend>,
     hosts: &[HostMetadata],
 ) -> crate::push::hooks::HookExecutor {
     let mut hooks_by_host = std::collections::HashMap::new();
@@ -1087,13 +1088,13 @@ fn test_push_error_message_format_with_activation_failure() {
     let mut failures = HashMap::new();
     failures.insert(
         "test.example.com".to_string(),
-        crate::backends::mock::FailureSpec {
+        crate::backends::deploy::FailureSpec {
             phase: "activate".to_string(),
             error: Some("systemd service failed to start".to_string()),
         },
     );
 
-    let fixture = crate::backends::mock::DeploymentFixture {
+    let fixture = crate::backends::deploy::DeploymentFixture {
         name: "Test error formatting".to_string(),
         description: None,
         failures,
@@ -1852,7 +1853,7 @@ fn test_push_reboot_execution_success() {
     let deployer = MockDeployBackend::new();
 
     // Configure reboot detection to require reboot
-    use crate::backends::mock::MockRebootBackend;
+    use crate::backends::reboot::MockRebootBackend;
     use crate::backends::reboot::RebootReason;
     let mut reboot_required = std::collections::HashMap::new();
     reboot_required.insert(
@@ -1940,7 +1941,7 @@ fn test_push_reboot_execution_failure() {
     let deployer = MockDeployBackend::new();
 
     // Configure reboot to be required but fail during execution
-    use crate::backends::mock::MockRebootBackend;
+    use crate::backends::reboot::MockRebootBackend;
     use crate::backends::reboot::RebootReason;
     let mut reboot_required = std::collections::HashMap::new();
     reboot_required.insert(
@@ -2028,7 +2029,7 @@ fn test_push_skip_reboot_when_not_required() {
     let deployer = MockDeployBackend::new();
 
     // No reboot required (empty HashMap)
-    use crate::backends::mock::MockRebootBackend;
+    use crate::backends::reboot::MockRebootBackend;
     let reboot_backend = MockRebootBackend::new();
 
     let observer = TestObserver::new();
@@ -2092,7 +2093,7 @@ fn test_push_reboot_with_boot_mode() {
     let deployer = MockDeployBackend::new();
 
     // Configure reboot required
-    use crate::backends::mock::MockRebootBackend;
+    use crate::backends::reboot::MockRebootBackend;
     use crate::backends::reboot::RebootReason;
     let mut reboot_required = std::collections::HashMap::new();
     reboot_required.insert(
@@ -2156,7 +2157,7 @@ fn test_push_reboot_policy_always() {
     let deployer = MockDeployBackend::new();
 
     // No reboot detected, but policy is Always
-    use crate::backends::mock::MockRebootBackend;
+    use crate::backends::reboot::MockRebootBackend;
     let reboot_backend = MockRebootBackend::new(); // Empty - no reboot required
 
     let observer = TestObserver::new();
@@ -2214,7 +2215,7 @@ fn test_push_reboot_policy_never() {
     let deployer = MockDeployBackend::new();
 
     // Reboot required but policy is Never
-    use crate::backends::mock::MockRebootBackend;
+    use crate::backends::reboot::MockRebootBackend;
     use crate::backends::reboot::RebootReason;
     let mut reboot_required = std::collections::HashMap::new();
     reboot_required.insert(
@@ -2281,7 +2282,7 @@ fn test_push_skip_reboot_flag_overrides_always_policy() {
     let deployer = MockDeployBackend::new();
 
     // Policy is Always, but user says --skip-reboot
-    use crate::backends::mock::MockRebootBackend;
+    use crate::backends::reboot::MockRebootBackend;
     let reboot_backend = MockRebootBackend::new();
 
     let observer = TestObserver::new();
@@ -2339,7 +2340,7 @@ fn test_push_skip_reboot_flag_with_detected_reboot() {
     let deployer = MockDeployBackend::new();
 
     // Reboot detected as required but user says --skip-reboot
-    use crate::backends::mock::MockRebootBackend;
+    use crate::backends::reboot::MockRebootBackend;
     use crate::backends::reboot::RebootReason;
     let mut reboot_required = std::collections::HashMap::new();
     reboot_required.insert(
@@ -2594,7 +2595,7 @@ fn test_push_profile_update_multiple_hosts() {
 // Hook Integration Tests
 // ============================================================================
 
-use crate::backends::mock::MockHookBackend;
+use crate::backends::hook::MockHookBackend;
 use crate::nix::{HookConfig, HookLocation, HookStage};
 
 #[test]
@@ -2746,7 +2747,7 @@ fn test_push_with_post_reboot_hooks() {
     let nix_backend = MockNixBackend::new();
     let deployer = MockDeployBackend::new();
 
-    use crate::backends::mock::MockRebootBackend;
+    use crate::backends::reboot::MockRebootBackend;
     let reboot_backend = MockRebootBackend::new();
 
     let observer = TestObserver::new();
@@ -2815,7 +2816,7 @@ fn test_push_post_reboot_hooks_not_executed_when_reboot_fails() {
     let nix_backend = MockNixBackend::new();
     let deployer = MockDeployBackend::new();
 
-    use crate::backends::mock::MockRebootBackend;
+    use crate::backends::reboot::MockRebootBackend;
     let reboot_backend =
         MockRebootBackend::new().with_reboot_failures(vec!["test-host".to_string()]);
 
@@ -3475,7 +3476,7 @@ fn test_full_pipeline_all_hook_stages_execute_in_order() {
     let nix_backend = MockNixBackend::new();
     let deployer = MockDeployBackend::new();
 
-    use crate::backends::mock::MockRebootBackend;
+    use crate::backends::reboot::MockRebootBackend;
     let reboot_backend = MockRebootBackend::new();
 
     let observer = TestObserver::new();
@@ -3584,7 +3585,7 @@ fn test_pipeline_environment_variables_propagated_correctly() {
     let nix_backend = MockNixBackend::new();
     let deployer = MockDeployBackend::new();
 
-    use crate::backends::mock::MockRebootBackend;
+    use crate::backends::reboot::MockRebootBackend;
     let reboot_backend = MockRebootBackend::new();
 
     let observer = TestObserver::new();
