@@ -56,7 +56,6 @@ impl HookExecutor {
 
         for hook in stage_hooks {
             tracing::info!(
-                target: "hooks",
                 "Executing {:?} hook '{}' for {}: {}",
                 stage,
                 hook.name,
@@ -75,7 +74,6 @@ impl HookExecutor {
                     }
                     Err(e) => {
                         tracing::error!(
-                            target: "hooks",
                             "Failed to load environment file {:?} for hook '{}' on {}: {}",
                             env_file,
                             hook.name,
@@ -123,7 +121,6 @@ impl HookExecutor {
 
             if !result.success && !hook.continue_on_failure {
                 tracing::error!(
-                    target: "hooks",
                     "Hook '{}' ({:?} stage) failed for {} (exit code: {:?}): {}",
                     hook.name,
                     stage,
@@ -146,7 +143,6 @@ impl HookExecutor {
                 ));
             } else if !result.success {
                 tracing::warn!(
-                    target: "hooks",
                     "Hook '{}' ({:?} stage) failed for {} but continuing (continueOnFailure=true): {}",
                     hook.name,
                     stage,
@@ -155,7 +151,6 @@ impl HookExecutor {
                 );
             } else {
                 tracing::info!(
-                    target: "hooks",
                     "Hook '{}' completed successfully for {} in {:?}",
                     hook.name,
                     hostname,
@@ -200,7 +195,6 @@ impl HookExecutor {
                 env_vars.insert(key.trim().to_string(), value.trim().to_string());
             } else {
                 tracing::warn!(
-                    target: "hooks",
                     "Skipping invalid line {} in {:?}: {}",
                     line_num + 1,
                     path,

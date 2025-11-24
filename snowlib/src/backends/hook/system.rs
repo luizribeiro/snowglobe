@@ -91,7 +91,7 @@ impl SystemHookBackend {
             let reader = BufReader::new(stdout);
             for line in reader.lines().map_while(|r| r.ok()) {
                 if output_mode == OutputMode::Display && !line.is_empty() {
-                    tracing::info!(target: "hooks", "{}", line);
+                    tracing::info!("{}", line);
                 }
                 let mut lines = stdout_lines_clone.lock().unwrap();
                 lines.extend_from_slice(line.as_bytes());
@@ -103,7 +103,7 @@ impl SystemHookBackend {
             let reader = BufReader::new(stderr);
             for line in reader.lines().map_while(|r| r.ok()) {
                 if output_mode == OutputMode::Display && !line.is_empty() {
-                    tracing::info!(target: "hooks", "stderr: {}", line);
+                    tracing::info!("stderr: {}", line);
                 }
                 let mut lines = stderr_lines_clone.lock().unwrap();
                 lines.extend_from_slice(line.as_bytes());
@@ -134,28 +134,24 @@ impl SystemHookBackend {
             Ok(Err(_)) => None,
             Err(mpsc::RecvTimeoutError::Timeout) => {
                 tracing::warn!(
-                    target: "hooks",
                     "Hook timed out after {} seconds, sending SIGTERM to PID {}",
                     timeout_secs,
                     child_pid
                 );
 
                 if let Err(e) = signal::kill(child_pid, Signal::SIGTERM) {
-                    tracing::warn!(target: "hooks", "Failed to send SIGTERM: {}", e);
+                    tracing::warn!("Failed to send SIGTERM: {}", e);
                 }
 
                 let grace_period = Duration::from_secs(SIGTERM_GRACE_PERIOD_SECS);
                 match rx.recv_timeout(grace_period) {
                     Ok(Ok(_status)) => {
-                        tracing::info!(target: "hooks", "Process exited gracefully after SIGTERM");
+                        tracing::info!("Process exited gracefully after SIGTERM");
                     }
                     _ => {
-                        tracing::warn!(
-                            target: "hooks",
-                            "Process did not exit after SIGTERM, sending SIGKILL"
-                        );
+                        tracing::warn!("Process did not exit after SIGTERM, sending SIGKILL");
                         if let Err(e) = signal::kill(child_pid, Signal::SIGKILL) {
-                            tracing::error!(target: "hooks", "Failed to send SIGKILL: {}", e);
+                            tracing::error!("Failed to send SIGKILL: {}", e);
                         }
 
                         let reap_deadline =
@@ -163,7 +159,6 @@ impl SystemHookBackend {
                         loop {
                             if Instant::now() > reap_deadline {
                                 tracing::error!(
-                                    target: "hooks",
                                     "Process {} did not die after SIGKILL (may be zombie or in uninterruptible sleep)",
                                     child_pid
                                 );
@@ -173,7 +168,7 @@ impl SystemHookBackend {
                             match wait::waitpid(child_pid, Some(WaitPidFlag::WNOHANG)) {
                                 Ok(WaitStatus::Exited(_, _))
                                 | Ok(WaitStatus::Signaled(_, _, _)) => {
-                                    tracing::info!(target: "hooks", "Process {} reaped after SIGKILL", child_pid);
+                                    tracing::info!("Process {} reaped after SIGKILL", child_pid);
                                     break;
                                 }
                                 Ok(_) => {
@@ -182,11 +177,11 @@ impl SystemHookBackend {
                                     ));
                                 }
                                 Err(nix::errno::Errno::ECHILD) => {
-                                    tracing::debug!(target: "hooks", "Process {} already reaped", child_pid);
+                                    tracing::debug!("Process {} already reaped", child_pid);
                                     break;
                                 }
                                 Err(e) => {
-                                    tracing::warn!(target: "hooks", "waitpid failed: {}", e);
+                                    tracing::warn!("waitpid failed: {}", e);
                                     break;
                                 }
                             }
@@ -208,10 +203,10 @@ impl SystemHookBackend {
         stderr_lines: Arc<Mutex<Vec<u8>>>,
     ) -> (String, String) {
         if let Err(e) = stdout_thread.join() {
-            tracing::warn!(target: "hooks", "stdout thread panicked: {:?}", e);
+            tracing::warn!("stdout thread panicked: {:?}", e);
         }
         if let Err(e) = stderr_thread.join() {
-            tracing::warn!(target: "hooks", "stderr thread panicked: {:?}", e);
+            tracing::warn!("stderr thread panicked: {:?}", e);
         }
 
         let stdout_bytes = Arc::try_unwrap(stdout_lines)

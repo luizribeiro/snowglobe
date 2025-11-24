@@ -64,7 +64,6 @@ fn execute_hooks(
 
         if !failed_hooks.is_empty() {
             tracing::warn!(
-                target: "hooks",
                 "⚠️  {} hook(s) failed for {} during {:?} stage (continued due to continueOnFailure=true):",
                 failed_hooks.len(),
                 hostname,
@@ -72,7 +71,6 @@ fn execute_hooks(
             );
             for (idx, result) in failed_hooks {
                 tracing::warn!(
-                    target: "hooks",
                     "   - Hook #{} failed with exit code {:?}: {}",
                     idx + 1,
                     result.exit_code,
@@ -107,12 +105,7 @@ fn handle_pipeline_failure(
         phase,
         store_path,
     ) {
-        tracing::warn!(
-            target: "hooks",
-            "On-failure hook execution failed for {}: {}",
-            hostname,
-            e
-        );
+        tracing::warn!("On-failure hook execution failed for {}: {}", hostname, e);
     }
 
     HostDeploymentResult {
