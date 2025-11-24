@@ -117,19 +117,6 @@ let
         example = 50;
       };
     };
-
-    config = {
-      assertions = [
-        {
-          assertion = builtins.match "[a-zA-Z0-9_-]+" name != null;
-          message = ''
-            Hook name '${name}' is invalid.
-            Hook names must contain only letters (a-z, A-Z), numbers (0-9), hyphens (-), and underscores (_).
-            Invalid characters in hook names can cause issues in logs and error messages.
-          '';
-        }
-      ];
-    };
   });
 in
 {
