@@ -2398,7 +2398,6 @@ fn test_push_skip_reboot_flag_with_detected_reboot() {
     assert!(events.iter().any(|e| e.starts_with("activation_complete")));
 }
 
-
 // ============================================================================
 // Integration Tests for Profile Update Feature
 // ============================================================================

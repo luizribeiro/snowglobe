@@ -884,7 +884,7 @@ mod tests {
             expected: Vec<(&'static str, &'static str)>,
         }
 
-        let test_cases = vec![
+        let test_cases = [
             TestCase {
                 name: "basic key-value pairs",
                 content: "KEY1=value1\nKEY2=value2\n",
