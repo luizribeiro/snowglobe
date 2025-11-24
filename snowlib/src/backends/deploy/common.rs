@@ -65,13 +65,19 @@ pub fn update_system_profile(
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        return Err(DeployError::Failed {
+        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        let exit_code = output.status.code().unwrap_or(-1);
+        let command_display = format!(
+            "sudo nix-env --profile /nix/var/nix/profiles/system --set {}",
+            store_path.as_str()
+        );
+
+        return Err(DeployError::CommandFailed {
             host: hostname.to_string(),
-            source: std::io::Error::other(if stderr.is_empty() {
-                "Failed to update system profile".to_string()
-            } else {
-                format!("Failed to update system profile: {}", stderr)
-            }),
+            command: command_display,
+            exit_code,
+            stderr,
+            stdout,
         }
         .into());
     }
@@ -235,17 +241,20 @@ mod tests {
         assert!(result.is_err());
         let err = result.unwrap_err();
         let err_msg = err.to_string();
-        assert!(err_msg.contains("Failed to deploy to host 'testhost'"));
+        assert!(err_msg.contains("testhost"));
+        assert!(err_msg.contains("permission denied"));
 
-        if let crate::error::SnowError::Deploy(crate::error::DeployError::Failed {
-            source, ..
+        if let crate::error::SnowError::Deploy(crate::error::DeployError::CommandFailed {
+            stderr,
+            command,
+            ..
         }) = err
         {
-            let source_msg = source.to_string();
-            assert!(source_msg.contains("Failed to update system profile"));
-            assert!(source_msg.contains("permission denied"));
+            assert!(stderr.contains("permission denied"));
+            assert!(command.contains("nix-env"));
+            assert!(command.contains("/nix/store/test-system"));
         } else {
-            panic!("Expected DeployError::Failed");
+            panic!("Expected DeployError::CommandFailed, got: {:?}", err);
         }
     }
 
