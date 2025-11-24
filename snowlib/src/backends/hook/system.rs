@@ -6,6 +6,7 @@
 //! occurs, the process is terminated using SIGTERM, followed by SIGKILL if it doesn't
 //! exit gracefully within 5 seconds.
 
+use super::{HookBackend, HookResult};
 use crate::backends::deploy::DeployTarget;
 use crate::error::Result;
 use crate::nix::HookConfig;
@@ -27,58 +28,6 @@ const SIGKILL_REAP_TIMEOUT_SECS: u64 = 2;
 
 /// Polling interval when waiting for process to be reaped
 const REAP_POLL_INTERVAL_MILLIS: u64 = 100;
-
-/// Result of executing a hook
-#[derive(Debug, Clone)]
-pub struct HookResult {
-    pub success: bool,
-    pub exit_code: Option<i32>,
-    pub stdout: String,
-    pub stderr: String,
-    pub duration: Duration,
-}
-
-impl HookResult {
-    pub fn success(stdout: String, stderr: String, duration: Duration) -> Self {
-        Self {
-            success: true,
-            exit_code: Some(0),
-            stdout,
-            stderr,
-            duration,
-        }
-    }
-
-    pub fn failure(
-        exit_code: Option<i32>,
-        stdout: String,
-        stderr: String,
-        duration: Duration,
-    ) -> Self {
-        Self {
-            success: false,
-            exit_code,
-            stdout,
-            stderr,
-            duration,
-        }
-    }
-}
-
-/// Backend for executing lifecycle hooks
-pub trait HookBackend: Send + Sync {
-    /// Execute a hook locally (on the machine running snow)
-    fn execute_local(&self, hook: &HookConfig, env: &HashMap<String, String>)
-        -> Result<HookResult>;
-
-    /// Execute a hook remotely (on the target host via SSH)
-    fn execute_remote(
-        &self,
-        target: &DeployTarget,
-        hook: &HookConfig,
-        env: &HashMap<String, String>,
-    ) -> Result<HookResult>;
-}
 
 /// Real implementation of HookBackend that executes hooks via shell
 pub struct SystemHookBackend {
@@ -379,28 +328,6 @@ mod tests {
     use crate::nix::{HookLocation, HookStage};
 
     #[test]
-    fn test_hook_result_success() {
-        let result =
-            HookResult::success("output".to_string(), String::new(), Duration::from_secs(1));
-        assert!(result.success);
-        assert_eq!(result.exit_code, Some(0));
-        assert_eq!(result.stdout, "output");
-    }
-
-    #[test]
-    fn test_hook_result_failure() {
-        let result = HookResult::failure(
-            Some(1),
-            String::new(),
-            "error".to_string(),
-            Duration::from_secs(1),
-        );
-        assert!(!result.success);
-        assert_eq!(result.exit_code, Some(1));
-        assert_eq!(result.stderr, "error");
-    }
-
-    #[test]
     fn test_execute_local_success() {
         let backend = SystemHookBackend::new(None, OutputMode::Capture);
         let hook = HookConfig::test_fixture(
@@ -470,13 +397,6 @@ mod tests {
     }
 
     /// Prevents command injection via shell metacharacters in environment variables.
-    ///
-    /// Attack vector: User-controlled input in environment files could contain
-    /// shell metacharacters like semicolons, allowing arbitrary command execution.
-    /// For example: `MALICIOUS=value'; rm -rf /; echo 'pwned`
-    ///
-    /// This test verifies that environment variables containing semicolons are
-    /// passed as literal strings to subprocesses, not interpreted as shell commands.
     #[test]
     fn test_execute_local_escapes_env_vars_with_shell_metacharacters() {
         let backend = SystemHookBackend::new(None, OutputMode::Capture);
@@ -501,12 +421,6 @@ mod tests {
     }
 
     /// Prevents command injection via quote escaping in environment variables.
-    ///
-    /// Attack vector: Environment variables containing quotes could break out of
-    /// string context and inject commands. For example: `VAR=value" && echo "injected`
-    ///
-    /// This test verifies that quotes in environment variable values are treated as
-    /// literal characters, not as shell syntax for breaking out of quoted contexts.
     #[test]
     fn test_execute_local_escapes_env_vars_with_quotes() {
         let backend = SystemHookBackend::new(None, OutputMode::Capture);
@@ -525,12 +439,6 @@ mod tests {
     }
 
     /// Prevents command injection via pipe operators in environment variables.
-    ///
-    /// Attack vector: Pipe operators could redirect output to other commands,
-    /// allowing data exfiltration or modification. For example: `VAR=data | base64`
-    ///
-    /// This test verifies that pipe operators in environment variables are treated
-    /// as literal characters, not as shell syntax for piping output to other commands.
     #[test]
     fn test_execute_local_escapes_env_vars_with_pipe() {
         let backend = SystemHookBackend::new(None, OutputMode::Capture);
@@ -550,12 +458,6 @@ mod tests {
     }
 
     /// Prevents command injection via backtick command substitution.
-    ///
-    /// Attack vector: Backticks execute commands and substitute their output,
-    /// allowing arbitrary code execution. For example: `VAR=`whoami``
-    ///
-    /// This test verifies that backticks in environment variables are treated as
-    /// literal characters, not as shell syntax for command substitution.
     #[test]
     fn test_execute_local_escapes_env_vars_with_backticks() {
         let backend = SystemHookBackend::new(None, OutputMode::Capture);
@@ -578,12 +480,6 @@ mod tests {
     }
 
     /// Prevents command injection via $() command substitution.
-    ///
-    /// Attack vector: The $() syntax executes commands and substitutes their output,
-    /// allowing arbitrary code execution. For example: `VAR=$(rm -rf /)`
-    ///
-    /// This test verifies that $() in environment variables is treated as a literal
-    /// string, not as shell syntax for command substitution.
     #[test]
     fn test_execute_local_escapes_env_vars_with_dollar_paren() {
         let backend = SystemHookBackend::new(None, OutputMode::Capture);
@@ -602,17 +498,8 @@ mod tests {
     }
 
     /// Prevents command injection via semicolons in remote SSH execution.
-    ///
-    /// Attack vector: When executing commands remotely via SSH, environment variables
-    /// containing semicolons could inject additional commands. The SSH command itself
-    /// must properly escape variables to prevent: `ssh host "export VAR=value; rm -rf /"`
-    ///
-    /// This test verifies that environment variables are properly escaped when passed
-    /// through SSH, ensuring semicolons remain literal characters.
     #[test]
     fn test_execute_remote_escapes_env_vars_with_semicolon() {
-        use crate::backends::deploy::DeployTarget;
-
         let backend = SystemHookBackend::new(None, OutputMode::Capture);
         let hook = HookConfig::test_fixture(
             "test-hook",
@@ -650,16 +537,8 @@ mod tests {
     }
 
     /// Prevents command injection via backticks in remote SSH execution.
-    ///
-    /// Attack vector: Backticks in environment variables could execute commands on
-    /// the remote host if not properly escaped during SSH command construction.
-    ///
-    /// This test verifies that backticks are escaped when passed through SSH,
-    /// preventing command substitution on the remote host.
     #[test]
     fn test_execute_remote_escapes_env_vars_with_backticks() {
-        use crate::backends::deploy::DeployTarget;
-
         let backend = SystemHookBackend::new(None, OutputMode::Capture);
         let hook = HookConfig::test_fixture(
             "test-hook",
@@ -684,16 +563,8 @@ mod tests {
     }
 
     /// Prevents command injection via $() substitution in remote SSH execution.
-    ///
-    /// Attack vector: The $() syntax in environment variables could execute commands
-    /// on the remote host if not properly escaped when constructing SSH commands.
-    ///
-    /// This test verifies that $() is escaped when passed through SSH, preventing
-    /// command substitution on the remote host.
     #[test]
     fn test_execute_remote_escapes_env_vars_with_dollar_paren() {
-        use crate::backends::deploy::DeployTarget;
-
         let backend = SystemHookBackend::new(None, OutputMode::Capture);
         let hook = HookConfig::test_fixture(
             "test-hook",
@@ -718,16 +589,8 @@ mod tests {
     }
 
     /// Prevents command injection via pipes in remote SSH execution.
-    ///
-    /// Attack vector: Pipe operators in environment variables could redirect output
-    /// to other commands on the remote host, enabling data exfiltration or modification.
-    ///
-    /// This test verifies that pipes are escaped when passed through SSH, preventing
-    /// output redirection on the remote host.
     #[test]
     fn test_execute_remote_escapes_env_vars_with_pipes() {
-        use crate::backends::deploy::DeployTarget;
-
         let backend = SystemHookBackend::new(None, OutputMode::Capture);
         let hook = HookConfig::test_fixture(
             "test-hook",
@@ -753,17 +616,8 @@ mod tests {
     }
 
     /// Prevents command injection via quote escaping in remote SSH execution.
-    ///
-    /// Attack vector: Quotes in environment variables could break out of string
-    /// context in SSH commands, allowing command injection. SSH commands often use
-    /// nested quoting which increases complexity and risk.
-    ///
-    /// This test verifies that quotes are properly escaped when passed through SSH,
-    /// preventing breakout from string context on the remote host.
     #[test]
     fn test_execute_remote_escapes_env_vars_with_quotes() {
-        use crate::backends::deploy::DeployTarget;
-
         let backend = SystemHookBackend::new(None, OutputMode::Capture);
         let hook = HookConfig::test_fixture(
             "test-hook",
@@ -877,8 +731,6 @@ mod tests {
 
     #[test]
     fn test_remote_hook_timeout() {
-        use crate::backends::deploy::DeployTarget;
-
         let backend = SystemHookBackend::new(None, OutputMode::Capture);
         let mut hook = HookConfig::test_fixture(
             "remote-timeout",
