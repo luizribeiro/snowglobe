@@ -34,6 +34,14 @@ let
         ;;
     esac
 
+    # Update system profile for persistent modes (switch/boot)
+    # Ephemeral modes (test/dry-activate) skip this to avoid polluting generation history
+    case "$MODE" in
+      switch|boot)
+        ${pkgs.nix}/bin/nix-env --profile /nix/var/nix/profiles/system --set "$STORE_PATH"
+        ;;
+    esac
+
     # NixOS uses /bin/switch-to-configuration
     ACTIVATION_SCRIPT="$STORE_PATH/bin/switch-to-configuration"
 

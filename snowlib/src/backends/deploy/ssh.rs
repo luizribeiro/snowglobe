@@ -140,8 +140,14 @@ impl DeployBackend for SshDeployBackend {
         store_path: &StorePath,
         mode: ActivationMode,
     ) -> Result<()> {
-        // Create NixOS system profile generation for rollback support (persistent modes only)
-        if should_update_profile(mode) {
+        let mode_arg = activation_mode_to_string(mode);
+
+        // Check if snowglobe-activate helper is available on target
+        let helper_available = self.check_helper_available(target);
+
+        // Only update profile separately if helper is NOT available
+        // When helper is available, it handles profile update internally
+        if !helper_available && should_update_profile(mode) {
             update_system_profile(store_path, &target.hostname, |args| {
                 // Wrap nix-env command in sudo and execute via SSH
                 let mut ssh_args = vec!["sudo"];
@@ -150,11 +156,6 @@ impl DeployBackend for SshDeployBackend {
                 execute_command(&mut cmd, self.output_mode)
             })?;
         }
-
-        let mode_arg = activation_mode_to_string(mode);
-
-        // Check if snowglobe-activate helper is available on target
-        let helper_available = self.check_helper_available(target);
 
         let mut cmd = if helper_available {
             // Use snowglobe-activate helper
