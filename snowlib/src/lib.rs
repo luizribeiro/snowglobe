@@ -18,9 +18,8 @@ pub use backends::deploy::{
     DeployBackend, DeployResult, DeployTarget, LocalDeployBackend, SshDeployBackend,
 };
 pub use backends::hook::{HookBackend, SystemHookBackend};
-pub use backends::local_reboot::LocalRebootBackend;
 pub use backends::nix::{NixBackend, SystemNixBackend};
-pub use backends::reboot::{RebootBackend, RebootCheck, SystemRebootBackend};
+pub use backends::reboot::{LocalRebootBackend, RebootBackend, RebootCheck, SystemRebootBackend};
 pub use error::Result;
 pub use nix::{get_hostname, ActivationMode, Flake, StorePath, SystemType};
 pub use observer::PushObserver;

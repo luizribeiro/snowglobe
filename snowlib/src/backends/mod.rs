@@ -10,7 +10,6 @@
 
 pub mod deploy;
 pub mod hook;
-pub mod local_reboot;
 pub mod nix;
 pub mod reboot;
 

@@ -1,5 +1,7 @@
+mod local;
 mod system;
 
+pub use local::LocalRebootBackend;
 pub use system::SystemRebootBackend;
 
 use crate::backends::deploy::DeployTarget;

@@ -1,5 +1,5 @@
+use super::{RebootBackend, RebootCheck, RebootDetectionConfig, RebootReason};
 use crate::backends::deploy::DeployTarget;
-use crate::backends::reboot::{RebootBackend, RebootCheck, RebootDetectionConfig, RebootReason};
 use crate::error::{DeployError, Result};
 use crate::nix::{StorePath, SystemType};
 use std::fs;
