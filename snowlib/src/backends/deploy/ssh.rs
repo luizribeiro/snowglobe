@@ -1,27 +1,23 @@
 use crate::error::{DeployError, Result};
 use crate::nix::{ActivationMode, StorePath};
-use crate::process::{OutputMode, StreamingExecutor};
-use std::process::Command;
+use crate::process::r#async::run_command;
+use crate::process::OutputMode;
+use async_trait::async_trait;
 
-use super::{
-    activation_mode_to_string, execute_command, should_update_profile, update_system_profile,
-    DeployBackend, DeployTarget,
-};
+use super::{activation_mode_to_string, should_update_profile, DeployBackend, DeployTarget};
 
-/// Convert a Command to a shell-like string representation for error messages
-///
-/// Uses proper shell escaping to safely represent the command that was executed.
-fn command_to_string(cmd: &Command) -> String {
-    let program = shell_escape::escape(cmd.get_program().to_string_lossy());
-    let args: Vec<_> = cmd
-        .get_args()
-        .map(|arg| shell_escape::escape(arg.to_string_lossy()))
+/// Convert command args to a shell-like string representation for error messages
+fn args_to_command_string(program: &str, args: &[&str]) -> String {
+    let escaped_program = shell_escape::escape(program.into());
+    let escaped_args: Vec<_> = args
+        .iter()
+        .map(|arg| shell_escape::escape((*arg).into()))
         .collect();
 
-    if args.is_empty() {
-        program.to_string()
+    if escaped_args.is_empty() {
+        escaped_program.to_string()
     } else {
-        format!("{} {}", program, args.join(" "))
+        format!("{} {}", escaped_program, escaped_args.join(" "))
     }
 }
 
@@ -64,53 +60,43 @@ impl SshDeployBackend {
         }
     }
 
-    /// Build SSH command with proper flags
-    fn ssh_command(&self, target: &DeployTarget, args: &[&str]) -> Command {
-        let mut cmd = Command::new("ssh");
-
-        // Disable interactive prompts - will error instead of prompting
-        cmd.arg("-o").arg("BatchMode=yes");
+    /// Build SSH command args with proper flags
+    fn ssh_args(&self, target: &DeployTarget, remote_args: &[&str]) -> Vec<String> {
+        let mut args = vec!["-o".to_string(), "BatchMode=yes".to_string()];
 
         if let Some(port) = target.port {
-            cmd.arg("-p").arg(port.to_string());
+            args.push("-p".to_string());
+            args.push(port.to_string());
         }
 
-        cmd.arg(self.get_destination(target));
-        cmd.args(args);
-        cmd
+        args.push(self.get_destination(target));
+        args.extend(remote_args.iter().map(|s| s.to_string()));
+        args
     }
 
     /// Check if snowglobe-activate helper is available on target
-    fn check_helper_available(&self, target: &DeployTarget) -> bool {
-        let mut cmd = self.ssh_command(target, &["command", "-v", "snowglobe-activate"]);
+    async fn check_helper_available(&self, target: &DeployTarget) -> bool {
+        let args = self.ssh_args(target, &["command", "-v", "snowglobe-activate"]);
+        let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
 
-        // Run silently to check for helper command presence
-        let result = StreamingExecutor::new(&mut cmd)
-            .output_mode(OutputMode::Capture)
-            .execute();
-
-        match result {
+        match run_command("ssh", &args_refs, OutputMode::Capture, None, None, &[]).await {
             Ok(output) => output.status.success(),
             Err(_) => false,
         }
     }
 }
 
+#[async_trait]
 impl DeployBackend for SshDeployBackend {
-    fn copy_closure(&self, target: &DeployTarget, store_path: &StorePath) -> Result<()> {
+    async fn copy_closure(&self, target: &DeployTarget, store_path: &StorePath) -> Result<()> {
         let ssh_target = format!("ssh://{}", self.get_destination(target));
 
-        let mut cmd = Command::new("nix");
-        cmd.args(["copy", "--to", &ssh_target, store_path.as_str()]);
+        let args = ["copy", "--to", &ssh_target, store_path.as_str()];
+        let command = args_to_command_string("nix", &args);
+        let env = [("NIX_SSHOPTS", "-o BatchMode=yes")];
 
-        // Configure SSH to disable interactive prompts for nix copy
-        cmd.env("NIX_SSHOPTS", "-o BatchMode=yes");
-
-        let command = command_to_string(&cmd);
-
-        let result = StreamingExecutor::new(&mut cmd)
-            .output_mode(self.output_mode)
-            .execute()
+        let result = run_command("nix", &args, self.output_mode, None, None, &env)
+            .await
             .map_err(|e| DeployError::Failed {
                 host: target.hostname.clone(),
                 source: e,
@@ -119,12 +105,10 @@ impl DeployBackend for SshDeployBackend {
         if !result.status.success() {
             let stderr = String::from_utf8_lossy(&result.stderr).trim().to_string();
             let stdout = String::from_utf8_lossy(&result.stdout).trim().to_string();
-            let exit_code = result.status.code().unwrap_or(-1);
-
             return Err(DeployError::CommandFailed {
                 host: target.hostname.clone(),
                 command,
-                exit_code,
+                exit_code: result.status.code().unwrap_or(-1),
                 stderr,
                 stdout,
             }
@@ -134,7 +118,7 @@ impl DeployBackend for SshDeployBackend {
         Ok(())
     }
 
-    fn activate(
+    async fn activate(
         &self,
         target: &DeployTarget,
         store_path: &StorePath,
@@ -143,28 +127,62 @@ impl DeployBackend for SshDeployBackend {
         let mode_arg = activation_mode_to_string(mode);
 
         // Check if snowglobe-activate helper is available on target
-        let helper_available = self.check_helper_available(target);
+        let helper_available = self.check_helper_available(target).await;
 
         // Only update profile separately if helper is NOT available
         // When helper is available, it handles profile update internally
         if !helper_available && should_update_profile(mode) {
-            update_system_profile(store_path, &target.hostname, |args| {
-                // Wrap nix-env command in sudo and execute via SSH
-                let mut ssh_args = vec!["sudo"];
-                ssh_args.extend_from_slice(args);
-                let mut cmd = self.ssh_command(target, &ssh_args);
-                execute_command(&mut cmd, self.output_mode)
-            })?;
+            // Run nix-env via SSH to update the system profile
+            let nix_env_args = [
+                "sudo",
+                "nix-env",
+                "--profile",
+                "/nix/var/nix/profiles/system",
+                "--set",
+                store_path.as_str(),
+            ];
+            let ssh_args = self.ssh_args(target, &nix_env_args);
+            let ssh_args_refs: Vec<&str> = ssh_args.iter().map(|s| s.as_str()).collect();
+
+            let result = run_command("ssh", &ssh_args_refs, self.output_mode, None, None, &[])
+                .await
+                .map_err(|e| DeployError::Failed {
+                    host: target.hostname.clone(),
+                    source: std::io::Error::new(
+                        e.kind(),
+                        format!("Failed to update system profile: {}", e),
+                    ),
+                })?;
+
+            if !result.status.success() {
+                let command_display = format!(
+                    "sudo nix-env --profile /nix/var/nix/profiles/system --set {}",
+                    store_path.as_str()
+                );
+                let stderr = String::from_utf8_lossy(&result.stderr).trim().to_string();
+                let stdout = String::from_utf8_lossy(&result.stdout).trim().to_string();
+                return Err(DeployError::CommandFailed {
+                    host: target.hostname.clone(),
+                    command: command_display,
+                    exit_code: result.status.code().unwrap_or(-1),
+                    stderr,
+                    stdout,
+                }
+                .into());
+            }
         }
 
-        let mut cmd = if helper_available {
-            // Use snowglobe-activate helper
-            self.ssh_command(
-                target,
-                &["sudo", "snowglobe-activate", store_path.as_str(), mode_arg],
-            )
+        let (remote_args, command) = if helper_available {
+            let args = vec![
+                "sudo".to_string(),
+                "snowglobe-activate".to_string(),
+                store_path.as_str().to_string(),
+                mode_arg.to_string(),
+            ];
+            let cmd =
+                args_to_command_string("ssh", &args.iter().map(|s| s.as_str()).collect::<Vec<_>>());
+            (args, cmd)
         } else {
-            // Fall back to direct activation
             tracing::warn!(
                 "snowglobe-activate not found on {}, falling back to direct activation. \
                  For better security, add the snowglobe module to your NixOS/Darwin configuration.",
@@ -173,14 +191,22 @@ impl DeployBackend for SshDeployBackend {
 
             let switch_to_configuration =
                 format!("{}/bin/switch-to-configuration", store_path.as_str());
-            self.ssh_command(target, &["sudo", &switch_to_configuration, mode_arg])
+            let args = vec![
+                "sudo".to_string(),
+                switch_to_configuration,
+                mode_arg.to_string(),
+            ];
+            let cmd =
+                args_to_command_string("ssh", &args.iter().map(|s| s.as_str()).collect::<Vec<_>>());
+            (args, cmd)
         };
 
-        let command = command_to_string(&cmd);
+        let remote_args_refs: Vec<&str> = remote_args.iter().map(|s| s.as_str()).collect();
+        let ssh_args = self.ssh_args(target, &remote_args_refs);
+        let ssh_args_refs: Vec<&str> = ssh_args.iter().map(|s| s.as_str()).collect();
 
-        let result = StreamingExecutor::new(&mut cmd)
-            .output_mode(self.output_mode)
-            .execute()
+        let result = run_command("ssh", &ssh_args_refs, self.output_mode, None, None, &[])
+            .await
             .map_err(|e| DeployError::SshFailed {
                 destination: self.get_destination(target),
                 source: e,
@@ -189,12 +215,10 @@ impl DeployBackend for SshDeployBackend {
         if !result.status.success() {
             let stderr = String::from_utf8_lossy(&result.stderr).trim().to_string();
             let stdout = String::from_utf8_lossy(&result.stdout).trim().to_string();
-            let exit_code = result.status.code().unwrap_or(-1);
-
             return Err(DeployError::CommandFailed {
                 host: target.hostname.clone(),
                 command,
-                exit_code,
+                exit_code: result.status.code().unwrap_or(-1),
                 stderr,
                 stdout,
             }
@@ -245,8 +269,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_copy_closure_error_includes_stderr() {
+    #[tokio::test]
+    async fn test_copy_closure_error_includes_stderr() {
         let deployer = SshDeployBackend::new();
         let target = DeployTarget {
             user: Some("root".to_string()),
@@ -255,14 +279,12 @@ mod tests {
         };
         let store_path = StorePath::new("/nix/store/fake-path".to_string());
 
-        // This should fail and include stderr in the error
-        let result = deployer.copy_closure(&target, &store_path);
+        let result = deployer.copy_closure(&target, &store_path).await;
 
         assert!(result.is_err());
         let err = result.unwrap_err();
         let err_string = format!("{:?}", err);
 
-        // The error should mention it's a deployment failure
         assert!(
             err_string.contains("DeployError") || err_string.contains("Failed"),
             "Error should be a deployment error: {}",
@@ -270,8 +292,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_copy_closure_quiet_mode_captures_stderr() {
+    #[tokio::test]
+    async fn test_copy_closure_quiet_mode_captures_stderr() {
         let deployer = SshDeployBackend::new().with_quiet();
         let target = DeployTarget {
             user: Some("root".to_string()),
@@ -280,14 +302,12 @@ mod tests {
         };
         let store_path = StorePath::new("/nix/store/fake-path".to_string());
 
-        // This should fail in quiet mode too
-        let result = deployer.copy_closure(&target, &store_path);
+        let result = deployer.copy_closure(&target, &store_path).await;
 
         assert!(result.is_err());
         let err = result.unwrap_err();
         let err_string = format!("{:?}", err);
 
-        // Should contain error details even in quiet mode
         assert!(
             err_string.contains("DeployError") || err_string.contains("Failed"),
             "Error should be captured in quiet mode: {}",
@@ -295,8 +315,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_activate_error_includes_stderr() {
+    #[tokio::test]
+    async fn test_activate_error_includes_stderr() {
         let deployer = SshDeployBackend::new();
         let target = DeployTarget {
             user: Some("root".to_string()),
@@ -305,14 +325,14 @@ mod tests {
         };
         let store_path = StorePath::new("/nix/store/fake-path".to_string());
 
-        // This should fail with SSH error
-        let result = deployer.activate(&target, &store_path, ActivationMode::Test);
+        let result = deployer
+            .activate(&target, &store_path, ActivationMode::Test)
+            .await;
 
         assert!(result.is_err());
         let err = result.unwrap_err();
         let err_string = format!("{:?}", err);
 
-        // Should be a deployment or SSH error
         assert!(
             err_string.contains("DeployError")
                 || err_string.contains("SshFailed")
@@ -323,7 +343,7 @@ mod tests {
     }
 
     #[test]
-    fn test_ssh_command_has_batch_mode() {
+    fn test_ssh_args_has_batch_mode() {
         let deployer = SshDeployBackend::new();
         let target = DeployTarget {
             user: Some("root".to_string()),
@@ -331,105 +351,89 @@ mod tests {
             port: Some(2222),
         };
 
-        let cmd = deployer.ssh_command(&target, &["echo", "test"]);
-        let cmd_string = format!("{:?}", cmd);
+        let args = deployer.ssh_args(&target, &["echo", "test"]);
 
-        // Should include BatchMode flag
         assert!(
-            cmd_string.contains("BatchMode=yes"),
-            "SSH command should include BatchMode: {}",
-            cmd_string
+            args.contains(&"BatchMode=yes".to_string()),
+            "SSH args should include BatchMode: {:?}",
+            args
         );
 
-        // Should include port
         assert!(
-            cmd_string.contains("2222"),
-            "SSH command should include port: {}",
-            cmd_string
+            args.contains(&"2222".to_string()),
+            "SSH args should include port: {:?}",
+            args
         );
     }
 
     #[test]
-    fn test_command_to_string_basic() {
-        let mut cmd = Command::new("ssh");
-        cmd.arg("user@host");
-        // shell-escape quotes args with @ symbol for safety
-        assert_eq!(command_to_string(&cmd), "ssh 'user@host'");
-    }
-
-    #[test]
-    fn test_command_to_string_with_spaces() {
-        let mut cmd = Command::new("ssh");
-        cmd.arg("user@host");
-        cmd.arg("some command with spaces");
+    fn test_args_to_command_string_basic() {
         assert_eq!(
-            command_to_string(&cmd),
+            args_to_command_string("ssh", &["user@host"]),
+            "ssh 'user@host'"
+        );
+    }
+
+    #[test]
+    fn test_args_to_command_string_with_spaces() {
+        assert_eq!(
+            args_to_command_string("ssh", &["user@host", "some command with spaces"]),
             "ssh 'user@host' 'some command with spaces'"
         );
     }
 
     #[test]
-    fn test_command_to_string_no_args() {
-        let cmd = Command::new("nix");
-        assert_eq!(command_to_string(&cmd), "nix");
+    fn test_args_to_command_string_no_args() {
+        assert_eq!(args_to_command_string("nix", &[]), "nix");
     }
 
     #[test]
-    fn test_command_to_string_multiple_args() {
-        let mut cmd = Command::new("nix");
-        cmd.args(["copy", "--to", "ssh://host", "/nix/store/path"]);
+    fn test_args_to_command_string_multiple_args() {
         assert_eq!(
-            command_to_string(&cmd),
+            args_to_command_string("nix", &["copy", "--to", "ssh://host", "/nix/store/path"]),
             "nix copy --to 'ssh://host' /nix/store/path"
         );
     }
 
     #[test]
-    fn test_command_to_string_with_quotes() {
-        let mut cmd = Command::new("echo");
-        cmd.arg(r#"value with "quotes""#);
-        // shell-escape uses single quotes which don't need escaping for double quotes
-        assert_eq!(command_to_string(&cmd), r#"echo 'value with "quotes"'"#);
-    }
-
-    #[test]
-    fn test_command_to_string_with_dollar_signs() {
-        let mut cmd = Command::new("sh");
-        cmd.arg("-c");
-        cmd.arg("echo $HOME");
-        // Single quotes prevent variable expansion
-        assert_eq!(command_to_string(&cmd), "sh -c 'echo $HOME'");
-    }
-
-    #[test]
-    fn test_command_to_string_with_backslashes() {
-        let mut cmd = Command::new("echo");
-        cmd.arg(r#"path\with\backslashes"#);
-        // Single quotes preserve backslashes literally
-        assert_eq!(command_to_string(&cmd), r#"echo 'path\with\backslashes'"#);
-    }
-
-    #[test]
-    fn test_command_to_string_with_pipes_and_redirects() {
-        let mut cmd = Command::new("sh");
-        cmd.arg("-c");
-        cmd.arg("cat file | grep pattern > output");
-        // Single quotes protect shell metacharacters
+    fn test_args_to_command_string_with_quotes() {
         assert_eq!(
-            command_to_string(&cmd),
+            args_to_command_string("echo", &[r#"value with "quotes""#]),
+            r#"echo 'value with "quotes"'"#
+        );
+    }
+
+    #[test]
+    fn test_args_to_command_string_with_dollar_signs() {
+        assert_eq!(
+            args_to_command_string("sh", &["-c", "echo $HOME"]),
+            "sh -c 'echo $HOME'"
+        );
+    }
+
+    #[test]
+    fn test_args_to_command_string_with_backslashes() {
+        assert_eq!(
+            args_to_command_string("echo", &[r#"path\with\backslashes"#]),
+            r#"echo 'path\with\backslashes'"#
+        );
+    }
+
+    #[test]
+    fn test_args_to_command_string_with_pipes_and_redirects() {
+        assert_eq!(
+            args_to_command_string("sh", &["-c", "cat file | grep pattern > output"]),
             "sh -c 'cat file | grep pattern > output'"
         );
     }
 
     #[test]
-    fn test_command_to_string_empty_arg() {
-        let mut cmd = Command::new("test");
-        cmd.arg("");
-        assert_eq!(command_to_string(&cmd), "test ''");
+    fn test_args_to_command_string_empty_arg() {
+        assert_eq!(args_to_command_string("test", &[""]), "test ''");
     }
 
-    #[test]
-    fn test_check_helper_available_executes_without_panic() {
+    #[tokio::test]
+    async fn test_check_helper_available_executes_without_panic() {
         let deployer = SshDeployBackend::new();
         let target = DeployTarget {
             user: Some("root".to_string()),
@@ -437,15 +441,11 @@ mod tests {
             port: None,
         };
 
-        // Test that helper detection executes without panicking
-        // We can't guarantee snowglobe-activate exists on localhost,
-        // so we just verify the function completes successfully
-        let _result = deployer.check_helper_available(&target);
-        // If we reach here, the function didn't panic - test passes
+        let _result = deployer.check_helper_available(&target).await;
     }
 
-    #[test]
-    fn test_check_helper_available_when_command_missing() {
+    #[tokio::test]
+    async fn test_check_helper_available_when_command_missing() {
         let deployer = SshDeployBackend::new();
         let target = DeployTarget {
             user: Some("root".to_string()),
@@ -453,14 +453,13 @@ mod tests {
             port: None,
         };
 
-        let result = deployer.check_helper_available(&target);
+        let result = deployer.check_helper_available(&target).await;
 
-        // SSH to nonexistent host should fail, returning false
         assert!(!result);
     }
 
-    #[test]
-    fn test_activate_builds_correct_command_structure() {
+    #[tokio::test]
+    async fn test_activate_builds_correct_command_structure() {
         let deployer = SshDeployBackend::new();
         let target = DeployTarget {
             user: Some("root".to_string()),
@@ -469,13 +468,12 @@ mod tests {
         };
         let store_path = StorePath::new("/nix/store/test-path".to_string());
 
-        // This will fail (host doesn't exist), but we can verify the command structure
-        // by examining the error which includes the command string
-        let result = deployer.activate(&target, &store_path, ActivationMode::Test);
+        let result = deployer
+            .activate(&target, &store_path, ActivationMode::Test)
+            .await;
 
         assert!(result.is_err());
 
-        // The error should contain information about the command that was attempted
         let err_string = format!("{:?}", result.unwrap_err());
         assert!(
             err_string.contains("sudo")
@@ -486,8 +484,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_activate_with_different_modes() {
+    #[tokio::test]
+    async fn test_activate_with_different_modes() {
         let deployer = SshDeployBackend::new();
         let target = DeployTarget {
             user: Some("root".to_string()),
@@ -496,15 +494,13 @@ mod tests {
         };
         let store_path = StorePath::new("/nix/store/test-path".to_string());
 
-        // Test that different activation modes are handled
         for mode in [
             ActivationMode::Switch,
             ActivationMode::Boot,
             ActivationMode::Test,
             ActivationMode::DryActivate,
         ] {
-            let result = deployer.activate(&target, &store_path, mode);
-            // Should fail due to nonexistent host, but shouldn't panic
+            let result = deployer.activate(&target, &store_path, mode).await;
             assert!(result.is_err());
         }
     }
@@ -521,18 +517,19 @@ mod tests {
         target
     }
 
-    #[test]
-    fn test_activate_switch_attempts_profile_update_via_ssh() {
+    #[tokio::test]
+    async fn test_activate_switch_attempts_profile_update_via_ssh() {
         let deployer = create_test_backend();
         let target = create_test_target("nonexistent.invalid", None);
         let store_path = create_test_store_path("/nix/store/test-system");
 
-        let result = deployer.activate(&target, &store_path, ActivationMode::Switch);
+        let result = deployer
+            .activate(&target, &store_path, ActivationMode::Switch)
+            .await;
 
         assert!(result.is_err());
         let err_string = format!("{:?}", result.unwrap_err());
 
-        // Should fail during SSH profile update attempt
         assert!(
             err_string.contains("profile") || err_string.contains("SshFailed"),
             "Expected error to mention profile update or SSH failure: {}",
@@ -540,18 +537,19 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_activate_boot_attempts_profile_update_via_ssh() {
+    #[tokio::test]
+    async fn test_activate_boot_attempts_profile_update_via_ssh() {
         let deployer = create_test_backend();
         let target = create_test_target("nonexistent.invalid", None);
         let store_path = create_test_store_path("/nix/store/test-system");
 
-        let result = deployer.activate(&target, &store_path, ActivationMode::Boot);
+        let result = deployer
+            .activate(&target, &store_path, ActivationMode::Boot)
+            .await;
 
         assert!(result.is_err());
         let err_string = format!("{:?}", result.unwrap_err());
 
-        // Should fail during SSH profile update attempt
         assert!(
             err_string.contains("profile") || err_string.contains("SshFailed"),
             "Expected error to mention profile update or SSH failure: {}",
@@ -559,19 +557,19 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_activate_test_skips_profile_update_via_ssh() {
+    #[tokio::test]
+    async fn test_activate_test_skips_profile_update_via_ssh() {
         let deployer = create_test_backend();
         let target = create_test_target("nonexistent.invalid", None);
         let store_path = create_test_store_path("/nix/store/test-system");
 
-        // Test mode should skip profile update and attempt activation directly
-        let result = deployer.activate(&target, &store_path, ActivationMode::Test);
+        let result = deployer
+            .activate(&target, &store_path, ActivationMode::Test)
+            .await;
 
         assert!(result.is_err());
         let err_string = format!("{:?}", result.unwrap_err());
 
-        // Should fail at SSH connection or activation, not at profile update
         assert!(
             err_string.contains("SshFailed")
                 || err_string.contains("CommandFailed")
@@ -581,19 +579,19 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_activate_dry_activate_skips_profile_update_via_ssh() {
+    #[tokio::test]
+    async fn test_activate_dry_activate_skips_profile_update_via_ssh() {
         let deployer = create_test_backend();
         let target = create_test_target("nonexistent.invalid", None);
         let store_path = create_test_store_path("/nix/store/test-system");
 
-        // DryActivate mode should skip profile update
-        let result = deployer.activate(&target, &store_path, ActivationMode::DryActivate);
+        let result = deployer
+            .activate(&target, &store_path, ActivationMode::DryActivate)
+            .await;
 
         assert!(result.is_err());
         let err_string = format!("{:?}", result.unwrap_err());
 
-        // Should fail at SSH/activation, not at profile update
         assert!(
             err_string.contains("SshFailed")
                 || err_string.contains("CommandFailed")
@@ -603,19 +601,20 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_activate_with_realistic_store_paths() {
+    #[tokio::test]
+    async fn test_activate_with_realistic_store_paths() {
         let deployer = create_test_backend();
         let target = create_test_target("hydrogen.example.com", Some(22));
         let store_path =
             create_test_store_path("/nix/store/abc123def456-nixos-system-hydrogen-24.05");
 
-        let result = deployer.activate(&target, &store_path, ActivationMode::Switch);
+        let result = deployer
+            .activate(&target, &store_path, ActivationMode::Switch)
+            .await;
 
         assert!(result.is_err());
         let err_string = format!("{:?}", result.unwrap_err());
 
-        // Should fail at SSH connection (host doesn't exist)
         assert!(
             err_string.contains("profile") || err_string.contains("SshFailed"),
             "Expected SSH or profile error: {}",

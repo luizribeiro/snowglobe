@@ -17,6 +17,7 @@ pub use target::DeployTarget;
 
 use crate::error::Result;
 use crate::nix::{ActivationMode, StorePath};
+use async_trait::async_trait;
 
 /// Result of a deployment operation
 #[derive(Debug, Clone)]
@@ -44,12 +45,13 @@ impl DeployResult {
 /// Trait for deployment backend implementations
 ///
 /// Implementations must be Send + Sync to support parallel deployments
+#[async_trait]
 pub trait DeployBackend: Send + Sync {
     /// Copy a nix closure to the target host
-    fn copy_closure(&self, target: &DeployTarget, store_path: &StorePath) -> Result<()>;
+    async fn copy_closure(&self, target: &DeployTarget, store_path: &StorePath) -> Result<()>;
 
     /// Activate a configuration on the target host
-    fn activate(
+    async fn activate(
         &self,
         target: &DeployTarget,
         store_path: &StorePath,
@@ -57,14 +59,14 @@ pub trait DeployBackend: Send + Sync {
     ) -> Result<()>;
 
     /// Deploy (copy + activate) in one operation
-    fn deploy(
+    async fn deploy(
         &self,
         target: &DeployTarget,
         store_path: &StorePath,
         mode: ActivationMode,
     ) -> Result<DeployResult> {
-        self.copy_closure(target, store_path)?;
-        self.activate(target, store_path, mode)?;
+        self.copy_closure(target, store_path).await?;
+        self.activate(target, store_path, mode).await?;
         Ok(DeployResult::success(format!(
             "Deployed successfully to {}",
             target.hostname

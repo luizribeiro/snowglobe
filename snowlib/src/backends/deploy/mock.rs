@@ -1,12 +1,11 @@
 use super::{should_update_profile, DeployBackend, DeployTarget};
 use crate::error::Result;
 use crate::nix::{ActivationMode, StorePath};
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
-use std::thread;
-use std::time::Duration;
 
 // ============================================================================
 // MockDeployBackend
@@ -154,10 +153,11 @@ impl MockDeployBackend {
     }
 }
 
+#[async_trait]
 impl DeployBackend for MockDeployBackend {
-    fn copy_closure(&self, target: &DeployTarget, _store_path: &StorePath) -> Result<()> {
+    async fn copy_closure(&self, target: &DeployTarget, _store_path: &StorePath) -> Result<()> {
         if !cfg!(debug_assertions) {
-            thread::sleep(Duration::from_millis(1000));
+            tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
         }
 
         print!("{}", self.generate_copy_closure_output(&target.hostname));
@@ -195,7 +195,7 @@ impl DeployBackend for MockDeployBackend {
         Ok(())
     }
 
-    fn activate(
+    async fn activate(
         &self,
         target: &DeployTarget,
         _store_path: &StorePath,
@@ -212,7 +212,7 @@ impl DeployBackend for MockDeployBackend {
         let (should_fail, error_msg) = self.should_fail_at(&target.hostname, "activate");
 
         if !cfg!(debug_assertions) {
-            thread::sleep(Duration::from_millis(500));
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
         }
 
         print!("{}", self.generate_activate_output(!should_fail));
@@ -369,8 +369,8 @@ pub struct OperationFixture {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_mock_deploy_backend_success() {
+    #[tokio::test]
+    async fn test_mock_deploy_backend_success() {
         let deployer = MockDeployBackend::new();
         let target = DeployTarget {
             user: Some("root".to_string()),
@@ -379,14 +379,15 @@ mod tests {
         };
         let store_path = StorePath::new("/nix/store/test".to_string());
 
-        assert!(deployer.copy_closure(&target, &store_path).is_ok());
+        assert!(deployer.copy_closure(&target, &store_path).await.is_ok());
         assert!(deployer
             .activate(&target, &store_path, ActivationMode::Switch)
+            .await
             .is_ok());
     }
 
-    #[test]
-    fn test_mock_deploy_backend_failure() {
+    #[tokio::test]
+    async fn test_mock_deploy_backend_failure() {
         let deployer = MockDeployBackend::new().with_failures(vec!["fail.example.com".to_string()]);
 
         let target = DeployTarget {
@@ -396,7 +397,7 @@ mod tests {
         };
         let store_path = StorePath::new("/nix/store/test".to_string());
 
-        assert!(deployer.copy_closure(&target, &store_path).is_err());
+        assert!(deployer.copy_closure(&target, &store_path).await.is_err());
     }
 
     #[test]
@@ -428,8 +429,8 @@ mod tests {
         assert_eq!(fixture.hosts[0].hostname, "test.example.com");
     }
 
-    #[test]
-    fn test_mock_deploy_backend_with_fixture() {
+    #[tokio::test]
+    async fn test_mock_deploy_backend_with_fixture() {
         let fixture = DeploymentFixture {
             name: "Test".to_string(),
             description: None,
@@ -461,15 +462,15 @@ mod tests {
         };
         let store_path = StorePath::new("/nix/store/test".to_string());
 
-        assert!(deployer.copy_closure(&target, &store_path).is_ok());
+        assert!(deployer.copy_closure(&target, &store_path).await.is_ok());
         assert!(deployer
             .activate(&target, &store_path, ActivationMode::Switch)
+            .await
             .is_ok());
     }
 
-    #[test]
-    fn test_mock_deploy_backend_fixture_fallback() {
-        // When a host is not in the fixture, succeeds with auto-generated output
+    #[tokio::test]
+    async fn test_mock_deploy_backend_fixture_fallback() {
         let fixture = DeploymentFixture {
             name: "Test".to_string(),
             description: None,
@@ -485,7 +486,6 @@ mod tests {
         };
         let store_path = StorePath::new("/nix/store/test".to_string());
 
-        // Should succeed (falls back to simple mode)
-        assert!(deployer.copy_closure(&target, &store_path).is_ok());
+        assert!(deployer.copy_closure(&target, &store_path).await.is_ok());
     }
 }

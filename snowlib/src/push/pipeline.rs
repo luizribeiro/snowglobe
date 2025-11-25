@@ -338,10 +338,11 @@ fn execute_copy_step(push_ctx: &PushContext, build_output: BuildOutput) -> Resul
     let hostname = build_output.metadata.name.clone();
 
     push_ctx.observer.on_copy_start(&hostname);
-    let copy_output = match push_ctx
-        .deploy_backend
-        .copy_closure(&build_output.target, &build_output.store_path)
-    {
+    let copy_output = match block_on_async(
+        push_ctx
+            .deploy_backend
+            .copy_closure(&build_output.target, &build_output.store_path),
+    ) {
         Ok(()) => CopyOutput {
             metadata: build_output.metadata,
             target: build_output.target,
@@ -400,22 +401,22 @@ fn execute_activation_step(
     })?;
 
     // Execute activation
-    let activate_result =
-        match push_ctx
-            .deploy_backend
-            .deploy(&plan.target, &plan.store_path, plan.activation_mode)
-        {
-            Ok(result) => {
-                push_ctx
-                    .observer
-                    .on_activation_complete(hostname, result.success);
-                result
-            }
-            Err(e) => {
-                push_ctx.observer.on_activation_complete(hostname, false);
-                return Err(e);
-            }
-        };
+    let activate_result = match block_on_async(push_ctx.deploy_backend.deploy(
+        &plan.target,
+        &plan.store_path,
+        plan.activation_mode,
+    )) {
+        Ok(result) => {
+            push_ctx
+                .observer
+                .on_activation_complete(hostname, result.success);
+            result
+        }
+        Err(e) => {
+            push_ctx.observer.on_activation_complete(hostname, false);
+            return Err(e);
+        }
+    };
 
     Ok((plan, activate_result))
 }

@@ -261,8 +261,8 @@ mod tests {
         MockDeployBackend, OperationFixture, PushStrategy, StorePath,
     };
 
-    #[test]
-    fn test_mock_deploy_backend_success() {
+    #[tokio::test]
+    async fn test_mock_deploy_backend_success() {
         let deployer = MockDeployBackend::new();
         let target = DeployTarget {
             user: Some("root".to_string()),
@@ -271,14 +271,15 @@ mod tests {
         };
         let store_path = StorePath::new("/nix/store/test".to_string());
 
-        assert!(deployer.copy_closure(&target, &store_path).is_ok());
+        assert!(deployer.copy_closure(&target, &store_path).await.is_ok());
         assert!(deployer
             .activate(&target, &store_path, ActivationMode::Switch)
+            .await
             .is_ok());
     }
 
-    #[test]
-    fn test_mock_deploy_backend_with_failure() {
+    #[tokio::test]
+    async fn test_mock_deploy_backend_with_failure() {
         let deployer = MockDeployBackend::new().with_failures(vec!["fail.example.com".to_string()]);
 
         let target = DeployTarget {
@@ -288,11 +289,11 @@ mod tests {
         };
         let store_path = StorePath::new("/nix/store/test".to_string());
 
-        assert!(deployer.copy_closure(&target, &store_path).is_err());
+        assert!(deployer.copy_closure(&target, &store_path).await.is_err());
     }
 
-    #[test]
-    fn test_mock_deploy_backend_from_fixture() {
+    #[tokio::test]
+    async fn test_mock_deploy_backend_from_fixture() {
         let fixture = DeploymentFixture {
             name: "Test deployment".to_string(),
             description: Some("Test scenario".to_string()),
@@ -324,14 +325,15 @@ mod tests {
         };
         let store_path = StorePath::new("/nix/store/test".to_string());
 
-        assert!(deployer.copy_closure(&target, &store_path).is_ok());
+        assert!(deployer.copy_closure(&target, &store_path).await.is_ok());
         assert!(deployer
             .activate(&target, &store_path, ActivationMode::Switch)
+            .await
             .is_ok());
     }
 
-    #[test]
-    fn test_mock_deploy_backend_from_file() {
+    #[tokio::test]
+    async fn test_mock_deploy_backend_from_file() {
         use std::path::PathBuf;
 
         let fixture_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -347,14 +349,15 @@ mod tests {
         };
         let store_path = StorePath::new("/nix/store/test".to_string());
 
-        assert!(deployer.copy_closure(&target, &store_path).is_ok());
+        assert!(deployer.copy_closure(&target, &store_path).await.is_ok());
         assert!(deployer
             .activate(&target, &store_path, ActivationMode::Switch)
+            .await
             .is_ok());
     }
 
-    #[test]
-    fn test_mock_deploy_backend_partial_failure() {
+    #[tokio::test]
+    async fn test_mock_deploy_backend_partial_failure() {
         use std::path::PathBuf;
 
         let fixture_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -370,9 +373,13 @@ mod tests {
         };
         let store_path = StorePath::new("/nix/store/test".to_string());
 
-        assert!(deployer.copy_closure(&target_hydrogen, &store_path).is_ok());
+        assert!(deployer
+            .copy_closure(&target_hydrogen, &store_path)
+            .await
+            .is_ok());
         assert!(deployer
             .activate(&target_hydrogen, &store_path, ActivationMode::Switch)
+            .await
             .is_ok());
 
         // Nitrogen should fail on activation
@@ -382,9 +389,13 @@ mod tests {
             port: None,
         };
 
-        assert!(deployer.copy_closure(&target_nitrogen, &store_path).is_ok());
+        assert!(deployer
+            .copy_closure(&target_nitrogen, &store_path)
+            .await
+            .is_ok());
         assert!(deployer
             .activate(&target_nitrogen, &store_path, ActivationMode::Switch)
+            .await
             .is_err());
     }
 

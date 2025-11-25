@@ -171,7 +171,7 @@ impl RebuildArgs {
         // Handle non-switch modes early (dry-run, test, boot)
         if mode != ActivationMode::Switch {
             println!("Activating configuration...");
-            deploy_backend.activate(&target, &store_path, mode)?;
+            deploy_backend.activate(&target, &store_path, mode).await?;
             match mode {
                 ActivationMode::DryActivate => println!("✅ Dry run complete"),
                 ActivationMode::Test => println!("✅ Test activation complete"),
@@ -191,7 +191,7 @@ impl RebuildArgs {
         if !reboot_check.required {
             println!("✅ No reboot required");
             println!("Activating configuration...");
-            deploy_backend.activate(&target, &store_path, mode)?;
+            deploy_backend.activate(&target, &store_path, mode).await?;
             println!("✅ Configuration activated successfully");
             return Ok(());
         }
@@ -208,20 +208,24 @@ impl RebuildArgs {
         match action {
             RebootAction::BootAndReboot => {
                 println!("\nActivating in boot mode...");
-                deploy_backend.activate(&target, &store_path, ActivationMode::Boot)?;
+                deploy_backend
+                    .activate(&target, &store_path, ActivationMode::Boot)
+                    .await?;
                 println!("✅ Configuration activated for next boot");
                 println!("Rebooting...");
                 reboot_backend.reboot_and_wait(&target).await?;
             }
             RebootAction::BootOnly => {
                 println!("\nActivating in boot mode...");
-                deploy_backend.activate(&target, &store_path, ActivationMode::Boot)?;
+                deploy_backend
+                    .activate(&target, &store_path, ActivationMode::Boot)
+                    .await?;
                 println!("✅ Configuration will apply on next boot");
                 println!("Remember to reboot when convenient");
             }
             RebootAction::SwitchRisky => {
                 println!("\n⚠️  Switching without reboot (risky)");
-                deploy_backend.activate(&target, &store_path, mode)?;
+                deploy_backend.activate(&target, &store_path, mode).await?;
                 println!("Configuration activated (may be unstable)");
             }
             RebootAction::Cancel => {

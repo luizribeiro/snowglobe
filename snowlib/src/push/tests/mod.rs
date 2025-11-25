@@ -73,7 +73,7 @@ fn make_hook_executor(
 }
 
 /// Helper function to activate hosts (simplified for tests)
-fn activate_plans_for_test(
+async fn activate_plans_for_test(
     deploy_backend: &dyn crate::backends::deploy::DeployBackend,
     plans: Vec<PushPlan>,
     _concurrency: usize,
@@ -98,9 +98,13 @@ fn activate_plans_for_test(
 
         observer.on_activation_start(&hostname);
 
-        let result = deploy_backend
+        let result = match deploy_backend
             .deploy(&plan.target, &plan.store_path, plan.activation_mode)
-            .unwrap_or_else(|e| DeployResult::failure(e.to_string()));
+            .await
+        {
+            Ok(r) => r,
+            Err(e) => DeployResult::failure(e.to_string()),
+        };
 
         observer.on_activation_complete(&hostname, result.success);
 

@@ -2,8 +2,8 @@
 
 use super::*;
 
-#[test]
-fn test_push_with_single_phase() {
+#[tokio::test]
+async fn test_push_with_single_phase() {
     let deployer = MockDeployBackend::new();
     let observer = TestObserver::new();
 
@@ -48,7 +48,9 @@ fn test_push_with_single_phase() {
         },
     ];
 
-    let results = activate_plans_for_test(&deployer, plans, 2, &observer).unwrap();
+    let results = activate_plans_for_test(&deployer, plans, 2, &observer)
+        .await
+        .unwrap();
 
     assert_eq!(results.success_count(), 2);
     assert_eq!(results.failure_count(), 0);
@@ -218,8 +220,8 @@ fn test_push_stops_on_phase_failure() {
     );
 }
 
-#[test]
-fn test_push_with_noop_observer() {
+#[tokio::test]
+async fn test_push_with_noop_observer() {
     let deployer = MockDeployBackend::new();
     let observer = NoopObserver;
 
@@ -243,12 +245,14 @@ fn test_push_with_noop_observer() {
         reboot_check: None,
     }];
 
-    let results = activate_plans_for_test(&deployer, plans, 1, &observer).unwrap();
+    let results = activate_plans_for_test(&deployer, plans, 1, &observer)
+        .await
+        .unwrap();
     assert_eq!(results.success_count(), 1);
 }
 
-#[test]
-fn test_push_with_default_phase() {
+#[tokio::test]
+async fn test_push_with_default_phase() {
     let deployer = MockDeployBackend::new();
     let observer = TestObserver::new();
 
@@ -272,7 +276,9 @@ fn test_push_with_default_phase() {
         reboot_check: None,
     }];
 
-    let results = activate_plans_for_test(&deployer, plans, 1, &observer).unwrap();
+    let results = activate_plans_for_test(&deployer, plans, 1, &observer)
+        .await
+        .unwrap();
     assert_eq!(results.success_count(), 1);
 
     // Should use "default" phase
@@ -280,8 +286,8 @@ fn test_push_with_default_phase() {
     assert!(events.contains(&"phase_start:default:1".to_string()));
 }
 
-#[test]
-fn test_push_with_partial_failure_in_phase() {
+#[tokio::test]
+async fn test_push_with_partial_failure_in_phase() {
     // Test that when one host fails in a phase, we still get results for all hosts in that phase
     let deployer = MockDeployBackend::new().with_failures(vec!["host2.example.com".to_string()]);
     let observer = TestObserver::new();
@@ -327,7 +333,9 @@ fn test_push_with_partial_failure_in_phase() {
         },
     ];
 
-    let results = activate_plans_for_test(&deployer, plans, 2, &observer).unwrap();
+    let results = activate_plans_for_test(&deployer, plans, 2, &observer)
+        .await
+        .unwrap();
 
     // Both hosts should have results
     assert_eq!(results.phases[0].hosts.len(), 2);
