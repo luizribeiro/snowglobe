@@ -3,16 +3,6 @@ mod observer;
 use clap::Args;
 use snowlib::{Flake, PushStrategy, Result};
 
-/// Bridge sync code to async during migration
-fn block_on_async<F: std::future::Future>(future: F) -> F::Output {
-    match tokio::runtime::Handle::try_current() {
-        Ok(handle) => tokio::task::block_in_place(|| handle.block_on(future)),
-        Err(_) => tokio::runtime::Runtime::new()
-            .expect("Failed to create tokio runtime")
-            .block_on(future),
-    }
-}
-
 /// Deploy configurations to hosts
 #[derive(Debug, Args)]
 pub struct PushArgs {
@@ -148,7 +138,7 @@ impl PushArgs {
     ///
     /// If no hosts are provided, returns all hosts from the flake (optionally filtered).
     /// If hosts are provided, validates they exist in the flake (and match the filter if provided).
-    fn resolve_hosts(
+    async fn resolve_hosts(
         &self,
         flake: &Flake,
         nix_backend: &dyn snowlib::NixBackend,
@@ -159,6 +149,7 @@ impl PushArgs {
             self.get_filter_expression()?.as_deref(),
             &self.hosts,
         )
+        .await
     }
 
     /// Main entry point for the push command
@@ -169,7 +160,7 @@ impl PushArgs {
     /// - Create backend implementations and observer
     /// - Call snowlib::push()
     /// - Print results table
-    pub fn run(self, flake: &Flake) -> Result<()> {
+    pub async fn run(self, flake: &Flake) -> Result<()> {
         self.validate()?;
 
         // When using --mock-fixture, use the mock flake instead of the real one
@@ -205,22 +196,21 @@ impl PushArgs {
         let reboot_backend = crate::backend_factory::create_reboot_backend(self.user.as_deref())?;
         let observer = observer::CliObserver::new();
 
-        let hostnames = self.resolve_hosts(flake, nix_backend.as_ref())?;
+        let hostnames = self.resolve_hosts(flake, nix_backend.as_ref()).await?;
         let mut hosts = Vec::new();
         for name in hostnames {
             // Try NixOS first, then Darwin
-            let metadata = block_on_async(nix_backend.get_host_metadata(
-                flake,
-                &name,
-                snowlib::SystemType::NixOS,
-            ))
-            .or_else(|_| {
-                block_on_async(nix_backend.get_host_metadata(
-                    flake,
-                    &name,
-                    snowlib::SystemType::Darwin,
-                ))
-            })?;
+            let metadata = match nix_backend
+                .get_host_metadata(flake, &name, snowlib::SystemType::NixOS)
+                .await
+            {
+                Ok(m) => m,
+                Err(_) => {
+                    nix_backend
+                        .get_host_metadata(flake, &name, snowlib::SystemType::Darwin)
+                        .await?
+                }
+            };
             hosts.push(metadata);
         }
 
@@ -254,7 +244,7 @@ impl PushArgs {
         );
 
         // Execute the push - snowlib handles everything!
-        let results = block_on_async(snowlib::push(&push_ctx, hosts))?;
+        let results = snowlib::push(&push_ctx, hosts).await?;
 
         results.print_summary();
 

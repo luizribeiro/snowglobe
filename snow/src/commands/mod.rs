@@ -24,10 +24,10 @@ pub enum Commands {
 impl Commands {
     pub async fn run(self, flake: &snowlib::Flake) -> snowlib::Result<()> {
         match self {
-            Commands::Status(args) => args.run(flake),
-            Commands::List(args) => args.run(flake),
-            Commands::Build(args) => args.run(flake),
-            Commands::Push(args) => args.run(flake),
+            Commands::Status(args) => args.run(flake).await,
+            Commands::List(args) => args.run(flake).await,
+            Commands::Build(args) => args.run(flake).await,
+            Commands::Push(args) => args.run(flake).await,
             Commands::Rebuild(args) => args.run(flake).await,
         }
     }

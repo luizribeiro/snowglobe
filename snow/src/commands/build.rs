@@ -1,16 +1,8 @@
 use clap::Args;
-use rayon::prelude::*;
+use futures::stream::{FuturesUnordered, StreamExt};
 use snowlib::{Flake, NixBackend, OutputMode, Result, StorePath};
-
-/// Bridge sync code to async during migration
-fn block_on_async<F: std::future::Future>(future: F) -> F::Output {
-    match tokio::runtime::Handle::try_current() {
-        Ok(handle) => tokio::task::block_in_place(|| handle.block_on(future)),
-        Err(_) => tokio::runtime::Runtime::new()
-            .expect("Failed to create tokio runtime")
-            .block_on(future),
-    }
-}
+use std::sync::Arc;
+use tokio::sync::Semaphore;
 
 /// Build NixOS configurations for one or more hosts
 #[derive(Debug, Args)]
@@ -69,13 +61,18 @@ impl BuildArgs {
         )
     }
 
-    fn resolve_hosts(&self, flake: &Flake, nix_backend: &dyn NixBackend) -> Result<Vec<String>> {
+    async fn resolve_hosts(
+        &self,
+        flake: &Flake,
+        nix_backend: &dyn NixBackend,
+    ) -> Result<Vec<String>> {
         crate::host_selection::resolve_hosts_from_args(
             flake,
             nix_backend,
             self.get_filter_expression()?.as_deref(),
             &self.hosts,
         )
+        .await
     }
 
     fn print_results(&self, results: &[BuildResult]) {
@@ -108,7 +105,7 @@ impl BuildArgs {
         }
     }
 
-    pub fn run(self, flake: &Flake) -> Result<()> {
+    pub async fn run(self, flake: &Flake) -> Result<()> {
         let nix_backend = crate::backend_factory::create_nix_backend(
             #[cfg(debug_assertions)]
             &self.mock_fixture,
@@ -120,31 +117,27 @@ impl BuildArgs {
             OutputMode::Inherit
         };
 
-        let hostnames = self.resolve_hosts(flake, nix_backend.as_ref())?;
+        let hostnames = self.resolve_hosts(flake, nix_backend.as_ref()).await?;
 
         // Get metadata for each host to determine system type
-        let host_metadata: Vec<_> = hostnames
-            .iter()
-            .filter_map(|hostname| {
-                // Try NixOS first
-                if let Ok(metadata) = block_on_async(nix_backend.get_host_metadata(
-                    flake,
-                    hostname,
-                    snowlib::SystemType::NixOS,
-                )) {
-                    return Some(metadata);
-                }
-                // Then try Darwin
-                if let Ok(metadata) = block_on_async(nix_backend.get_host_metadata(
-                    flake,
-                    hostname,
-                    snowlib::SystemType::Darwin,
-                )) {
-                    return Some(metadata);
-                }
-                None
-            })
-            .collect();
+        let mut host_metadata = Vec::new();
+        for hostname in &hostnames {
+            // Try NixOS first
+            if let Ok(metadata) = nix_backend
+                .get_host_metadata(flake, hostname, snowlib::SystemType::NixOS)
+                .await
+            {
+                host_metadata.push(metadata);
+                continue;
+            }
+            // Then try Darwin
+            if let Ok(metadata) = nix_backend
+                .get_host_metadata(flake, hostname, snowlib::SystemType::Darwin)
+                .await
+            {
+                host_metadata.push(metadata);
+            }
+        }
 
         println!(
             "Building {} {} with concurrency {}...",
@@ -157,31 +150,31 @@ impl BuildArgs {
             self.concurrency
         );
 
-        let pool = rayon::ThreadPoolBuilder::new()
-            .num_threads(self.concurrency as usize)
-            .build()
-            .map_err(|e| snowlib::error::DeployError::Failed {
-                host: "build".to_string(),
-                source: std::io::Error::other(format!("Failed to create thread pool: {}", e)),
-            })?;
+        // Use semaphore for concurrency control
+        let semaphore = Arc::new(Semaphore::new(self.concurrency as usize));
+        let nix_backend: Arc<dyn NixBackend> = nix_backend.into();
+        let mut futures = FuturesUnordered::new();
 
-        let results: Vec<BuildResult> = pool.install(|| {
-            host_metadata
-                .par_iter()
-                .map(|metadata| {
-                    let result = block_on_async(nix_backend.build_host(
-                        flake,
-                        &metadata.name,
-                        metadata.system_type,
-                        output_mode,
-                    ));
-                    BuildResult {
-                        hostname: metadata.name.clone(),
-                        result,
-                    }
-                })
-                .collect()
-        });
+        for metadata in host_metadata {
+            let sem = Arc::clone(&semaphore);
+            let nix_backend = Arc::clone(&nix_backend);
+            let hostname = metadata.name.clone();
+            let system_type = metadata.system_type;
+            let flake = flake.clone();
+
+            futures.push(async move {
+                let _permit = sem.acquire().await.expect("semaphore closed");
+                let result = nix_backend
+                    .build_host(&flake, &hostname, system_type, output_mode)
+                    .await;
+                BuildResult { hostname, result }
+            });
+        }
+
+        let mut results = Vec::new();
+        while let Some(result) = futures.next().await {
+            results.push(result);
+        }
 
         self.print_results(&results);
 

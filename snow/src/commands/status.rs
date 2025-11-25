@@ -3,16 +3,6 @@ use serde::Serialize;
 use snowlib::{Flake, Result};
 use tabled::{Table, Tabled};
 
-/// Bridge sync code to async during migration
-fn block_on_async<F: std::future::Future>(future: F) -> F::Output {
-    match tokio::runtime::Handle::try_current() {
-        Ok(handle) => tokio::task::block_in_place(|| handle.block_on(future)),
-        Err(_) => tokio::runtime::Runtime::new()
-            .expect("Failed to create tokio runtime")
-            .block_on(future),
-    }
-}
-
 /// Show cluster status
 #[derive(Debug, Args)]
 pub struct StatusArgs {
@@ -40,13 +30,15 @@ struct HostStatus {
 }
 
 impl StatusArgs {
-    pub fn run(self, flake: &Flake) -> Result<()> {
+    pub async fn run(self, flake: &Flake) -> Result<()> {
         let nix_backend = crate::backend_factory::create_nix_backend(
             #[cfg(debug_assertions)]
             &self.mock_fixture,
         )?;
 
-        let hosts = block_on_async(nix_backend.list_all_hosts(flake, self.filter.as_deref()))?;
+        let hosts = nix_backend
+            .list_all_hosts(flake, self.filter.as_deref())
+            .await?;
 
         let statuses: Vec<HostStatus> = hosts
             .into_iter()

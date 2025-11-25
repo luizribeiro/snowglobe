@@ -1,21 +1,11 @@
 use snowlib::{Flake, NixBackend, Result};
 use std::collections::HashSet;
 
-/// Bridge sync code to async during migration
-fn block_on_async<F: std::future::Future>(future: F) -> F::Output {
-    match tokio::runtime::Handle::try_current() {
-        Ok(handle) => tokio::task::block_in_place(|| handle.block_on(future)),
-        Err(_) => tokio::runtime::Runtime::new()
-            .expect("Failed to create tokio runtime")
-            .block_on(future),
-    }
-}
-
 /// Helper function for commands with hosts and filter arguments.
 ///
 /// Automatically handles the empty vec case, making it convenient for commands
 /// to call with `&self.hosts` without checking if empty first.
-pub fn resolve_hosts_from_args(
+pub async fn resolve_hosts_from_args(
     flake: &Flake,
     nix_backend: &dyn NixBackend,
     filter: Option<&str>,
@@ -23,7 +13,7 @@ pub fn resolve_hosts_from_args(
 ) -> Result<Vec<String>> {
     let explicit_hosts = if hosts.is_empty() { None } else { Some(hosts) };
 
-    resolve_hosts(flake, nix_backend, filter, explicit_hosts)
+    resolve_hosts(flake, nix_backend, filter, explicit_hosts).await
 }
 
 /// Resolves the final list of hosts to operate on, combining filtering and explicit selection.
@@ -42,18 +32,18 @@ pub fn resolve_hosts_from_args(
 ///
 /// ```ignore
 /// // Get all hosts matching a filter
-/// let hosts = resolve_hosts(&flake, backend, Some("c: c.services.nginx.enable"), None)?;
+/// let hosts = resolve_hosts(&flake, backend, Some("c: c.services.nginx.enable"), None).await?;
 ///
 /// // Get specific hosts (validates they exist)
-/// let hosts = resolve_hosts(&flake, backend, None, Some(&["web1", "web2"]))?;
+/// let hosts = resolve_hosts(&flake, backend, None, Some(&["web1", "web2"])).await?;
 ///
 /// // Get intersection: hosts in explicit list that also match the filter
 /// // - If web1 has nginx but db1 doesn't: returns ["web1"]
 /// // - If neither has nginx: returns []
 /// // - If web1 doesn't exist: returns Err (validation before intersection)
-/// let hosts = resolve_hosts(&flake, backend, Some("c: c.services.nginx.enable"), Some(&["web1", "db1"]))?;
+/// let hosts = resolve_hosts(&flake, backend, Some("c: c.services.nginx.enable"), Some(&["web1", "db1"])).await?;
 /// ```
-pub fn resolve_hosts(
+pub async fn resolve_hosts(
     flake: &Flake,
     nix_backend: &dyn NixBackend,
     filter_expr: Option<&str>,
@@ -64,19 +54,19 @@ pub fn resolve_hosts(
 
         // No filter, no explicit hosts: return all hosts
         (None, None) | (None, Some(&[])) => {
-            let all_hosts = block_on_async(nix_backend.list_all_hosts(flake, None))?;
+            let all_hosts = nix_backend.list_all_hosts(flake, None).await?;
             Ok(all_hosts.iter().map(|h| h.name.clone()).collect())
         }
 
         // Filter only: return all hosts matching filter
         (Some(filter), None) | (Some(filter), Some(&[])) => {
-            let filtered_hosts = block_on_async(nix_backend.list_all_hosts(flake, Some(filter)))?;
+            let filtered_hosts = nix_backend.list_all_hosts(flake, Some(filter)).await?;
             Ok(filtered_hosts.iter().map(|h| h.name.clone()).collect())
         }
 
         // Explicit hosts only: validate they exist, return them
         (None, Some(requested)) => {
-            let all_hosts = block_on_async(nix_backend.list_all_hosts(flake, None))?;
+            let all_hosts = nix_backend.list_all_hosts(flake, None).await?;
             let valid_set: HashSet<String> = all_hosts.iter().map(|h| h.name.clone()).collect();
 
             let invalid_hosts: Vec<String> = requested
@@ -102,8 +92,8 @@ pub fn resolve_hosts(
             // - With filter: determines which hosts match (for intersection)
             // - Without filter: validates explicit hosts exist (better errors on typos)
             // Could optimize to one call but would complicate validation logic
-            let filtered_hosts = block_on_async(nix_backend.list_all_hosts(flake, Some(filter)))?;
-            let all_hosts = block_on_async(nix_backend.list_all_hosts(flake, None))?;
+            let filtered_hosts = nix_backend.list_all_hosts(flake, Some(filter)).await?;
+            let all_hosts = nix_backend.list_all_hosts(flake, None).await?;
 
             let filtered_set: HashSet<String> =
                 filtered_hosts.iter().map(|h| h.name.clone()).collect();
@@ -171,49 +161,53 @@ mod tests {
         MockNixBackend::from_fixture(fixture)
     }
 
-    #[test]
-    fn test_resolve_hosts_no_filter_no_explicit() {
+    #[tokio::test]
+    async fn test_resolve_hosts_no_filter_no_explicit() {
         let flake = Flake::new(None).unwrap();
         let backend = create_mock_backend_with_hosts(vec!["host1", "host2", "host3"]);
 
-        let result = resolve_hosts(&flake, &backend, None, None).unwrap();
+        let result = resolve_hosts(&flake, &backend, None, None).await.unwrap();
 
         assert!(result.contains(&"host1".to_string()));
         assert!(result.contains(&"host2".to_string()));
         assert!(result.contains(&"host3".to_string()));
     }
 
-    #[test]
-    fn test_resolve_hosts_with_explicit_empty_vec() {
+    #[tokio::test]
+    async fn test_resolve_hosts_with_explicit_empty_vec() {
         let flake = Flake::new(None).unwrap();
         let backend = create_mock_backend_with_hosts(vec!["host1", "host2"]);
 
-        let result = resolve_hosts(&flake, &backend, None, Some(&[])).unwrap();
+        let result = resolve_hosts(&flake, &backend, None, Some(&[]))
+            .await
+            .unwrap();
 
         assert!(result.contains(&"host1".to_string()));
         assert!(result.contains(&"host2".to_string()));
     }
 
-    #[test]
-    fn test_resolve_hosts_with_explicit_valid() {
+    #[tokio::test]
+    async fn test_resolve_hosts_with_explicit_valid() {
         let flake = Flake::new(None).unwrap();
         let backend = create_mock_backend_with_hosts(vec!["host1", "host2", "host3"]);
 
         let explicit = vec!["host1".to_string(), "host3".to_string()];
-        let result = resolve_hosts(&flake, &backend, None, Some(&explicit)).unwrap();
+        let result = resolve_hosts(&flake, &backend, None, Some(&explicit))
+            .await
+            .unwrap();
 
         assert_eq!(result.len(), 2);
         assert!(result.contains(&"host1".to_string()));
         assert!(result.contains(&"host3".to_string()));
     }
 
-    #[test]
-    fn test_resolve_hosts_with_explicit_invalid() {
+    #[tokio::test]
+    async fn test_resolve_hosts_with_explicit_invalid() {
         let flake = Flake::new(None).unwrap();
         let backend = create_mock_backend_with_hosts(vec!["host1", "host2"]);
 
         let explicit = vec!["host1".to_string(), "nonexistent".to_string()];
-        let result = resolve_hosts(&flake, &backend, None, Some(&explicit));
+        let result = resolve_hosts(&flake, &backend, None, Some(&explicit)).await;
 
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
@@ -222,8 +216,8 @@ mod tests {
         assert!(err_msg.contains("host2"));
     }
 
-    #[test]
-    fn test_resolve_hosts_intersection_with_filter_and_explicit() {
+    #[tokio::test]
+    async fn test_resolve_hosts_intersection_with_filter_and_explicit() {
         let flake = Flake::new(None).unwrap();
         let backend = create_mock_backend_with_hosts(vec!["host1", "host2", "host3"]);
 
@@ -231,7 +225,7 @@ mod tests {
         // For this test, the mock always returns all hosts regardless of filter
         // So we can only test that explicit hosts are validated for existence
         let explicit = vec!["host1".to_string(), "host2".to_string()];
-        let result = resolve_hosts(&flake, &backend, Some("c: true"), Some(&explicit));
+        let result = resolve_hosts(&flake, &backend, Some("c: true"), Some(&explicit)).await;
 
         assert!(result.is_ok());
         let hosts = result.unwrap();
@@ -239,13 +233,13 @@ mod tests {
         assert!(hosts.contains(&"host2".to_string()));
     }
 
-    #[test]
-    fn test_resolve_hosts_intersection_validates_host_existence() {
+    #[tokio::test]
+    async fn test_resolve_hosts_intersection_validates_host_existence() {
         let flake = Flake::new(None).unwrap();
         let backend = create_mock_backend_with_hosts(vec!["host1", "host2"]);
 
         let explicit = vec!["host1".to_string(), "nonexistent".to_string()];
-        let result = resolve_hosts(&flake, &backend, Some("c: true"), Some(&explicit));
+        let result = resolve_hosts(&flake, &backend, Some("c: true"), Some(&explicit)).await;
 
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
