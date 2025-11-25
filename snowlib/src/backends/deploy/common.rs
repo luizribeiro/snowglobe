@@ -2,21 +2,66 @@
 
 use crate::error::{DeployError, Result};
 use crate::nix::{ActivationMode, StorePath};
-use crate::process::{OutputMode, StreamingExecutor};
-use std::process::Command;
+use crate::process::OutputMode;
+use std::io::{BufRead, BufReader, Write};
+use std::process::{Command, Stdio};
 
 pub fn execute_command(
     cmd: &mut Command,
     output_mode: OutputMode,
 ) -> std::io::Result<std::process::Output> {
-    StreamingExecutor::new(cmd)
-        .output_mode(output_mode)
-        .execute()
-        .map(|r| std::process::Output {
-            stdout: r.stdout,
-            stderr: r.stderr,
-            status: r.status,
-        })
+    match output_mode {
+        OutputMode::Capture => cmd.output(),
+        OutputMode::Inherit => {
+            cmd.stdout(Stdio::inherit());
+            cmd.stderr(Stdio::inherit());
+            let status = cmd.spawn()?.wait()?;
+            Ok(std::process::Output {
+                status,
+                stdout: Vec::new(),
+                stderr: Vec::new(),
+            })
+        }
+        OutputMode::Display => {
+            cmd.stdout(Stdio::piped());
+            cmd.stderr(Stdio::piped());
+
+            let mut child = cmd.spawn()?;
+
+            let mut stdout_data = Vec::new();
+            let mut stderr_data = Vec::new();
+
+            // Stream stdout
+            if let Some(stdout) = child.stdout.take() {
+                let reader = BufReader::new(stdout);
+                for line in reader.lines() {
+                    let line = line?;
+                    writeln!(std::io::stdout(), "{}", line)?;
+                    stdout_data.extend(line.as_bytes());
+                    stdout_data.push(b'\n');
+                }
+            }
+
+            // Stream stderr
+            if let Some(stderr) = child.stderr.take() {
+                let reader = BufReader::new(stderr);
+                for line in reader.lines() {
+                    let line = line?;
+                    writeln!(std::io::stderr(), "{}", line)?;
+                    stderr_data.extend(line.as_bytes());
+                    stderr_data.push(b'\n');
+                }
+            }
+
+            let status = child.wait()?;
+
+            Ok(std::process::Output {
+                status,
+                stdout: stdout_data,
+                stderr: stderr_data,
+            })
+        }
+    }
 }
 
 pub fn activation_mode_to_string(mode: ActivationMode) -> &'static str {
