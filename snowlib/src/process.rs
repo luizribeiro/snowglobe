@@ -185,7 +185,7 @@ pub mod r#async {
                             child_pid
                         );
 
-                        terminate_process(child, child_pid).await;
+                        let status = terminate_process(child, child_pid).await?;
 
                         // Get whatever output was captured before timeout
                         let stdout = stdout_buf.lock().await.clone();
@@ -194,7 +194,7 @@ pub mod r#async {
                         Ok(CommandResult {
                             stdout,
                             stderr,
-                            status: fake_exit_status(),
+                            status,
                             timed_out: true,
                         })
                     }
@@ -258,8 +258,12 @@ pub mod r#async {
         }
     }
 
-    /// Terminate a process gracefully, escalating to SIGKILL if needed
-    async fn terminate_process(mut child: tokio::process::Child, child_pid: Pid) {
+    /// Terminate a process gracefully, escalating to SIGKILL if needed.
+    /// Returns the exit status of the terminated process.
+    async fn terminate_process(
+        mut child: tokio::process::Child,
+        child_pid: Pid,
+    ) -> std::io::Result<ExitStatus> {
         // Send SIGTERM
         if let Err(e) = signal::kill(child_pid, Signal::SIGTERM) {
             tracing::warn!("Failed to send SIGTERM: {}", e);
@@ -267,11 +271,13 @@ pub mod r#async {
 
         // Give process time to exit gracefully
         match tokio::time::timeout(SIGTERM_GRACE_PERIOD, child.wait()).await {
-            Ok(Ok(_status)) => {
+            Ok(Ok(status)) => {
                 tracing::info!("Process exited gracefully after SIGTERM");
+                Ok(status)
             }
             Ok(Err(e)) => {
                 tracing::warn!("Error waiting for process after SIGTERM: {}", e);
+                Err(e)
             }
             Err(_) => {
                 // Timeout - escalate to SIGKILL
@@ -279,18 +285,10 @@ pub mod r#async {
                 if let Err(e) = signal::kill(child_pid, Signal::SIGKILL) {
                     tracing::error!("Failed to send SIGKILL: {}", e);
                 }
-                // Wait briefly for SIGKILL to take effect
-                let _ = tokio::time::timeout(Duration::from_secs(2), child.wait()).await;
+                // Wait for SIGKILL to take effect
+                child.wait().await
             }
         }
-    }
-
-    /// Create a fake exit status for timeout cases
-    fn fake_exit_status() -> ExitStatus {
-        std::process::Command::new("sh")
-            .args(["-c", "exit 124"])
-            .status()
-            .expect("failed to create fake exit status")
     }
 
     #[cfg(test)]
