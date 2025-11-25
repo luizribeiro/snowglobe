@@ -2,8 +2,8 @@ use super::{RebootBackend, RebootCheck, RebootReason};
 use crate::backends::deploy::DeployTarget;
 use crate::error::Result;
 use crate::nix::StorePath;
+use async_trait::async_trait;
 use std::collections::HashMap;
-use std::thread;
 use std::time::Duration;
 
 /// Mock reboot operations for testing
@@ -57,8 +57,9 @@ impl MockRebootBackend {
     }
 }
 
+#[async_trait]
 impl RebootBackend for MockRebootBackend {
-    fn check_reboot_required(
+    async fn check_reboot_required(
         &self,
         target: &DeployTarget,
         _new_system: &StorePath,
@@ -70,9 +71,9 @@ impl RebootBackend for MockRebootBackend {
         }
     }
 
-    fn reboot_and_wait(&self, target: &DeployTarget) -> Result<()> {
+    async fn reboot_and_wait(&self, target: &DeployTarget) -> Result<()> {
         if !cfg!(debug_assertions) {
-            thread::sleep(Duration::from_millis(100));
+            tokio::time::sleep(Duration::from_millis(100)).await;
         }
 
         if self.should_fail_reboot(&target.hostname) {

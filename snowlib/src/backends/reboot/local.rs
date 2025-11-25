@@ -2,9 +2,11 @@ use super::{RebootBackend, RebootCheck, RebootDetectionConfig, RebootReason};
 use crate::backends::deploy::DeployTarget;
 use crate::error::{DeployError, Result};
 use crate::nix::{StorePath, SystemType};
+use crate::process::r#async::run_command;
+use crate::process::OutputMode;
+use async_trait::async_trait;
 use std::fs;
 use std::path::Path;
-use std::process::Command;
 
 /// Local reboot detection backend for rebuilding the current host
 ///
@@ -23,45 +25,6 @@ impl LocalRebootBackend {
     /// Create a backend with default configuration
     pub fn with_defaults() -> Self {
         Self::new(RebootDetectionConfig::default())
-    }
-
-    /// Check if a deployment requires a reboot (local version)
-    ///
-    /// On NixOS, performs a two-phase check:
-    /// 1. Compare kernel/initrd symlinks (fast)
-    /// 2. Run dry-activate and check critical services (detailed)
-    ///
-    /// On Darwin, always returns no reboot required (reboots are rare and handled manually)
-    fn check_reboot_required_impl(
-        &self,
-        target: &DeployTarget,
-        new_system: &StorePath,
-    ) -> Result<RebootCheck> {
-        let system_type = SystemType::detect_current();
-
-        match system_type {
-            SystemType::NixOS => {
-                if self.config.check_kernel || self.config.check_initrd {
-                    if let Some(reason) = self.check_hard_requirements(target, new_system)? {
-                        return Ok(RebootCheck::required(reason));
-                    }
-                }
-
-                if !self.config.critical_services.is_empty() {
-                    if let Some(reason) = self.check_critical_services(target, new_system)? {
-                        return Ok(RebootCheck::required(reason));
-                    }
-                }
-
-                Ok(RebootCheck::not_required())
-            }
-            SystemType::Darwin => {
-                tracing::info!(
-                    "Reboot detection not implemented for Darwin - assuming no reboot required"
-                );
-                Ok(RebootCheck::not_required())
-            }
-        }
     }
 
     /// Check if kernel or initrd changed (fast check)
@@ -84,7 +47,6 @@ impl LocalRebootBackend {
                     let old_target = self.read_symlink_target(target, &booted_path)?;
                     let new_target = self.read_symlink_target(target, &new_path)?;
 
-                    // Only report as changed if the canonical paths actually differ
                     if old_target != new_target {
                         let reason = match component {
                             "kernel" => RebootReason::KernelChanged {
@@ -108,8 +70,6 @@ impl LocalRebootBackend {
     }
 
     /// Read the target of a symlink on the local filesystem
-    ///
-    /// Uses canonicalize to resolve all symlinks in the path and get the real file.
     fn read_symlink_target(&self, target: &DeployTarget, symlink_path: &str) -> Result<String> {
         fs::canonicalize(symlink_path)
             .map(|p| p.to_string_lossy().to_string())
@@ -171,27 +131,33 @@ impl LocalRebootBackend {
     }
 
     /// Check if any critical services would be restarted
-    fn check_critical_services(
+    async fn check_critical_services(
         &self,
         target: &DeployTarget,
         new_system: &StorePath,
     ) -> Result<Option<RebootReason>> {
         let dry_activate_path = format!("{}/bin/switch-to-configuration", new_system.as_str());
 
-        let mut cmd = Command::new("sudo");
-        cmd.args([&dry_activate_path, "dry-activate"]);
-
-        let output = cmd.output().map_err(|e| DeployError::Failed {
+        let result = run_command(
+            "sudo",
+            &[&dry_activate_path, "dry-activate"],
+            OutputMode::Capture,
+            None,
+            None,
+            &[],
+        )
+        .await
+        .map_err(|e| DeployError::Failed {
             host: target.hostname.clone(),
             source: e,
         })?;
 
-        if !output.status.success() {
+        if !result.status.success() {
             return Err(DeployError::Failed {
                 host: target.hostname.clone(),
                 source: std::io::Error::other(format!(
                     "dry-activate failed: {}",
-                    String::from_utf8_lossy(&output.stderr)
+                    String::from_utf8_lossy(&result.stderr)
                 )),
             }
             .into());
@@ -220,31 +186,6 @@ impl LocalRebootBackend {
 
         Ok(None)
     }
-
-    /// Reboot the local host
-    ///
-    /// On NixOS, uses `systemctl reboot`
-    /// On Darwin, uses `shutdown -r now`
-    fn reboot_and_wait_impl(&self, _target: &DeployTarget) -> Result<()> {
-        let system_type = SystemType::detect_current();
-
-        let mut cmd = Command::new("sudo");
-        match system_type {
-            SystemType::NixOS => {
-                cmd.args(["systemctl", "reboot"]);
-            }
-            SystemType::Darwin => {
-                cmd.args(["shutdown", "-r", "now"]);
-            }
-        }
-
-        cmd.spawn().map_err(|e| DeployError::Failed {
-            host: "localhost".to_string(),
-            source: e,
-        })?;
-
-        Ok(())
-    }
 }
 
 impl Default for LocalRebootBackend {
@@ -253,17 +194,56 @@ impl Default for LocalRebootBackend {
     }
 }
 
+#[async_trait]
 impl RebootBackend for LocalRebootBackend {
-    fn check_reboot_required(
+    async fn check_reboot_required(
         &self,
         target: &DeployTarget,
         new_system: &StorePath,
     ) -> Result<RebootCheck> {
-        self.check_reboot_required_impl(target, new_system)
+        let system_type = SystemType::detect_current();
+
+        match system_type {
+            SystemType::NixOS => {
+                if self.config.check_kernel || self.config.check_initrd {
+                    if let Some(reason) = self.check_hard_requirements(target, new_system)? {
+                        return Ok(RebootCheck::required(reason));
+                    }
+                }
+
+                if !self.config.critical_services.is_empty() {
+                    if let Some(reason) = self.check_critical_services(target, new_system).await? {
+                        return Ok(RebootCheck::required(reason));
+                    }
+                }
+
+                Ok(RebootCheck::not_required())
+            }
+            SystemType::Darwin => {
+                tracing::info!(
+                    "Reboot detection not implemented for Darwin - assuming no reboot required"
+                );
+                Ok(RebootCheck::not_required())
+            }
+        }
     }
 
-    fn reboot_and_wait(&self, target: &DeployTarget) -> Result<()> {
-        self.reboot_and_wait_impl(target)
+    async fn reboot_and_wait(&self, _target: &DeployTarget) -> Result<()> {
+        let system_type = SystemType::detect_current();
+
+        let (program, args): (&str, &[&str]) = match system_type {
+            SystemType::NixOS => ("sudo", &["systemctl", "reboot"]),
+            SystemType::Darwin => ("sudo", &["shutdown", "-r", "now"]),
+        };
+
+        run_command(program, args, OutputMode::Capture, None, None, &[])
+            .await
+            .map_err(|e| DeployError::Failed {
+                host: "localhost".to_string(),
+                source: e,
+            })?;
+
+        Ok(())
     }
 }
 
@@ -350,9 +330,9 @@ mod tests {
         assert_eq!(backend.config.critical_services.len(), 1);
     }
 
-    #[test]
+    #[tokio::test]
     #[cfg(target_os = "macos")]
-    fn test_check_reboot_required_darwin_always_returns_not_required() {
+    async fn test_check_reboot_required_darwin_always_returns_not_required() {
         let backend = LocalRebootBackend::with_defaults();
         let target = DeployTarget {
             user: None,
@@ -361,31 +341,11 @@ mod tests {
         };
         let store_path = StorePath::new("/nix/store/fake-path".to_string());
 
-        let result = backend.check_reboot_required(&target, &store_path);
+        let result = backend.check_reboot_required(&target, &store_path).await;
 
         assert!(result.is_ok());
         let check = result.unwrap();
         assert!(!check.required);
         assert!(check.reason.is_none());
-    }
-
-    #[test]
-    #[cfg(target_os = "macos")]
-    fn test_reboot_and_wait_darwin_uses_shutdown() {
-        let backend = LocalRebootBackend::with_defaults();
-        let target = DeployTarget {
-            user: None,
-            hostname: "localhost".to_string(),
-            port: None,
-        };
-
-        let result = backend.reboot_and_wait(&target);
-        // On Darwin, spawn() may succeed (returns Ok) even though the command will fail
-        // The important thing is that the code runs and constructs the correct command
-        // We can't easily verify the exact command without mocking
-        assert!(
-            result.is_ok() || result.is_err(),
-            "Should either succeed at spawning or fail, both are acceptable"
-        );
     }
 }

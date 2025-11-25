@@ -75,8 +75,8 @@ fn test_push_results_all_succeeded() {
     assert!(results.all_succeeded());
 }
 
-#[test]
-fn test_create_deployment_plans_auto_mode_no_reboot() {
+#[tokio::test]
+async fn test_create_deployment_plans_auto_mode_no_reboot() {
     let config = RebootDetectionConfig {
         critical_services: vec![],
         check_kernel: false,
@@ -87,8 +87,9 @@ fn test_create_deployment_plans_auto_mode_no_reboot() {
 
     let hosts = vec![make_host("test", None, RebootPolicy::Auto)];
 
-    let (plans, blocked) =
-        create_deployment_plans(hosts, &detector, PushStrategy::Auto, false).unwrap();
+    let (plans, blocked) = create_deployment_plans(hosts, &detector, PushStrategy::Auto, false)
+        .await
+        .unwrap();
 
     assert_eq!(plans.len(), 1);
     assert_eq!(blocked.len(), 0);
@@ -97,13 +98,14 @@ fn test_create_deployment_plans_auto_mode_no_reboot() {
     assert!(!plans[0].reboot_check.as_ref().unwrap().required);
 }
 
-#[test]
-fn test_create_deployment_plans_dry_run() {
+#[tokio::test]
+async fn test_create_deployment_plans_dry_run() {
     let detector = SystemRebootBackend::default();
     let hosts = vec![make_host("test", None, RebootPolicy::Auto)];
 
-    let (plans, blocked) =
-        create_deployment_plans(hosts, &detector, PushStrategy::DryRun, false).unwrap();
+    let (plans, blocked) = create_deployment_plans(hosts, &detector, PushStrategy::DryRun, false)
+        .await
+        .unwrap();
 
     assert_eq!(plans.len(), 1);
     assert_eq!(blocked.len(), 0);
@@ -111,13 +113,14 @@ fn test_create_deployment_plans_dry_run() {
     assert!(plans[0].reboot_check.is_none());
 }
 
-#[test]
-fn test_create_deployment_plans_boot_mode() {
+#[tokio::test]
+async fn test_create_deployment_plans_boot_mode() {
     let detector = SystemRebootBackend::default();
     let hosts = vec![make_host("test", None, RebootPolicy::Auto)];
 
-    let (plans, blocked) =
-        create_deployment_plans(hosts, &detector, PushStrategy::Boot, false).unwrap();
+    let (plans, blocked) = create_deployment_plans(hosts, &detector, PushStrategy::Boot, false)
+        .await
+        .unwrap();
 
     assert_eq!(plans.len(), 1);
     assert_eq!(blocked.len(), 0);
@@ -125,13 +128,14 @@ fn test_create_deployment_plans_boot_mode() {
     assert!(plans[0].reboot_check.is_none());
 }
 
-#[test]
-fn test_create_deployment_plans_test_mode() {
+#[tokio::test]
+async fn test_create_deployment_plans_test_mode() {
     let detector = SystemRebootBackend::default();
     let hosts = vec![make_host("test", None, RebootPolicy::Auto)];
 
-    let (plans, blocked) =
-        create_deployment_plans(hosts, &detector, PushStrategy::Test, false).unwrap();
+    let (plans, blocked) = create_deployment_plans(hosts, &detector, PushStrategy::Test, false)
+        .await
+        .unwrap();
 
     assert_eq!(plans.len(), 1);
     assert_eq!(blocked.len(), 0);
@@ -139,8 +143,8 @@ fn test_create_deployment_plans_test_mode() {
     assert!(plans[0].reboot_check.is_none());
 }
 
-#[test]
-fn test_create_deployment_plans_switch_with_force() {
+#[tokio::test]
+async fn test_create_deployment_plans_switch_with_force() {
     let config = RebootDetectionConfig {
         critical_services: vec![],
         check_kernel: false,
@@ -150,16 +154,17 @@ fn test_create_deployment_plans_switch_with_force() {
     let detector = SystemRebootBackend::new(config);
     let hosts = vec![make_host("test", None, RebootPolicy::Auto)];
 
-    let (plans, blocked) =
-        create_deployment_plans(hosts, &detector, PushStrategy::Switch, true).unwrap();
+    let (plans, blocked) = create_deployment_plans(hosts, &detector, PushStrategy::Switch, true)
+        .await
+        .unwrap();
 
     assert_eq!(plans.len(), 1);
     assert_eq!(blocked.len(), 0);
     assert_eq!(plans[0].activation_mode, ActivationMode::Switch);
 }
 
-#[test]
-fn test_create_deployment_plans_multiple_hosts_mixed_results() {
+#[tokio::test]
+async fn test_create_deployment_plans_multiple_hosts_mixed_results() {
     let config = RebootDetectionConfig {
         critical_services: vec![],
         check_kernel: false,
@@ -174,8 +179,9 @@ fn test_create_deployment_plans_multiple_hosts_mixed_results() {
         make_host("host3", None, RebootPolicy::Auto),
     ];
 
-    let (plans, blocked) =
-        create_deployment_plans(hosts, &detector, PushStrategy::Auto, false).unwrap();
+    let (plans, blocked) = create_deployment_plans(hosts, &detector, PushStrategy::Auto, false)
+        .await
+        .unwrap();
 
     assert_eq!(plans.len(), 3);
     assert_eq!(blocked.len(), 0);
@@ -184,8 +190,8 @@ fn test_create_deployment_plans_multiple_hosts_mixed_results() {
     }
 }
 
-#[test]
-fn test_reboot_policy_never_uses_boot_mode() {
+#[tokio::test]
+async fn test_reboot_policy_never_uses_boot_mode() {
     let config = RebootDetectionConfig {
         critical_services: vec![],
         check_kernel: false,
@@ -196,8 +202,9 @@ fn test_reboot_policy_never_uses_boot_mode() {
 
     let hosts = vec![make_host("host1", None, RebootPolicy::Never)];
 
-    let (plans, blocked) =
-        create_deployment_plans(hosts, &detector, PushStrategy::Auto, false).unwrap();
+    let (plans, blocked) = create_deployment_plans(hosts, &detector, PushStrategy::Auto, false)
+        .await
+        .unwrap();
 
     assert_eq!(plans.len(), 1);
     assert_eq!(blocked.len(), 0);
@@ -206,8 +213,8 @@ fn test_reboot_policy_never_uses_boot_mode() {
     assert!(!plans[0].reboot_check.as_ref().unwrap().required);
 }
 
-#[test]
-fn test_reboot_policy_always_uses_boot_mode_with_reboot() {
+#[tokio::test]
+async fn test_reboot_policy_always_uses_boot_mode_with_reboot() {
     let config = RebootDetectionConfig {
         critical_services: vec![],
         check_kernel: false,
@@ -218,8 +225,9 @@ fn test_reboot_policy_always_uses_boot_mode_with_reboot() {
 
     let hosts = vec![make_host("host1", None, RebootPolicy::Always)];
 
-    let (plans, blocked) =
-        create_deployment_plans(hosts, &detector, PushStrategy::Auto, false).unwrap();
+    let (plans, blocked) = create_deployment_plans(hosts, &detector, PushStrategy::Auto, false)
+        .await
+        .unwrap();
 
     assert_eq!(plans.len(), 1);
     assert_eq!(blocked.len(), 0);
@@ -228,8 +236,8 @@ fn test_reboot_policy_always_uses_boot_mode_with_reboot() {
     assert!(plans[0].reboot_check.as_ref().unwrap().required);
 }
 
-#[test]
-fn test_reboot_policy_auto_uses_detection() {
+#[tokio::test]
+async fn test_reboot_policy_auto_uses_detection() {
     let config = RebootDetectionConfig {
         critical_services: vec![],
         check_kernel: false,
@@ -240,8 +248,9 @@ fn test_reboot_policy_auto_uses_detection() {
 
     let hosts = vec![make_host("host1", None, RebootPolicy::Auto)];
 
-    let (plans, blocked) =
-        create_deployment_plans(hosts, &detector, PushStrategy::Auto, false).unwrap();
+    let (plans, blocked) = create_deployment_plans(hosts, &detector, PushStrategy::Auto, false)
+        .await
+        .unwrap();
 
     assert_eq!(plans.len(), 1);
     assert_eq!(blocked.len(), 0);
@@ -250,8 +259,8 @@ fn test_reboot_policy_auto_uses_detection() {
     assert!(!plans[0].reboot_check.as_ref().unwrap().required);
 }
 
-#[test]
-fn test_reboot_policy_never_overrides_switch_mode() {
+#[tokio::test]
+async fn test_reboot_policy_never_overrides_switch_mode() {
     let config = RebootDetectionConfig {
         critical_services: vec![],
         check_kernel: false,
@@ -262,8 +271,9 @@ fn test_reboot_policy_never_overrides_switch_mode() {
 
     let hosts = vec![make_host("host1", None, RebootPolicy::Never)];
 
-    let (plans, blocked) =
-        create_deployment_plans(hosts, &detector, PushStrategy::Switch, false).unwrap();
+    let (plans, blocked) = create_deployment_plans(hosts, &detector, PushStrategy::Switch, false)
+        .await
+        .unwrap();
 
     assert_eq!(plans.len(), 1);
     assert_eq!(blocked.len(), 0);
@@ -271,8 +281,8 @@ fn test_reboot_policy_never_overrides_switch_mode() {
     assert!(!plans[0].reboot_check.as_ref().unwrap().required);
 }
 
-#[test]
-fn test_reboot_policy_always_overrides_switch_mode() {
+#[tokio::test]
+async fn test_reboot_policy_always_overrides_switch_mode() {
     let config = RebootDetectionConfig {
         critical_services: vec![],
         check_kernel: false,
@@ -283,8 +293,9 @@ fn test_reboot_policy_always_overrides_switch_mode() {
 
     let hosts = vec![make_host("host1", None, RebootPolicy::Always)];
 
-    let (plans, blocked) =
-        create_deployment_plans(hosts, &detector, PushStrategy::Switch, false).unwrap();
+    let (plans, blocked) = create_deployment_plans(hosts, &detector, PushStrategy::Switch, false)
+        .await
+        .unwrap();
 
     assert_eq!(plans.len(), 1);
     assert_eq!(blocked.len(), 0);
@@ -292,8 +303,8 @@ fn test_reboot_policy_always_overrides_switch_mode() {
     assert!(plans[0].reboot_check.as_ref().unwrap().required);
 }
 
-#[test]
-fn test_force_overrides_never_policy_with_switch() {
+#[tokio::test]
+async fn test_force_overrides_never_policy_with_switch() {
     let config = RebootDetectionConfig {
         critical_services: vec![],
         check_kernel: false,
@@ -304,16 +315,17 @@ fn test_force_overrides_never_policy_with_switch() {
 
     let hosts = vec![make_host("host1", None, RebootPolicy::Never)];
 
-    let (plans, blocked) =
-        create_deployment_plans(hosts, &detector, PushStrategy::Switch, true).unwrap();
+    let (plans, blocked) = create_deployment_plans(hosts, &detector, PushStrategy::Switch, true)
+        .await
+        .unwrap();
 
     assert_eq!(plans.len(), 1);
     assert_eq!(blocked.len(), 0);
     assert_eq!(plans[0].activation_mode, ActivationMode::Switch);
 }
 
-#[test]
-fn test_force_overrides_always_policy_with_switch() {
+#[tokio::test]
+async fn test_force_overrides_always_policy_with_switch() {
     let config = RebootDetectionConfig {
         critical_services: vec![],
         check_kernel: false,
@@ -324,8 +336,9 @@ fn test_force_overrides_always_policy_with_switch() {
 
     let hosts = vec![make_host("host1", None, RebootPolicy::Always)];
 
-    let (plans, blocked) =
-        create_deployment_plans(hosts, &detector, PushStrategy::Switch, true).unwrap();
+    let (plans, blocked) = create_deployment_plans(hosts, &detector, PushStrategy::Switch, true)
+        .await
+        .unwrap();
 
     assert_eq!(plans.len(), 1);
     assert_eq!(blocked.len(), 0);

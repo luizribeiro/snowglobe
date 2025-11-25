@@ -26,7 +26,8 @@ struct Cli {
     command: commands::Commands,
 }
 
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     miette::set_panic_hook();
 
     // Set up tracing with indicatif integration for progress bars
@@ -44,5 +45,5 @@ fn main() -> Result<()> {
 
     let flake = snowlib::Flake::new(cli.flake_path.as_deref()).into_diagnostic()?;
 
-    cli.command.run(&flake).into_diagnostic()
+    cli.command.run(&flake).await.into_diagnostic()
 }

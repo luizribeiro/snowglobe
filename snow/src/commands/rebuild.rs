@@ -134,7 +134,7 @@ impl RebuildArgs {
         }
     }
 
-    pub fn run(self, flake: &Flake) -> Result<()> {
+    pub async fn run(self, flake: &Flake) -> Result<()> {
         self.validate()?;
 
         let hostname = self.resolve_hostname()?;
@@ -183,7 +183,9 @@ impl RebuildArgs {
 
         // For switch mode, check if reboot is required
         println!("Checking if reboot is required...");
-        let reboot_check = reboot_backend.check_reboot_required(&target, &store_path)?;
+        let reboot_check = reboot_backend
+            .check_reboot_required(&target, &store_path)
+            .await?;
 
         // If no reboot needed, activate immediately and exit
         if !reboot_check.required {
@@ -209,7 +211,7 @@ impl RebuildArgs {
                 deploy_backend.activate(&target, &store_path, ActivationMode::Boot)?;
                 println!("✅ Configuration activated for next boot");
                 println!("Rebooting...");
-                reboot_backend.reboot_and_wait(&target)?;
+                reboot_backend.reboot_and_wait(&target).await?;
             }
             RebootAction::BootOnly => {
                 println!("\nActivating in boot mode...");

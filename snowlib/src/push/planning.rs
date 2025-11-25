@@ -22,7 +22,7 @@ enum ActivationStrategy {
 }
 
 /// Determine the activation strategy for a single host
-fn determine_activation_strategy(
+async fn determine_activation_strategy(
     metadata: &HostMetadata,
     target: &DeployTarget,
     store_path: &StorePath,
@@ -38,14 +38,14 @@ fn determine_activation_strategy(
         PushStrategy::Test => Ok(ActivationStrategy::Deploy(ActivationMode::Test, None)),
         PushStrategy::Boot => Ok(ActivationStrategy::Deploy(ActivationMode::Boot, None)),
         PushStrategy::Switch => {
-            handle_switch_mode(metadata, target, store_path, reboot_backend, force)
+            handle_switch_mode(metadata, target, store_path, reboot_backend, force).await
         }
-        PushStrategy::Auto => handle_auto_mode(metadata, target, store_path, reboot_backend),
+        PushStrategy::Auto => handle_auto_mode(metadata, target, store_path, reboot_backend).await,
     }
 }
 
 /// Handle switch mode: force immediate activation with safety checks
-fn handle_switch_mode(
+async fn handle_switch_mode(
     metadata: &HostMetadata,
     target: &DeployTarget,
     store_path: &StorePath,
@@ -76,7 +76,9 @@ fn handle_switch_mode(
         }
     }
 
-    let check = reboot_backend.check_reboot_required(target, store_path)?;
+    let check = reboot_backend
+        .check_reboot_required(target, store_path)
+        .await?;
 
     if check.required && !force {
         // Reboot required but --force not set - block this host
@@ -95,7 +97,7 @@ fn handle_switch_mode(
 }
 
 /// Handle auto mode: detect reboot requirement and choose activation mode
-fn handle_auto_mode(
+async fn handle_auto_mode(
     metadata: &HostMetadata,
     target: &DeployTarget,
     store_path: &StorePath,
@@ -122,7 +124,9 @@ fn handle_auto_mode(
         }
     }
 
-    let check = reboot_backend.check_reboot_required(target, store_path)?;
+    let check = reboot_backend
+        .check_reboot_required(target, store_path)
+        .await?;
 
     let activation = if check.required {
         ActivationMode::Boot
@@ -142,7 +146,7 @@ fn handle_auto_mode(
 ///
 /// Returns (plans, blocked_hosts) where blocked_hosts contains hosts that were
 /// blocked by safety checks (e.g., --switch without --force when reboot required)
-pub fn create_deployment_plans(
+pub async fn create_deployment_plans(
     hosts: Vec<(HostMetadata, DeployTarget, StorePath)>,
     reboot_backend: &dyn RebootBackend,
     strategy: PushStrategy,
@@ -159,7 +163,9 @@ pub fn create_deployment_plans(
             reboot_backend,
             strategy,
             force,
-        )? {
+        )
+        .await?
+        {
             ActivationStrategy::Deploy(activation_mode, reboot_check) => {
                 plans.push(PushPlan {
                     metadata,

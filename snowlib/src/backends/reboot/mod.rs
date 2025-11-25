@@ -11,21 +11,23 @@ pub use system::SystemRebootBackend;
 use crate::backends::deploy::DeployTarget;
 use crate::error::Result;
 use crate::nix::StorePath;
+use async_trait::async_trait;
 
 /// Trait for reboot backend operations (detection and execution)
 ///
 /// This trait allows for testability by enabling mock implementations
 /// that don't require actual SSH connections.
+#[async_trait]
 pub trait RebootBackend: Send + Sync {
     /// Check if a deployment requires a reboot
-    fn check_reboot_required(
+    async fn check_reboot_required(
         &self,
         target: &DeployTarget,
         new_system: &StorePath,
     ) -> Result<RebootCheck>;
 
     /// Reboot a host and wait for it to come back online
-    fn reboot_and_wait(&self, target: &DeployTarget) -> Result<()>;
+    async fn reboot_and_wait(&self, target: &DeployTarget) -> Result<()>;
 }
 
 /// Default critical services that require a reboot when restarted

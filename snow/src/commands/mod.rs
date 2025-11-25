@@ -22,13 +22,13 @@ pub enum Commands {
 }
 
 impl Commands {
-    pub fn run(self, flake: &snowlib::Flake) -> snowlib::Result<()> {
+    pub async fn run(self, flake: &snowlib::Flake) -> snowlib::Result<()> {
         match self {
             Commands::Status(args) => args.run(flake),
             Commands::List(args) => args.run(flake),
             Commands::Build(args) => args.run(flake),
             Commands::Push(args) => args.run(flake),
-            Commands::Rebuild(args) => args.run(flake),
+            Commands::Rebuild(args) => args.run(flake).await,
         }
     }
 }

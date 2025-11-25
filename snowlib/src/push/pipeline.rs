@@ -2,6 +2,10 @@
 //!
 //! This module handles the execution of the deployment pipeline for individual hosts.
 //! The pipeline consists of: Build → Copy → Plan → Activate → Reboot
+//!
+//! Note: Currently uses a hybrid sync/async approach during migration. Functions that
+//! call async backends use `block_on_async` to bridge the sync Rayon pipeline with
+//! async backend implementations.
 
 use crate::backends::deploy::{DeployResult, DeployTarget};
 use crate::error::Result;
@@ -14,6 +18,22 @@ use std::sync::Arc;
 use super::context::PushContext;
 use super::planning::create_deployment_plans;
 use super::results::{HostDeploymentResult, PipelineStep, PushPlan};
+
+/// Bridge sync code to async during migration
+///
+/// Creates a new tokio runtime to run async code from sync context.
+/// This is a temporary measure until the entire pipeline is async.
+fn block_on_async<F: std::future::Future>(future: F) -> F::Output {
+    match tokio::runtime::Handle::try_current() {
+        Ok(handle) => handle.block_on(future),
+        Err(_) => {
+            // No runtime available, create a temporary one
+            tokio::runtime::Runtime::new()
+                .expect("Failed to create tokio runtime")
+                .block_on(future)
+        }
+    }
+}
 
 /// Intermediate data structure for passing build results through the pipeline
 #[derive(Debug, Clone)]
@@ -348,8 +368,8 @@ fn execute_activation_step(
     // Start the activate observer span before planning so planning work is visible
     push_ctx.observer.on_activation_start(hostname);
 
-    // Planning: Determine activation strategy
-    let (plans, blocked) = create_deployment_plans(
+    // Planning: Determine activation strategy (async, bridged to sync)
+    let (plans, blocked) = block_on_async(create_deployment_plans(
         vec![(
             copy_output.metadata.clone(),
             copy_output.target.clone(),
@@ -358,7 +378,7 @@ fn execute_activation_step(
         push_ctx.reboot_backend,
         push_ctx.config.strategy,
         push_ctx.config.force,
-    )?;
+    ))?;
 
     // Handle blocked hosts
     if !blocked.is_empty() {
@@ -426,7 +446,8 @@ fn execute_reboot_step(
     let (final_result, rebooted) = if should_reboot {
         push_ctx.observer.on_reboot_start(hostname);
 
-        match push_ctx.reboot_backend.reboot_and_wait(&plan.target) {
+        // Async reboot, bridged to sync
+        match block_on_async(push_ctx.reboot_backend.reboot_and_wait(&plan.target)) {
             Ok(()) => {
                 push_ctx.observer.on_reboot_complete(hostname, true);
                 (activate_result, true)
