@@ -6,6 +6,8 @@ mod system;
 pub use mock::MockNixBackend;
 pub use system::SystemNixBackend;
 
+use async_trait::async_trait;
+
 use crate::error::{NixError, Result};
 use crate::host::{Host, HostMetadata};
 use crate::nix::{Flake, StorePath, SystemType};
@@ -27,12 +29,13 @@ pub(crate) fn parse_hostnames(json: &[u8]) -> Result<Vec<Host>> {
 /// Trait for Nix backend operations (evaluation, building)
 ///
 /// Allows swapping between real Nix commands and mocked versions for testing.
+#[async_trait]
 pub trait NixBackend: Send + Sync {
     /// List all configurations from the flake (nixosConfigurations or darwinConfigurations)
     ///
     /// If filter_expr is provided, it should be a Nix expression that takes a config and returns a boolean.
     /// Example: "config: config.features.backup.enable or false"
-    fn list_hosts(
+    async fn list_hosts(
         &self,
         flake: &Flake,
         system_type: SystemType,
@@ -44,11 +47,11 @@ pub trait NixBackend: Send + Sync {
     /// Tries both configuration types and combines the results. If one type doesn't exist,
     /// ignores it and returns hosts from the other type. However, actual errors (like invalid
     /// filter syntax) are propagated.
-    fn list_all_hosts(&self, flake: &Flake, filter_expr: Option<&str>) -> Result<Vec<Host>> {
+    async fn list_all_hosts(&self, flake: &Flake, filter_expr: Option<&str>) -> Result<Vec<Host>> {
         let mut all_hosts = Vec::new();
         let mut has_valid_result = false;
 
-        match self.list_hosts(flake, SystemType::NixOS, filter_expr) {
+        match self.list_hosts(flake, SystemType::NixOS, filter_expr).await {
             Ok(nixos_hosts) => {
                 all_hosts.extend(nixos_hosts);
                 has_valid_result = true;
@@ -62,7 +65,10 @@ pub trait NixBackend: Send + Sync {
             }
         }
 
-        match self.list_hosts(flake, SystemType::Darwin, filter_expr) {
+        match self
+            .list_hosts(flake, SystemType::Darwin, filter_expr)
+            .await
+        {
             Ok(darwin_hosts) => {
                 all_hosts.extend(darwin_hosts);
                 has_valid_result = true;
@@ -86,7 +92,7 @@ pub trait NixBackend: Send + Sync {
     }
 
     /// Get metadata for a host from its configuration
-    fn get_host_metadata(
+    async fn get_host_metadata(
         &self,
         flake: &Flake,
         host: &str,
@@ -94,7 +100,7 @@ pub trait NixBackend: Send + Sync {
     ) -> Result<HostMetadata>;
 
     /// Build a host's configuration and return the store path
-    fn build_host(
+    async fn build_host(
         &self,
         flake: &Flake,
         host: &str,

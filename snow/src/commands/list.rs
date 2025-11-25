@@ -1,6 +1,16 @@
 use clap::Args;
 use snowlib::{Flake, Result};
 
+/// Bridge sync code to async during migration
+fn block_on_async<F: std::future::Future>(future: F) -> F::Output {
+    match tokio::runtime::Handle::try_current() {
+        Ok(handle) => tokio::task::block_in_place(|| handle.block_on(future)),
+        Err(_) => tokio::runtime::Runtime::new()
+            .expect("Failed to create tokio runtime")
+            .block_on(future),
+    }
+}
+
 /// List hostnames from nixosConfigurations and darwinConfigurations
 #[derive(Debug, Args)]
 pub struct ListArgs {
@@ -21,7 +31,7 @@ impl ListArgs {
             &self.mock_fixture,
         )?;
 
-        let hosts = nix_backend.list_all_hosts(flake, self.filter.as_deref())?;
+        let hosts = block_on_async(nix_backend.list_all_hosts(flake, self.filter.as_deref()))?;
 
         for host in hosts {
             println!("{}", host.name);

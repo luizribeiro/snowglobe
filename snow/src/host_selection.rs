@@ -1,6 +1,16 @@
 use snowlib::{Flake, NixBackend, Result};
 use std::collections::HashSet;
 
+/// Bridge sync code to async during migration
+fn block_on_async<F: std::future::Future>(future: F) -> F::Output {
+    match tokio::runtime::Handle::try_current() {
+        Ok(handle) => tokio::task::block_in_place(|| handle.block_on(future)),
+        Err(_) => tokio::runtime::Runtime::new()
+            .expect("Failed to create tokio runtime")
+            .block_on(future),
+    }
+}
+
 /// Helper function for commands with hosts and filter arguments.
 ///
 /// Automatically handles the empty vec case, making it convenient for commands
@@ -54,19 +64,19 @@ pub fn resolve_hosts(
 
         // No filter, no explicit hosts: return all hosts
         (None, None) | (None, Some(&[])) => {
-            let all_hosts = nix_backend.list_all_hosts(flake, None)?;
+            let all_hosts = block_on_async(nix_backend.list_all_hosts(flake, None))?;
             Ok(all_hosts.iter().map(|h| h.name.clone()).collect())
         }
 
         // Filter only: return all hosts matching filter
         (Some(filter), None) | (Some(filter), Some(&[])) => {
-            let filtered_hosts = nix_backend.list_all_hosts(flake, Some(filter))?;
+            let filtered_hosts = block_on_async(nix_backend.list_all_hosts(flake, Some(filter)))?;
             Ok(filtered_hosts.iter().map(|h| h.name.clone()).collect())
         }
 
         // Explicit hosts only: validate they exist, return them
         (None, Some(requested)) => {
-            let all_hosts = nix_backend.list_all_hosts(flake, None)?;
+            let all_hosts = block_on_async(nix_backend.list_all_hosts(flake, None))?;
             let valid_set: HashSet<String> = all_hosts.iter().map(|h| h.name.clone()).collect();
 
             let invalid_hosts: Vec<String> = requested
@@ -92,8 +102,8 @@ pub fn resolve_hosts(
             // - With filter: determines which hosts match (for intersection)
             // - Without filter: validates explicit hosts exist (better errors on typos)
             // Could optimize to one call but would complicate validation logic
-            let filtered_hosts = nix_backend.list_all_hosts(flake, Some(filter))?;
-            let all_hosts = nix_backend.list_all_hosts(flake, None)?;
+            let filtered_hosts = block_on_async(nix_backend.list_all_hosts(flake, Some(filter)))?;
+            let all_hosts = block_on_async(nix_backend.list_all_hosts(flake, None))?;
 
             let filtered_set: HashSet<String> =
                 filtered_hosts.iter().map(|h| h.name.clone()).collect();

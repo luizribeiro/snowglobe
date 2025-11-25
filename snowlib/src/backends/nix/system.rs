@@ -1,4 +1,6 @@
 use super::{parse_hostnames, NixBackend};
+use async_trait::async_trait;
+
 use crate::error::Result;
 use crate::hooks::{HookConfig, HookLocation, HookStage};
 use crate::host::{Host, HostMetadata};
@@ -26,8 +28,9 @@ impl Default for SystemNixBackend {
     }
 }
 
+#[async_trait]
 impl NixBackend for SystemNixBackend {
-    fn list_hosts(
+    async fn list_hosts(
         &self,
         flake: &Flake,
         system_type: SystemType,
@@ -53,12 +56,13 @@ impl NixBackend for SystemNixBackend {
         let stdout = NixCommand::eval(flake, &flake_ref)
             .apply(&apply_arg)
             .json()
-            .run()?;
+            .run()
+            .await?;
 
         parse_hostnames(&stdout)
     }
 
-    fn get_host_metadata(
+    async fn get_host_metadata(
         &self,
         flake: &Flake,
         host: &str,
@@ -79,6 +83,7 @@ impl NixBackend for SystemNixBackend {
             .apply(apply_expr)
             .json()
             .run()
+            .await
             .map_err(|e| match e {
                 crate::error::SnowError::Nix(nix_err) => {
                     crate::error::SnowError::Nix(crate::error::NixError::MetadataFailed {
@@ -175,7 +180,7 @@ impl NixBackend for SystemNixBackend {
         })
     }
 
-    fn build_host(
+    async fn build_host(
         &self,
         flake: &Flake,
         host: &str,
@@ -194,6 +199,7 @@ impl NixBackend for SystemNixBackend {
             .print_out_paths()
             .output_mode(output_mode)
             .run()
+            .await
             .map_err(|e| match e {
                 crate::error::SnowError::Nix(crate::error::NixError::EvalFailed {
                     stderr,

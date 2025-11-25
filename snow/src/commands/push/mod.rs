@@ -3,6 +3,16 @@ mod observer;
 use clap::Args;
 use snowlib::{Flake, PushStrategy, Result};
 
+/// Bridge sync code to async during migration
+fn block_on_async<F: std::future::Future>(future: F) -> F::Output {
+    match tokio::runtime::Handle::try_current() {
+        Ok(handle) => tokio::task::block_in_place(|| handle.block_on(future)),
+        Err(_) => tokio::runtime::Runtime::new()
+            .expect("Failed to create tokio runtime")
+            .block_on(future),
+    }
+}
+
 /// Deploy configurations to hosts
 #[derive(Debug, Args)]
 pub struct PushArgs {
@@ -199,11 +209,18 @@ impl PushArgs {
         let mut hosts = Vec::new();
         for name in hostnames {
             // Try NixOS first, then Darwin
-            let metadata = nix_backend
-                .get_host_metadata(flake, &name, snowlib::SystemType::NixOS)
-                .or_else(|_| {
-                    nix_backend.get_host_metadata(flake, &name, snowlib::SystemType::Darwin)
-                })?;
+            let metadata = block_on_async(nix_backend.get_host_metadata(
+                flake,
+                &name,
+                snowlib::SystemType::NixOS,
+            ))
+            .or_else(|_| {
+                block_on_async(nix_backend.get_host_metadata(
+                    flake,
+                    &name,
+                    snowlib::SystemType::Darwin,
+                ))
+            })?;
             hosts.push(metadata);
         }
 

@@ -5,8 +5,8 @@
 
 use crate::error::{NixError, Result};
 use crate::nix::Flake;
-use crate::process::{OutputMode, StreamingExecutor};
-use std::process::Command;
+use crate::process::r#async::run_command;
+use crate::process::OutputMode;
 
 /// Builder for constructing and executing Nix commands
 ///
@@ -17,7 +17,7 @@ use std::process::Command;
 /// This is an internal implementation detail and should not be used outside
 /// the nix module. Use the public functions like `list_hosts()` instead.
 pub(crate) struct NixCommand {
-    cmd: Command,
+    args: Vec<String>,
     flake: Flake,
     output_mode: OutputMode,
 }
@@ -25,7 +25,7 @@ pub(crate) struct NixCommand {
 impl NixCommand {
     fn new(flake: &Flake) -> Self {
         Self {
-            cmd: Command::new("nix"),
+            args: Vec::new(),
             flake: flake.clone(),
             output_mode: OutputMode::Capture,
         }
@@ -33,33 +33,36 @@ impl NixCommand {
 
     pub(crate) fn eval(flake: &Flake, attr: impl AsRef<str>) -> Self {
         let mut builder = Self::new(flake);
-        builder.cmd.args(["eval", attr.as_ref()]);
+        builder.args.push("eval".to_string());
+        builder.args.push(attr.as_ref().to_string());
         builder
     }
 
     pub(crate) fn build(flake: &Flake, target: impl AsRef<str>) -> Self {
         let mut builder = Self::new(flake);
-        builder.cmd.args(["build", target.as_ref()]);
+        builder.args.push("build".to_string());
+        builder.args.push(target.as_ref().to_string());
         builder
     }
 
     pub(crate) fn json(mut self) -> Self {
-        self.cmd.arg("--json");
+        self.args.push("--json".to_string());
         self
     }
 
     pub(crate) fn apply(mut self, expr: impl AsRef<str>) -> Self {
-        self.cmd.args(["--apply", expr.as_ref()]);
+        self.args.push("--apply".to_string());
+        self.args.push(expr.as_ref().to_string());
         self
     }
 
     pub(crate) fn no_link(mut self) -> Self {
-        self.cmd.arg("--no-link");
+        self.args.push("--no-link".to_string());
         self
     }
 
     pub(crate) fn print_out_paths(mut self) -> Self {
-        self.cmd.arg("--print-out-paths");
+        self.args.push("--print-out-paths".to_string());
         self
     }
 
@@ -68,11 +71,12 @@ impl NixCommand {
         self
     }
 
-    pub(crate) fn run(mut self) -> Result<Vec<u8>> {
-        let result = StreamingExecutor::new(&mut self.cmd)
-            .working_dir(self.flake.flake_root())
-            .output_mode(self.output_mode)
-            .execute()
+    pub(crate) async fn run(self) -> Result<Vec<u8>> {
+        let args: Vec<&str> = self.args.iter().map(|s| s.as_str()).collect();
+        let working_dir = self.flake.flake_root();
+
+        let result = run_command("nix", &args, self.output_mode, None, Some(working_dir), &[])
+            .await
             .map_err(|e| NixError::CommandFailed { source: e })?;
 
         if !result.status.success() {

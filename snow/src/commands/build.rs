@@ -2,6 +2,16 @@ use clap::Args;
 use rayon::prelude::*;
 use snowlib::{Flake, NixBackend, OutputMode, Result, StorePath};
 
+/// Bridge sync code to async during migration
+fn block_on_async<F: std::future::Future>(future: F) -> F::Output {
+    match tokio::runtime::Handle::try_current() {
+        Ok(handle) => tokio::task::block_in_place(|| handle.block_on(future)),
+        Err(_) => tokio::runtime::Runtime::new()
+            .expect("Failed to create tokio runtime")
+            .block_on(future),
+    }
+}
+
 /// Build NixOS configurations for one or more hosts
 #[derive(Debug, Args)]
 pub struct BuildArgs {
@@ -117,15 +127,19 @@ impl BuildArgs {
             .iter()
             .filter_map(|hostname| {
                 // Try NixOS first
-                if let Ok(metadata) =
-                    nix_backend.get_host_metadata(flake, hostname, snowlib::SystemType::NixOS)
-                {
+                if let Ok(metadata) = block_on_async(nix_backend.get_host_metadata(
+                    flake,
+                    hostname,
+                    snowlib::SystemType::NixOS,
+                )) {
                     return Some(metadata);
                 }
                 // Then try Darwin
-                if let Ok(metadata) =
-                    nix_backend.get_host_metadata(flake, hostname, snowlib::SystemType::Darwin)
-                {
+                if let Ok(metadata) = block_on_async(nix_backend.get_host_metadata(
+                    flake,
+                    hostname,
+                    snowlib::SystemType::Darwin,
+                )) {
                     return Some(metadata);
                 }
                 None
@@ -155,12 +169,12 @@ impl BuildArgs {
             host_metadata
                 .par_iter()
                 .map(|metadata| {
-                    let result = nix_backend.build_host(
+                    let result = block_on_async(nix_backend.build_host(
                         flake,
                         &metadata.name,
                         metadata.system_type,
                         output_mode,
-                    );
+                    ));
                     BuildResult {
                         hostname: metadata.name.clone(),
                         result,

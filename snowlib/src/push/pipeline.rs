@@ -21,11 +21,11 @@ use super::results::{HostDeploymentResult, PipelineStep, PushPlan};
 
 /// Bridge sync code to async during migration
 ///
-/// Creates a new tokio runtime to run async code from sync context.
+/// Uses block_in_place to run async code from sync context when already in a runtime.
 /// This is a temporary measure until the entire pipeline is async.
 fn block_on_async<F: std::future::Future>(future: F) -> F::Output {
     match tokio::runtime::Handle::try_current() {
-        Ok(handle) => handle.block_on(future),
+        Ok(handle) => tokio::task::block_in_place(|| handle.block_on(future)),
         Err(_) => {
             // No runtime available, create a temporary one
             tokio::runtime::Runtime::new()
@@ -301,12 +301,12 @@ fn execute_build_step(push_ctx: &PushContext, host_metadata: &HostMetadata) -> R
     let hostname = &host_metadata.name;
 
     push_ctx.observer.on_build_start(hostname);
-    let build_output = match push_ctx.nix_backend.build_host(
+    let build_output = match block_on_async(push_ctx.nix_backend.build_host(
         push_ctx.flake,
         hostname,
         host_metadata.system_type,
         push_ctx.config.output_mode,
-    ) {
+    )) {
         Ok(store_path) => {
             // Create deployment target
             let target = DeployTarget {

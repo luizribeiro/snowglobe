@@ -154,7 +154,9 @@ impl RebuildArgs {
         let system_type = SystemType::detect_current();
 
         println!("Building configuration...");
-        let store_path = nix_backend.build_host(flake, &hostname, system_type, output_mode)?;
+        let store_path = nix_backend
+            .build_host(flake, &hostname, system_type, output_mode)
+            .await?;
         println!("Built {}", store_path.as_str());
 
         let target = DeployTarget {

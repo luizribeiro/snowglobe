@@ -1,12 +1,13 @@
 use super::NixBackend;
+use async_trait::async_trait;
+use std::time::Duration;
+
 use crate::backends::deploy::{BuildFixture, DeploymentFixture, MetadataFixture};
 use crate::error::Result;
 use crate::host::{Host, HostMetadata};
 use crate::nix::{Flake, StorePath, SystemType};
 use crate::process::OutputMode;
 use crate::reboot::RebootPolicy;
-use std::thread;
-use std::time::Duration;
 
 /// Mock implementation of NixBackend that uses fixtures instead of real Nix commands
 ///
@@ -58,8 +59,9 @@ impl Default for MockNixBackend {
     }
 }
 
+#[async_trait]
 impl NixBackend for MockNixBackend {
-    fn list_hosts(
+    async fn list_hosts(
         &self,
         _ctx: &Flake,
         _system_type: SystemType,
@@ -79,7 +81,7 @@ impl NixBackend for MockNixBackend {
         }
     }
 
-    fn get_host_metadata(
+    async fn get_host_metadata(
         &self,
         _flake: &Flake,
         host: &str,
@@ -108,7 +110,7 @@ impl NixBackend for MockNixBackend {
         }
     }
 
-    fn build_host(
+    async fn build_host(
         &self,
         _flake: &Flake,
         host: &str,
@@ -128,7 +130,7 @@ impl NixBackend for MockNixBackend {
         if let Some(build_fix) = self.get_build_fixture(host) {
             print!("Building {}... ", host);
             if !cfg!(debug_assertions) {
-                thread::sleep(Duration::from_millis(build_fix.duration_ms));
+                tokio::time::sleep(Duration::from_millis(build_fix.duration_ms)).await;
             }
 
             if !build_fix.stdout.is_empty() {
