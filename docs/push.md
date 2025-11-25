@@ -762,5 +762,3 @@ This design is based on real-world NixOS deployment workflows where:
 ## Related Documentation
 
 - [Reboot Detection System](wip/reboot-detection.md) - Detailed design of the reboot detection system
-- [SSH Deployment](TODO) - How SSH-based deployment works
-- [Configuration Guide](TODO) - Configuring deployment behavior in your flake

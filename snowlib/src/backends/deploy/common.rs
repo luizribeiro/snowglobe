@@ -416,7 +416,6 @@ pub(crate) mod test_utils {
         }
     }
 
-    #[allow(dead_code)]
     pub(crate) fn create_test_target_with_port(hostname: &str, port: Option<u16>) -> DeployTarget {
         DeployTarget {
             user: None,
