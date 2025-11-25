@@ -1,33 +1,15 @@
 //! Hook execution backend for lifecycle hooks
 //!
-//! # Timeout Implementation
-//!
-//! Timeouts are implemented by spawning the process and tracking its PID. When a timeout
-//! occurs, the process is terminated using SIGTERM, followed by SIGKILL if it doesn't
-//! exit gracefully within 5 seconds.
+//! Uses StreamingExecutor for consistent subprocess handling with timeout support.
 
 use super::{HookBackend, HookResult};
 use crate::backends::deploy::DeployTarget;
 use crate::error::Result;
 use crate::hooks::HookConfig;
-use crate::process::OutputMode;
-use nix::sys::signal::{self, Signal};
-use nix::sys::wait::{self, WaitPidFlag, WaitStatus};
-use nix::unistd::Pid;
+use crate::process::{OutputMode, StreamingExecutor};
 use std::collections::HashMap;
-use std::io::{BufRead, BufReader};
-use std::process::{Command, Stdio};
-use std::sync::{mpsc, Arc, Mutex};
+use std::process::Command;
 use std::time::{Duration, Instant};
-
-/// Grace period to wait for process to exit after SIGTERM before sending SIGKILL
-const SIGTERM_GRACE_PERIOD_SECS: u64 = 5;
-
-/// Maximum time to wait for process to be reaped by kernel after SIGKILL
-const SIGKILL_REAP_TIMEOUT_SECS: u64 = 2;
-
-/// Polling interval when waiting for process to be reaped
-const REAP_POLL_INTERVAL_MILLIS: u64 = 100;
 
 /// Real implementation of HookBackend that executes hooks via shell
 pub struct SystemHookBackend {
@@ -43,187 +25,6 @@ impl SystemHookBackend {
         }
     }
 
-    /// Spawn a hook process with the given command and environment
-    fn spawn_hook_process(
-        command: &str,
-        env: &HashMap<String, String>,
-    ) -> Result<(std::process::Child, Pid)> {
-        let mut cmd = Command::new("sh");
-        cmd.arg("-c").arg(command);
-        cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
-
-        for (key, value) in env {
-            cmd.env(key, value);
-        }
-
-        let child = cmd.spawn().map_err(|e| {
-            crate::error::SnowError::Deploy(crate::error::DeployError::Failed {
-                host: "local".to_string(),
-                source: std::io::Error::new(e.kind(), format!("Failed to spawn hook: {}", e)),
-            })
-        })?;
-
-        let child_pid = Pid::from_raw(child.id() as i32);
-        Ok((child, child_pid))
-    }
-
-    /// Spawn threads to read stdout and stderr from the child process
-    #[allow(clippy::type_complexity)]
-    fn spawn_output_readers(
-        child: &mut std::process::Child,
-        output_mode: OutputMode,
-    ) -> (
-        std::thread::JoinHandle<()>,
-        std::thread::JoinHandle<()>,
-        Arc<Mutex<Vec<u8>>>,
-        Arc<Mutex<Vec<u8>>>,
-    ) {
-        let stdout = child.stdout.take().expect("stdout was piped");
-        let stderr = child.stderr.take().expect("stderr was piped");
-
-        let stdout_lines = Arc::new(Mutex::new(Vec::new()));
-        let stderr_lines = Arc::new(Mutex::new(Vec::new()));
-
-        let stdout_lines_clone = Arc::clone(&stdout_lines);
-        let stderr_lines_clone = Arc::clone(&stderr_lines);
-
-        let stdout_thread = std::thread::spawn(move || {
-            let reader = BufReader::new(stdout);
-            for line in reader.lines().map_while(|r| r.ok()) {
-                if output_mode == OutputMode::Display && !line.is_empty() {
-                    tracing::info!("{}", line);
-                }
-                let mut lines = stdout_lines_clone.lock().unwrap();
-                lines.extend_from_slice(line.as_bytes());
-                lines.push(b'\n');
-            }
-        });
-
-        let stderr_thread = std::thread::spawn(move || {
-            let reader = BufReader::new(stderr);
-            for line in reader.lines().map_while(|r| r.ok()) {
-                if output_mode == OutputMode::Display && !line.is_empty() {
-                    tracing::info!("stderr: {}", line);
-                }
-                let mut lines = stderr_lines_clone.lock().unwrap();
-                lines.extend_from_slice(line.as_bytes());
-                lines.push(b'\n');
-            }
-        });
-
-        (stdout_thread, stderr_thread, stdout_lines, stderr_lines)
-    }
-
-    /// Wait for process completion with timeout handling
-    ///
-    /// Returns None if the process timed out, Some(ExitStatus) if it completed normally.
-    /// On timeout, attempts graceful termination with SIGTERM, then SIGKILL if needed.
-    fn wait_for_completion_or_timeout(
-        mut child: std::process::Child,
-        child_pid: Pid,
-        timeout_secs: u64,
-    ) -> Option<std::process::ExitStatus> {
-        let (tx, rx) = mpsc::channel();
-        std::thread::spawn(move || {
-            let status = child.wait();
-            let _ = tx.send(status);
-        });
-
-        match rx.recv_timeout(Duration::from_secs(timeout_secs)) {
-            Ok(Ok(status)) => Some(status),
-            Ok(Err(_)) => None,
-            Err(mpsc::RecvTimeoutError::Timeout) => {
-                tracing::warn!(
-                    "Hook timed out after {} seconds, sending SIGTERM to PID {}",
-                    timeout_secs,
-                    child_pid
-                );
-
-                if let Err(e) = signal::kill(child_pid, Signal::SIGTERM) {
-                    tracing::warn!("Failed to send SIGTERM: {}", e);
-                }
-
-                let grace_period = Duration::from_secs(SIGTERM_GRACE_PERIOD_SECS);
-                match rx.recv_timeout(grace_period) {
-                    Ok(Ok(_status)) => {
-                        tracing::info!("Process exited gracefully after SIGTERM");
-                    }
-                    _ => {
-                        tracing::warn!("Process did not exit after SIGTERM, sending SIGKILL");
-                        if let Err(e) = signal::kill(child_pid, Signal::SIGKILL) {
-                            tracing::error!("Failed to send SIGKILL: {}", e);
-                        }
-
-                        let reap_deadline =
-                            Instant::now() + Duration::from_secs(SIGKILL_REAP_TIMEOUT_SECS);
-                        loop {
-                            if Instant::now() > reap_deadline {
-                                tracing::error!(
-                                    "Process {} did not die after SIGKILL (may be zombie or in uninterruptible sleep)",
-                                    child_pid
-                                );
-                                break;
-                            }
-
-                            match wait::waitpid(child_pid, Some(WaitPidFlag::WNOHANG)) {
-                                Ok(WaitStatus::Exited(_, _))
-                                | Ok(WaitStatus::Signaled(_, _, _)) => {
-                                    tracing::info!("Process {} reaped after SIGKILL", child_pid);
-                                    break;
-                                }
-                                Ok(_) => {
-                                    std::thread::sleep(Duration::from_millis(
-                                        REAP_POLL_INTERVAL_MILLIS,
-                                    ));
-                                }
-                                Err(nix::errno::Errno::ECHILD) => {
-                                    tracing::debug!("Process {} already reaped", child_pid);
-                                    break;
-                                }
-                                Err(e) => {
-                                    tracing::warn!("waitpid failed: {}", e);
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                }
-
-                None
-            }
-            Err(mpsc::RecvTimeoutError::Disconnected) => None,
-        }
-    }
-
-    /// Collect output from stdout and stderr threads
-    fn collect_output(
-        stdout_thread: std::thread::JoinHandle<()>,
-        stderr_thread: std::thread::JoinHandle<()>,
-        stdout_lines: Arc<Mutex<Vec<u8>>>,
-        stderr_lines: Arc<Mutex<Vec<u8>>>,
-    ) -> (String, String) {
-        if let Err(e) = stdout_thread.join() {
-            tracing::warn!("stdout thread panicked: {:?}", e);
-        }
-        if let Err(e) = stderr_thread.join() {
-            tracing::warn!("stderr thread panicked: {:?}", e);
-        }
-
-        let stdout_bytes = Arc::try_unwrap(stdout_lines)
-            .expect("stdout Arc has multiple references")
-            .into_inner()
-            .unwrap();
-        let stderr_bytes = Arc::try_unwrap(stderr_lines)
-            .expect("stderr Arc has multiple references")
-            .into_inner()
-            .unwrap();
-
-        let stdout = String::from_utf8_lossy(&stdout_bytes).to_string();
-        let stderr = String::from_utf8_lossy(&stderr_bytes).to_string();
-
-        (stdout, stderr)
-    }
-
     fn execute_command(
         &self,
         command: &str,
@@ -232,27 +33,44 @@ impl SystemHookBackend {
     ) -> Result<HookResult> {
         let start = Instant::now();
 
-        let (mut child, child_pid) = Self::spawn_hook_process(command, env)?;
+        let mut cmd = Command::new("sh");
+        cmd.arg("-c").arg(command);
 
-        let (stdout_thread, stderr_thread, stdout_lines, stderr_lines) =
-            Self::spawn_output_readers(&mut child, self.output_mode);
+        for (key, value) in env {
+            cmd.env(key, value);
+        }
 
-        let exit_status = Self::wait_for_completion_or_timeout(child, child_pid, timeout_secs);
-
-        let (stdout, stderr) =
-            Self::collect_output(stdout_thread, stderr_thread, stdout_lines, stderr_lines);
+        let result = StreamingExecutor::new(&mut cmd)
+            .output_mode(self.output_mode)
+            .timeout(Duration::from_secs(timeout_secs))
+            .execute()
+            .map_err(|e| {
+                crate::error::SnowError::Deploy(crate::error::DeployError::Failed {
+                    host: "local".to_string(),
+                    source: std::io::Error::new(e.kind(), format!("Failed to execute hook: {}", e)),
+                })
+            })?;
 
         let duration = start.elapsed();
+        let stdout = String::from_utf8_lossy(&result.stdout).to_string();
+        let stderr = String::from_utf8_lossy(&result.stderr).to_string();
 
-        match exit_status {
-            Some(status) if status.success() => Ok(HookResult::success(stdout, stderr, duration)),
-            Some(status) => Ok(HookResult::failure(status.code(), stdout, stderr, duration)),
-            None => Ok(HookResult::failure(
+        if result.timed_out {
+            Ok(HookResult::failure(
                 None,
                 stdout,
                 format!("Hook timed out after {} seconds", timeout_secs),
                 duration,
-            )),
+            ))
+        } else if result.status.success() {
+            Ok(HookResult::success(stdout, stderr, duration))
+        } else {
+            Ok(HookResult::failure(
+                result.status.code(),
+                stdout,
+                stderr,
+                duration,
+            ))
         }
     }
 }
