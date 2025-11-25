@@ -233,9 +233,9 @@ pub mod r#async {
                     match output_mode {
                         OutputMode::Display if !trimmed.is_empty() => {
                             if is_stderr {
-                                tracing::info!(target: "command", "stderr: {}", trimmed);
+                                tracing::info!("stderr: {}", trimmed);
                             } else {
-                                tracing::info!(target: "command", "{}", trimmed);
+                                tracing::info!("{}", trimmed);
                             }
                         }
                         OutputMode::Inherit if !trimmed.is_empty() => {
