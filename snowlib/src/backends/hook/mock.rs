@@ -10,6 +10,9 @@ use std::time::Duration;
 /// Track executed hooks: (hostname, stage, location, command)
 type ExecutedHooks = Arc<Mutex<Vec<(String, HookStage, HookLocation, String)>>>;
 
+/// Track failure count per command for retry testing
+type FailureCounters = Arc<Mutex<std::collections::HashMap<String, u32>>>;
+
 /// Mock implementation of HookBackend for testing
 ///
 /// Tracks all hook executions and allows configuring success/failure behavior
@@ -23,6 +26,11 @@ pub struct MockHookBackend {
     remote_failures: Vec<String>,
     /// Track executed hooks: (hostname, stage, location, command)
     executed_hooks: ExecutedHooks,
+    /// Commands that should fail a specific number of times before succeeding
+    /// Key: command substring, Value: number of times to fail
+    fail_n_times: std::collections::HashMap<String, u32>,
+    /// Track how many times each command has been attempted (for fail_n_times)
+    attempt_counters: FailureCounters,
 }
 
 impl MockHookBackend {
@@ -32,6 +40,8 @@ impl MockHookBackend {
             local_failures: Vec::new(),
             remote_failures: Vec::new(),
             executed_hooks: Arc::new(Mutex::new(Vec::new())),
+            fail_n_times: std::collections::HashMap::new(),
+            attempt_counters: Arc::new(Mutex::new(std::collections::HashMap::new())),
         }
     }
 
@@ -44,6 +54,24 @@ impl MockHookBackend {
     /// Configure hostnames where remote hooks should fail
     pub fn with_remote_failures(mut self, hostnames: Vec<String>) -> Self {
         self.remote_failures = hostnames;
+        self
+    }
+
+    /// Configure a command to fail N times before succeeding.
+    ///
+    /// Useful for testing retry logic. Commands are matched by substring.
+    ///
+    /// Important behavior notes:
+    /// - Failure counts are tracked PER UNIQUE COMMAND STRING, not per substring pattern.
+    ///   If you configure `with_fail_n_times("check", 2)`, then:
+    ///   - `"health-check service"` will fail 2 times then succeed forever
+    ///   - `"check status"` will independently fail 2 times then succeed forever
+    /// - Once a command succeeds (after N failures), it will always succeed on subsequent
+    ///   attempts - failure counts do not reset.
+    /// - Works for both local and remote hooks.
+    pub fn with_fail_n_times(mut self, command_substring: &str, fail_count: u32) -> Self {
+        self.fail_n_times
+            .insert(command_substring.to_string(), fail_count);
         self
     }
 
@@ -68,8 +96,22 @@ impl MockHookBackend {
         ));
     }
 
-    /// Check if a local command should fail
-    fn should_fail_local(&self, command: &str) -> bool {
+    /// Check if a command should fail (used for both local and remote hooks)
+    fn should_fail_command(&self, command: &str) -> bool {
+        // Check fail_n_times first (for retry testing)
+        for (cmd_substring, max_failures) in &self.fail_n_times {
+            if command.contains(cmd_substring) {
+                let mut counters = self.attempt_counters.lock().unwrap();
+                let attempt = counters.entry(command.to_string()).or_insert(0);
+                *attempt += 1;
+                if *attempt <= *max_failures {
+                    return true;
+                }
+                return false;
+            }
+        }
+
+        // Fall back to permanent failures (local_failures works for both local and remote)
         self.local_failures.iter().any(|cmd| command.contains(cmd))
     }
 
@@ -93,7 +135,7 @@ impl HookBackend for MockHookBackend {
 
         self.record_execution(hostname, hook.stage, HookLocation::Local, &hook.command);
 
-        if self.should_fail_local(&hook.command) {
+        if self.should_fail_command(&hook.command) {
             Ok(HookResult::failure(
                 Some(1),
                 String::new(),
@@ -122,7 +164,8 @@ impl HookBackend for MockHookBackend {
             &hook.command,
         );
 
-        if self.should_fail_remote(&target.hostname) {
+        // Check command-based failures (including fail_n_times) OR hostname-based failures
+        if self.should_fail_command(&hook.command) || self.should_fail_remote(&target.hostname) {
             Ok(HookResult::failure(
                 Some(1),
                 String::new(),

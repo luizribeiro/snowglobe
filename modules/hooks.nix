@@ -116,6 +116,32 @@ let
         '';
         example = 50;
       };
+
+      retries = mkOption {
+        type = types.ints.unsigned;
+        default = 0;
+        description = ''
+          Number of times to retry the hook if it fails.
+
+          The total number of attempts is retries + 1 (initial attempt plus retries).
+          Set to 0 (default) for no retries.
+
+          Useful for hooks that depend on external services that may be
+          temporarily unavailable (e.g., Kubernetes API after node reboot).
+        '';
+        example = 5;
+      };
+
+      retryDelay = mkOption {
+        type = types.ints.positive;
+        default = 5;
+        description = ''
+          Seconds to wait between retry attempts.
+
+          Only used when retries > 0.
+        '';
+        example = 30;
+      };
     };
   });
 in
@@ -286,6 +312,30 @@ in
           }
         ) (attrNames hooks));
 
+      # Hook retry validation - ensures retry configuration is reasonable
+      validateHookRetries = stageName: hooks:
+        lib.flatten (map (hookName:
+          let
+            hook = hooks.${hookName};
+          in [
+            {
+              assertion = hook.retries <= 20;
+              message = ''
+                Hook "${hookName}" in ${stageName} has too many retries (${toString hook.retries}).
+                Maximum allowed is 20 retries. For longer retry scenarios, consider
+                implementing exponential backoff in the hook command itself.
+              '';
+            }
+            {
+              assertion = hook.retryDelay >= 1 && hook.retryDelay <= 300;
+              message = ''
+                Hook "${hookName}" in ${stageName} has an invalid retryDelay of ${toString hook.retryDelay} seconds.
+                Retry delay must be between 1 and 300 seconds (5 minutes).
+              '';
+            }
+          ]
+        ) (attrNames hooks));
+
       # Collect all validations across all stages
       nameAssertions = lib.flatten (
         map (stage: validateHookNames stage config.snowglobe.hooks.${stage})
@@ -301,6 +351,11 @@ in
         map (stage: validateHookTimeouts stage config.snowglobe.hooks.${stage})
             (attrNames config.snowglobe.hooks)
       );
+
+      retryAssertions = lib.flatten (
+        map (stage: validateHookRetries stage config.snowglobe.hooks.${stage})
+            (attrNames config.snowglobe.hooks)
+      );
     in
-      nameAssertions ++ commandAssertions ++ timeoutAssertions;
+      nameAssertions ++ commandAssertions ++ timeoutAssertions ++ retryAssertions;
 }

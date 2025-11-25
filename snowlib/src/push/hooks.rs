@@ -6,6 +6,7 @@ use crate::error::Result;
 use crate::hooks::{HookConfig, HookLocation, HookStage};
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Duration;
 
 /// Orchestrates execution of lifecycle hooks during deployment
 pub struct HookExecutor {
@@ -55,14 +56,6 @@ impl HookExecutor {
         let mut results = Vec::new();
 
         for hook in stage_hooks {
-            tracing::info!(
-                "Executing {:?} hook '{}' for {}: {}",
-                stage,
-                hook.name,
-                hostname,
-                hook.command
-            );
-
             // Merge hook-specific environment variables with base environment
             let mut merged_env = env.clone();
 
@@ -104,29 +97,73 @@ impl HookExecutor {
             // Then merge explicit environment variables (these take precedence)
             merged_env.extend(hook.environment.clone());
 
-            let result = match hook.location {
-                HookLocation::Local => self.backend.execute_local(hook, &merged_env).await?,
-                HookLocation::Remote => {
-                    let target = target.ok_or_else(|| {
-                        crate::error::SnowError::Deploy(crate::error::DeployError::Failed {
-                            host: hostname.to_string(),
-                            source: std::io::Error::other(
-                                "Remote hook execution requires target, but target is None",
-                            ),
-                        })
-                    })?;
-                    self.backend
-                        .execute_remote(target, hook, &merged_env)
-                        .await?
+            // Execute with retry logic
+            let max_attempts = hook.retries + 1;
+            let mut attempt = 1u32;
+
+            let result = loop {
+                tracing::info!(
+                    "Executing {:?} hook '{}' for {} (attempt {}/{}): {}",
+                    stage,
+                    hook.name,
+                    hostname,
+                    attempt,
+                    max_attempts,
+                    hook.command
+                );
+
+                let result = match hook.location {
+                    HookLocation::Local => self.backend.execute_local(hook, &merged_env).await?,
+                    HookLocation::Remote => {
+                        let target = target.ok_or_else(|| {
+                            crate::error::SnowError::Deploy(crate::error::DeployError::Failed {
+                                host: hostname.to_string(),
+                                source: std::io::Error::other(
+                                    "Remote hook execution requires target, but target is None",
+                                ),
+                            })
+                        })?;
+                        self.backend
+                            .execute_remote(target, hook, &merged_env)
+                            .await?
+                    }
+                };
+
+                if result.success {
+                    tracing::info!(
+                        "Hook '{}' completed successfully for {} in {:?}",
+                        hook.name,
+                        hostname,
+                        result.duration
+                    );
+                    break result;
                 }
+
+                if attempt >= max_attempts {
+                    break result;
+                }
+
+                tracing::warn!(
+                    "Hook '{}' failed for {} (attempt {}/{}), retrying in {}s: {}",
+                    hook.name,
+                    hostname,
+                    attempt,
+                    max_attempts,
+                    hook.retry_delay,
+                    result.stderr
+                );
+
+                tokio::time::sleep(Duration::from_secs(hook.retry_delay)).await;
+                attempt += 1;
             };
 
             if !result.success && !hook.continue_on_failure {
                 tracing::error!(
-                    "Hook '{}' ({:?} stage) failed for {} (exit code: {:?}): {}",
+                    "Hook '{}' ({:?} stage) failed for {} after {} attempt(s) (exit code: {:?}): {}",
                     hook.name,
                     stage,
                     hostname,
+                    attempt,
                     result.exit_code,
                     result.stderr
                 );
@@ -145,18 +182,12 @@ impl HookExecutor {
                 ));
             } else if !result.success {
                 tracing::warn!(
-                    "Hook '{}' ({:?} stage) failed for {} but continuing (continueOnFailure=true): {}",
+                    "Hook '{}' ({:?} stage) failed for {} after {} attempt(s) but continuing (continueOnFailure=true): {}",
                     hook.name,
                     stage,
                     hostname,
+                    attempt,
                     result.stderr
-                );
-            } else {
-                tracing::info!(
-                    "Hook '{}' completed successfully for {} in {:?}",
-                    hook.name,
-                    hostname,
-                    result.duration
                 );
             }
 
@@ -1308,5 +1339,280 @@ mod tests {
 
         std::fs::remove_file(&temp_file).ok();
         std::fs::remove_file(&marker_file).ok();
+    }
+
+    // ========================================================================
+    // Retry functionality tests
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_hook_retry_succeeds_after_initial_failure() {
+        // Configure hook to fail twice, then succeed on third attempt
+        let backend = Arc::new(MockHookBackend::new().with_fail_n_times("flaky-service", 2));
+
+        let mut hook = HookConfig::test_fixture(
+            "retry-test",
+            HookStage::PostReboot,
+            HookLocation::Local,
+            "flaky-service check",
+        );
+        hook.retries = 3;
+        hook.retry_delay = 0; // No delay for faster test
+
+        let mut hooks_by_host = HashMap::new();
+        hooks_by_host.insert("test-host".to_string(), vec![hook]);
+
+        let executor = HookExecutor::new(backend.clone(), hooks_by_host);
+
+        let mut env = HashMap::new();
+        env.insert("SNOW_HOSTNAME".to_string(), "test-host".to_string());
+
+        let results = executor
+            .execute_hooks_for_stage("test-host", HookStage::PostReboot, None, &env)
+            .await
+            .unwrap();
+
+        assert_eq!(results.len(), 1);
+        assert!(results[0].success, "Hook should eventually succeed");
+
+        // Verify the hook was attempted 3 times (2 failures + 1 success)
+        let executed = backend.get_executed_hooks();
+        assert_eq!(executed.len(), 3, "Hook should have been attempted 3 times");
+    }
+
+    #[tokio::test]
+    async fn test_hook_retry_exhausted_all_attempts() {
+        // Configure hook to always fail (fail more times than retries allow)
+        let backend = Arc::new(MockHookBackend::new().with_fail_n_times("always-fails", 10));
+
+        let mut hook = HookConfig::test_fixture(
+            "retry-test",
+            HookStage::PostReboot,
+            HookLocation::Local,
+            "always-fails check",
+        );
+        hook.retries = 2; // Will try 3 times total
+        hook.retry_delay = 0;
+
+        let mut hooks_by_host = HashMap::new();
+        hooks_by_host.insert("test-host".to_string(), vec![hook]);
+
+        let executor = HookExecutor::new(backend.clone(), hooks_by_host);
+
+        let mut env = HashMap::new();
+        env.insert("SNOW_HOSTNAME".to_string(), "test-host".to_string());
+
+        let result = executor
+            .execute_hooks_for_stage("test-host", HookStage::PostReboot, None, &env)
+            .await;
+
+        assert!(
+            result.is_err(),
+            "Hook should fail after all retries exhausted"
+        );
+
+        // Verify the hook was attempted exactly max_attempts times
+        let executed = backend.get_executed_hooks();
+        assert_eq!(executed.len(), 3, "Hook should have been attempted 3 times");
+    }
+
+    #[tokio::test]
+    async fn test_hook_retry_zero_retries_behaves_as_before() {
+        // Hook with retries=0 (default) should behave exactly as before
+        let backend = Arc::new(MockHookBackend::new().with_fail_n_times("one-shot", 1));
+
+        let hook = HookConfig::test_fixture(
+            "no-retry",
+            HookStage::PreActivate,
+            HookLocation::Local,
+            "one-shot command",
+        );
+        // retries is 0 by default from test_fixture
+
+        let mut hooks_by_host = HashMap::new();
+        hooks_by_host.insert("test-host".to_string(), vec![hook]);
+
+        let executor = HookExecutor::new(backend.clone(), hooks_by_host);
+
+        let mut env = HashMap::new();
+        env.insert("SNOW_HOSTNAME".to_string(), "test-host".to_string());
+
+        let result = executor
+            .execute_hooks_for_stage("test-host", HookStage::PreActivate, None, &env)
+            .await;
+
+        assert!(
+            result.is_err(),
+            "Hook with retries=0 should fail on first failure"
+        );
+
+        // Only one attempt should be made
+        let executed = backend.get_executed_hooks();
+        assert_eq!(executed.len(), 1, "Hook should only be attempted once");
+    }
+
+    #[tokio::test]
+    async fn test_hook_retry_with_continue_on_failure() {
+        // Hook that fails all retries but has continueOnFailure=true
+        let backend = Arc::new(MockHookBackend::new().with_fail_n_times("optional", 10));
+
+        let mut hook = HookConfig::test_fixture(
+            "optional-hook",
+            HookStage::PostActivate,
+            HookLocation::Local,
+            "optional check",
+        );
+        hook.retries = 2;
+        hook.retry_delay = 0;
+        hook.continue_on_failure = true;
+
+        let mut hooks_by_host = HashMap::new();
+        hooks_by_host.insert("test-host".to_string(), vec![hook]);
+
+        let executor = HookExecutor::new(backend.clone(), hooks_by_host);
+
+        let mut env = HashMap::new();
+        env.insert("SNOW_HOSTNAME".to_string(), "test-host".to_string());
+
+        let results = executor
+            .execute_hooks_for_stage("test-host", HookStage::PostActivate, None, &env)
+            .await
+            .unwrap();
+
+        // Should return result even though hook failed
+        assert_eq!(results.len(), 1);
+        assert!(!results[0].success, "Hook should report failure");
+
+        // Should have tried all attempts before continuing
+        let executed = backend.get_executed_hooks();
+        assert_eq!(executed.len(), 3, "Hook should have been attempted 3 times");
+    }
+
+    #[tokio::test]
+    async fn test_hook_retry_first_attempt_succeeds() {
+        // Hook that succeeds on first attempt should not retry
+        let backend = Arc::new(MockHookBackend::new());
+
+        let mut hook = HookConfig::test_fixture(
+            "success-hook",
+            HookStage::PreActivate,
+            HookLocation::Local,
+            "successful command",
+        );
+        hook.retries = 5;
+        hook.retry_delay = 0;
+
+        let mut hooks_by_host = HashMap::new();
+        hooks_by_host.insert("test-host".to_string(), vec![hook]);
+
+        let executor = HookExecutor::new(backend.clone(), hooks_by_host);
+
+        let mut env = HashMap::new();
+        env.insert("SNOW_HOSTNAME".to_string(), "test-host".to_string());
+
+        let results = executor
+            .execute_hooks_for_stage("test-host", HookStage::PreActivate, None, &env)
+            .await
+            .unwrap();
+
+        assert_eq!(results.len(), 1);
+        assert!(results[0].success);
+
+        // Should only be attempted once
+        let executed = backend.get_executed_hooks();
+        assert_eq!(
+            executed.len(),
+            1,
+            "Hook should only be attempted once on success"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_hook_retry_remote_succeeds_after_failures() {
+        // Remote hook that fails twice then succeeds
+        let backend = Arc::new(MockHookBackend::new().with_fail_n_times("remote-check", 2));
+
+        let mut hook = HookConfig::test_fixture(
+            "remote-retry",
+            HookStage::PostReboot,
+            HookLocation::Remote,
+            "remote-check service",
+        );
+        hook.retries = 3;
+        hook.retry_delay = 0;
+
+        let mut hooks_by_host = HashMap::new();
+        hooks_by_host.insert("test-host".to_string(), vec![hook]);
+
+        let executor = HookExecutor::new(backend.clone(), hooks_by_host);
+        let target = DeployTarget {
+            hostname: "test-host".to_string(),
+            user: Some("deploy".to_string()),
+            port: None,
+        };
+
+        let mut env = HashMap::new();
+        env.insert("SNOW_HOSTNAME".to_string(), "test-host".to_string());
+
+        let results = executor
+            .execute_hooks_for_stage("test-host", HookStage::PostReboot, Some(&target), &env)
+            .await
+            .unwrap();
+
+        assert_eq!(results.len(), 1);
+        assert!(results[0].success, "Remote hook should eventually succeed");
+
+        let executed = backend.get_executed_hooks();
+        assert_eq!(
+            executed.len(),
+            3,
+            "Remote hook should have been attempted 3 times"
+        );
+        assert_eq!(executed[0].2, HookLocation::Remote);
+    }
+
+    #[tokio::test]
+    async fn test_hook_retry_remote_exhausted_attempts() {
+        // Remote hook that fails all retry attempts
+        let backend = Arc::new(MockHookBackend::new().with_fail_n_times("always-fails-remote", 10));
+
+        let mut hook = HookConfig::test_fixture(
+            "remote-retry",
+            HookStage::PostReboot,
+            HookLocation::Remote,
+            "always-fails-remote check",
+        );
+        hook.retries = 2;
+        hook.retry_delay = 0;
+
+        let mut hooks_by_host = HashMap::new();
+        hooks_by_host.insert("test-host".to_string(), vec![hook]);
+
+        let executor = HookExecutor::new(backend.clone(), hooks_by_host);
+        let target = DeployTarget {
+            hostname: "test-host".to_string(),
+            user: Some("deploy".to_string()),
+            port: None,
+        };
+
+        let mut env = HashMap::new();
+        env.insert("SNOW_HOSTNAME".to_string(), "test-host".to_string());
+
+        let result = executor
+            .execute_hooks_for_stage("test-host", HookStage::PostReboot, Some(&target), &env)
+            .await;
+
+        assert!(
+            result.is_err(),
+            "Remote hook should fail after all retries exhausted"
+        );
+
+        let executed = backend.get_executed_hooks();
+        assert_eq!(
+            executed.len(),
+            3,
+            "Remote hook should have been attempted 3 times"
+        );
+        assert_eq!(executed[0].2, HookLocation::Remote);
     }
 }

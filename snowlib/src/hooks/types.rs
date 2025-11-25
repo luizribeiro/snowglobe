@@ -93,6 +93,12 @@ pub struct HookConfig {
     /// Used to control hook execution order within a stage
     #[serde(default = "default_hook_priority")]
     pub priority: i32,
+    /// Number of retry attempts (0 = no retries)
+    #[serde(default)]
+    pub retries: u32,
+    /// Seconds to wait between retries
+    #[serde(default = "default_retry_delay")]
+    pub retry_delay: u64,
 }
 
 fn default_hook_timeout() -> u64 {
@@ -101,6 +107,10 @@ fn default_hook_timeout() -> u64 {
 
 fn default_hook_priority() -> i32 {
     100
+}
+
+fn default_retry_delay() -> u64 {
+    5
 }
 
 #[cfg(test)]
@@ -122,6 +132,8 @@ impl HookConfig {
             timeout: 300,
             continue_on_failure: false,
             priority: 100,
+            retries: 0,
+            retry_delay: 5,
         }
     }
 }

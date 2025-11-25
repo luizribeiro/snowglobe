@@ -108,6 +108,10 @@ impl NixBackend for SystemNixBackend {
             continue_on_failure: bool,
             #[serde(default = "default_hook_priority")]
             priority: i32,
+            #[serde(default)]
+            retries: u32,
+            #[serde(default = "default_retry_delay", rename = "retryDelay")]
+            retry_delay: u64,
         }
 
         fn default_hook_timeout() -> u64 {
@@ -116,6 +120,10 @@ impl NixBackend for SystemNixBackend {
 
         fn default_hook_priority() -> i32 {
             100
+        }
+
+        fn default_retry_delay() -> u64 {
+            5
         }
 
         #[derive(serde::Deserialize)]
@@ -165,6 +173,8 @@ impl NixBackend for SystemNixBackend {
                     timeout: hook.timeout,
                     continue_on_failure: hook.continue_on_failure,
                     priority: hook.priority,
+                    retries: hook.retries,
+                    retry_delay: hook.retry_delay,
                 });
             }
         }
