@@ -1,5 +1,6 @@
 use crate::error::{DeployError, Result};
 use crate::nix::SystemType;
+use crate::process::{OutputMode, StreamingExecutor};
 use std::fs;
 use std::process::Command;
 
@@ -25,30 +26,32 @@ pub fn get_hostname() -> Result<String> {
             content.trim().to_string()
         }
         SystemType::Darwin => {
-            let output =
-                Command::new("hostname")
-                    .arg("-s")
-                    .output()
-                    .map_err(|e| DeployError::Failed {
-                        host: "localhost".to_string(),
-                        source: std::io::Error::new(
-                            e.kind(),
-                            format!("Failed to run hostname command: {}", e),
-                        ),
-                    })?;
+            let mut cmd = Command::new("hostname");
+            cmd.arg("-s");
 
-            if !output.status.success() {
+            let result = StreamingExecutor::new(&mut cmd)
+                .output_mode(OutputMode::Capture)
+                .execute()
+                .map_err(|e| DeployError::Failed {
+                    host: "localhost".to_string(),
+                    source: std::io::Error::new(
+                        e.kind(),
+                        format!("Failed to run hostname command: {}", e),
+                    ),
+                })?;
+
+            if !result.status.success() {
                 return Err(DeployError::Failed {
                     host: "localhost".to_string(),
                     source: std::io::Error::other(format!(
                         "hostname command failed: {}",
-                        String::from_utf8_lossy(&output.stderr)
+                        String::from_utf8_lossy(&result.stderr)
                     )),
                 }
                 .into());
             }
 
-            String::from_utf8_lossy(&output.stdout).trim().to_string()
+            String::from_utf8_lossy(&result.stdout).trim().to_string()
         }
     };
 
