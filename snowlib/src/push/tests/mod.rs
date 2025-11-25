@@ -18,6 +18,7 @@ use super::*;
 use crate::backends::deploy::DeployTarget;
 use crate::backends::deploy::MockDeployBackend;
 use crate::backends::nix::MockNixBackend;
+use crate::hooks::HookStage;
 use crate::host::HostMetadata;
 use crate::nix::{ActivationMode, Flake, StorePath, SystemType};
 use crate::observer::{NoopObserver, PushObserver};
@@ -288,6 +289,39 @@ impl PushObserver for TestObserver {
         self.events.lock().unwrap().push(format!(
             "reboot_step_complete:{}:{}",
             phase,
+            if success { "ok" } else { "fail" }
+        ));
+    }
+
+    fn on_hooks_start(&self, hostname: &str, stage: HookStage) {
+        self.events
+            .lock()
+            .unwrap()
+            .push(format!("hooks_start:{}:{}", hostname, stage));
+    }
+
+    fn on_hooks_complete(&self, hostname: &str, stage: HookStage, success: bool) {
+        self.events.lock().unwrap().push(format!(
+            "hooks_complete:{}:{}:{}",
+            hostname,
+            stage,
+            if success { "ok" } else { "fail" }
+        ));
+    }
+
+    fn on_hook_start(&self, hostname: &str, stage: HookStage, hook_name: &str) {
+        self.events
+            .lock()
+            .unwrap()
+            .push(format!("hook_start:{}:{}:{}", hostname, stage, hook_name));
+    }
+
+    fn on_hook_complete(&self, hostname: &str, stage: HookStage, hook_name: &str, success: bool) {
+        self.events.lock().unwrap().push(format!(
+            "hook_complete:{}:{}:{}:{}",
+            hostname,
+            stage,
+            hook_name,
             if success { "ok" } else { "fail" }
         ));
     }

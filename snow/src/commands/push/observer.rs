@@ -4,7 +4,7 @@
 //! including phase, step, and host-level spans.
 
 use parking_lot::Mutex;
-use snowlib::PushObserver;
+use snowlib::{HookStage, PushObserver};
 use std::collections::HashMap;
 use tracing::info_span;
 use tracing_indicatif::span_ext::IndicatifSpanExt;
@@ -49,6 +49,14 @@ pub struct CliObserver {
     state: Mutex<ObserverState>,
 }
 
+/// Key for tracking individual hook spans (hostname + stage + hook_name)
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct HookKey {
+    hostname: String,
+    stage: HookStage,
+    hook_name: String,
+}
+
 struct ObserverState {
     // Phase span - created in on_phase_start()
     phase_span: Option<tracing::Span>,
@@ -60,12 +68,19 @@ struct ObserverState {
     activate_span: Option<tracing::Span>,
     reboot_span: Option<tracing::Span>,
 
+    // Hook stage spans - keyed by (hostname, stage)
+    // Maps stage to the hooks step span for that stage
+    hooks_stage_spans: HashMap<HookStage, tracing::Span>,
+
     // Host spans per step - created when host starts a step, entered temporarily for logging
     // Key is hostname, value is the span (not entered - we enter/exit as needed)
     build_host_spans: HashMap<String, tracing::Span>,
     copy_host_spans: HashMap<String, tracing::Span>,
     activate_host_spans: HashMap<String, tracing::Span>,
     reboot_host_spans: HashMap<String, tracing::Span>,
+
+    // Hook host spans - keyed by (hostname, stage, hook_name)
+    hook_host_spans: HashMap<HookKey, tracing::Span>,
 }
 
 impl CliObserver {
@@ -77,11 +92,54 @@ impl CliObserver {
                 copy_span: None,
                 activate_span: None,
                 reboot_span: None,
+                hooks_stage_spans: HashMap::new(),
                 build_host_spans: HashMap::new(),
                 copy_host_spans: HashMap::new(),
                 activate_host_spans: HashMap::new(),
                 reboot_host_spans: HashMap::new(),
+                hook_host_spans: HashMap::new(),
             }),
+        }
+    }
+
+    fn get_or_create_hooks_stage_span(
+        state: &mut ObserverState,
+        stage: HookStage,
+    ) -> &tracing::Span {
+        if !state.hooks_stage_spans.contains_key(&stage) {
+            let phase_span = state
+                .phase_span
+                .as_ref()
+                .expect("phase_span must exist - on_phase_start() should be called first");
+
+            // Use stage name directly as span name for clean rendering
+            let span = match stage {
+                HookStage::PreActivate => info_span!(parent: phase_span, "hooks:PreActivate"),
+                HookStage::PostActivate => info_span!(parent: phase_span, "hooks:PostActivate"),
+                HookStage::PostReboot => info_span!(parent: phase_span, "hooks:PostReboot"),
+                HookStage::OnFailure => info_span!(parent: phase_span, "hooks:OnFailure"),
+            };
+
+            use tracing_indicatif::style::ProgressStyle;
+            let step_style = ProgressStyle::default_bar()
+                .template("{span_child_prefix}{span_name}")
+                .expect("Failed to create step span style");
+            span.pb_set_style(&step_style);
+
+            state.hooks_stage_spans.insert(stage, span);
+        }
+
+        state
+            .hooks_stage_spans
+            .get(&stage)
+            .expect("hooks span was just created")
+    }
+
+    fn cleanup_hooks_stage_if_empty(state: &mut ObserverState, stage: HookStage) {
+        let has_remaining_hooks = state.hook_host_spans.keys().any(|k| k.stage == stage);
+
+        if !has_remaining_hooks {
+            state.hooks_stage_spans.remove(&stage);
         }
     }
 }
@@ -126,6 +184,8 @@ impl PushObserver for CliObserver {
         state.copy_host_spans.clear();
         state.activate_host_spans.clear();
         state.reboot_host_spans.clear();
+        state.hook_host_spans.clear();
+        state.hooks_stage_spans.clear();
         state.build_span = None;
         state.copy_span = None;
         state.activate_span = None;
@@ -324,6 +384,68 @@ impl PushObserver for CliObserver {
     }
 
     fn on_reboot_step_complete(&self, _phase: &str, _success: bool) {}
+
+    // Hook step
+    fn on_hooks_start(&self, hostname: &str, stage: HookStage) {
+        let mut state = self.state.lock();
+        let hooks_span = Self::get_or_create_hooks_stage_span(&mut state, stage);
+        let _guard = hooks_span.enter();
+        tracing::info!(host = %hostname, "Running {} hooks", stage);
+    }
+
+    fn on_hooks_complete(&self, hostname: &str, stage: HookStage, success: bool) {
+        let mut state = self.state.lock();
+
+        if let Some(hooks_span) = state.hooks_stage_spans.get(&stage) {
+            let _guard = hooks_span.enter();
+            if success {
+                tracing::info!(host = %hostname, "✓ {} hooks completed", stage);
+            } else {
+                tracing::error!(host = %hostname, "✗ {} hooks failed", stage);
+            }
+        }
+
+        Self::cleanup_hooks_stage_if_empty(&mut state, stage);
+    }
+
+    fn on_hook_start(&self, hostname: &str, stage: HookStage, hook_name: &str) {
+        let mut state = self.state.lock();
+        let hooks_span = Self::get_or_create_hooks_stage_span(&mut state, stage);
+        let host_span = info_span!(parent: hooks_span, "host", host = %hostname, hook = %hook_name);
+
+        let _guard = host_span.enter();
+        tracing::info!("Running hook '{}'", hook_name);
+        drop(_guard);
+
+        let key = HookKey {
+            hostname: hostname.to_string(),
+            stage,
+            hook_name: hook_name.to_string(),
+        };
+        state.hook_host_spans.insert(key, host_span);
+    }
+
+    fn on_hook_complete(&self, hostname: &str, stage: HookStage, hook_name: &str, success: bool) {
+        let mut state = self.state.lock();
+
+        let key = HookKey {
+            hostname: hostname.to_string(),
+            stage,
+            hook_name: hook_name.to_string(),
+        };
+
+        if let Some(span) = state.hook_host_spans.get(&key) {
+            let _guard = span.enter();
+            if success {
+                tracing::info!("✓ Hook '{}' completed", hook_name);
+            } else {
+                tracing::error!("✗ Hook '{}' failed", hook_name);
+            }
+        }
+
+        state.hook_host_spans.remove(&key);
+        Self::cleanup_hooks_stage_if_empty(&mut state, stage);
+    }
 }
 
 #[cfg(test)]

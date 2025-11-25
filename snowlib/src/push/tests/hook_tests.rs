@@ -1256,3 +1256,238 @@ async fn test_post_reboot_hooks_not_executed_when_no_reboot_needed() {
         "Post-reboot hooks should not execute when host doesn't reboot"
     );
 }
+
+#[tokio::test]
+async fn test_hook_observer_callbacks_invoked_correctly() {
+    let flake = Flake::test_context();
+    let nix_backend = MockNixBackend::new();
+    let deployer = MockDeployBackend::new();
+    let reboot_config = crate::backends::reboot::RebootDetectionConfig {
+        critical_services: vec![],
+        check_kernel: false,
+        check_initrd: false,
+        ..Default::default()
+    };
+    let reboot_backend = crate::backends::reboot::SystemRebootBackend::new(reboot_config);
+    let observer = TestObserver::new();
+    let hook_backend = Arc::new(MockHookBackend::new());
+
+    let hosts = vec![HostMetadata {
+        name: "observer-test".to_string(),
+        fqdn: "observer-test.local".to_string(),
+        phase: Some("test".to_string()),
+        tags: vec![],
+        reboot_policy: RebootPolicy::Never,
+        system_type: SystemType::NixOS,
+        hooks: vec![
+            HookConfig::test_fixture(
+                "first-hook",
+                HookStage::PreActivate,
+                HookLocation::Local,
+                "echo first",
+            ),
+            HookConfig::test_fixture(
+                "second-hook",
+                HookStage::PreActivate,
+                HookLocation::Local,
+                "echo second",
+            ),
+            HookConfig::test_fixture(
+                "post-hook",
+                HookStage::PostActivate,
+                HookLocation::Local,
+                "echo post",
+            ),
+        ],
+    }];
+
+    let hook_executor = make_hook_executor(hook_backend.clone(), &hosts);
+
+    let config = PushConfiguration {
+        strategy: PushStrategy::Switch,
+        force: false,
+        concurrency: 1,
+        ignore_phases: false,
+        output_mode: crate::process::OutputMode::Capture,
+        ssh_user: None,
+        allow_reboot: false,
+    };
+
+    let results = {
+        let push_ctx = PushContext::new(
+            &flake,
+            &nix_backend,
+            &deployer,
+            &reboot_backend,
+            &config,
+            &observer,
+            Some(&hook_executor),
+        );
+        push(&push_ctx, hosts).await
+    }
+    .unwrap();
+
+    assert!(results.all_succeeded());
+
+    let events = observer.get_events();
+
+    // Verify hooks_start called for PreActivate stage
+    assert!(
+        events
+            .iter()
+            .any(|e| e == "hooks_start:observer-test:PreActivate"),
+        "hooks_start should be called for PreActivate stage. Events: {:?}",
+        events
+    );
+
+    // Verify individual hook_start/hook_complete called for each hook
+    assert!(
+        events
+            .iter()
+            .any(|e| e == "hook_start:observer-test:PreActivate:first-hook"),
+        "hook_start should be called for first-hook. Events: {:?}",
+        events
+    );
+    assert!(
+        events
+            .iter()
+            .any(|e| e == "hook_complete:observer-test:PreActivate:first-hook:ok"),
+        "hook_complete should be called for first-hook. Events: {:?}",
+        events
+    );
+    assert!(
+        events
+            .iter()
+            .any(|e| e == "hook_start:observer-test:PreActivate:second-hook"),
+        "hook_start should be called for second-hook. Events: {:?}",
+        events
+    );
+    assert!(
+        events
+            .iter()
+            .any(|e| e == "hook_complete:observer-test:PreActivate:second-hook:ok"),
+        "hook_complete should be called for second-hook. Events: {:?}",
+        events
+    );
+
+    // Verify hooks_complete called for PreActivate stage
+    assert!(
+        events
+            .iter()
+            .any(|e| e == "hooks_complete:observer-test:PreActivate:ok"),
+        "hooks_complete should be called for PreActivate stage. Events: {:?}",
+        events
+    );
+
+    // Verify PostActivate hooks also trigger observer callbacks
+    assert!(
+        events
+            .iter()
+            .any(|e| e == "hooks_start:observer-test:PostActivate"),
+        "hooks_start should be called for PostActivate stage. Events: {:?}",
+        events
+    );
+    assert!(
+        events
+            .iter()
+            .any(|e| e == "hook_start:observer-test:PostActivate:post-hook"),
+        "hook_start should be called for post-hook. Events: {:?}",
+        events
+    );
+    assert!(
+        events
+            .iter()
+            .any(|e| e == "hooks_complete:observer-test:PostActivate:ok"),
+        "hooks_complete should be called for PostActivate stage. Events: {:?}",
+        events
+    );
+}
+
+#[tokio::test]
+async fn test_hook_observer_callbacks_on_failure() {
+    let flake = Flake::test_context();
+    let nix_backend = MockNixBackend::new();
+    let deployer = MockDeployBackend::new();
+    let reboot_config = crate::backends::reboot::RebootDetectionConfig {
+        critical_services: vec![],
+        check_kernel: false,
+        check_initrd: false,
+        ..Default::default()
+    };
+    let reboot_backend = crate::backends::reboot::SystemRebootBackend::new(reboot_config);
+    let observer = TestObserver::new();
+    let hook_backend =
+        Arc::new(MockHookBackend::new().with_local_failures(vec!["fail".to_string()]));
+
+    let hosts = vec![HostMetadata {
+        name: "fail-test".to_string(),
+        fqdn: "fail-test.local".to_string(),
+        phase: Some("test".to_string()),
+        tags: vec![],
+        reboot_policy: RebootPolicy::Never,
+        system_type: SystemType::NixOS,
+        hooks: vec![HookConfig::test_fixture(
+            "failing-hook",
+            HookStage::PreActivate,
+            HookLocation::Local,
+            "fail command",
+        )],
+    }];
+
+    let hook_executor = make_hook_executor(hook_backend.clone(), &hosts);
+
+    let config = PushConfiguration {
+        strategy: PushStrategy::Switch,
+        force: false,
+        concurrency: 1,
+        ignore_phases: false,
+        output_mode: crate::process::OutputMode::Capture,
+        ssh_user: None,
+        allow_reboot: false,
+    };
+
+    let results = {
+        let push_ctx = PushContext::new(
+            &flake,
+            &nix_backend,
+            &deployer,
+            &reboot_backend,
+            &config,
+            &observer,
+            Some(&hook_executor),
+        );
+        push(&push_ctx, hosts).await
+    }
+    .unwrap();
+
+    assert!(!results.all_succeeded());
+
+    let events = observer.get_events();
+
+    // Verify hook_start was called
+    assert!(
+        events
+            .iter()
+            .any(|e| e == "hook_start:fail-test:PreActivate:failing-hook"),
+        "hook_start should be called even for failing hooks. Events: {:?}",
+        events
+    );
+
+    // Verify hook_complete called with failure status
+    assert!(
+        events
+            .iter()
+            .any(|e| e == "hook_complete:fail-test:PreActivate:failing-hook:fail"),
+        "hook_complete should be called with fail status. Events: {:?}",
+        events
+    );
+
+    // Verify hooks_complete called with failure status
+    assert!(
+        events
+            .iter()
+            .any(|e| e == "hooks_complete:fail-test:PreActivate:fail"),
+        "hooks_complete should be called with fail status. Events: {:?}",
+        events
+    );
+}

@@ -55,7 +55,7 @@ async fn execute_hooks(
         }
 
         let results = executor
-            .execute_hooks_for_stage(hostname, stage, target, &env)
+            .execute_hooks_for_stage(hostname, stage, target, &env, Some(push_ctx.observer))
             .await?;
 
         // Check for any failed hooks (even with continue_on_failure=true)

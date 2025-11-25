@@ -2,7 +2,7 @@ use crate::error::Result;
 use serde::{Deserialize, Serialize};
 
 /// Stage in the deployment pipeline where a hook should execute
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum HookStage {
     /// Before activation (e.g., drain Kubernetes node)
@@ -13,6 +13,17 @@ pub enum HookStage {
     PostReboot,
     /// When deployment or reboot fails
     OnFailure,
+}
+
+impl std::fmt::Display for HookStage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::PreActivate => write!(f, "PreActivate"),
+            Self::PostActivate => write!(f, "PostActivate"),
+            Self::PostReboot => write!(f, "PostReboot"),
+            Self::OnFailure => write!(f, "OnFailure"),
+        }
+    }
 }
 
 impl std::str::FromStr for HookStage {

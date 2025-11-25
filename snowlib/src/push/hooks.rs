@@ -4,6 +4,7 @@ use crate::backends::deploy::DeployTarget;
 use crate::backends::hook::{HookBackend, HookResult};
 use crate::error::Result;
 use crate::hooks::{HookConfig, HookLocation, HookStage};
+use crate::observer::PushObserver;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
@@ -36,6 +37,7 @@ impl HookExecutor {
         stage: HookStage,
         target: Option<&DeployTarget>,
         env: &HashMap<String, String>,
+        observer: Option<&dyn PushObserver>,
     ) -> Result<Vec<HookResult>> {
         let hooks = match self.hooks_by_host.get(hostname) {
             Some(hooks) => hooks,
@@ -53,7 +55,13 @@ impl HookExecutor {
             return Ok(Vec::new());
         }
 
+        // Notify observer that hooks are starting for this stage
+        if let Some(obs) = observer {
+            obs.on_hooks_start(hostname, stage);
+        }
+
         let mut results = Vec::new();
+        let mut all_succeeded = true;
 
         for hook in stage_hooks {
             // Merge hook-specific environment variables with base environment
@@ -96,6 +104,11 @@ impl HookExecutor {
 
             // Then merge explicit environment variables (these take precedence)
             merged_env.extend(hook.environment.clone());
+
+            // Notify observer that this hook is starting
+            if let Some(obs) = observer {
+                obs.on_hook_start(hostname, stage, &hook.name);
+            }
 
             // Execute with retry logic
             let max_attempts = hook.retries + 1;
@@ -157,6 +170,15 @@ impl HookExecutor {
                 attempt += 1;
             };
 
+            // Notify observer that this hook completed
+            if let Some(obs) = observer {
+                obs.on_hook_complete(hostname, stage, &hook.name, result.success);
+            }
+
+            if !result.success {
+                all_succeeded = false;
+            }
+
             if !result.success && !hook.continue_on_failure {
                 tracing::error!(
                     "Hook '{}' ({:?} stage) failed for {} after {} attempt(s) (exit code: {:?}): {}",
@@ -167,6 +189,11 @@ impl HookExecutor {
                     result.exit_code,
                     result.stderr
                 );
+
+                // Notify observer that hooks stage failed
+                if let Some(obs) = observer {
+                    obs.on_hooks_complete(hostname, stage, false);
+                }
 
                 return Err(crate::error::SnowError::Deploy(
                     crate::error::DeployError::CommandFailed {
@@ -192,6 +219,11 @@ impl HookExecutor {
             }
 
             results.push(result);
+        }
+
+        // Notify observer that all hooks for this stage completed
+        if let Some(obs) = observer {
+            obs.on_hooks_complete(hostname, stage, all_succeeded);
         }
 
         Ok(results)
@@ -253,7 +285,13 @@ mod tests {
         let executor = HookExecutor::new(backend, HashMap::new());
 
         let results = executor
-            .execute_hooks_for_stage("test-host", HookStage::PreActivate, None, &HashMap::new())
+            .execute_hooks_for_stage(
+                "test-host",
+                HookStage::PreActivate,
+                None,
+                &HashMap::new(),
+                None,
+            )
             .await
             .unwrap();
 
@@ -268,7 +306,13 @@ mod tests {
         let executor = HookExecutor::new(backend, hooks_by_host);
 
         let results = executor
-            .execute_hooks_for_stage("test-host", HookStage::PreActivate, None, &HashMap::new())
+            .execute_hooks_for_stage(
+                "test-host",
+                HookStage::PreActivate,
+                None,
+                &HashMap::new(),
+                None,
+            )
             .await
             .unwrap();
 
@@ -293,7 +337,13 @@ mod tests {
         let executor = HookExecutor::new(backend.clone(), hooks_by_host);
 
         let results = executor
-            .execute_hooks_for_stage("test-host", HookStage::PreActivate, None, &HashMap::new())
+            .execute_hooks_for_stage(
+                "test-host",
+                HookStage::PreActivate,
+                None,
+                &HashMap::new(),
+                None,
+            )
             .await
             .unwrap();
 
@@ -337,7 +387,13 @@ mod tests {
         let executor = HookExecutor::new(backend.clone(), hooks_by_host);
 
         let results = executor
-            .execute_hooks_for_stage("test-host", HookStage::PreActivate, None, &HashMap::new())
+            .execute_hooks_for_stage(
+                "test-host",
+                HookStage::PreActivate,
+                None,
+                &HashMap::new(),
+                None,
+            )
             .await
             .unwrap();
 
@@ -368,7 +424,13 @@ mod tests {
         let executor = HookExecutor::new(backend, hooks_by_host);
 
         let result = executor
-            .execute_hooks_for_stage("test-host", HookStage::PreActivate, None, &HashMap::new())
+            .execute_hooks_for_stage(
+                "test-host",
+                HookStage::PreActivate,
+                None,
+                &HashMap::new(),
+                None,
+            )
             .await;
 
         assert!(result.is_err());
@@ -391,7 +453,13 @@ mod tests {
         let executor = HookExecutor::new(backend, hooks_by_host);
 
         let results = executor
-            .execute_hooks_for_stage("test-host", HookStage::PreActivate, None, &HashMap::new())
+            .execute_hooks_for_stage(
+                "test-host",
+                HookStage::PreActivate,
+                None,
+                &HashMap::new(),
+                None,
+            )
             .await
             .unwrap();
 
@@ -418,7 +486,13 @@ mod tests {
         let executor = HookExecutor::new(backend, hooks_by_host);
 
         let results = executor
-            .execute_hooks_for_stage("test-host", HookStage::PreActivate, None, &HashMap::new())
+            .execute_hooks_for_stage(
+                "test-host",
+                HookStage::PreActivate,
+                None,
+                &HashMap::new(),
+                None,
+            )
             .await
             .unwrap();
 
@@ -482,6 +556,7 @@ mod tests {
                 HookStage::PostActivate,
                 Some(&target),
                 &HashMap::new(),
+                None,
             )
             .await
             .unwrap();
@@ -526,6 +601,7 @@ mod tests {
                 HookStage::PostActivate,
                 Some(&target),
                 &HashMap::new(),
+                None,
             )
             .await;
 
@@ -550,7 +626,13 @@ mod tests {
         let executor = HookExecutor::new(backend, hooks_by_host);
 
         let result = executor
-            .execute_hooks_for_stage("test-host", HookStage::PostActivate, None, &HashMap::new())
+            .execute_hooks_for_stage(
+                "test-host",
+                HookStage::PostActivate,
+                None,
+                &HashMap::new(),
+                None,
+            )
             .await;
 
         assert!(result.is_err());
@@ -590,7 +672,13 @@ mod tests {
         env.insert("SNOW_HOSTNAME".to_string(), "test-host".to_string());
 
         let results = executor
-            .execute_hooks_for_stage("test-host", HookStage::PreActivate, Some(&target), &env)
+            .execute_hooks_for_stage(
+                "test-host",
+                HookStage::PreActivate,
+                Some(&target),
+                &env,
+                None,
+            )
             .await
             .unwrap();
 
@@ -642,19 +730,43 @@ mod tests {
         let executor = HookExecutor::new(backend.clone(), hooks_by_host);
 
         executor
-            .execute_hooks_for_stage("test-host", HookStage::PreActivate, None, &HashMap::new())
+            .execute_hooks_for_stage(
+                "test-host",
+                HookStage::PreActivate,
+                None,
+                &HashMap::new(),
+                None,
+            )
             .await
             .unwrap();
         executor
-            .execute_hooks_for_stage("test-host", HookStage::PostActivate, None, &HashMap::new())
+            .execute_hooks_for_stage(
+                "test-host",
+                HookStage::PostActivate,
+                None,
+                &HashMap::new(),
+                None,
+            )
             .await
             .unwrap();
         executor
-            .execute_hooks_for_stage("test-host", HookStage::PostReboot, None, &HashMap::new())
+            .execute_hooks_for_stage(
+                "test-host",
+                HookStage::PostReboot,
+                None,
+                &HashMap::new(),
+                None,
+            )
             .await
             .unwrap();
         executor
-            .execute_hooks_for_stage("test-host", HookStage::OnFailure, None, &HashMap::new())
+            .execute_hooks_for_stage(
+                "test-host",
+                HookStage::OnFailure,
+                None,
+                &HashMap::new(),
+                None,
+            )
             .await
             .unwrap();
 
@@ -689,7 +801,7 @@ mod tests {
         env.insert("SNOW_STORE_PATH".to_string(), "/nix/store/test".to_string());
 
         let results = executor
-            .execute_hooks_for_stage("test-host", HookStage::PreActivate, None, &env)
+            .execute_hooks_for_stage("test-host", HookStage::PreActivate, None, &env, None)
             .await
             .unwrap();
 
@@ -737,7 +849,7 @@ mod tests {
         env.insert("SNOW_HOSTNAME".to_string(), "test-host".to_string());
 
         let result = executor
-            .execute_hooks_for_stage("test-host", HookStage::PreActivate, None, &env)
+            .execute_hooks_for_stage("test-host", HookStage::PreActivate, None, &env, None)
             .await;
 
         assert!(result.is_err());
@@ -770,7 +882,13 @@ mod tests {
         let executor = HookExecutor::new(backend, hooks_by_host);
 
         let results = executor
-            .execute_hooks_for_stage("test-host", HookStage::PreActivate, None, &HashMap::new())
+            .execute_hooks_for_stage(
+                "test-host",
+                HookStage::PreActivate,
+                None,
+                &HashMap::new(),
+                None,
+            )
             .await
             .unwrap();
 
@@ -807,7 +925,13 @@ mod tests {
         let executor = HookExecutor::new(backend, hooks_by_host);
 
         let results = executor
-            .execute_hooks_for_stage("test-host", HookStage::PreActivate, None, &HashMap::new())
+            .execute_hooks_for_stage(
+                "test-host",
+                HookStage::PreActivate,
+                None,
+                &HashMap::new(),
+                None,
+            )
             .await
             .unwrap();
 
@@ -839,7 +963,13 @@ mod tests {
         let executor = HookExecutor::new(backend, hooks_by_host);
 
         let result = executor
-            .execute_hooks_for_stage("test-host", HookStage::PreActivate, None, &HashMap::new())
+            .execute_hooks_for_stage(
+                "test-host",
+                HookStage::PreActivate,
+                None,
+                &HashMap::new(),
+                None,
+            )
             .await;
 
         assert!(result.is_err());
@@ -867,7 +997,13 @@ mod tests {
         let executor = HookExecutor::new(backend, hooks_by_host);
 
         let results = executor
-            .execute_hooks_for_stage("test-host", HookStage::PreActivate, None, &HashMap::new())
+            .execute_hooks_for_stage(
+                "test-host",
+                HookStage::PreActivate,
+                None,
+                &HashMap::new(),
+                None,
+            )
             .await
             .unwrap();
 
@@ -901,7 +1037,13 @@ mod tests {
         let executor = HookExecutor::new(backend, hooks_by_host);
 
         let results = executor
-            .execute_hooks_for_stage("test-host", HookStage::PreActivate, None, &HashMap::new())
+            .execute_hooks_for_stage(
+                "test-host",
+                HookStage::PreActivate,
+                None,
+                &HashMap::new(),
+                None,
+            )
             .await
             .unwrap();
 
@@ -1131,7 +1273,13 @@ mod tests {
         let executor = HookExecutor::new(backend.clone(), hooks_by_host);
 
         let results = executor
-            .execute_hooks_for_stage("test-host", HookStage::PreActivate, None, &HashMap::new())
+            .execute_hooks_for_stage(
+                "test-host",
+                HookStage::PreActivate,
+                None,
+                &HashMap::new(),
+                None,
+            )
             .await
             .unwrap();
 
@@ -1187,7 +1335,13 @@ mod tests {
         let executor = HookExecutor::new(backend.clone(), hooks_by_host);
 
         let results = executor
-            .execute_hooks_for_stage("test-host", HookStage::PreActivate, None, &HashMap::new())
+            .execute_hooks_for_stage(
+                "test-host",
+                HookStage::PreActivate,
+                None,
+                &HashMap::new(),
+                None,
+            )
             .await
             .unwrap();
 
@@ -1243,7 +1397,13 @@ mod tests {
         let executor = HookExecutor::new(backend.clone(), hooks_by_host);
 
         let results = executor
-            .execute_hooks_for_stage("test-host", HookStage::PreActivate, None, &HashMap::new())
+            .execute_hooks_for_stage(
+                "test-host",
+                HookStage::PreActivate,
+                None,
+                &HashMap::new(),
+                None,
+            )
             .await
             .unwrap();
 
@@ -1315,7 +1475,7 @@ mod tests {
         env.insert("SNOW_HOSTNAME".to_string(), "test-host".to_string());
 
         let results = executor
-            .execute_hooks_for_stage("test-host", HookStage::PreActivate, None, &env)
+            .execute_hooks_for_stage("test-host", HookStage::PreActivate, None, &env, None)
             .await
             .unwrap();
 
@@ -1368,7 +1528,7 @@ mod tests {
         env.insert("SNOW_HOSTNAME".to_string(), "test-host".to_string());
 
         let results = executor
-            .execute_hooks_for_stage("test-host", HookStage::PostReboot, None, &env)
+            .execute_hooks_for_stage("test-host", HookStage::PostReboot, None, &env, None)
             .await
             .unwrap();
 
@@ -1403,7 +1563,7 @@ mod tests {
         env.insert("SNOW_HOSTNAME".to_string(), "test-host".to_string());
 
         let result = executor
-            .execute_hooks_for_stage("test-host", HookStage::PostReboot, None, &env)
+            .execute_hooks_for_stage("test-host", HookStage::PostReboot, None, &env, None)
             .await;
 
         assert!(
@@ -1438,7 +1598,7 @@ mod tests {
         env.insert("SNOW_HOSTNAME".to_string(), "test-host".to_string());
 
         let result = executor
-            .execute_hooks_for_stage("test-host", HookStage::PreActivate, None, &env)
+            .execute_hooks_for_stage("test-host", HookStage::PreActivate, None, &env, None)
             .await;
 
         assert!(
@@ -1475,7 +1635,7 @@ mod tests {
         env.insert("SNOW_HOSTNAME".to_string(), "test-host".to_string());
 
         let results = executor
-            .execute_hooks_for_stage("test-host", HookStage::PostActivate, None, &env)
+            .execute_hooks_for_stage("test-host", HookStage::PostActivate, None, &env, None)
             .await
             .unwrap();
 
@@ -1511,7 +1671,7 @@ mod tests {
         env.insert("SNOW_HOSTNAME".to_string(), "test-host".to_string());
 
         let results = executor
-            .execute_hooks_for_stage("test-host", HookStage::PreActivate, None, &env)
+            .execute_hooks_for_stage("test-host", HookStage::PreActivate, None, &env, None)
             .await
             .unwrap();
 
@@ -1555,7 +1715,13 @@ mod tests {
         env.insert("SNOW_HOSTNAME".to_string(), "test-host".to_string());
 
         let results = executor
-            .execute_hooks_for_stage("test-host", HookStage::PostReboot, Some(&target), &env)
+            .execute_hooks_for_stage(
+                "test-host",
+                HookStage::PostReboot,
+                Some(&target),
+                &env,
+                None,
+            )
             .await
             .unwrap();
 
@@ -1599,7 +1765,13 @@ mod tests {
         env.insert("SNOW_HOSTNAME".to_string(), "test-host".to_string());
 
         let result = executor
-            .execute_hooks_for_stage("test-host", HookStage::PostReboot, Some(&target), &env)
+            .execute_hooks_for_stage(
+                "test-host",
+                HookStage::PostReboot,
+                Some(&target),
+                &env,
+                None,
+            )
             .await;
 
         assert!(

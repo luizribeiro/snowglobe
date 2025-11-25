@@ -24,6 +24,8 @@
 //! }
 //! ```
 
+use crate::hooks::HookStage;
+
 /// Observer trait for push deployment lifecycle events
 ///
 /// All methods have default no-op implementations, so observers only need
@@ -176,6 +178,45 @@ pub trait PushObserver: Send + Sync {
     /// - `phase`: The phase name
     /// - `success`: Whether all reboots in the phase succeeded
     fn on_reboot_step_complete(&self, _phase: &str, _success: bool) {}
+
+    /// Called before executing hooks for a stage on a host
+    ///
+    /// # Arguments
+    /// - `hostname`: The host for which hooks are being executed
+    /// - `stage`: The hook stage (PreActivate, PostActivate, etc.)
+    fn on_hooks_start(&self, _hostname: &str, _stage: HookStage) {}
+
+    /// Called after all hooks for a stage complete on a host
+    ///
+    /// # Arguments
+    /// - `hostname`: The host for which hooks were executed
+    /// - `stage`: The hook stage (PreActivate, PostActivate, etc.)
+    /// - `success`: Whether all hooks succeeded
+    fn on_hooks_complete(&self, _hostname: &str, _stage: HookStage, _success: bool) {}
+
+    /// Called before executing a specific hook
+    ///
+    /// # Arguments
+    /// - `hostname`: The host for which the hook is being executed
+    /// - `stage`: The hook stage (PreActivate, PostActivate, etc.)
+    /// - `hook_name`: The name of the hook being executed
+    fn on_hook_start(&self, _hostname: &str, _stage: HookStage, _hook_name: &str) {}
+
+    /// Called after a specific hook completes
+    ///
+    /// # Arguments
+    /// - `hostname`: The host for which the hook was executed
+    /// - `stage`: The hook stage (PreActivate, PostActivate, etc.)
+    /// - `hook_name`: The name of the hook that was executed
+    /// - `success`: Whether the hook succeeded
+    fn on_hook_complete(
+        &self,
+        _hostname: &str,
+        _stage: HookStage,
+        _hook_name: &str,
+        _success: bool,
+    ) {
+    }
 }
 
 /// No-op observer that does nothing
@@ -320,6 +361,30 @@ impl PushObserver for CompositeObserver {
     fn on_reboot_step_complete(&self, phase: &str, success: bool) {
         for observer in &self.observers {
             observer.on_reboot_step_complete(phase, success);
+        }
+    }
+
+    fn on_hooks_start(&self, hostname: &str, stage: HookStage) {
+        for observer in &self.observers {
+            observer.on_hooks_start(hostname, stage);
+        }
+    }
+
+    fn on_hooks_complete(&self, hostname: &str, stage: HookStage, success: bool) {
+        for observer in &self.observers {
+            observer.on_hooks_complete(hostname, stage, success);
+        }
+    }
+
+    fn on_hook_start(&self, hostname: &str, stage: HookStage, hook_name: &str) {
+        for observer in &self.observers {
+            observer.on_hook_start(hostname, stage, hook_name);
+        }
+    }
+
+    fn on_hook_complete(&self, hostname: &str, stage: HookStage, hook_name: &str, success: bool) {
+        for observer in &self.observers {
+            observer.on_hook_complete(hostname, stage, hook_name, success);
         }
     }
 }
