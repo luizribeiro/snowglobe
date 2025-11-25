@@ -8,8 +8,8 @@ use crate::hooks::{HookConfig, HookLocation, HookStage};
 // Hook Integration Tests
 // ============================================================================
 
-#[test]
-fn test_push_with_pre_activate_hooks() {
+#[tokio::test]
+async fn test_push_with_pre_activate_hooks() {
     let flake = Flake::test_context();
     let nix_backend = MockNixBackend::new();
     let deployer = MockDeployBackend::new();
@@ -69,7 +69,7 @@ fn test_push_with_pre_activate_hooks() {
             &observer,
             Some(&hook_executor),
         );
-        push(&push_ctx, hosts)
+        push(&push_ctx, hosts).await
     }
     .unwrap();
 
@@ -85,8 +85,8 @@ fn test_push_with_pre_activate_hooks() {
     assert!(executed_hooks[1].3.contains("systemctl stop"));
 }
 
-#[test]
-fn test_push_with_post_activate_hooks() {
+#[tokio::test]
+async fn test_push_with_post_activate_hooks() {
     let flake = Flake::test_context();
     let nix_backend = MockNixBackend::new();
     let deployer = MockDeployBackend::new();
@@ -138,7 +138,7 @@ fn test_push_with_post_activate_hooks() {
             &observer,
             Some(&hook_executor),
         );
-        push(&push_ctx, hosts)
+        push(&push_ctx, hosts).await
     }
     .unwrap();
 
@@ -151,8 +151,8 @@ fn test_push_with_post_activate_hooks() {
     assert!(executed_hooks[0].3.contains("systemctl start"));
 }
 
-#[test]
-fn test_push_with_post_reboot_hooks() {
+#[tokio::test]
+async fn test_push_with_post_reboot_hooks() {
     let flake = Flake::test_context();
     let nix_backend = MockNixBackend::new();
     let deployer = MockDeployBackend::new();
@@ -201,7 +201,7 @@ fn test_push_with_post_reboot_hooks() {
             &observer,
             Some(&hook_executor),
         );
-        push(&push_ctx, hosts)
+        push(&push_ctx, hosts).await
     }
     .unwrap();
 
@@ -220,8 +220,8 @@ fn test_push_with_post_reboot_hooks() {
     assert!(executed_hooks[0].3.contains("kubectl uncordon"));
 }
 
-#[test]
-fn test_push_post_reboot_hooks_not_executed_when_reboot_fails() {
+#[tokio::test]
+async fn test_push_post_reboot_hooks_not_executed_when_reboot_fails() {
     let flake = Flake::test_context();
     let nix_backend = MockNixBackend::new();
     let deployer = MockDeployBackend::new();
@@ -271,7 +271,7 @@ fn test_push_post_reboot_hooks_not_executed_when_reboot_fails() {
             &observer,
             Some(&hook_executor),
         );
-        push(&push_ctx, hosts)
+        push(&push_ctx, hosts).await
     }
     .unwrap();
 
@@ -298,8 +298,8 @@ fn test_push_post_reboot_hooks_not_executed_when_reboot_fails() {
     );
 }
 
-#[test]
-fn test_push_pre_activate_hook_failure_aborts_deployment() {
+#[tokio::test]
+async fn test_push_pre_activate_hook_failure_aborts_deployment() {
     let flake = Flake::test_context();
     let nix_backend = MockNixBackend::new();
     let deployer = MockDeployBackend::new();
@@ -352,7 +352,7 @@ fn test_push_pre_activate_hook_failure_aborts_deployment() {
             &observer,
             Some(&hook_executor),
         );
-        push(&push_ctx, hosts)
+        push(&push_ctx, hosts).await
     }
     .unwrap();
 
@@ -370,8 +370,8 @@ fn test_push_pre_activate_hook_failure_aborts_deployment() {
     assert_eq!(executed_hooks.len(), 1);
 }
 
-#[test]
-fn test_push_hook_failure_with_continue_on_failure() {
+#[tokio::test]
+async fn test_push_hook_failure_with_continue_on_failure() {
     let flake = Flake::test_context();
     let nix_backend = MockNixBackend::new();
     let deployer = MockDeployBackend::new();
@@ -427,7 +427,7 @@ fn test_push_hook_failure_with_continue_on_failure() {
             &observer,
             Some(&hook_executor),
         );
-        push(&push_ctx, hosts)
+        push(&push_ctx, hosts).await
     }
     .unwrap();
 
@@ -437,8 +437,8 @@ fn test_push_hook_failure_with_continue_on_failure() {
     assert_eq!(executed_hooks.len(), 1);
 }
 
-#[test]
-fn test_push_on_failure_hooks_execute_when_build_fails() {
+#[tokio::test]
+async fn test_push_on_failure_hooks_execute_when_build_fails() {
     let flake = Flake::test_context();
     let nix_backend = MockNixBackend::new().with_build_failures(vec!["test-host".to_string()]);
     let deployer = MockDeployBackend::new();
@@ -492,7 +492,7 @@ fn test_push_on_failure_hooks_execute_when_build_fails() {
             &observer,
             Some(&hook_executor),
         );
-        push(&push_ctx, hosts)
+        push(&push_ctx, hosts).await
     }
     .unwrap();
 
@@ -510,8 +510,8 @@ fn test_push_on_failure_hooks_execute_when_build_fails() {
     );
 }
 
-#[test]
-fn test_push_on_failure_hooks_execute_when_copy_fails() {
+#[tokio::test]
+async fn test_push_on_failure_hooks_execute_when_copy_fails() {
     let flake = Flake::test_context();
     let nix_backend = MockNixBackend::new();
     let deployer =
@@ -558,7 +558,7 @@ fn test_push_on_failure_hooks_execute_when_copy_fails() {
             &observer,
             Some(&hook_executor),
         );
-        push(&push_ctx, hosts)
+        push(&push_ctx, hosts).await
     }
     .unwrap();
 
@@ -569,8 +569,8 @@ fn test_push_on_failure_hooks_execute_when_copy_fails() {
     assert_eq!(executed_hooks[0].1, HookStage::OnFailure);
 }
 
-#[test]
-fn test_push_environment_variables_passed_to_hooks() {
+#[tokio::test]
+async fn test_push_environment_variables_passed_to_hooks() {
     let flake = Flake::test_context();
     let nix_backend = MockNixBackend::new();
     let deployer = MockDeployBackend::new();
@@ -622,7 +622,7 @@ fn test_push_environment_variables_passed_to_hooks() {
             &observer,
             Some(&hook_executor),
         );
-        push(&push_ctx, hosts)
+        push(&push_ctx, hosts).await
     }
     .unwrap();
 
@@ -633,8 +633,8 @@ fn test_push_environment_variables_passed_to_hooks() {
     assert_eq!(executed_hooks[0].0, "test-host");
 }
 
-#[test]
-fn test_push_hooks_execute_in_parallel_for_multiple_hosts() {
+#[tokio::test]
+async fn test_push_hooks_execute_in_parallel_for_multiple_hosts() {
     let flake = Flake::test_context();
     let nix_backend = MockNixBackend::new();
     let deployer = MockDeployBackend::new();
@@ -702,7 +702,7 @@ fn test_push_hooks_execute_in_parallel_for_multiple_hosts() {
             &observer,
             Some(&hook_executor),
         );
-        push(&push_ctx, hosts)
+        push(&push_ctx, hosts).await
     }
     .unwrap();
 
@@ -714,8 +714,8 @@ fn test_push_hooks_execute_in_parallel_for_multiple_hosts() {
     assert!(executed_hooks.iter().any(|h| h.0 == "host2"));
 }
 
-#[test]
-fn test_push_hook_failure_in_one_host_doesnt_affect_others() {
+#[tokio::test]
+async fn test_push_hook_failure_in_one_host_doesnt_affect_others() {
     let flake = Flake::test_context();
     let nix_backend = MockNixBackend::new();
     let deployer = MockDeployBackend::new();
@@ -785,7 +785,7 @@ fn test_push_hook_failure_in_one_host_doesnt_affect_others() {
             &observer,
             Some(&hook_executor),
         );
-        push(&push_ctx, hosts)
+        push(&push_ctx, hosts).await
     }
     .unwrap();
 
@@ -808,8 +808,8 @@ fn test_push_hook_failure_in_one_host_doesnt_affect_others() {
     assert!(host2_result.success);
 }
 
-#[test]
-fn test_push_hook_with_explicit_environment() {
+#[tokio::test]
+async fn test_push_hook_with_explicit_environment() {
     let flake = Flake::test_context();
     let nix_backend = MockNixBackend::new();
     let deployer = MockDeployBackend::new();
@@ -865,7 +865,7 @@ fn test_push_hook_with_explicit_environment() {
             &observer,
             Some(&hook_executor),
         );
-        push(&push_ctx, hosts)
+        push(&push_ctx, hosts).await
     }
     .unwrap();
 
@@ -880,8 +880,8 @@ fn test_push_hook_with_explicit_environment() {
 // Integration Tests: Full Pipeline with Hooks
 // ============================================================================
 
-#[test]
-fn test_full_pipeline_all_hook_stages_execute_in_order() {
+#[tokio::test]
+async fn test_full_pipeline_all_hook_stages_execute_in_order() {
     let flake = Flake::test_context();
     let nix_backend = MockNixBackend::new();
     let deployer = MockDeployBackend::new();
@@ -955,7 +955,7 @@ fn test_full_pipeline_all_hook_stages_execute_in_order() {
             &observer,
             Some(&hook_executor),
         );
-        push(&push_ctx, hosts)
+        push(&push_ctx, hosts).await
     }
     .unwrap();
 
@@ -989,8 +989,8 @@ fn test_full_pipeline_all_hook_stages_execute_in_order() {
     assert!(executed_hooks[4].3.contains("kubectl uncordon"));
 }
 
-#[test]
-fn test_pipeline_environment_variables_propagated_correctly() {
+#[tokio::test]
+async fn test_pipeline_environment_variables_propagated_correctly() {
     let flake = Flake::test_context();
     let nix_backend = MockNixBackend::new();
     let deployer = MockDeployBackend::new();
@@ -1057,7 +1057,7 @@ fn test_pipeline_environment_variables_propagated_correctly() {
             &observer,
             Some(&hook_executor),
         );
-        push(&push_ctx, hosts)
+        push(&push_ctx, hosts).await
     }
     .unwrap();
 
@@ -1067,8 +1067,8 @@ fn test_pipeline_environment_variables_propagated_correctly() {
     );
 }
 
-#[test]
-fn test_pipeline_hooks_execute_by_priority_order() {
+#[tokio::test]
+async fn test_pipeline_hooks_execute_by_priority_order() {
     let flake = Flake::test_context();
     let nix_backend = MockNixBackend::new();
     let deployer = MockDeployBackend::new();
@@ -1138,7 +1138,7 @@ fn test_pipeline_hooks_execute_by_priority_order() {
             &observer,
             Some(&hook_executor),
         );
-        push(&push_ctx, hosts)
+        push(&push_ctx, hosts).await
     }
     .unwrap();
 
@@ -1162,8 +1162,8 @@ fn test_pipeline_hooks_execute_by_priority_order() {
     );
 }
 
-#[test]
-fn test_post_reboot_hooks_not_executed_when_no_reboot_needed() {
+#[tokio::test]
+async fn test_post_reboot_hooks_not_executed_when_no_reboot_needed() {
     let flake = Flake::test_context();
     let nix_backend = MockNixBackend::new();
     let deployer = MockDeployBackend::new();
@@ -1228,7 +1228,7 @@ fn test_post_reboot_hooks_not_executed_when_no_reboot_needed() {
             &observer,
             Some(&hook_executor),
         );
-        push(&push_ctx, hosts)
+        push(&push_ctx, hosts).await
     }
     .unwrap();
 

@@ -7,8 +7,8 @@ use crate::backends::reboot::SystemRebootBackend;
 // Integration Tests for push() Function
 // ============================================================================
 
-#[test]
-fn test_push_full_workflow_single_phase_success() {
+#[tokio::test]
+async fn test_push_full_workflow_single_phase_success() {
     // Test the complete workflow: build → copy → plan → activate for a single phase
     let flake = Flake::test_context();
     let nix_backend = MockNixBackend::new();
@@ -57,7 +57,7 @@ fn test_push_full_workflow_single_phase_success() {
             &observer,
             None,
         );
-        push(&push_ctx, hosts)
+        push(&push_ctx, hosts).await
     }
     .unwrap();
 
@@ -89,8 +89,8 @@ fn test_push_full_workflow_single_phase_success() {
     assert!(events.contains(&"phase_complete:web:ok".to_string()));
 }
 
-#[test]
-fn test_push_full_workflow_multi_phase_success() {
+#[tokio::test]
+async fn test_push_full_workflow_multi_phase_success() {
     // Test multiple phases deploying sequentially with all steps
     let flake = Flake::test_context();
     let nix_backend = MockNixBackend::new();
@@ -139,7 +139,7 @@ fn test_push_full_workflow_multi_phase_success() {
             &observer,
             None,
         );
-        push(&push_ctx, hosts)
+        push(&push_ctx, hosts).await
     }
     .unwrap();
 
@@ -165,8 +165,8 @@ fn test_push_full_workflow_multi_phase_success() {
     assert!(db_phase_complete < web_phase_start);
 }
 
-#[test]
-fn test_push_build_failure_stops_deployment() {
+#[tokio::test]
+async fn test_push_build_failure_stops_deployment() {
     // Build fails for one host, should stop immediately with no copy/activate
     let flake = Flake::test_context();
     let nix_backend = MockNixBackend::new().with_build_failures(vec!["fail-host".to_string()]);
@@ -204,7 +204,7 @@ fn test_push_build_failure_stops_deployment() {
             &observer,
             None,
         );
-        push(&push_ctx, hosts)
+        push(&push_ctx, hosts).await
     };
 
     // Should succeed but with failures captured
@@ -228,8 +228,8 @@ fn test_push_build_failure_stops_deployment() {
     assert!(!events.iter().any(|e| e.starts_with("reboot_")));
 }
 
-#[test]
-fn test_push_copy_failure_stops_deployment() {
+#[tokio::test]
+async fn test_push_copy_failure_stops_deployment() {
     // Copy fails for one host after successful build
     let flake = Flake::test_context();
     let nix_backend = MockNixBackend::new();
@@ -268,7 +268,7 @@ fn test_push_copy_failure_stops_deployment() {
             &observer,
             None,
         );
-        push(&push_ctx, hosts)
+        push(&push_ctx, hosts).await
     };
 
     // Should succeed but with failures captured
@@ -295,8 +295,8 @@ fn test_push_copy_failure_stops_deployment() {
     assert!(!events.iter().any(|e| e.starts_with("reboot_")));
 }
 
-#[test]
-fn test_push_copy_observer_hooks_called() {
+#[tokio::test]
+async fn test_push_copy_observer_hooks_called() {
     // Verify copy observer hooks fire in correct order
     let flake = Flake::test_context();
     let nix_backend = MockNixBackend::new();
@@ -345,7 +345,7 @@ fn test_push_copy_observer_hooks_called() {
             &observer,
             None,
         );
-        push(&push_ctx, hosts)
+        push(&push_ctx, hosts).await
     }
     .unwrap();
 
@@ -368,8 +368,8 @@ fn test_push_copy_observer_hooks_called() {
     assert!(copy2_start_idx < copy2_complete_idx);
 }
 
-#[test]
-fn test_push_build_observer_hooks_called() {
+#[tokio::test]
+async fn test_push_build_observer_hooks_called() {
     // Verify build observer hooks fire in correct order
     let flake = Flake::test_context();
     let nix_backend = MockNixBackend::new();
@@ -418,7 +418,7 @@ fn test_push_build_observer_hooks_called() {
             &observer,
             None,
         );
-        push(&push_ctx, hosts)
+        push(&push_ctx, hosts).await
     }
     .unwrap();
 
@@ -447,8 +447,8 @@ fn test_push_build_observer_hooks_called() {
     assert!(build2_start_idx < build2_complete_idx);
 }
 
-#[test]
-fn test_push_build_partial_failure() {
+#[tokio::test]
+async fn test_push_build_partial_failure() {
     // Build fails for host 2 of 2 in a phase
     let flake = Flake::test_context();
     let nix_backend = MockNixBackend::new().with_build_failures(vec!["host2".to_string()]);
@@ -497,7 +497,7 @@ fn test_push_build_partial_failure() {
             &observer,
             None,
         );
-        push(&push_ctx, hosts)
+        push(&push_ctx, hosts).await
     };
 
     // Should succeed but with failures captured
@@ -527,8 +527,8 @@ fn test_push_build_partial_failure() {
         .any(|e| e.starts_with("copy_") && e.contains("host2")));
 }
 
-#[test]
-fn test_push_ignore_phases_flag() {
+#[tokio::test]
+async fn test_push_ignore_phases_flag() {
     // Test that ignore_phases groups all hosts into "_all" phase
     let flake = Flake::test_context();
     let nix_backend = MockNixBackend::new();
@@ -577,7 +577,7 @@ fn test_push_ignore_phases_flag() {
             &observer,
             None,
         );
-        push(&push_ctx, hosts)
+        push(&push_ctx, hosts).await
     }
     .unwrap();
 
@@ -593,8 +593,8 @@ fn test_push_ignore_phases_flag() {
     assert!(!events.iter().any(|e| e.contains(":web:")));
 }
 
-#[test]
-fn test_push_phase_failure_stops_next_phase() {
+#[tokio::test]
+async fn test_push_phase_failure_stops_next_phase() {
     // Phase 1 activation fails, Phase 2 should never start
     let flake = Flake::test_context();
     let nix_backend = MockNixBackend::new();
@@ -645,7 +645,7 @@ fn test_push_phase_failure_stops_next_phase() {
             &observer,
             None,
         );
-        push(&push_ctx, hosts)
+        push(&push_ctx, hosts).await
     };
 
     // Push should succeed but with failures and skipped phases
@@ -671,8 +671,8 @@ fn test_push_phase_failure_stops_next_phase() {
     );
 }
 
-#[test]
-fn test_push_reboot_execution_success() {
+#[tokio::test]
+async fn test_push_reboot_execution_success() {
     // Test that reboot is executed when required and observer hooks are called
     let flake = Flake::test_context();
     let nix_backend = MockNixBackend::new();
@@ -719,7 +719,7 @@ fn test_push_reboot_execution_success() {
             &observer,
             None,
         );
-        push(&push_ctx, hosts)
+        push(&push_ctx, hosts).await
     }
     .unwrap();
 
@@ -759,8 +759,8 @@ fn test_push_reboot_execution_success() {
     );
 }
 
-#[test]
-fn test_push_reboot_execution_failure() {
+#[tokio::test]
+async fn test_push_reboot_execution_failure() {
     // Test that reboot failures are properly handled and reported
     let flake = Flake::test_context();
     let nix_backend = MockNixBackend::new();
@@ -809,7 +809,7 @@ fn test_push_reboot_execution_failure() {
             &observer,
             None,
         );
-        push(&push_ctx, hosts)
+        push(&push_ctx, hosts).await
     }
     .unwrap();
 
@@ -847,8 +847,8 @@ fn test_push_reboot_execution_failure() {
     );
 }
 
-#[test]
-fn test_push_skip_reboot_when_not_required() {
+#[tokio::test]
+async fn test_push_skip_reboot_when_not_required() {
     // Test that reboot hooks are NOT called when reboot is not required
     let flake = Flake::test_context();
     let nix_backend = MockNixBackend::new();
@@ -886,7 +886,7 @@ fn test_push_skip_reboot_when_not_required() {
             &observer,
             None,
         );
-        push(&push_ctx, hosts)
+        push(&push_ctx, hosts).await
     }
     .unwrap();
 
@@ -911,8 +911,8 @@ fn test_push_skip_reboot_when_not_required() {
     assert!(events.iter().any(|e| e.starts_with("activation_complete")));
 }
 
-#[test]
-fn test_push_reboot_with_boot_mode() {
+#[tokio::test]
+async fn test_push_reboot_with_boot_mode() {
     // Test explicit Boot mode with reboot required
     let flake = Flake::test_context();
     let nix_backend = MockNixBackend::new();
@@ -959,7 +959,7 @@ fn test_push_reboot_with_boot_mode() {
             &observer,
             None,
         );
-        push(&push_ctx, hosts)
+        push(&push_ctx, hosts).await
     }
     .unwrap();
 
@@ -975,8 +975,8 @@ fn test_push_reboot_with_boot_mode() {
     assert!(events.iter().any(|e| e.starts_with("reboot_complete")));
 }
 
-#[test]
-fn test_push_reboot_policy_always() {
+#[tokio::test]
+async fn test_push_reboot_policy_always() {
     // Test that RebootPolicy::Always forces reboot even if not detected
     let flake = Flake::test_context();
     let nix_backend = MockNixBackend::new();
@@ -1014,7 +1014,7 @@ fn test_push_reboot_policy_always() {
             &observer,
             None,
         );
-        push(&push_ctx, hosts)
+        push(&push_ctx, hosts).await
     }
     .unwrap();
 
@@ -1033,8 +1033,8 @@ fn test_push_reboot_policy_always() {
         .any(|e| e == "reboot_complete:always-reboot:ok"));
 }
 
-#[test]
-fn test_push_reboot_policy_never() {
+#[tokio::test]
+async fn test_push_reboot_policy_never() {
     // Test that RebootPolicy::Never prevents reboot even if detected
     let flake = Flake::test_context();
     let nix_backend = MockNixBackend::new();
@@ -1081,7 +1081,7 @@ fn test_push_reboot_policy_never() {
             &observer,
             None,
         );
-        push(&push_ctx, hosts)
+        push(&push_ctx, hosts).await
     }
     .unwrap();
 
@@ -1100,8 +1100,8 @@ fn test_push_reboot_policy_never() {
     assert!(events.iter().any(|e| e.starts_with("activation_complete")));
 }
 
-#[test]
-fn test_push_skip_reboot_flag_overrides_always_policy() {
+#[tokio::test]
+async fn test_push_skip_reboot_flag_overrides_always_policy() {
     // Test that allow_reboot=false prevents reboot even with RebootPolicy::Always
     let flake = Flake::test_context();
     let nix_backend = MockNixBackend::new();
@@ -1139,7 +1139,7 @@ fn test_push_skip_reboot_flag_overrides_always_policy() {
             &observer,
             None,
         );
-        push(&push_ctx, hosts)
+        push(&push_ctx, hosts).await
     }
     .unwrap();
 
@@ -1158,8 +1158,8 @@ fn test_push_skip_reboot_flag_overrides_always_policy() {
     assert!(events.iter().any(|e| e.starts_with("activation_complete")));
 }
 
-#[test]
-fn test_push_skip_reboot_flag_with_detected_reboot() {
+#[tokio::test]
+async fn test_push_skip_reboot_flag_with_detected_reboot() {
     // Test that allow_reboot=false prevents reboot even when detection says it's needed
     let flake = Flake::test_context();
     let nix_backend = MockNixBackend::new();
@@ -1206,7 +1206,7 @@ fn test_push_skip_reboot_flag_with_detected_reboot() {
             &observer,
             None,
         );
-        push(&push_ctx, hosts)
+        push(&push_ctx, hosts).await
     }
     .unwrap();
 

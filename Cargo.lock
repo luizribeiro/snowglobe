@@ -1135,7 +1135,6 @@ dependencies = [
  "nix",
  "parking_lot",
  "rand",
- "rayon",
  "serde",
  "serde_json",
  "shell-escape",

@@ -3,9 +3,7 @@
 //! This module handles the execution of the deployment pipeline for individual hosts.
 //! The pipeline consists of: Build → Copy → Plan → Activate → Reboot
 //!
-//! Note: Currently uses a hybrid sync/async approach during migration. Functions that
-//! call async backends use `block_on_async` to bridge the sync Rayon pipeline with
-//! async backend implementations.
+//! The pipeline is fully async, using tokio for concurrent execution of hosts.
 
 use crate::backends::deploy::{DeployResult, DeployTarget};
 use crate::error::Result;
@@ -13,27 +11,10 @@ use crate::hooks::HookStage;
 use crate::host::HostMetadata;
 use crate::nix::StorePath;
 use std::collections::HashMap;
-use std::sync::Arc;
 
 use super::context::PushContext;
 use super::planning::create_deployment_plans;
 use super::results::{HostDeploymentResult, PipelineStep, PushPlan};
-
-/// Bridge sync code to async during migration
-///
-/// Uses block_in_place to run async code from sync context when already in a runtime.
-/// This is a temporary measure until the entire pipeline is async.
-fn block_on_async<F: std::future::Future>(future: F) -> F::Output {
-    match tokio::runtime::Handle::try_current() {
-        Ok(handle) => tokio::task::block_in_place(|| handle.block_on(future)),
-        Err(_) => {
-            // No runtime available, create a temporary one
-            tokio::runtime::Runtime::new()
-                .expect("Failed to create tokio runtime")
-                .block_on(future)
-        }
-    }
-}
 
 /// Intermediate data structure for passing build results through the pipeline
 #[derive(Debug, Clone)]
@@ -52,8 +33,8 @@ struct CopyOutput {
 }
 
 /// Execute hooks for a specific stage
-fn execute_hooks(
-    push_ctx: &PushContext,
+async fn execute_hooks(
+    push_ctx: &PushContext<'_>,
     hostname: &str,
     stage: HookStage,
     target: Option<&DeployTarget>,
@@ -73,8 +54,9 @@ fn execute_hooks(
             );
         }
 
-        let results =
-            block_on_async(executor.execute_hooks_for_stage(hostname, stage, target, &env))?;
+        let results = executor
+            .execute_hooks_for_stage(hostname, stage, target, &env)
+            .await?;
 
         // Check for any failed hooks (even with continue_on_failure=true)
         let failed_hooks: Vec<_> = results
@@ -108,8 +90,8 @@ fn execute_hooks(
 }
 
 /// Helper to handle pipeline failures consistently
-fn handle_pipeline_failure(
-    push_ctx: &PushContext,
+async fn handle_pipeline_failure(
+    push_ctx: &PushContext<'_>,
     hostname: &str,
     target: Option<&DeployTarget>,
     phase: Option<&str>,
@@ -125,7 +107,9 @@ fn handle_pipeline_failure(
         target,
         phase,
         store_path,
-    ) {
+    )
+    .await
+    {
         tracing::warn!("On-failure hook execution failed for {}: {}", hostname, e);
     }
 
@@ -143,20 +127,13 @@ fn handle_pipeline_failure(
 ///
 /// Runs: Build → Copy → Plan → Activate → Reboot
 ///
-/// This function is called in parallel for each host in a phase. Observer callbacks
-/// are used to track when hosts enter/leave steps, enabling dynamic step span visibility.
-///
-/// Note: Uses Arc<&T> pattern which clippy warns about, but is necessary because:
-/// - We only have &T not T (types contain lifetimes and can't be easily cloned)
-/// - We need to share across threads (Arc)
-/// - Rayon's par_iter requires 'static closure
-#[allow(clippy::redundant_allocation)]
-pub fn execute_host_pipeline(
-    push_ctx: Arc<&PushContext>,
+/// This function is called concurrently for each host in a phase using tokio tasks.
+/// Observer callbacks are used to track when hosts enter/leave steps, enabling
+/// dynamic step span visibility.
+pub async fn execute_host_pipeline(
+    push_ctx: &PushContext<'_>,
     host_metadata: &HostMetadata,
 ) -> Result<HostDeploymentResult> {
-    // Deref Arc to get the actual reference
-    let push_ctx_ref = push_ctx.as_ref();
     let hostname = host_metadata.name.clone();
 
     // Macro to execute hooks and return early on failure
@@ -169,55 +146,60 @@ pub fn execute_host_pipeline(
     macro_rules! execute_hooks_or_return {
         ($stage:expr, $target:expr, $store_path:expr, $step:expr) => {
             if let Err(e) = execute_hooks(
-                push_ctx_ref,
+                push_ctx,
                 &hostname,
                 $stage,
                 $target,
                 host_metadata.phase.as_deref(),
                 $store_path,
-            ) {
+            )
+            .await
+            {
                 return Ok(handle_pipeline_failure(
-                    push_ctx_ref,
+                    push_ctx,
                     &hostname,
                     $target,
                     host_metadata.phase.as_deref(),
                     $store_path,
                     $step,
                     e,
-                ));
+                )
+                .await);
             }
         };
     }
 
     // Step 1: Build
-    let build_output = match execute_build_step(push_ctx_ref, host_metadata) {
+    let build_output = match execute_build_step(push_ctx, host_metadata).await {
         Ok(output) => output,
         Err(e) => {
             return Ok(handle_pipeline_failure(
-                push_ctx_ref,
+                push_ctx,
                 &hostname,
                 None,
                 host_metadata.phase.as_deref(),
                 None,
                 PipelineStep::Build,
                 e,
-            ));
+            )
+            .await);
         }
     };
 
     // Step 2: Copy
-    let copy_output = match execute_copy_step(push_ctx_ref, build_output) {
+    let copy_output = match execute_copy_step(push_ctx, build_output).await {
         Ok(output) => output,
         Err(e) => {
             return Ok(handle_pipeline_failure(
-                push_ctx_ref,
+                push_ctx,
                 &hostname,
                 None,
                 host_metadata.phase.as_deref(),
                 None,
                 PipelineStep::Copy,
                 e,
-            ));
+            )
+            .await);
         }
     };
 
@@ -230,18 +212,20 @@ pub fn execute_host_pipeline(
     );
 
     // Step 3: Activate (includes planning + activation)
-    let (plan, activate_result) = match execute_activation_step(push_ctx_ref, copy_output.clone()) {
+    let (plan, activate_result) = match execute_activation_step(push_ctx, copy_output.clone()).await
+    {
         Ok(result) => result,
         Err(e) => {
             return Ok(handle_pipeline_failure(
-                push_ctx_ref,
+                push_ctx,
                 &hostname,
                 Some(&copy_output.target),
                 host_metadata.phase.as_deref(),
                 Some(&copy_output.store_path),
                 PipelineStep::Activate,
                 e,
-            ));
+            )
+            .await);
         }
     };
 
@@ -254,18 +238,20 @@ pub fn execute_host_pipeline(
     );
 
     // Step 4: Reboot (if needed)
-    let (final_result, rebooted) = match execute_reboot_step(push_ctx_ref, &plan, activate_result) {
+    let (final_result, rebooted) = match execute_reboot_step(push_ctx, &plan, activate_result).await
+    {
         Ok(result) => result,
         Err(e) => {
             return Ok(handle_pipeline_failure(
-                push_ctx_ref,
+                push_ctx,
                 &hostname,
                 Some(&plan.target),
                 host_metadata.phase.as_deref(),
                 Some(&plan.store_path),
                 PipelineStep::Reboot,
                 e,
-            ));
+            )
+            .await);
         }
     };
 
@@ -297,16 +283,23 @@ pub fn execute_host_pipeline(
 /// Execute the build step for a single host
 ///
 /// Builds the NixOS configuration and creates the deployment target.
-fn execute_build_step(push_ctx: &PushContext, host_metadata: &HostMetadata) -> Result<BuildOutput> {
+async fn execute_build_step(
+    push_ctx: &PushContext<'_>,
+    host_metadata: &HostMetadata,
+) -> Result<BuildOutput> {
     let hostname = &host_metadata.name;
 
     push_ctx.observer.on_build_start(hostname);
-    let build_output = match block_on_async(push_ctx.nix_backend.build_host(
-        push_ctx.flake,
-        hostname,
-        host_metadata.system_type,
-        push_ctx.config.output_mode,
-    )) {
+    let build_output = match push_ctx
+        .nix_backend
+        .build_host(
+            push_ctx.flake,
+            hostname,
+            host_metadata.system_type,
+            push_ctx.config.output_mode,
+        )
+        .await
+    {
         Ok(store_path) => {
             // Create deployment target
             let target = DeployTarget {
@@ -334,15 +327,18 @@ fn execute_build_step(push_ctx: &PushContext, host_metadata: &HostMetadata) -> R
 /// Execute the copy step for a single host
 ///
 /// Copies the built closure to the target host.
-fn execute_copy_step(push_ctx: &PushContext, build_output: BuildOutput) -> Result<CopyOutput> {
+async fn execute_copy_step(
+    push_ctx: &PushContext<'_>,
+    build_output: BuildOutput,
+) -> Result<CopyOutput> {
     let hostname = build_output.metadata.name.clone();
 
     push_ctx.observer.on_copy_start(&hostname);
-    let copy_output = match block_on_async(
-        push_ctx
-            .deploy_backend
-            .copy_closure(&build_output.target, &build_output.store_path),
-    ) {
+    let copy_output = match push_ctx
+        .deploy_backend
+        .copy_closure(&build_output.target, &build_output.store_path)
+        .await
+    {
         Ok(()) => CopyOutput {
             metadata: build_output.metadata,
             target: build_output.target,
@@ -361,8 +357,8 @@ fn execute_copy_step(push_ctx: &PushContext, build_output: BuildOutput) -> Resul
 /// Execute the activation step for a single host
 ///
 /// Includes deployment planning (with reboot detection) and activation.
-fn execute_activation_step(
-    push_ctx: &PushContext,
+async fn execute_activation_step(
+    push_ctx: &PushContext<'_>,
     copy_output: CopyOutput,
 ) -> Result<(PushPlan, DeployResult)> {
     let hostname = &copy_output.metadata.name;
@@ -370,8 +366,8 @@ fn execute_activation_step(
     // Start the activate observer span before planning so planning work is visible
     push_ctx.observer.on_activation_start(hostname);
 
-    // Planning: Determine activation strategy (async, bridged to sync)
-    let (plans, blocked) = block_on_async(create_deployment_plans(
+    // Planning: Determine activation strategy
+    let (plans, blocked) = create_deployment_plans(
         vec![(
             copy_output.metadata.clone(),
             copy_output.target.clone(),
@@ -380,7 +376,8 @@ fn execute_activation_step(
         push_ctx.reboot_backend,
         push_ctx.config.strategy,
         push_ctx.config.force,
-    ))?;
+    )
+    .await?;
 
     // Handle blocked hosts
     if !blocked.is_empty() {
@@ -401,11 +398,11 @@ fn execute_activation_step(
     })?;
 
     // Execute activation
-    let activate_result = match block_on_async(push_ctx.deploy_backend.deploy(
-        &plan.target,
-        &plan.store_path,
-        plan.activation_mode,
-    )) {
+    let activate_result = match push_ctx
+        .deploy_backend
+        .deploy(&plan.target, &plan.store_path, plan.activation_mode)
+        .await
+    {
         Ok(result) => {
             push_ctx
                 .observer
@@ -429,8 +426,8 @@ fn execute_activation_step(
 /// 3. Either no reboot check OR reboot is required
 ///
 /// Returns (DeployResult, whether_rebooted)
-fn execute_reboot_step(
-    push_ctx: &PushContext,
+async fn execute_reboot_step(
+    push_ctx: &PushContext<'_>,
     plan: &PushPlan,
     activate_result: DeployResult,
 ) -> Result<(DeployResult, bool)> {
@@ -448,8 +445,7 @@ fn execute_reboot_step(
     let (final_result, rebooted) = if should_reboot {
         push_ctx.observer.on_reboot_start(hostname);
 
-        // Async reboot, bridged to sync
-        match block_on_async(push_ctx.reboot_backend.reboot_and_wait(&plan.target)) {
+        match push_ctx.reboot_backend.reboot_and_wait(&plan.target).await {
             Ok(()) => {
                 push_ctx.observer.on_reboot_complete(hostname, true);
                 (activate_result, true)

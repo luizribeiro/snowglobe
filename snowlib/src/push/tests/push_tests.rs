@@ -65,8 +65,8 @@ async fn test_push_with_single_phase() {
     assert!(events.contains(&"phase_complete:p1:ok".to_string()));
 }
 
-#[test]
-fn test_push_with_multiple_phases() {
+#[tokio::test]
+async fn test_push_with_multiple_phases() {
     // Test that phases execute in lexicographic order (p1 before p2)
     let flake = Flake::test_context();
     let nix_backend = MockNixBackend::new();
@@ -122,7 +122,7 @@ fn test_push_with_multiple_phases() {
             &observer,
             None,
         );
-        push(&push_ctx, hosts)
+        push(&push_ctx, hosts).await
     }
     .unwrap();
 
@@ -137,8 +137,8 @@ fn test_push_with_multiple_phases() {
     assert!(p1_start < p2_start);
 }
 
-#[test]
-fn test_push_stops_on_phase_failure() {
+#[tokio::test]
+async fn test_push_stops_on_phase_failure() {
     // Test that when phase p1 fails, phase p2 never starts
     let flake = Flake::test_context();
     let nix_backend = MockNixBackend::new();
@@ -195,7 +195,7 @@ fn test_push_stops_on_phase_failure() {
             &observer,
             None,
         );
-        push(&push_ctx, hosts)
+        push(&push_ctx, hosts).await
     };
 
     // Push should succeed but with failures and skipped phases
@@ -369,8 +369,8 @@ async fn test_push_with_partial_failure_in_phase() {
     assert!(events.contains(&"phase_complete:p1:failed".to_string()));
 }
 
-#[test]
-fn test_push_error_message_includes_source() {
+#[tokio::test]
+async fn test_push_error_message_includes_source() {
     // Test that when deployment fails, the error message includes the full error chain
     let flake = Flake::test_context();
     let nix_backend = MockNixBackend::new();
@@ -418,7 +418,7 @@ fn test_push_error_message_includes_source() {
             &observer,
             None,
         );
-        push(&push_ctx, hosts)
+        push(&push_ctx, hosts).await
     };
 
     // Push should succeed but with failures captured
@@ -451,8 +451,8 @@ fn test_push_error_message_includes_source() {
     );
 }
 
-#[test]
-fn test_push_error_message_format_with_activation_failure() {
+#[tokio::test]
+async fn test_push_error_message_format_with_activation_failure() {
     // Test the specific format of error messages with activation failures
     use std::collections::HashMap;
 
@@ -515,7 +515,7 @@ fn test_push_error_message_format_with_activation_failure() {
             &observer,
             None,
         );
-        push(&push_ctx, hosts)
+        push(&push_ctx, hosts).await
     };
 
     // Push should succeed but with failures captured

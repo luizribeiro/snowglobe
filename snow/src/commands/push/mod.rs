@@ -254,7 +254,7 @@ impl PushArgs {
         );
 
         // Execute the push - snowlib handles everything!
-        let results = snowlib::push(&push_ctx, hosts)?;
+        let results = block_on_async(snowlib::push(&push_ctx, hosts))?;
 
         results.print_summary();
 

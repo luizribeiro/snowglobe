@@ -52,8 +52,8 @@ fn create_push_config(strategy: PushStrategy, concurrency: usize) -> PushConfigu
     }
 }
 
-#[test]
-fn test_push_profile_update_for_switch_mode() {
+#[tokio::test]
+async fn test_push_profile_update_for_switch_mode() {
     let (flake, nix_backend, deployer, reboot_detector, observer) = create_profile_test_backends();
 
     let hosts = vec![create_nixos_host_metadata(
@@ -72,7 +72,7 @@ fn test_push_profile_update_for_switch_mode() {
             &observer,
             None,
         );
-        push(&push_ctx, hosts)
+        push(&push_ctx, hosts).await
     }
     .unwrap();
 
@@ -96,8 +96,8 @@ fn test_push_profile_update_for_switch_mode() {
     assert_eq!(profile_updates[0].1, ActivationMode::Switch);
 }
 
-#[test]
-fn test_push_profile_update_skipped_for_test_mode() {
+#[tokio::test]
+async fn test_push_profile_update_skipped_for_test_mode() {
     let (flake, nix_backend, deployer, reboot_detector, observer) = create_profile_test_backends();
 
     let hosts = vec![create_nixos_host_metadata(
@@ -116,7 +116,7 @@ fn test_push_profile_update_skipped_for_test_mode() {
             &observer,
             None,
         );
-        push(&push_ctx, hosts)
+        push(&push_ctx, hosts).await
     }
     .unwrap();
 
@@ -137,8 +137,8 @@ fn test_push_profile_update_skipped_for_test_mode() {
     );
 }
 
-#[test]
-fn test_push_profile_update_multiple_hosts() {
+#[tokio::test]
+async fn test_push_profile_update_multiple_hosts() {
     let (flake, nix_backend, deployer, reboot_detector, observer) = create_profile_test_backends();
 
     let hosts = vec![
@@ -158,7 +158,7 @@ fn test_push_profile_update_multiple_hosts() {
             &observer,
             None,
         );
-        push(&push_ctx, hosts)
+        push(&push_ctx, hosts).await
     }
     .unwrap();
 
