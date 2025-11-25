@@ -2,6 +2,7 @@ use super::{RebootBackend, RebootCheck, RebootDetectionConfig, RebootReason};
 use crate::backends::deploy::DeployTarget;
 use crate::error::{DeployError, Result};
 use crate::nix::StorePath;
+use crate::process::{CommandResult, OutputMode, StreamingExecutor};
 use std::process::Command;
 
 /// System reboot detection backend
@@ -115,21 +116,21 @@ impl SystemRebootBackend {
     /// Uses `readlink -f` to resolve all symlinks and get the canonical path.
     fn read_symlink_target(&self, target: &DeployTarget, symlink_path: &str) -> Result<String> {
         let cmd = format!("readlink -f {}", shell_escape(symlink_path));
-        let output = self.ssh_exec_output(target, &cmd)?;
+        let result = self.ssh_exec_full(target, &cmd)?;
 
-        if !output.status.success() {
+        if !result.status.success() {
             return Err(DeployError::Failed {
                 host: target.hostname.clone(),
                 source: std::io::Error::other(format!(
                     "Failed to resolve path {}: {}",
                     symlink_path,
-                    String::from_utf8_lossy(&output.stderr)
+                    String::from_utf8_lossy(&result.stderr)
                 )),
             }
             .into());
         }
 
-        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+        Ok(String::from_utf8_lossy(&result.stdout).trim().to_string())
     }
 
     /// Compare two symlinks on the remote host
@@ -217,57 +218,42 @@ impl SystemRebootBackend {
 
     /// Execute an SSH command and return the status
     fn ssh_exec(&self, target: &DeployTarget, command: &str) -> Result<std::process::ExitStatus> {
-        use std::process::Stdio;
-
-        // Capture output to avoid disrupting progress indicators
-        let output = self
-            .build_ssh_command(target, command)
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-            .map_err(|e| DeployError::SshFailed {
-                destination: self.get_destination(target),
-                source: e,
-            })?;
-
-        Ok(output)
+        Ok(self.ssh_exec_full(target, command)?.status)
     }
 
-    /// Execute an SSH command and return the full output
-    fn ssh_exec_output(
-        &self,
-        target: &DeployTarget,
-        command: &str,
-    ) -> Result<std::process::Output> {
-        let output = self
-            .build_ssh_command(target, command)
-            .output()
-            .map_err(|e| DeployError::SshFailed {
-                destination: self.get_destination(target),
-                source: e,
-            })?;
-
-        Ok(output)
+    /// Execute an SSH command and return the full result
+    fn ssh_exec_full(&self, target: &DeployTarget, command: &str) -> Result<CommandResult> {
+        let mut cmd = self.build_ssh_command(target, command);
+        StreamingExecutor::new(&mut cmd)
+            .output_mode(OutputMode::Capture)
+            .execute()
+            .map_err(|e| {
+                DeployError::SshFailed {
+                    destination: self.get_destination(target),
+                    source: e,
+                }
+                .into()
+            })
     }
 
     /// Read a file from the remote host via SSH
     fn ssh_read_file(&self, target: &DeployTarget, remote_path: &str) -> Result<String> {
         let cmd = format!("cat {}", shell_escape(remote_path));
-        let output = self.ssh_exec_output(target, &cmd)?;
+        let result = self.ssh_exec_full(target, &cmd)?;
 
-        if !output.status.success() {
+        if !result.status.success() {
             return Err(DeployError::Failed {
                 host: target.hostname.clone(),
                 source: std::io::Error::other(format!(
                     "Failed to read file {}: {}",
                     remote_path,
-                    String::from_utf8_lossy(&output.stderr)
+                    String::from_utf8_lossy(&result.stderr)
                 )),
             }
             .into());
         }
 
-        Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+        Ok(String::from_utf8_lossy(&result.stdout).into_owned())
     }
 
     /// Reboot a host and wait for it to come back online
