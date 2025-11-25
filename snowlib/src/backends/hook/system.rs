@@ -1,14 +1,15 @@
 //! Hook execution backend for lifecycle hooks
 //!
-//! Uses StreamingExecutor for consistent subprocess handling with timeout support.
+//! Uses async run_command for subprocess handling with timeout support.
 
 use super::{HookBackend, HookResult};
 use crate::backends::deploy::DeployTarget;
 use crate::error::Result;
 use crate::hooks::HookConfig;
-use crate::process::{OutputMode, StreamingExecutor};
+use crate::process::r#async::run_command;
+use crate::process::OutputMode;
+use async_trait::async_trait;
 use std::collections::HashMap;
-use std::process::Command;
 use std::time::{Duration, Instant};
 
 /// Real implementation of HookBackend that executes hooks via shell
@@ -25,7 +26,7 @@ impl SystemHookBackend {
         }
     }
 
-    fn execute_command(
+    async fn execute_command(
         &self,
         command: &str,
         env: &HashMap<String, String>,
@@ -33,23 +34,24 @@ impl SystemHookBackend {
     ) -> Result<HookResult> {
         let start = Instant::now();
 
-        let mut cmd = Command::new("sh");
-        cmd.arg("-c").arg(command);
+        let env_pairs: Vec<(&str, &str)> =
+            env.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
 
-        for (key, value) in env {
-            cmd.env(key, value);
-        }
-
-        let result = StreamingExecutor::new(&mut cmd)
-            .output_mode(self.output_mode)
-            .timeout(Duration::from_secs(timeout_secs))
-            .execute()
-            .map_err(|e| {
-                crate::error::SnowError::Deploy(crate::error::DeployError::Failed {
-                    host: "local".to_string(),
-                    source: std::io::Error::new(e.kind(), format!("Failed to execute hook: {}", e)),
-                })
-            })?;
+        let result = run_command(
+            "sh",
+            &["-c", command],
+            self.output_mode,
+            Some(Duration::from_secs(timeout_secs)),
+            None,
+            &env_pairs,
+        )
+        .await
+        .map_err(|e| {
+            crate::error::SnowError::Deploy(crate::error::DeployError::Failed {
+                host: "local".to_string(),
+                source: std::io::Error::new(e.kind(), format!("Failed to execute hook: {}", e)),
+            })
+        })?;
 
         let duration = start.elapsed();
         let stdout = String::from_utf8_lossy(&result.stdout).to_string();
@@ -75,16 +77,17 @@ impl SystemHookBackend {
     }
 }
 
+#[async_trait]
 impl HookBackend for SystemHookBackend {
-    fn execute_local(
+    async fn execute_local(
         &self,
         hook: &HookConfig,
         env: &HashMap<String, String>,
     ) -> Result<HookResult> {
-        self.execute_command(&hook.command, env, hook.timeout)
+        self.execute_command(&hook.command, env, hook.timeout).await
     }
 
-    fn execute_remote(
+    async fn execute_remote(
         &self,
         target: &DeployTarget,
         hook: &HookConfig,
@@ -132,6 +135,7 @@ impl HookBackend for SystemHookBackend {
         );
 
         self.execute_command(&ssh_command, &HashMap::new(), hook.timeout)
+            .await
     }
 }
 
@@ -140,8 +144,8 @@ mod tests {
     use super::*;
     use crate::hooks::{HookLocation, HookStage};
 
-    #[test]
-    fn test_execute_local_success() {
+    #[tokio::test]
+    async fn test_execute_local_success() {
         let backend = SystemHookBackend::new(None, OutputMode::Capture);
         let hook = HookConfig::test_fixture(
             "test-hook",
@@ -151,13 +155,13 @@ mod tests {
         );
         let env = HashMap::new();
 
-        let result = backend.execute_local(&hook, &env).unwrap();
+        let result = backend.execute_local(&hook, &env).await.unwrap();
         assert!(result.success);
         assert!(result.stdout.contains("test"));
     }
 
-    #[test]
-    fn test_execute_local_failure() {
+    #[tokio::test]
+    async fn test_execute_local_failure() {
         let backend = SystemHookBackend::new(None, OutputMode::Capture);
         let hook = HookConfig::test_fixture(
             "test-hook",
@@ -167,13 +171,13 @@ mod tests {
         );
         let env = HashMap::new();
 
-        let result = backend.execute_local(&hook, &env).unwrap();
+        let result = backend.execute_local(&hook, &env).await.unwrap();
         assert!(!result.success);
         assert_eq!(result.exit_code, Some(1));
     }
 
-    #[test]
-    fn test_execute_local_with_env() {
+    #[tokio::test]
+    async fn test_execute_local_with_env() {
         let backend = SystemHookBackend::new(None, OutputMode::Capture);
         let hook = HookConfig::test_fixture(
             "test-hook",
@@ -184,13 +188,13 @@ mod tests {
         let mut env = HashMap::new();
         env.insert("TEST_VAR".to_string(), "test_value".to_string());
 
-        let result = backend.execute_local(&hook, &env).unwrap();
+        let result = backend.execute_local(&hook, &env).await.unwrap();
         assert!(result.success);
         assert!(result.stdout.contains("test_value"));
     }
 
-    #[test]
-    fn test_execute_local_timeout() {
+    #[tokio::test]
+    async fn test_execute_local_timeout() {
         let backend = SystemHookBackend::new(None, OutputMode::Capture);
         let mut hook = HookConfig::test_fixture(
             "test-hook",
@@ -201,7 +205,7 @@ mod tests {
         hook.timeout = 1; // 1 second timeout for a 10 second sleep
         let env = HashMap::new();
 
-        let result = backend.execute_local(&hook, &env).unwrap();
+        let result = backend.execute_local(&hook, &env).await.unwrap();
         assert!(!result.success);
         assert!(result.stderr.contains("timed out"));
         assert!(result.duration.as_secs() >= 1);
@@ -210,8 +214,8 @@ mod tests {
     }
 
     /// Prevents command injection via shell metacharacters in environment variables.
-    #[test]
-    fn test_execute_local_escapes_env_vars_with_shell_metacharacters() {
+    #[tokio::test]
+    async fn test_execute_local_escapes_env_vars_with_shell_metacharacters() {
         let backend = SystemHookBackend::new(None, OutputMode::Capture);
         let hook = HookConfig::test_fixture(
             "test-hook",
@@ -225,7 +229,7 @@ mod tests {
             "value'; rm -rf /tmp/test; echo 'pwned".to_string(),
         );
 
-        let result = backend.execute_local(&hook, &env).unwrap();
+        let result = backend.execute_local(&hook, &env).await.unwrap();
         assert!(result.success);
         assert!(result
             .stdout
@@ -234,8 +238,8 @@ mod tests {
     }
 
     /// Prevents command injection via quote escaping in environment variables.
-    #[test]
-    fn test_execute_local_escapes_env_vars_with_quotes() {
+    #[tokio::test]
+    async fn test_execute_local_escapes_env_vars_with_quotes() {
         let backend = SystemHookBackend::new(None, OutputMode::Capture);
         let hook = HookConfig::test_fixture(
             "test-hook",
@@ -246,14 +250,14 @@ mod tests {
         let mut env = HashMap::new();
         env.insert("TEST".to_string(), "value\" && echo \"injected".to_string());
 
-        let result = backend.execute_local(&hook, &env).unwrap();
+        let result = backend.execute_local(&hook, &env).await.unwrap();
         assert!(result.success);
         assert!(result.stdout.contains("value\" && echo \"injected"));
     }
 
     /// Prevents command injection via pipe operators in environment variables.
-    #[test]
-    fn test_execute_local_escapes_env_vars_with_pipe() {
+    #[tokio::test]
+    async fn test_execute_local_escapes_env_vars_with_pipe() {
         let backend = SystemHookBackend::new(None, OutputMode::Capture);
         let hook = HookConfig::test_fixture(
             "test-hook",
@@ -264,15 +268,15 @@ mod tests {
         let mut env = HashMap::new();
         env.insert("PIPE_TEST".to_string(), "data | base64".to_string());
 
-        let result = backend.execute_local(&hook, &env).unwrap();
+        let result = backend.execute_local(&hook, &env).await.unwrap();
         assert!(result.success);
         assert!(result.stdout.contains("data | base64"));
         assert!(!result.stdout.contains("ZGF0YQ=="));
     }
 
     /// Prevents command injection via backtick command substitution.
-    #[test]
-    fn test_execute_local_escapes_env_vars_with_backticks() {
+    #[tokio::test]
+    async fn test_execute_local_escapes_env_vars_with_backticks() {
         let backend = SystemHookBackend::new(None, OutputMode::Capture);
         let hook = HookConfig::test_fixture(
             "test-hook",
@@ -283,7 +287,7 @@ mod tests {
         let mut env = HashMap::new();
         env.insert("BACKTICK".to_string(), "`whoami`".to_string());
 
-        let result = backend.execute_local(&hook, &env).unwrap();
+        let result = backend.execute_local(&hook, &env).await.unwrap();
         assert!(result.success);
         assert!(result.stdout.contains("`whoami`"));
         let current_user = std::env::var("USER").unwrap_or_default();
@@ -293,8 +297,8 @@ mod tests {
     }
 
     /// Prevents command injection via $() command substitution.
-    #[test]
-    fn test_execute_local_escapes_env_vars_with_dollar_paren() {
+    #[tokio::test]
+    async fn test_execute_local_escapes_env_vars_with_dollar_paren() {
         let backend = SystemHookBackend::new(None, OutputMode::Capture);
         let hook = HookConfig::test_fixture(
             "test-hook",
@@ -305,14 +309,14 @@ mod tests {
         let mut env = HashMap::new();
         env.insert("SUBSHELL".to_string(), "$(echo injected)".to_string());
 
-        let result = backend.execute_local(&hook, &env).unwrap();
+        let result = backend.execute_local(&hook, &env).await.unwrap();
         assert!(result.success);
         assert!(result.stdout.contains("$(echo injected)"));
     }
 
     /// Prevents command injection via semicolons in remote SSH execution.
-    #[test]
-    fn test_execute_remote_escapes_env_vars_with_semicolon() {
+    #[tokio::test]
+    async fn test_execute_remote_escapes_env_vars_with_semicolon() {
         let backend = SystemHookBackend::new(None, OutputMode::Capture);
         let hook = HookConfig::test_fixture(
             "test-hook",
@@ -332,7 +336,7 @@ mod tests {
             port: None,
         };
 
-        let result = backend.execute_remote(&target, &hook, &env).unwrap();
+        let result = backend.execute_remote(&target, &hook, &env).await.unwrap();
 
         assert!(
             result.success
@@ -350,8 +354,8 @@ mod tests {
     }
 
     /// Prevents command injection via backticks in remote SSH execution.
-    #[test]
-    fn test_execute_remote_escapes_env_vars_with_backticks() {
+    #[tokio::test]
+    async fn test_execute_remote_escapes_env_vars_with_backticks() {
         let backend = SystemHookBackend::new(None, OutputMode::Capture);
         let hook = HookConfig::test_fixture(
             "test-hook",
@@ -368,7 +372,7 @@ mod tests {
             port: None,
         };
 
-        let result = backend.execute_remote(&target, &hook, &env).unwrap();
+        let result = backend.execute_remote(&target, &hook, &env).await.unwrap();
 
         if result.success {
             assert!(result.stdout.contains("`whoami`"));
@@ -376,8 +380,8 @@ mod tests {
     }
 
     /// Prevents command injection via $() substitution in remote SSH execution.
-    #[test]
-    fn test_execute_remote_escapes_env_vars_with_dollar_paren() {
+    #[tokio::test]
+    async fn test_execute_remote_escapes_env_vars_with_dollar_paren() {
         let backend = SystemHookBackend::new(None, OutputMode::Capture);
         let hook = HookConfig::test_fixture(
             "test-hook",
@@ -394,7 +398,7 @@ mod tests {
             port: None,
         };
 
-        let result = backend.execute_remote(&target, &hook, &env).unwrap();
+        let result = backend.execute_remote(&target, &hook, &env).await.unwrap();
 
         if result.success {
             assert!(result.stdout.contains("$(echo injected)"));
@@ -402,8 +406,8 @@ mod tests {
     }
 
     /// Prevents command injection via pipes in remote SSH execution.
-    #[test]
-    fn test_execute_remote_escapes_env_vars_with_pipes() {
+    #[tokio::test]
+    async fn test_execute_remote_escapes_env_vars_with_pipes() {
         let backend = SystemHookBackend::new(None, OutputMode::Capture);
         let hook = HookConfig::test_fixture(
             "test-hook",
@@ -420,7 +424,7 @@ mod tests {
             port: None,
         };
 
-        let result = backend.execute_remote(&target, &hook, &env).unwrap();
+        let result = backend.execute_remote(&target, &hook, &env).await.unwrap();
 
         if result.success {
             assert!(result.stdout.contains("data | base64"));
@@ -429,8 +433,8 @@ mod tests {
     }
 
     /// Prevents command injection via quote escaping in remote SSH execution.
-    #[test]
-    fn test_execute_remote_escapes_env_vars_with_quotes() {
+    #[tokio::test]
+    async fn test_execute_remote_escapes_env_vars_with_quotes() {
         let backend = SystemHookBackend::new(None, OutputMode::Capture);
         let hook = HookConfig::test_fixture(
             "test-hook",
@@ -450,15 +454,15 @@ mod tests {
             port: None,
         };
 
-        let result = backend.execute_remote(&target, &hook, &env).unwrap();
+        let result = backend.execute_remote(&target, &hook, &env).await.unwrap();
 
         if result.success {
             assert!(result.stdout.contains("value\" && echo \"injected"));
         }
     }
 
-    #[test]
-    fn test_timeout_captures_partial_output_before_termination() {
+    #[tokio::test]
+    async fn test_timeout_captures_partial_output_before_termination() {
         let backend = SystemHookBackend::new(None, OutputMode::Capture);
         let mut hook = HookConfig::test_fixture(
             "partial-output",
@@ -469,7 +473,7 @@ mod tests {
         hook.timeout = 1;
         let env = HashMap::new();
 
-        let result = backend.execute_local(&hook, &env).unwrap();
+        let result = backend.execute_local(&hook, &env).await.unwrap();
         assert!(!result.success, "Hook should timeout and fail");
         assert!(
             result.stdout.contains("Starting..."),
@@ -482,8 +486,8 @@ mod tests {
         assert!(result.stderr.contains("timed out"));
     }
 
-    #[test]
-    fn test_timeout_with_large_output() {
+    #[tokio::test]
+    async fn test_timeout_with_large_output() {
         let backend = SystemHookBackend::new(None, OutputMode::Capture);
         let mut hook = HookConfig::test_fixture(
             "large-output",
@@ -494,7 +498,7 @@ mod tests {
         hook.timeout = 1;
         let env = HashMap::new();
 
-        let result = backend.execute_local(&hook, &env).unwrap();
+        let result = backend.execute_local(&hook, &env).await.unwrap();
         assert!(!result.success, "Hook should timeout");
 
         // Verify we captured at least some of the output
@@ -509,8 +513,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_timeout_duration_accuracy() {
+    #[tokio::test]
+    async fn test_timeout_duration_accuracy() {
         let backend = SystemHookBackend::new(None, OutputMode::Capture);
         let mut hook = HookConfig::test_fixture(
             "timeout-test",
@@ -522,7 +526,7 @@ mod tests {
         let env = HashMap::new();
 
         let start = std::time::Instant::now();
-        let result = backend.execute_local(&hook, &env).unwrap();
+        let result = backend.execute_local(&hook, &env).await.unwrap();
         let elapsed = start.elapsed();
 
         assert!(!result.success);
@@ -542,8 +546,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_remote_hook_timeout() {
+    #[tokio::test]
+    async fn test_remote_hook_timeout() {
         let backend = SystemHookBackend::new(None, OutputMode::Capture);
         let mut hook = HookConfig::test_fixture(
             "remote-timeout",
@@ -561,7 +565,7 @@ mod tests {
         };
 
         let start = std::time::Instant::now();
-        let result = backend.execute_remote(&target, &hook, &env).unwrap();
+        let result = backend.execute_remote(&target, &hook, &env).await.unwrap();
         let elapsed = start.elapsed();
 
         // Remote hook should also timeout
@@ -574,8 +578,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_quick_command_completes_before_timeout() {
+    #[tokio::test]
+    async fn test_quick_command_completes_before_timeout() {
         let backend = SystemHookBackend::new(None, OutputMode::Capture);
         let hook = HookConfig::test_fixture(
             "quick-command",
@@ -586,7 +590,7 @@ mod tests {
         // Uses default timeout from test_fixture (300 seconds)
         let env = HashMap::new();
 
-        let result = backend.execute_local(&hook, &env).unwrap();
+        let result = backend.execute_local(&hook, &env).await.unwrap();
         assert!(
             result.success,
             "Quick command should complete before timeout"

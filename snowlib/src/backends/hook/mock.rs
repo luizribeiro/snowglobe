@@ -2,6 +2,7 @@ use super::{HookBackend, HookResult};
 use crate::backends::deploy::DeployTarget;
 use crate::error::Result;
 use crate::hooks::{HookConfig, HookLocation, HookStage};
+use async_trait::async_trait;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -78,8 +79,9 @@ impl MockHookBackend {
     }
 }
 
+#[async_trait]
 impl HookBackend for MockHookBackend {
-    fn execute_local(
+    async fn execute_local(
         &self,
         hook: &HookConfig,
         env: &HashMap<String, String>,
@@ -107,7 +109,7 @@ impl HookBackend for MockHookBackend {
         }
     }
 
-    fn execute_remote(
+    async fn execute_remote(
         &self,
         target: &DeployTarget,
         hook: &HookConfig,
@@ -147,8 +149,8 @@ impl HookBackend for MockHookBackend {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_mock_hook_backend_local_success() {
+    #[tokio::test]
+    async fn test_mock_hook_backend_local_success() {
         let backend = MockHookBackend::new();
         let hook = HookConfig::test_fixture(
             "test-hook",
@@ -159,7 +161,7 @@ mod tests {
         let mut env = HashMap::new();
         env.insert("SNOW_HOSTNAME".to_string(), "test-host".to_string());
 
-        let result = backend.execute_local(&hook, &env).unwrap();
+        let result = backend.execute_local(&hook, &env).await.unwrap();
         assert!(result.success);
         assert!(result.stdout.contains("kubectl drain node"));
 
@@ -171,8 +173,8 @@ mod tests {
         assert_eq!(executed[0].3, "kubectl drain node");
     }
 
-    #[test]
-    fn test_mock_hook_backend_local_failure() {
+    #[tokio::test]
+    async fn test_mock_hook_backend_local_failure() {
         let backend = MockHookBackend::new().with_local_failures(vec!["kubectl".to_string()]);
         let hook = HookConfig::test_fixture(
             "test-hook",
@@ -183,7 +185,7 @@ mod tests {
         let mut env = HashMap::new();
         env.insert("SNOW_HOSTNAME".to_string(), "test-host".to_string());
 
-        let result = backend.execute_local(&hook, &env).unwrap();
+        let result = backend.execute_local(&hook, &env).await.unwrap();
         assert!(!result.success);
         assert_eq!(result.exit_code, Some(1));
         assert!(result.stderr.contains("Mock local hook failed"));
@@ -192,8 +194,8 @@ mod tests {
         assert_eq!(executed.len(), 1);
     }
 
-    #[test]
-    fn test_mock_hook_backend_remote_success() {
+    #[tokio::test]
+    async fn test_mock_hook_backend_remote_success() {
         let backend = MockHookBackend::new();
         let target = DeployTarget {
             hostname: "remote-host".to_string(),
@@ -208,7 +210,7 @@ mod tests {
         );
         let env = HashMap::new();
 
-        let result = backend.execute_remote(&target, &hook, &env).unwrap();
+        let result = backend.execute_remote(&target, &hook, &env).await.unwrap();
         assert!(result.success);
         assert!(result.stdout.contains("remote-host"));
         assert!(result.stdout.contains("systemctl restart nginx"));
@@ -220,8 +222,8 @@ mod tests {
         assert_eq!(executed[0].2, HookLocation::Remote);
     }
 
-    #[test]
-    fn test_mock_hook_backend_remote_failure() {
+    #[tokio::test]
+    async fn test_mock_hook_backend_remote_failure() {
         let backend = MockHookBackend::new().with_remote_failures(vec!["fail-host".to_string()]);
         let target = DeployTarget {
             hostname: "fail-host".to_string(),
@@ -236,7 +238,7 @@ mod tests {
         );
         let env = HashMap::new();
 
-        let result = backend.execute_remote(&target, &hook, &env).unwrap();
+        let result = backend.execute_remote(&target, &hook, &env).await.unwrap();
         assert!(!result.success);
         assert_eq!(result.exit_code, Some(1));
         assert!(result.stderr.contains("Mock remote hook failed"));
@@ -245,8 +247,8 @@ mod tests {
         assert_eq!(executed.len(), 1);
     }
 
-    #[test]
-    fn test_mock_hook_backend_tracks_multiple_executions() {
+    #[tokio::test]
+    async fn test_mock_hook_backend_tracks_multiple_executions() {
         let backend = MockHookBackend::new();
         let target1 = DeployTarget {
             hostname: "host1".to_string(),
@@ -274,12 +276,15 @@ mod tests {
 
         backend
             .execute_remote(&target1, &hook1, &HashMap::new())
+            .await
             .unwrap();
         backend
             .execute_remote(&target2, &hook1, &HashMap::new())
+            .await
             .unwrap();
         backend
             .execute_remote(&target1, &hook2, &HashMap::new())
+            .await
             .unwrap();
 
         let executed = backend.get_executed_hooks();

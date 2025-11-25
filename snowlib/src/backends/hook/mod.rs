@@ -9,6 +9,7 @@ pub use system::SystemHookBackend;
 use crate::backends::deploy::DeployTarget;
 use crate::error::Result;
 use crate::hooks::HookConfig;
+use async_trait::async_trait;
 use std::collections::HashMap;
 use std::time::Duration;
 
@@ -50,13 +51,17 @@ impl HookResult {
 }
 
 /// Backend for executing lifecycle hooks
+#[async_trait]
 pub trait HookBackend: Send + Sync {
     /// Execute a hook locally (on the machine running snow)
-    fn execute_local(&self, hook: &HookConfig, env: &HashMap<String, String>)
-        -> Result<HookResult>;
+    async fn execute_local(
+        &self,
+        hook: &HookConfig,
+        env: &HashMap<String, String>,
+    ) -> Result<HookResult>;
 
     /// Execute a hook remotely (on the target host via SSH)
-    fn execute_remote(
+    async fn execute_remote(
         &self,
         target: &DeployTarget,
         hook: &HookConfig,

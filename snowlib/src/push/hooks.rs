@@ -29,7 +29,7 @@ impl HookExecutor {
     ///
     /// Returns Ok(()) if all hooks succeed or have continue_on_failure=true
     /// Returns Err if any hook fails and has continue_on_failure=false
-    pub fn execute_hooks_for_stage(
+    pub async fn execute_hooks_for_stage(
         &self,
         hostname: &str,
         stage: HookStage,
@@ -105,7 +105,7 @@ impl HookExecutor {
             merged_env.extend(hook.environment.clone());
 
             let result = match hook.location {
-                HookLocation::Local => self.backend.execute_local(hook, &merged_env)?,
+                HookLocation::Local => self.backend.execute_local(hook, &merged_env).await?,
                 HookLocation::Remote => {
                     let target = target.ok_or_else(|| {
                         crate::error::SnowError::Deploy(crate::error::DeployError::Failed {
@@ -115,7 +115,9 @@ impl HookExecutor {
                             ),
                         })
                     })?;
-                    self.backend.execute_remote(target, hook, &merged_env)?
+                    self.backend
+                        .execute_remote(target, hook, &merged_env)
+                        .await?
                 }
             };
 
@@ -214,20 +216,21 @@ mod tests {
     use crate::backends::hook::SystemHookBackend;
     use crate::process::OutputMode;
 
-    #[test]
-    fn test_executor_with_no_hooks() {
+    #[tokio::test]
+    async fn test_executor_with_no_hooks() {
         let backend = Arc::new(SystemHookBackend::new(None, OutputMode::Capture));
         let executor = HookExecutor::new(backend, HashMap::new());
 
         let results = executor
             .execute_hooks_for_stage("test-host", HookStage::PreActivate, None, &HashMap::new())
+            .await
             .unwrap();
 
         assert_eq!(results.len(), 0);
     }
 
-    #[test]
-    fn test_executor_with_empty_hooks_array() {
+    #[tokio::test]
+    async fn test_executor_with_empty_hooks_array() {
         let backend = Arc::new(SystemHookBackend::new(None, OutputMode::Capture));
         let mut hooks_by_host = HashMap::new();
         hooks_by_host.insert("test-host".to_string(), Vec::new());
@@ -235,13 +238,14 @@ mod tests {
 
         let results = executor
             .execute_hooks_for_stage("test-host", HookStage::PreActivate, None, &HashMap::new())
+            .await
             .unwrap();
 
         assert_eq!(results.len(), 0);
     }
 
-    #[test]
-    fn test_executor_with_local_hook() {
+    #[tokio::test]
+    async fn test_executor_with_local_hook() {
         let backend = Arc::new(MockHookBackend::new());
 
         let mut hooks_by_host = HashMap::new();
@@ -259,6 +263,7 @@ mod tests {
 
         let results = executor
             .execute_hooks_for_stage("test-host", HookStage::PreActivate, None, &HashMap::new())
+            .await
             .unwrap();
 
         assert_eq!(results.len(), 1);
@@ -269,8 +274,8 @@ mod tests {
         assert!(executed[0].3.contains("kubectl drain"));
     }
 
-    #[test]
-    fn test_executor_with_multiple_hooks() {
+    #[tokio::test]
+    async fn test_executor_with_multiple_hooks() {
         let backend = Arc::new(MockHookBackend::new());
 
         let mut hooks_by_host = HashMap::new();
@@ -302,6 +307,7 @@ mod tests {
 
         let results = executor
             .execute_hooks_for_stage("test-host", HookStage::PreActivate, None, &HashMap::new())
+            .await
             .unwrap();
 
         assert_eq!(results.len(), 2);
@@ -313,8 +319,8 @@ mod tests {
         assert!(executed[1].3.contains("kubectl drain"));
     }
 
-    #[test]
-    fn test_executor_hook_failure_aborts() {
+    #[tokio::test]
+    async fn test_executor_hook_failure_aborts() {
         let backend = Arc::new(SystemHookBackend::new(None, OutputMode::Capture));
 
         let mut hooks_by_host = HashMap::new();
@@ -330,18 +336,15 @@ mod tests {
 
         let executor = HookExecutor::new(backend, hooks_by_host);
 
-        let result = executor.execute_hooks_for_stage(
-            "test-host",
-            HookStage::PreActivate,
-            None,
-            &HashMap::new(),
-        );
+        let result = executor
+            .execute_hooks_for_stage("test-host", HookStage::PreActivate, None, &HashMap::new())
+            .await;
 
         assert!(result.is_err());
     }
 
-    #[test]
-    fn test_executor_hook_failure_with_continue() {
+    #[tokio::test]
+    async fn test_executor_hook_failure_with_continue() {
         let backend = Arc::new(SystemHookBackend::new(None, OutputMode::Capture));
 
         let mut hooks_by_host = HashMap::new();
@@ -358,14 +361,15 @@ mod tests {
 
         let results = executor
             .execute_hooks_for_stage("test-host", HookStage::PreActivate, None, &HashMap::new())
+            .await
             .unwrap();
 
         assert_eq!(results.len(), 1);
         assert!(!results[0].success);
     }
 
-    #[test]
-    fn test_hook_failure_with_continue_returns_failure_in_results() {
+    #[tokio::test]
+    async fn test_hook_failure_with_continue_returns_failure_in_results() {
         let backend =
             Arc::new(MockHookBackend::new().with_local_failures(vec!["exit 1".to_string()]));
 
@@ -384,6 +388,7 @@ mod tests {
 
         let results = executor
             .execute_hooks_for_stage("test-host", HookStage::PreActivate, None, &HashMap::new())
+            .await
             .unwrap();
 
         // Should return results even though hook failed
@@ -418,8 +423,8 @@ mod tests {
     // Remote hook execution tests using MockHookBackend
     // ========================================================================
 
-    #[test]
-    fn test_executor_with_remote_hook_success() {
+    #[tokio::test]
+    async fn test_executor_with_remote_hook_success() {
         let backend = Arc::new(MockHookBackend::new());
 
         let mut hooks_by_host = HashMap::new();
@@ -447,6 +452,7 @@ mod tests {
                 Some(&target),
                 &HashMap::new(),
             )
+            .await
             .unwrap();
 
         assert_eq!(results.len(), 1);
@@ -460,8 +466,8 @@ mod tests {
         assert_eq!(executed[0].3, "systemctl restart nginx");
     }
 
-    #[test]
-    fn test_executor_with_remote_hook_failure() {
+    #[tokio::test]
+    async fn test_executor_with_remote_hook_failure() {
         let backend =
             Arc::new(MockHookBackend::new().with_remote_failures(vec!["test-host".to_string()]));
 
@@ -483,18 +489,20 @@ mod tests {
             port: None,
         };
 
-        let result = executor.execute_hooks_for_stage(
-            "test-host",
-            HookStage::PostActivate,
-            Some(&target),
-            &HashMap::new(),
-        );
+        let result = executor
+            .execute_hooks_for_stage(
+                "test-host",
+                HookStage::PostActivate,
+                Some(&target),
+                &HashMap::new(),
+            )
+            .await;
 
         assert!(result.is_err());
     }
 
-    #[test]
-    fn test_executor_remote_hook_without_target() {
+    #[tokio::test]
+    async fn test_executor_remote_hook_without_target() {
         let backend = Arc::new(MockHookBackend::new());
 
         let mut hooks_by_host = HashMap::new();
@@ -510,18 +518,15 @@ mod tests {
 
         let executor = HookExecutor::new(backend, hooks_by_host);
 
-        let result = executor.execute_hooks_for_stage(
-            "test-host",
-            HookStage::PostActivate,
-            None,
-            &HashMap::new(),
-        );
+        let result = executor
+            .execute_hooks_for_stage("test-host", HookStage::PostActivate, None, &HashMap::new())
+            .await;
 
         assert!(result.is_err());
     }
 
-    #[test]
-    fn test_executor_with_mixed_local_and_remote_hooks() {
+    #[tokio::test]
+    async fn test_executor_with_mixed_local_and_remote_hooks() {
         let backend = Arc::new(MockHookBackend::new());
 
         let mut hooks_by_host = HashMap::new();
@@ -555,6 +560,7 @@ mod tests {
 
         let results = executor
             .execute_hooks_for_stage("test-host", HookStage::PreActivate, Some(&target), &env)
+            .await
             .unwrap();
 
         assert_eq!(results.len(), 2);
@@ -567,8 +573,8 @@ mod tests {
         assert_eq!(executed[1].2, HookLocation::Remote);
     }
 
-    #[test]
-    fn test_executor_all_hook_stages() {
+    #[tokio::test]
+    async fn test_executor_all_hook_stages() {
         let backend = Arc::new(MockHookBackend::new());
 
         let mut hooks_by_host = HashMap::new();
@@ -606,15 +612,19 @@ mod tests {
 
         executor
             .execute_hooks_for_stage("test-host", HookStage::PreActivate, None, &HashMap::new())
+            .await
             .unwrap();
         executor
             .execute_hooks_for_stage("test-host", HookStage::PostActivate, None, &HashMap::new())
+            .await
             .unwrap();
         executor
             .execute_hooks_for_stage("test-host", HookStage::PostReboot, None, &HashMap::new())
+            .await
             .unwrap();
         executor
             .execute_hooks_for_stage("test-host", HookStage::OnFailure, None, &HashMap::new())
+            .await
             .unwrap();
 
         let executed = backend.get_executed_hooks();
@@ -625,8 +635,8 @@ mod tests {
         assert_eq!(executed[3].1, HookStage::OnFailure);
     }
 
-    #[test]
-    fn test_executor_environment_variables_passed() {
+    #[tokio::test]
+    async fn test_executor_environment_variables_passed() {
         let backend = Arc::new(MockHookBackend::new());
 
         let mut hooks_by_host = HashMap::new();
@@ -649,6 +659,7 @@ mod tests {
 
         let results = executor
             .execute_hooks_for_stage("test-host", HookStage::PreActivate, None, &env)
+            .await
             .unwrap();
 
         assert_eq!(results.len(), 1);
@@ -659,8 +670,8 @@ mod tests {
         assert_eq!(executed[0].0, "test-host");
     }
 
-    #[test]
-    fn test_executor_multiple_hooks_first_failure_aborts_remaining() {
+    #[tokio::test]
+    async fn test_executor_multiple_hooks_first_failure_aborts_remaining() {
         let backend =
             Arc::new(MockHookBackend::new().with_local_failures(vec!["consul".to_string()]));
 
@@ -694,8 +705,9 @@ mod tests {
         let mut env = HashMap::new();
         env.insert("SNOW_HOSTNAME".to_string(), "test-host".to_string());
 
-        let result =
-            executor.execute_hooks_for_stage("test-host", HookStage::PreActivate, None, &env);
+        let result = executor
+            .execute_hooks_for_stage("test-host", HookStage::PreActivate, None, &env)
+            .await;
 
         assert!(result.is_err());
 
@@ -705,8 +717,8 @@ mod tests {
 
     // Integration tests for environment file loading in executor
 
-    #[test]
-    fn test_executor_with_environment_file() {
+    #[tokio::test]
+    async fn test_executor_with_environment_file() {
         let backend = Arc::new(SystemHookBackend::new(None, OutputMode::Capture));
 
         let temp_dir = std::env::temp_dir();
@@ -728,6 +740,7 @@ mod tests {
 
         let results = executor
             .execute_hooks_for_stage("test-host", HookStage::PreActivate, None, &HashMap::new())
+            .await
             .unwrap();
 
         assert_eq!(results.len(), 1);
@@ -738,8 +751,8 @@ mod tests {
         std::fs::remove_file(&temp_file).ok();
     }
 
-    #[test]
-    fn test_executor_environment_file_overrides_precedence() {
+    #[tokio::test]
+    async fn test_executor_environment_file_overrides_precedence() {
         let backend = Arc::new(SystemHookBackend::new(None, OutputMode::Capture));
 
         let temp_dir = std::env::temp_dir();
@@ -764,6 +777,7 @@ mod tests {
 
         let results = executor
             .execute_hooks_for_stage("test-host", HookStage::PreActivate, None, &HashMap::new())
+            .await
             .unwrap();
 
         assert_eq!(results.len(), 1);
@@ -775,8 +789,8 @@ mod tests {
         std::fs::remove_file(&temp_file).ok();
     }
 
-    #[test]
-    fn test_executor_environment_file_not_found_fails_deployment() {
+    #[tokio::test]
+    async fn test_executor_environment_file_not_found_fails_deployment() {
         let backend = Arc::new(SystemHookBackend::new(None, OutputMode::Capture));
 
         let mut hook = HookConfig::test_fixture(
@@ -793,12 +807,9 @@ mod tests {
 
         let executor = HookExecutor::new(backend, hooks_by_host);
 
-        let result = executor.execute_hooks_for_stage(
-            "test-host",
-            HookStage::PreActivate,
-            None,
-            &HashMap::new(),
-        );
+        let result = executor
+            .execute_hooks_for_stage("test-host", HookStage::PreActivate, None, &HashMap::new())
+            .await;
 
         assert!(result.is_err());
         // Error should indicate deployment failed for test-host
@@ -806,8 +817,8 @@ mod tests {
         assert!(err.to_string().contains("test-host"));
     }
 
-    #[test]
-    fn test_executor_environment_file_not_found_continues_with_flag() {
+    #[tokio::test]
+    async fn test_executor_environment_file_not_found_continues_with_flag() {
         let backend = Arc::new(SystemHookBackend::new(None, OutputMode::Capture));
 
         let mut hook = HookConfig::test_fixture(
@@ -826,6 +837,7 @@ mod tests {
 
         let results = executor
             .execute_hooks_for_stage("test-host", HookStage::PreActivate, None, &HashMap::new())
+            .await
             .unwrap();
 
         // Hook should execute even though env file failed to load
@@ -833,8 +845,8 @@ mod tests {
         assert!(results[0].success);
     }
 
-    #[test]
-    fn test_executor_multiple_environment_files() {
+    #[tokio::test]
+    async fn test_executor_multiple_environment_files() {
         let backend = Arc::new(SystemHookBackend::new(None, OutputMode::Capture));
 
         let temp_dir = std::env::temp_dir();
@@ -859,6 +871,7 @@ mod tests {
 
         let results = executor
             .execute_hooks_for_stage("test-host", HookStage::PreActivate, None, &HashMap::new())
+            .await
             .unwrap();
 
         assert_eq!(results.len(), 1);
@@ -1053,8 +1066,8 @@ mod tests {
         std::fs::remove_file(&temp_file).ok();
     }
 
-    #[test]
-    fn test_hook_execution_order_by_priority() {
+    #[tokio::test]
+    async fn test_hook_execution_order_by_priority() {
         let backend = Arc::new(MockHookBackend::new());
 
         let mut hook1 = HookConfig::test_fixture(
@@ -1088,6 +1101,7 @@ mod tests {
 
         let results = executor
             .execute_hooks_for_stage("test-host", HookStage::PreActivate, None, &HashMap::new())
+            .await
             .unwrap();
 
         assert_eq!(results.len(), 3);
@@ -1108,8 +1122,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_hook_execution_order_same_priority_sorted_by_name() {
+    #[tokio::test]
+    async fn test_hook_execution_order_same_priority_sorted_by_name() {
         let backend = Arc::new(MockHookBackend::new());
 
         let mut hook1 = HookConfig::test_fixture(
@@ -1143,6 +1157,7 @@ mod tests {
 
         let results = executor
             .execute_hooks_for_stage("test-host", HookStage::PreActivate, None, &HashMap::new())
+            .await
             .unwrap();
 
         assert_eq!(results.len(), 3);
@@ -1163,8 +1178,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_hook_execution_order_negative_priorities() {
+    #[tokio::test]
+    async fn test_hook_execution_order_negative_priorities() {
         let backend = Arc::new(MockHookBackend::new());
 
         let mut hook1 = HookConfig::test_fixture(
@@ -1198,6 +1213,7 @@ mod tests {
 
         let results = executor
             .execute_hooks_for_stage("test-host", HookStage::PreActivate, None, &HashMap::new())
+            .await
             .unwrap();
 
         assert_eq!(results.len(), 3);
@@ -1228,8 +1244,8 @@ mod tests {
     /// passing variables through the executor, and executing hooks. It confirms that
     /// multiple types of shell injection attempts (command substitution, semicolons,
     /// backticks) are all treated as literal strings and not executed.
-    #[test]
-    fn test_environment_variables_are_literal_strings_not_shell_interpreted() {
+    #[tokio::test]
+    async fn test_environment_variables_are_literal_strings_not_shell_interpreted() {
         use crate::backends::hook::SystemHookBackend;
         use crate::process::OutputMode;
         use std::sync::Arc;
@@ -1269,6 +1285,7 @@ mod tests {
 
         let results = executor
             .execute_hooks_for_stage("test-host", HookStage::PreActivate, None, &env)
+            .await
             .unwrap();
 
         assert_eq!(results.len(), 1);

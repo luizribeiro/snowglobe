@@ -73,7 +73,8 @@ fn execute_hooks(
             );
         }
 
-        let results = executor.execute_hooks_for_stage(hostname, stage, target, &env)?;
+        let results =
+            block_on_async(executor.execute_hooks_for_stage(hostname, stage, target, &env))?;
 
         // Check for any failed hooks (even with continue_on_failure=true)
         let failed_hooks: Vec<_> = results
