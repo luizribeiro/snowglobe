@@ -16,20 +16,13 @@ use super::context::PushContext;
 use super::planning::create_deployment_plans;
 use super::results::{HostDeploymentResult, PipelineStep, PushPlan};
 
-/// Intermediate data structure for passing build results through the pipeline
-#[derive(Debug, Clone)]
-struct BuildOutput {
-    metadata: HostMetadata,
-    target: DeployTarget,
-    store_path: StorePath,
-}
-
-/// Intermediate data structure for passing copy results through the pipeline
-#[derive(Debug, Clone)]
-struct CopyOutput {
-    metadata: HostMetadata,
-    target: DeployTarget,
-    store_path: StorePath,
+/// Create a deploy target from host metadata and push context
+fn create_target(push_ctx: &PushContext<'_>, metadata: &HostMetadata) -> DeployTarget {
+    DeployTarget {
+        user: push_ctx.config.ssh_user.clone(),
+        hostname: metadata.fqdn.clone(),
+        port: None,
+    }
 }
 
 /// Execute hooks for a specific stage
@@ -170,8 +163,8 @@ pub async fn execute_host_pipeline(
     }
 
     // Step 1: Build
-    let build_output = match execute_build_step(push_ctx, host_metadata).await {
-        Ok(output) => output,
+    let store_path = match execute_build_step(push_ctx, host_metadata).await {
+        Ok(path) => path,
         Err(e) => {
             return Ok(handle_pipeline_failure(
                 push_ctx,
@@ -187,47 +180,47 @@ pub async fn execute_host_pipeline(
     };
 
     // Step 2: Copy
-    let copy_output = match execute_copy_step(push_ctx, build_output).await {
-        Ok(output) => output,
-        Err(e) => {
-            return Ok(handle_pipeline_failure(
-                push_ctx,
-                &hostname,
-                None,
-                host_metadata.phase.as_deref(),
-                None,
-                PipelineStep::Copy,
-                e,
-            )
-            .await);
-        }
-    };
+    if let Err(e) = execute_copy_step(push_ctx, host_metadata, &store_path).await {
+        return Ok(handle_pipeline_failure(
+            push_ctx,
+            &hostname,
+            None,
+            host_metadata.phase.as_deref(),
+            Some(&store_path),
+            PipelineStep::Copy,
+            e,
+        )
+        .await);
+    }
+
+    // Create target for hooks and error handling
+    let target = create_target(push_ctx, host_metadata);
 
     // Step 2.5: Pre-activate hooks
     execute_hooks_or_return!(
         HookStage::PreActivate,
-        Some(&copy_output.target),
-        Some(&copy_output.store_path),
+        Some(&target),
+        Some(&store_path),
         PipelineStep::Activate
     );
 
     // Step 3: Activate (includes planning + activation)
-    let (plan, activate_result) = match execute_activation_step(push_ctx, copy_output.clone()).await
-    {
-        Ok(result) => result,
-        Err(e) => {
-            return Ok(handle_pipeline_failure(
-                push_ctx,
-                &hostname,
-                Some(&copy_output.target),
-                host_metadata.phase.as_deref(),
-                Some(&copy_output.store_path),
-                PipelineStep::Activate,
-                e,
-            )
-            .await);
-        }
-    };
+    let (plan, activate_result) =
+        match execute_activation_step(push_ctx, host_metadata, &store_path).await {
+            Ok(result) => result,
+            Err(e) => {
+                return Ok(handle_pipeline_failure(
+                    push_ctx,
+                    &hostname,
+                    Some(&target),
+                    host_metadata.phase.as_deref(),
+                    Some(&store_path),
+                    PipelineStep::Activate,
+                    e,
+                )
+                .await);
+            }
+        };
 
     // Step 3.5: Post-activate hooks
     execute_hooks_or_return!(
@@ -282,15 +275,15 @@ pub async fn execute_host_pipeline(
 
 /// Execute the build step for a single host
 ///
-/// Builds the NixOS configuration and creates the deployment target.
+/// Builds the NixOS configuration and returns the store path.
 async fn execute_build_step(
     push_ctx: &PushContext<'_>,
     host_metadata: &HostMetadata,
-) -> Result<BuildOutput> {
+) -> Result<StorePath> {
     let hostname = &host_metadata.name;
 
     push_ctx.observer.on_build_start(hostname);
-    let build_output = match push_ctx
+    let store_path = match push_ctx
         .nix_backend
         .build_host(
             push_ctx.flake,
@@ -300,20 +293,7 @@ async fn execute_build_step(
         )
         .await
     {
-        Ok(store_path) => {
-            // Create deployment target
-            let target = DeployTarget {
-                user: push_ctx.config.ssh_user.clone(),
-                hostname: host_metadata.fqdn.clone(),
-                port: None,
-            };
-
-            BuildOutput {
-                metadata: host_metadata.clone(),
-                target,
-                store_path,
-            }
-        }
+        Ok(store_path) => store_path,
         Err(e) => {
             push_ctx.observer.on_build_complete(hostname, false);
             return Err(e);
@@ -321,7 +301,7 @@ async fn execute_build_step(
     };
     push_ctx.observer.on_build_complete(hostname, true);
 
-    Ok(build_output)
+    Ok(store_path)
 }
 
 /// Execute the copy step for a single host
@@ -329,29 +309,24 @@ async fn execute_build_step(
 /// Copies the built closure to the target host.
 async fn execute_copy_step(
     push_ctx: &PushContext<'_>,
-    build_output: BuildOutput,
-) -> Result<CopyOutput> {
-    let hostname = build_output.metadata.name.clone();
+    host_metadata: &HostMetadata,
+    store_path: &StorePath,
+) -> Result<()> {
+    let hostname = &host_metadata.name;
+    let target = create_target(push_ctx, host_metadata);
 
-    push_ctx.observer.on_copy_start(&hostname);
-    let copy_output = match push_ctx
+    push_ctx.observer.on_copy_start(hostname);
+    if let Err(e) = push_ctx
         .deploy_backend
-        .copy_closure(&build_output.target, &build_output.store_path)
+        .copy_closure(&target, store_path)
         .await
     {
-        Ok(()) => CopyOutput {
-            metadata: build_output.metadata,
-            target: build_output.target,
-            store_path: build_output.store_path,
-        },
-        Err(e) => {
-            push_ctx.observer.on_copy_complete(&hostname, false);
-            return Err(e);
-        }
-    };
-    push_ctx.observer.on_copy_complete(&hostname, true);
+        push_ctx.observer.on_copy_complete(hostname, false);
+        return Err(e);
+    }
+    push_ctx.observer.on_copy_complete(hostname, true);
 
-    Ok(copy_output)
+    Ok(())
 }
 
 /// Execute the activation step for a single host
@@ -359,20 +334,18 @@ async fn execute_copy_step(
 /// Includes deployment planning (with reboot detection) and activation.
 async fn execute_activation_step(
     push_ctx: &PushContext<'_>,
-    copy_output: CopyOutput,
+    host_metadata: &HostMetadata,
+    store_path: &StorePath,
 ) -> Result<(PushPlan, DeployResult)> {
-    let hostname = &copy_output.metadata.name;
+    let hostname = &host_metadata.name;
+    let target = create_target(push_ctx, host_metadata);
 
     // Start the activate observer span before planning so planning work is visible
     push_ctx.observer.on_activation_start(hostname);
 
     // Planning: Determine activation strategy
     let (plans, blocked) = create_deployment_plans(
-        vec![(
-            copy_output.metadata.clone(),
-            copy_output.target.clone(),
-            copy_output.store_path.clone(),
-        )],
+        vec![(host_metadata.clone(), target, store_path.clone())],
         push_ctx.reboot_backend,
         push_ctx.config.strategy,
         push_ctx.config.force,
