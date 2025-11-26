@@ -1057,6 +1057,7 @@ version = "0.1.0"
 dependencies = [
  "assert_cmd",
  "clap",
+ "console 0.15.11",
  "dialoguer",
  "futures",
  "indicatif 0.17.11",

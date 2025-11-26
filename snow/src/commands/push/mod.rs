@@ -1,4 +1,7 @@
+mod colors;
 mod observer;
+mod styles;
+mod summary;
 
 use clap::Args;
 use snowlib::{Flake, PushStrategy, Result};
@@ -246,7 +249,7 @@ impl PushArgs {
         // Execute the push - snowlib handles everything!
         let results = snowlib::push(&push_ctx, hosts).await?;
 
-        results.print_summary();
+        summary::print_summary(&results);
 
         if !results.all_succeeded() {
             return Err(snowlib::error::DeployError::Failed {

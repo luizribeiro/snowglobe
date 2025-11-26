@@ -29,7 +29,10 @@ pub use host::{get_hostname, Host, HostMetadata};
 pub use nix::{ActivationMode, Flake, StorePath, SystemType};
 pub use observer::PushObserver;
 pub use process::OutputMode;
-pub use push::{push, HookExecutor, PushConfiguration, PushContext, PushResults, PushStrategy};
+pub use push::{
+    push, HostDeploymentResult, HookExecutor, PhaseResult, PipelineStep, PushConfiguration,
+    PushContext, PushResults, PushStrategy, SkippedPhase,
+};
 pub use reboot::RebootPolicy;
 
 #[cfg(debug_assertions)]
