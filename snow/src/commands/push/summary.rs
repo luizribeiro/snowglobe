@@ -127,9 +127,12 @@ fn print_overall_summary(results: &snowlib::PushResults) {
     } else {
         println!(
             "{}",
-            style(format!("✗ {}/{} deployed, {} failed", succeeded, total, failed))
-                .red()
-                .bold()
+            style(format!(
+                "✗ {}/{} deployed, {} failed",
+                succeeded, total, failed
+            ))
+            .red()
+            .bold()
         );
     }
 }
@@ -182,7 +185,10 @@ fn print_error_lines(error_msg: &str) {
     }
 
     if remaining > 0 {
-        println!("    {}", style(format!("... ({} more lines, see logs)", remaining)).dim());
+        println!(
+            "    {}",
+            style(format!("... ({} more lines, see logs)", remaining)).dim()
+        );
     }
 }
 
@@ -196,9 +202,15 @@ fn truncate_lines<'a>(lines: &'a [&'a str], max: usize) -> (&'a [&'a str], usize
 
 #[cfg(test)]
 mod tests {
-    use snowlib::{ActivationMode, HostDeploymentResult, PhaseResult, PipelineStep, PushResults, SkippedPhase};
+    use snowlib::{
+        ActivationMode, HostDeploymentResult, PhaseResult, PipelineStep, PushResults, SkippedPhase,
+    };
 
-    fn make_successful_host(name: &str, mode: ActivationMode, rebooted: bool) -> HostDeploymentResult {
+    fn make_successful_host(
+        name: &str,
+        mode: ActivationMode,
+        rebooted: bool,
+    ) -> HostDeploymentResult {
         HostDeploymentResult {
             hostname: name.to_string(),
             success: true,
@@ -261,9 +273,7 @@ mod tests {
         let results = PushResults {
             phases: vec![PhaseResult {
                 phase: "staging".to_string(),
-                hosts: vec![
-                    make_successful_host("web01", ActivationMode::Switch, false),
-                ],
+                hosts: vec![make_successful_host("web01", ActivationMode::Switch, false)],
             }],
             skipped_phases: vec![SkippedPhase {
                 phase: "production".to_string(),
@@ -280,9 +290,7 @@ mod tests {
             phases: vec![
                 PhaseResult {
                     phase: "staging".to_string(),
-                    hosts: vec![
-                        make_successful_host("stg01", ActivationMode::Switch, false),
-                    ],
+                    hosts: vec![make_successful_host("stg01", ActivationMode::Switch, false)],
                 },
                 PhaseResult {
                     phase: "production".to_string(),
@@ -335,9 +343,21 @@ mod tests {
 
         assert!(!results.all_succeeded());
         assert_eq!(results.failure_count(), 4);
-        assert_eq!(results.phases[0].hosts[0].failed_at_step, Some(PipelineStep::Build));
-        assert_eq!(results.phases[0].hosts[1].failed_at_step, Some(PipelineStep::Copy));
-        assert_eq!(results.phases[0].hosts[2].failed_at_step, Some(PipelineStep::Activate));
-        assert_eq!(results.phases[0].hosts[3].failed_at_step, Some(PipelineStep::Reboot));
+        assert_eq!(
+            results.phases[0].hosts[0].failed_at_step,
+            Some(PipelineStep::Build)
+        );
+        assert_eq!(
+            results.phases[0].hosts[1].failed_at_step,
+            Some(PipelineStep::Copy)
+        );
+        assert_eq!(
+            results.phases[0].hosts[2].failed_at_step,
+            Some(PipelineStep::Activate)
+        );
+        assert_eq!(
+            results.phases[0].hosts[3].failed_at_step,
+            Some(PipelineStep::Reboot)
+        );
     }
 }
