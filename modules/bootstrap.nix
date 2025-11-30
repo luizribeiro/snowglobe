@@ -16,8 +16,7 @@ in
 {
   options.snowglobe.bootstrap = {
     provisioner = mkOption {
-      # Note: Additional provisioners (proxmox-vma, qcow2) will be added in future phases
-      type = types.nullOr (types.enum [ "manual" "sd-image" "raw" ]);
+      type = types.nullOr (types.enum [ "manual" "sd-image" "raw" "proxmox-vma" ]);
       default = null;
       description = ''
         Provisioner to use for key injection during bootstrap.
@@ -26,6 +25,7 @@ in
         - `manual`: Output instructions for manual key injection (default)
         - `sd-image`: Inject keys into SD card images (Raspberry Pi, etc.)
         - `raw`: Inject keys into raw disk images
+        - `proxmox-vma`: Inject keys into Proxmox VMA backup images
 
         When null, defaults to "manual".
       '';

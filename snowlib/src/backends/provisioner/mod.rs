@@ -15,17 +15,22 @@
 //!
 //! - **raw**: Injects keys into generic raw disk images (VMs, cloud images)
 //!   using guestfish for rootless operation.
+//!
+//! - **proxmox-vma**: Injects keys into Proxmox VMA backup images by extracting,
+//!   modifying with guestfish, and repacking.
 
 mod guestfish;
 mod manual;
 #[cfg(any(debug_assertions, test))]
 mod mock;
+mod proxmox_vma;
 mod raw;
 mod sd_image;
 
 pub use manual::ManualProvisioner;
 #[cfg(any(debug_assertions, test))]
 pub use mock::MockProvisioner;
+pub use proxmox_vma::ProxmoxVmaProvisioner;
 pub use raw::RawProvisioner;
 pub use sd_image::SdImageProvisioner;
 
@@ -104,6 +109,7 @@ pub fn get_provisioner(name: &str) -> Result<Box<dyn Provisioner>> {
         "manual" => Ok(Box::new(ManualProvisioner::new())),
         "sd-image" => Ok(Box::new(SdImageProvisioner::new())),
         "raw" => Ok(Box::new(RawProvisioner::new())),
+        "proxmox-vma" => Ok(Box::new(ProxmoxVmaProvisioner::new())),
         _ => Err(crate::error::ProvisionerError::UnknownProvisioner {
             name: name.to_string(),
         }
@@ -143,6 +149,12 @@ mod tests {
     fn test_get_provisioner_raw() {
         let provisioner = get_provisioner("raw").unwrap();
         assert_eq!(provisioner.name(), "raw");
+    }
+
+    #[test]
+    fn test_get_provisioner_proxmox_vma() {
+        let provisioner = get_provisioner("proxmox-vma").unwrap();
+        assert_eq!(provisioner.name(), "proxmox-vma");
     }
 
     #[test]

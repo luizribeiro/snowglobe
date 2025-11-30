@@ -90,7 +90,8 @@ fn get_filename<'a>(provisioner_name: &str, path: &'a Path) -> Result<&'a str> {
         })
 }
 
-fn which(cmd: &str) -> Option<PathBuf> {
+/// Check if a command is available in PATH
+pub fn which(cmd: &str) -> Option<PathBuf> {
     std::env::var_os("PATH").and_then(|paths| {
         std::env::split_paths(&paths).find_map(|dir| {
             let full_path = dir.join(cmd);
