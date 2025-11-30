@@ -55,7 +55,10 @@ let
   '';
 in
 {
-  imports = [ ./hooks.nix ];
+  imports = [
+    ./bootstrap.nix
+    ./hooks.nix
+  ];
   options.snowglobe.push = {
     allowedUsers = mkOption {
       type = types.listOf types.str;
