@@ -64,10 +64,17 @@ impl BootstrapArgs {
         };
 
         // Get bootstrap config from NixOS module
-        let bootstrap_config = nix_backend
+        let bootstrap_config = match nix_backend
             .get_bootstrap_config(flake, &self.hostname, SystemType::NixOS)
             .await
-            .unwrap_or_else(|_| BootstrapConfig::default());
+        {
+            Ok(config) => config,
+            Err(e) => {
+                eprintln!("Warning: Failed to evaluate bootstrap config: {}", e);
+                eprintln!("  Proceeding with default config (no image building)");
+                BootstrapConfig::default()
+            }
+        };
 
         let provisioner_name = self
             .provisioner
