@@ -23,6 +23,10 @@ pub enum SnowError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     Io(#[from] IoError),
+
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    Bootstrap(#[from] BootstrapError),
 }
 
 /// Errors related to Nix evaluation and building
@@ -171,4 +175,125 @@ pub enum IoError {
         #[source]
         source: serde_json::Error,
     },
+}
+
+/// Errors related to bootstrap operations (key generation, provisioning)
+#[derive(Debug, Error, Diagnostic)]
+pub enum BootstrapError {
+    #[error("Required tool '{tool}' not found")]
+    #[diagnostic(
+        code(snow::bootstrap::missing_dependency),
+        help("Install the missing tool using nix-shell -p <tool_name>\n\nOr enter the bootstrap environment:\n  nix develop .#bootstrap")
+    )]
+    MissingDependency { tool: String },
+
+    #[error("Failed to generate SSH host key")]
+    #[diagnostic(
+        code(snow::bootstrap::keygen_failed),
+        help("Ensure ssh-keygen is available and the output directory is writable")
+    )]
+    KeyGenFailed {
+        #[source]
+        source: std::io::Error,
+    },
+
+    #[error("SSH key generation failed:\n{stderr}")]
+    #[diagnostic(
+        code(snow::bootstrap::keygen_command_failed),
+        help("Check that ssh-keygen is working correctly:\n  ssh-keygen -t ed25519 -f /tmp/test_key -N ''")
+    )]
+    KeyGenCommandFailed { stderr: String },
+
+    #[error("Failed to derive age public key from SSH key")]
+    #[diagnostic(
+        code(snow::bootstrap::age_derivation_failed),
+        help("Ensure ssh-to-age is installed and the SSH public key is valid:\n  ssh-to-age -i <public_key_file>")
+    )]
+    AgeDerivationFailed {
+        #[source]
+        source: std::io::Error,
+    },
+
+    #[error("Age key derivation failed:\n{stderr}")]
+    #[diagnostic(
+        code(snow::bootstrap::age_command_failed),
+        help("Check that ssh-to-age can process the key:\n  ssh-to-age -i <public_key_file>")
+    )]
+    AgeCommandFailed { stderr: String },
+
+    #[error("Failed to create secure temporary directory")]
+    #[diagnostic(
+        code(snow::bootstrap::temp_dir_failed),
+        help("Ensure /tmp is writable and has sufficient space.\nCheck permissions with: ls -ld /tmp")
+    )]
+    TempDirFailed {
+        #[source]
+        source: std::io::Error,
+    },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_missing_dependency_error_message() {
+        let error = BootstrapError::MissingDependency {
+            tool: "ssh-keygen".to_string(),
+        };
+        assert!(error.to_string().contains("ssh-keygen"));
+        assert!(error.to_string().contains("not found"));
+    }
+
+    #[test]
+    fn test_bootstrap_error_converts_to_snow_error() {
+        let bootstrap_err = BootstrapError::MissingDependency {
+            tool: "ssh-to-age".to_string(),
+        };
+        let snow_err: SnowError = bootstrap_err.into();
+        assert!(snow_err.to_string().contains("ssh-to-age"));
+    }
+
+    #[test]
+    fn test_keygen_command_failed_includes_stderr() {
+        let error = BootstrapError::KeyGenCommandFailed {
+            stderr: "Permission denied".to_string(),
+        };
+        assert!(error.to_string().contains("Permission denied"));
+    }
+
+    #[test]
+    fn test_age_command_failed_includes_stderr() {
+        let error = BootstrapError::AgeCommandFailed {
+            stderr: "Invalid key format".to_string(),
+        };
+        assert!(error.to_string().contains("Invalid key format"));
+    }
+
+    #[test]
+    fn test_keygen_failed_with_source() {
+        let io_error = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "access denied");
+        let error = BootstrapError::KeyGenFailed { source: io_error };
+        assert!(error
+            .to_string()
+            .contains("Failed to generate SSH host key"));
+    }
+
+    #[test]
+    fn test_age_derivation_failed_with_source() {
+        let io_error = std::io::Error::new(std::io::ErrorKind::NotFound, "command not found");
+        let error = BootstrapError::AgeDerivationFailed { source: io_error };
+        assert!(error
+            .to_string()
+            .contains("Failed to derive age public key"));
+    }
+
+    #[test]
+    fn test_temp_dir_failed_with_source() {
+        let io_error = std::io::Error::other("disk full");
+        let error = BootstrapError::TempDirFailed { source: io_error };
+        assert!(error
+            .to_string()
+            .contains("Failed to create secure temporary directory"));
+    }
 }

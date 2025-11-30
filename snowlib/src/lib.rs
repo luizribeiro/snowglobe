@@ -23,7 +23,7 @@ pub use backends::deploy::{
 pub use backends::hook::{HookBackend, SystemHookBackend};
 pub use backends::nix::{NixBackend, SystemNixBackend};
 pub use backends::reboot::{LocalRebootBackend, RebootBackend, RebootCheck, SystemRebootBackend};
-pub use error::Result;
+pub use error::{BootstrapError, Result};
 pub use hooks::{HookConfig, HookLocation, HookStage};
 pub use host::{get_hostname, Host, HostMetadata};
 pub use nix::{ActivationMode, Flake, StorePath, SystemType};
