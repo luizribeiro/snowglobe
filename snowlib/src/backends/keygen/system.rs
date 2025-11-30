@@ -258,4 +258,37 @@ mod integration_tests {
         // Should not panic, may return Ok or Err depending on system
         let _ = backend.check_dependencies();
     }
+
+    #[test]
+    fn test_system_backend_with_real_tools_if_available() {
+        let backend = SystemKeyGenBackend::new();
+
+        // Skip gracefully if tools not available
+        if backend.check_dependencies().is_err() {
+            eprintln!("Skipping test: ssh-keygen or ssh-to-age not available");
+            return;
+        }
+
+        let temp_dir = TempDir::new().unwrap();
+        let pair = backend.generate_ssh_keypair(temp_dir.path()).unwrap();
+
+        assert!(pair.private_key.exists(), "Private key should exist");
+        assert!(pair.public_key.exists(), "Public key should exist");
+
+        // Verify permissions
+        let metadata = fs::metadata(&pair.private_key).unwrap();
+        let permissions = metadata.permissions();
+        assert_eq!(
+            permissions.mode() & 0o777,
+            0o600,
+            "Private key should have 0600 permissions"
+        );
+
+        // Derive age key
+        let age_key = backend.derive_age_key(&pair.public_key).unwrap();
+        assert!(
+            age_key.starts_with("age1"),
+            "Age key should start with age1"
+        );
+    }
 }
