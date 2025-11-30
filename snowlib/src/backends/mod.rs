@@ -7,6 +7,7 @@
 //! - `HookBackend`: Lifecycle hook execution
 //! - `KeyGenBackend`: SSH key generation and age key derivation
 //! - `Provisioner`: Image key injection
+//! - `SopsBackend`: SOPS secrets management integration
 //!
 //! Each backend has both production (system) and mock implementations for testing.
 
@@ -16,3 +17,4 @@ pub mod keygen;
 pub mod nix;
 pub mod provisioner;
 pub mod reboot;
+pub mod sops;

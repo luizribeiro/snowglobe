@@ -29,6 +29,7 @@ pub use backends::provisioner::{
     ProxmoxVmaProvisioner, RawProvisioner, SdImageProvisioner,
 };
 pub use backends::reboot::{LocalRebootBackend, RebootBackend, RebootCheck, SystemRebootBackend};
+pub use backends::sops::{SopsBackend, SopsUpdateResult, SystemSopsBackend};
 pub use bootstrap::BootstrapConfig;
 pub use error::{BootstrapError, ProvisionerError, Result};
 pub use hooks::{HookConfig, HookLocation, HookStage};
@@ -54,3 +55,5 @@ pub use backends::nix::MockNixBackend;
 pub use backends::provisioner::MockProvisioner;
 #[cfg(debug_assertions)]
 pub use backends::reboot::MockRebootBackend;
+#[cfg(debug_assertions)]
+pub use backends::sops::MockSopsBackend;

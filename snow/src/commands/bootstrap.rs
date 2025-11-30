@@ -1,7 +1,8 @@
 use clap::Args;
 use snowlib::{
     get_provisioner, BootstrapConfig, Flake, InjectionResult, KeyGenBackend, NixBackend,
-    OutputMode, ProvisionerConfig, Result, SystemKeyGenBackend, SystemNixBackend, SystemType,
+    OutputMode, ProvisionerConfig, Result, SopsBackend, SystemKeyGenBackend, SystemNixBackend,
+    SystemSopsBackend, SystemType,
 };
 use std::path::Path;
 
@@ -21,6 +22,13 @@ pub struct BootstrapArgs {
     /// Override the provisioner (ignores host config)
     #[arg(long)]
     pub provisioner: Option<String>,
+
+    /// Update .sops.yaml with the new host's age key
+    ///
+    /// Adds the age key to the keys section and runs `sops updatekeys`
+    /// on secret files in the secrets/ directory.
+    #[arg(long)]
+    pub update_sops: bool,
 
     /// Show Nix build output
     #[arg(long, short)]
@@ -60,6 +68,21 @@ impl BootstrapArgs {
             #[cfg(not(debug_assertions))]
             {
                 Box::new(SystemNixBackend::new())
+            }
+        };
+
+        let sops_backend: Box<dyn SopsBackend> = {
+            #[cfg(debug_assertions)]
+            {
+                if self.mock {
+                    Box::new(snowlib::MockSopsBackend::new())
+                } else {
+                    Box::new(SystemSopsBackend::new())
+                }
+            }
+            #[cfg(not(debug_assertions))]
+            {
+                Box::new(SystemSopsBackend::new())
             }
         };
 
@@ -115,6 +138,24 @@ impl BootstrapArgs {
         let keys = snowlib::bootstrap::bootstrap_host(&self.hostname, keygen_backend.as_ref())?;
         println!("  ✓ Generated SSH host key");
 
+        // Update SOPS if requested
+        if self.update_sops {
+            println!("  → Updating .sops.yaml...");
+            let result = sops_backend.update_sops(
+                flake.flake_root(),
+                &self.hostname,
+                &keys.age_public_key,
+            )?;
+            if result.files_updated > 0 {
+                println!(
+                    "  ✓ Updated .sops.yaml and re-encrypted {} secret file(s)",
+                    result.files_updated
+                );
+            } else {
+                println!("  ✓ Updated .sops.yaml");
+            }
+        }
+
         // Inject keys if we have an image
         if let Some(store_path) = &image_path {
             println!("  → Injecting keys...");
@@ -147,7 +188,7 @@ impl BootstrapArgs {
             }
         } else {
             // No image config - just output key info
-            print_keys_and_sops_info(&keys, &self.hostname);
+            print_keys_and_sops_info(&keys, &self.hostname, self.update_sops);
         }
 
         Ok(())
@@ -166,16 +207,22 @@ fn print_keys_info(keys: &snowlib::bootstrap::HostKeys) {
     println!("   rm -rf {}", keys.temp_dir_root.display());
 }
 
-fn print_keys_and_sops_info(keys: &snowlib::bootstrap::HostKeys, hostname: &str) {
+fn print_keys_and_sops_info(
+    keys: &snowlib::bootstrap::HostKeys,
+    hostname: &str,
+    sops_updated: bool,
+) {
     println!();
     println!("  Age public key: {}", keys.age_public_key);
     println!();
-    println!("To use with SOPS, add to .sops.yaml:");
-    println!("  keys:");
-    println!("    - &{} {}", hostname, keys.age_public_key);
-    println!();
-    println!("Then run: sops updatekeys <your-secrets-file>");
-    println!();
+    if !sops_updated {
+        println!("To use with SOPS, add to .sops.yaml:");
+        println!("  keys:");
+        println!("    - &{} {}", hostname, keys.age_public_key);
+        println!();
+        println!("Then run: sops updatekeys <your-secrets-file>");
+        println!();
+    }
     print_keys_info(keys);
 }
 
@@ -264,5 +311,43 @@ mod tests {
             .assert()
             .success()
             .stdout(predicate::str::contains("Bootstrapping testhost (manual)"));
+    }
+
+    #[test]
+    fn test_bootstrap_help_shows_update_sops_flag() {
+        snow_cmd()
+            .arg("bootstrap")
+            .arg("--help")
+            .assert()
+            .success()
+            .stdout(predicate::str::contains("--update-sops"))
+            .stdout(predicate::str::contains(".sops.yaml"));
+    }
+
+    #[test]
+    fn test_bootstrap_with_update_sops_updates_sops_yaml() {
+        snow_cmd()
+            .arg("bootstrap")
+            .arg("testhost")
+            .arg("--mock")
+            .arg("--update-sops")
+            .assert()
+            .success()
+            .stdout(predicate::str::contains("Updating .sops.yaml"))
+            .stdout(predicate::str::contains("Updated .sops.yaml"));
+    }
+
+    #[test]
+    fn test_bootstrap_with_update_sops_skips_sops_instructions() {
+        snow_cmd()
+            .arg("bootstrap")
+            .arg("testhost")
+            .arg("--mock")
+            .arg("--update-sops")
+            .assert()
+            .success()
+            .stdout(predicate::str::contains("Age public key: age1"))
+            // Should NOT contain manual SOPS instructions when --update-sops is used
+            .stdout(predicate::str::contains("To use with SOPS").not());
     }
 }

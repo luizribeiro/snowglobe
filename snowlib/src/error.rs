@@ -241,6 +241,63 @@ pub enum BootstrapError {
         help("Ensure directory paths contain only valid UTF-8 characters")
     )]
     InvalidPath { path: String },
+
+    #[error("Required tool 'sops' not found")]
+    #[diagnostic(
+        code(snow::bootstrap::sops_missing),
+        help("Install sops using nix-shell -p sops\n\nOr enter the bootstrap environment:\n  nix develop .#bootstrap")
+    )]
+    SopsMissing,
+
+    #[error("No .sops.yaml found in flake directory: {path}")]
+    #[diagnostic(
+        code(snow::bootstrap::sops_yaml_not_found),
+        help("Create a .sops.yaml file in your flake directory.\nSee https://github.com/getsops/sops for configuration format.")
+    )]
+    SopsYamlNotFound { path: String },
+
+    #[error("Failed to read .sops.yaml: {path}")]
+    #[diagnostic(
+        code(snow::bootstrap::sops_yaml_read_failed),
+        help("Ensure the file is readable and contains valid YAML")
+    )]
+    SopsYamlReadFailed {
+        path: String,
+        #[source]
+        source: std::io::Error,
+    },
+
+    #[error("Failed to write .sops.yaml: {path}")]
+    #[diagnostic(
+        code(snow::bootstrap::sops_yaml_write_failed),
+        help("Ensure the file is writable")
+    )]
+    SopsYamlWriteFailed {
+        path: String,
+        #[source]
+        source: std::io::Error,
+    },
+
+    #[error("Invalid .sops.yaml format: {reason}")]
+    #[diagnostic(
+        code(snow::bootstrap::sops_yaml_invalid),
+        help("Ensure .sops.yaml has a valid 'keys:' section.\nSee https://github.com/getsops/sops for format details.")
+    )]
+    SopsYamlInvalid { reason: String },
+
+    #[error("Host '{hostname}' already exists in .sops.yaml")]
+    #[diagnostic(
+        code(snow::bootstrap::sops_host_exists),
+        help("Remove the existing entry for this host if you want to regenerate its key.\nOr use a different hostname.")
+    )]
+    SopsHostExists { hostname: String },
+
+    #[error("sops updatekeys command failed:\n{stderr}")]
+    #[diagnostic(
+        code(snow::bootstrap::sops_updatekeys_failed),
+        help("Check that sops is correctly configured and all keys are valid.\nRun manually: sops updatekeys <file>")
+    )]
+    SopsUpdateKeysFailed { stderr: String },
 }
 
 /// Errors related to image provisioning operations
