@@ -173,4 +173,30 @@ impl NixBackend for MockNixBackend {
         // Return default bootstrap config for mock
         Ok(BootstrapConfig::default())
     }
+
+    async fn build_image(
+        &self,
+        _flake: &Flake,
+        host: &str,
+        _system_type: SystemType,
+        image_attr: &str,
+        _output_mode: OutputMode,
+    ) -> Result<StorePath> {
+        // Check if this host should fail during build
+        if self.build_failures.contains(&host.to_string()) {
+            return Err(crate::error::ProvisionerError::ImageBuildFailed {
+                host: host.to_string(),
+                stderr: "Mock image build failure".to_string(),
+                source: std::io::Error::other("Image build failed (mock)"),
+            }
+            .into());
+        }
+
+        // Return a fake store path based on the image attribute
+        let attr_suffix = image_attr.split('.').next_back().unwrap_or("image");
+        Ok(StorePath::new(format!(
+            "/nix/store/mock-{}-{}",
+            host, attr_suffix
+        )))
+    }
 }

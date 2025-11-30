@@ -272,6 +272,47 @@ impl NixBackend for SystemNixBackend {
 
         Ok(json_config.into())
     }
+
+    async fn build_image(
+        &self,
+        flake: &Flake,
+        host: &str,
+        system_type: SystemType,
+        image_attr: &str,
+        output_mode: OutputMode,
+    ) -> Result<StorePath> {
+        // Build the image attribute: .#nixosConfigurations.hostname.config.system.build.sdImage
+        let target = format!(".#{}.{}.{}", system_type.flake_attr(), host, image_attr);
+
+        let stdout = NixCommand::build(flake, &target)
+            .no_link()
+            .print_out_paths()
+            .output_mode(output_mode)
+            .run()
+            .await
+            .map_err(|e| match e {
+                crate::error::SnowError::Nix(crate::error::NixError::EvalFailed {
+                    stderr,
+                    source,
+                }) => crate::error::ProvisionerError::ImageBuildFailed {
+                    host: host.to_string(),
+                    stderr,
+                    source,
+                }
+                .into(),
+                other => other,
+            })?;
+
+        let path = String::from_utf8(stdout)
+            .map_err(|e| crate::error::NixError::EvalFailed {
+                stderr: format!("Non-UTF8 build path: {:?}", e.as_bytes()),
+                source: std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid UTF-8"),
+            })?
+            .trim()
+            .to_string();
+
+        Ok(StorePath::new(path))
+    }
 }
 
 #[cfg(test)]

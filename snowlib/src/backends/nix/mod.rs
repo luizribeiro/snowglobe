@@ -119,6 +119,19 @@ pub trait NixBackend: Send + Sync {
         host: &str,
         system_type: SystemType,
     ) -> Result<BootstrapConfig>;
+
+    /// Build a host's image and return the store path
+    ///
+    /// Unlike `build_host` which builds the system toplevel, this builds a custom
+    /// attribute specified by `image_attr` (e.g., "config.system.build.sdImage").
+    async fn build_image(
+        &self,
+        flake: &Flake,
+        host: &str,
+        system_type: SystemType,
+        image_attr: &str,
+        output_mode: OutputMode,
+    ) -> Result<StorePath>;
 }
 
 #[cfg(test)]
