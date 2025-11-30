@@ -256,7 +256,7 @@ pub enum ProvisionerError {
     #[error("Unknown provisioner type: {name}")]
     #[diagnostic(
         code(snow::provisioner::unknown),
-        help("Available provisioners: manual, sd-image, raw, proxmox-vma, qcow2")
+        help("Available provisioners: manual")
     )]
     UnknownProvisioner { name: String },
 

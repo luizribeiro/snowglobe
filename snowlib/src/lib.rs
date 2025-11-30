@@ -24,8 +24,11 @@ pub use backends::deploy::{
 pub use backends::hook::{HookBackend, SystemHookBackend};
 pub use backends::keygen::{KeyGenBackend, SshKeyPair, SystemKeyGenBackend};
 pub use backends::nix::{NixBackend, SystemNixBackend};
+pub use backends::provisioner::{
+    get_provisioner, InjectionResult, ManualProvisioner, Provisioner, ProvisionerConfig,
+};
 pub use backends::reboot::{LocalRebootBackend, RebootBackend, RebootCheck, SystemRebootBackend};
-pub use error::{BootstrapError, Result};
+pub use error::{BootstrapError, ProvisionerError, Result};
 pub use hooks::{HookConfig, HookLocation, HookStage};
 pub use host::{get_hostname, Host, HostMetadata};
 pub use nix::{ActivationMode, Flake, StorePath, SystemType};
@@ -45,5 +48,7 @@ pub use backends::hook::MockHookBackend;
 pub use backends::keygen::MockKeyGenBackend;
 #[cfg(debug_assertions)]
 pub use backends::nix::MockNixBackend;
+#[cfg(debug_assertions)]
+pub use backends::provisioner::MockProvisioner;
 #[cfg(debug_assertions)]
 pub use backends::reboot::MockRebootBackend;
