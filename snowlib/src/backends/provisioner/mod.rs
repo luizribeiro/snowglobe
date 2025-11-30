@@ -12,15 +12,21 @@
 //!
 //! - **sd-image**: Injects keys into SD card images (Raspberry Pi, etc.)
 //!   using guestfish for rootless operation.
+//!
+//! - **raw**: Injects keys into generic raw disk images (VMs, cloud images)
+//!   using guestfish for rootless operation.
 
+mod guestfish;
 mod manual;
 #[cfg(any(debug_assertions, test))]
 mod mock;
+mod raw;
 mod sd_image;
 
 pub use manual::ManualProvisioner;
 #[cfg(any(debug_assertions, test))]
 pub use mock::MockProvisioner;
+pub use raw::RawProvisioner;
 pub use sd_image::SdImageProvisioner;
 
 use crate::bootstrap::HostKeys;
@@ -97,6 +103,7 @@ pub fn get_provisioner(name: &str) -> Result<Box<dyn Provisioner>> {
     match name {
         "manual" => Ok(Box::new(ManualProvisioner::new())),
         "sd-image" => Ok(Box::new(SdImageProvisioner::new())),
+        "raw" => Ok(Box::new(RawProvisioner::new())),
         _ => Err(crate::error::ProvisionerError::UnknownProvisioner {
             name: name.to_string(),
         }
@@ -130,6 +137,12 @@ mod tests {
     fn test_get_provisioner_sd_image() {
         let provisioner = get_provisioner("sd-image").unwrap();
         assert_eq!(provisioner.name(), "sd-image");
+    }
+
+    #[test]
+    fn test_get_provisioner_raw() {
+        let provisioner = get_provisioner("raw").unwrap();
+        assert_eq!(provisioner.name(), "raw");
     }
 
     #[test]

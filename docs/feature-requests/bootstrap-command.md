@@ -871,8 +871,8 @@ From the original proposal:
 2. **Phase 2**: Provisioner trait + `manual` provisioner + image building
 3. **Phase 3**: `sd-image` provisioner (Raspberry Pi, common hobbyist use case)
 4. **Phase 4**: `raw` provisioner (generic disk images)
-5. **Phase 5**: SOPS integration (`--update-sops`)
-6. **Phase 6**: `proxmox-vma` provisioner
+5. **Phase 5**: `proxmox-vma` provisioner
+6. **Phase 6**: SOPS integration (`--update-sops`)
 7. **Phase 7**: Deployment to target (`--target`)
 8. **Phase 8**: Snowglobe installer ISO for remote bootstrap
 
