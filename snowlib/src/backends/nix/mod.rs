@@ -8,6 +8,7 @@ pub use system::SystemNixBackend;
 
 use async_trait::async_trait;
 
+use crate::bootstrap::BootstrapConfig;
 use crate::error::{NixError, Result};
 use crate::host::{Host, HostMetadata};
 use crate::nix::{Flake, StorePath, SystemType};
@@ -107,6 +108,17 @@ pub trait NixBackend: Send + Sync {
         system_type: SystemType,
         output_mode: OutputMode,
     ) -> Result<StorePath>;
+
+    /// Get bootstrap configuration for a host
+    ///
+    /// Evaluates the `snowglobe.bootstrap` attribute from the host's NixOS configuration.
+    /// Returns a default config (manual provisioner) if the attribute is not set.
+    async fn get_bootstrap_config(
+        &self,
+        flake: &Flake,
+        host: &str,
+        system_type: SystemType,
+    ) -> Result<BootstrapConfig>;
 }
 
 #[cfg(test)]

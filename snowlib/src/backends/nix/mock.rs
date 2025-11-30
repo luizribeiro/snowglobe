@@ -3,6 +3,7 @@ use async_trait::async_trait;
 use std::time::Duration;
 
 use crate::backends::deploy::{BuildFixture, DeploymentFixture, MetadataFixture};
+use crate::bootstrap::BootstrapConfig;
 use crate::error::Result;
 use crate::host::{Host, HostMetadata};
 use crate::nix::{Flake, StorePath, SystemType};
@@ -161,5 +162,15 @@ impl NixBackend for MockNixBackend {
             // No build fixture - just create a fake store path
             Ok(StorePath::new(format!("/nix/store/mock-{}", host)))
         }
+    }
+
+    async fn get_bootstrap_config(
+        &self,
+        _flake: &Flake,
+        _host: &str,
+        _system_type: SystemType,
+    ) -> Result<BootstrapConfig> {
+        // Return default bootstrap config for mock
+        Ok(BootstrapConfig::default())
     }
 }

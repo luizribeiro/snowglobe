@@ -1,6 +1,7 @@
 use super::{parse_hostnames, NixBackend};
 use async_trait::async_trait;
 
+use crate::bootstrap::{BootstrapConfig, BootstrapConfigJson};
 use crate::error::Result;
 use crate::hooks::{HookConfig, HookLocation, HookStage};
 use crate::host::{Host, HostMetadata};
@@ -231,6 +232,45 @@ impl NixBackend for SystemNixBackend {
             .to_string();
 
         Ok(StorePath::new(path))
+    }
+
+    async fn get_bootstrap_config(
+        &self,
+        flake: &Flake,
+        host: &str,
+        system_type: SystemType,
+    ) -> Result<BootstrapConfig> {
+        let flake_ref = format!(".#{}.{}", system_type.flake_attr(), host);
+
+        let apply_expr = r#"config: {
+          provisioner = config.config.snowglobe.bootstrap.provisioner or null;
+          imageAttr = config.config.snowglobe.bootstrap.imageAttr or null;
+          sshKeyPath = config.config.snowglobe.bootstrap.sshKeyPath or null;
+        }"#;
+
+        let stdout = NixCommand::eval(flake, &flake_ref)
+            .apply(apply_expr)
+            .json()
+            .run()
+            .await
+            .map_err(|e| match e {
+                crate::error::SnowError::Nix(nix_err) => {
+                    crate::error::SnowError::Nix(crate::error::NixError::MetadataFailed {
+                        host: host.to_string(),
+                        source: Box::new(nix_err),
+                    })
+                }
+                other => other,
+            })?;
+
+        let json_config: BootstrapConfigJson = serde_json::from_slice(&stdout).map_err(|e| {
+            crate::error::NixError::OutputParseFailed {
+                output: String::from_utf8_lossy(&stdout).to_string(),
+                source: e,
+            }
+        })?;
+
+        Ok(json_config.into())
     }
 }
 

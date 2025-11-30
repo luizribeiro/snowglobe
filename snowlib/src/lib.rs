@@ -28,6 +28,7 @@ pub use backends::provisioner::{
     get_provisioner, InjectionResult, ManualProvisioner, Provisioner, ProvisionerConfig,
 };
 pub use backends::reboot::{LocalRebootBackend, RebootBackend, RebootCheck, SystemRebootBackend};
+pub use bootstrap::BootstrapConfig;
 pub use error::{BootstrapError, ProvisionerError, Result};
 pub use hooks::{HookConfig, HookLocation, HookStage};
 pub use host::{get_hostname, Host, HostMetadata};
