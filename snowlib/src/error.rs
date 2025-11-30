@@ -230,6 +230,13 @@ pub enum BootstrapError {
         #[source]
         source: std::io::Error,
     },
+
+    #[error("Path contains invalid UTF-8: {path}")]
+    #[diagnostic(
+        code(snow::bootstrap::invalid_path),
+        help("Ensure directory paths contain only valid UTF-8 characters")
+    )]
+    InvalidPath { path: String },
 }
 
 #[cfg(test)]

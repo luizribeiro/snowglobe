@@ -21,6 +21,7 @@ pub use backends::deploy::{
     DeployBackend, DeployResult, DeployTarget, LocalDeployBackend, SshDeployBackend,
 };
 pub use backends::hook::{HookBackend, SystemHookBackend};
+pub use backends::keygen::{KeyGenBackend, SshKeyPair, SystemKeyGenBackend};
 pub use backends::nix::{NixBackend, SystemNixBackend};
 pub use backends::reboot::{LocalRebootBackend, RebootBackend, RebootCheck, SystemRebootBackend};
 pub use error::{BootstrapError, Result};
@@ -39,6 +40,8 @@ pub use reboot::RebootPolicy;
 pub use backends::deploy::{DeploymentFixture, HostFixture, MockDeployBackend, OperationFixture};
 #[cfg(debug_assertions)]
 pub use backends::hook::MockHookBackend;
+#[cfg(debug_assertions)]
+pub use backends::keygen::MockKeyGenBackend;
 #[cfg(debug_assertions)]
 pub use backends::nix::MockNixBackend;
 #[cfg(debug_assertions)]
