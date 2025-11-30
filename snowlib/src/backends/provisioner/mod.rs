@@ -9,14 +9,19 @@
 //!   - Image format is unsupported by automated provisioners
 //!   - You need full control over the injection process
 //!   - Testing bootstrap without modifying images
+//!
+//! - **sd-image**: Injects keys into SD card images (Raspberry Pi, etc.)
+//!   using guestfish for rootless operation.
 
 mod manual;
 #[cfg(any(debug_assertions, test))]
 mod mock;
+mod sd_image;
 
 pub use manual::ManualProvisioner;
 #[cfg(any(debug_assertions, test))]
 pub use mock::MockProvisioner;
+pub use sd_image::SdImageProvisioner;
 
 use crate::bootstrap::HostKeys;
 use crate::error::Result;
@@ -91,6 +96,7 @@ pub trait Provisioner: Send + Sync {
 pub fn get_provisioner(name: &str) -> Result<Box<dyn Provisioner>> {
     match name {
         "manual" => Ok(Box::new(ManualProvisioner::new())),
+        "sd-image" => Ok(Box::new(SdImageProvisioner::new())),
         _ => Err(crate::error::ProvisionerError::UnknownProvisioner {
             name: name.to_string(),
         }
@@ -118,6 +124,12 @@ mod tests {
     fn test_get_provisioner_manual() {
         let provisioner = get_provisioner("manual").unwrap();
         assert_eq!(provisioner.name(), "manual");
+    }
+
+    #[test]
+    fn test_get_provisioner_sd_image() {
+        let provisioner = get_provisioner("sd-image").unwrap();
+        assert_eq!(provisioner.name(), "sd-image");
     }
 
     #[test]

@@ -62,8 +62,10 @@ impl Provisioner for MockProvisioner {
     fn check_dependencies(&self) -> Result<()> {
         let state = self.state.lock().unwrap();
         if let Some(tool) = &state.fail_dependency_check {
-            return Err(ProvisionerError::InjectionFailed {
-                source: std::io::Error::other(format!("Mock: {} not found", tool)),
+            return Err(ProvisionerError::MissingDependency {
+                provisioner: self.name.clone(),
+                tool: tool.clone(),
+                install_hint: format!("Mock: install {}", tool),
             }
             .into());
         }
@@ -84,7 +86,8 @@ impl Provisioner for MockProvisioner {
 
         if state.fail_injection {
             return Err(ProvisionerError::InjectionFailed {
-                source: std::io::Error::other("Mock injection failed"),
+                provisioner: self.name.clone(),
+                reason: "Mock injection failed".to_string(),
             }
             .into());
         }
@@ -143,10 +146,9 @@ mod tests {
 
         let result = provisioner.check_dependencies();
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Failed to inject keys"));
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("guestfish"));
+        assert!(err_msg.contains("test"));
     }
 
     #[test]

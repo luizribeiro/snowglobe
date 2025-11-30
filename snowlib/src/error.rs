@@ -256,7 +256,7 @@ pub enum ProvisionerError {
     #[error("Unknown provisioner type: {name}")]
     #[diagnostic(
         code(snow::provisioner::unknown),
-        help("Available provisioners: manual")
+        help("Available provisioners: manual, sd-image")
     )]
     UnknownProvisioner { name: String },
 
@@ -271,22 +271,31 @@ pub enum ProvisionerError {
         reason: String,
     },
 
-    #[error("Failed to inject keys into image")]
-    #[diagnostic(
-        code(snow::provisioner::injection_failed),
-        help("Common causes:\n  - Image file not found or corrupted\n  - Insufficient permissions to access the image\n  - Required tools (guestfish, virt-copy-in) not available\n\nTry: nix develop .#bootstrap")
-    )]
-    InjectionFailed {
-        #[source]
-        source: std::io::Error,
+    #[error("Missing required tool for {provisioner} provisioner: {tool}")]
+    #[diagnostic(code(snow::provisioner::missing_dependency), help("{install_hint}"))]
+    MissingDependency {
+        provisioner: String,
+        tool: String,
+        install_hint: String,
     },
 
-    #[error("Key injection command failed:\n{stderr}")]
+    #[error("{provisioner} provisioner failed to inject keys: {reason}")]
+    #[diagnostic(
+        code(snow::provisioner::injection_failed),
+        help("Common causes:\n  - Image file not found or corrupted\n  - Insufficient permissions to access the image\n  - Partition not found in image")
+    )]
+    InjectionFailed { provisioner: String, reason: String },
+
+    #[error("{provisioner} provisioner: {command} command failed:\n{stderr}")]
     #[diagnostic(
         code(snow::provisioner::injection_command_failed),
         help("The key injection tool encountered an error. Common issues:\n  - Partition not found in image\n  - Filesystem corruption\n  - Insufficient space in image")
     )]
-    InjectionCommandFailed { stderr: String },
+    InjectionCommandFailed {
+        provisioner: String,
+        command: String,
+        stderr: String,
+    },
 
     #[error("Failed to build image for host '{host}':\n{stderr}")]
     #[diagnostic(
@@ -413,19 +422,36 @@ mod tests {
     }
 
     #[test]
-    fn test_injection_failed_with_source() {
-        let io_error =
-            std::io::Error::new(std::io::ErrorKind::PermissionDenied, "permission denied");
-        let error = ProvisionerError::InjectionFailed { source: io_error };
-        assert!(error.to_string().contains("Failed to inject keys"));
+    fn test_injection_failed_includes_provisioner_and_reason() {
+        let error = ProvisionerError::InjectionFailed {
+            provisioner: "sd-image".to_string(),
+            reason: "permission denied".to_string(),
+        };
+        assert!(error.to_string().contains("sd-image"));
+        assert!(error.to_string().contains("permission denied"));
     }
 
     #[test]
-    fn test_injection_command_failed_includes_stderr() {
+    fn test_injection_command_failed_includes_details() {
         let error = ProvisionerError::InjectionCommandFailed {
+            provisioner: "sd-image".to_string(),
+            command: "guestfish".to_string(),
             stderr: "guestfish: error: no root device found".to_string(),
         };
+        assert!(error.to_string().contains("sd-image"));
+        assert!(error.to_string().contains("guestfish"));
         assert!(error.to_string().contains("no root device found"));
+    }
+
+    #[test]
+    fn test_missing_dependency_error() {
+        let error = ProvisionerError::MissingDependency {
+            provisioner: "sd-image".to_string(),
+            tool: "guestfish".to_string(),
+            install_hint: "nix-shell -p libguestfs".to_string(),
+        };
+        assert!(error.to_string().contains("sd-image"));
+        assert!(error.to_string().contains("guestfish"));
     }
 
     #[test]
