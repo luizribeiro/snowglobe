@@ -27,6 +27,10 @@ pub enum SnowError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     Bootstrap(#[from] BootstrapError),
+
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    Provisioner(#[from] ProvisionerError),
 }
 
 /// Errors related to Nix evaluation and building
@@ -239,6 +243,80 @@ pub enum BootstrapError {
     InvalidPath { path: String },
 }
 
+/// Errors related to image provisioning operations
+#[derive(Debug, Error, Diagnostic)]
+pub enum ProvisionerError {
+    #[error("Provisioner '{provisioner}' requires manual key injection")]
+    #[diagnostic(
+        code(snow::provisioner::manual_required),
+        help("Copy the SSH keys to the target's /etc/ssh/ directory manually")
+    )]
+    ManualRequired { provisioner: String },
+
+    #[error("Unknown provisioner type: {name}")]
+    #[diagnostic(
+        code(snow::provisioner::unknown),
+        help("Available provisioners: manual, sd-image, raw, proxmox-vma, qcow2")
+    )]
+    UnknownProvisioner { name: String },
+
+    #[error("Invalid target '{target}' for {provisioner} provisioner: {reason}")]
+    #[diagnostic(
+        code(snow::provisioner::invalid_target),
+        help("Verify the target matches the provisioner type:\n  - sd-image, raw: /dev/sdX (block device)\n  - proxmox-vma: hostname\n  - remote: user@host")
+    )]
+    InvalidTarget {
+        provisioner: String,
+        target: String,
+        reason: String,
+    },
+
+    #[error("Failed to inject keys into image")]
+    #[diagnostic(
+        code(snow::provisioner::injection_failed),
+        help("Common causes:\n  - Image file not found or corrupted\n  - Insufficient permissions to access the image\n  - Required tools (guestfish, virt-copy-in) not available\n\nTry: nix develop .#bootstrap")
+    )]
+    InjectionFailed {
+        #[source]
+        source: std::io::Error,
+    },
+
+    #[error("Key injection command failed:\n{stderr}")]
+    #[diagnostic(
+        code(snow::provisioner::injection_command_failed),
+        help("The key injection tool encountered an error. Common issues:\n  - Partition not found in image\n  - Filesystem corruption\n  - Insufficient space in image")
+    )]
+    InjectionCommandFailed { stderr: String },
+
+    #[error("Failed to build image for host '{host}':\n{stderr}")]
+    #[diagnostic(
+        code(snow::provisioner::image_build_failed),
+        help("Check that the image attribute exists and can be built:\n  nix build .#nixosConfigurations.{host}.config.system.build.<imageAttr>")
+    )]
+    ImageBuildFailed {
+        host: String,
+        stderr: String,
+        #[source]
+        source: std::io::Error,
+    },
+
+    #[error("No bootstrap configuration found for host '{host}'")]
+    #[diagnostic(
+        code(snow::provisioner::no_config),
+        help(
+            "Add bootstrap configuration to your NixOS config:\n\n  snowglobe.bootstrap = {{\n    provisioner = \"manual\";  # or \"sd-image\", \"raw\", etc.\n  }};"
+        )
+    )]
+    NoBootstrapConfig { host: String },
+
+    #[error("No image attribute configured for host '{host}'")]
+    #[diagnostic(
+        code(snow::provisioner::no_image_attr),
+        help("Specify the image build attribute in your NixOS config:\n\n  snowglobe.bootstrap.imageAttr = \"config.system.build.sdImage\";")
+    )]
+    NoImageAttr { host: String },
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -302,5 +380,81 @@ mod tests {
         assert!(error
             .to_string()
             .contains("Failed to create secure temporary directory"));
+    }
+
+    #[test]
+    fn test_provisioner_error_converts_to_snow_error() {
+        let prov_err = ProvisionerError::ManualRequired {
+            provisioner: "manual".to_string(),
+        };
+        let snow_err: SnowError = prov_err.into();
+        assert!(snow_err.to_string().contains("manual"));
+    }
+
+    #[test]
+    fn test_unknown_provisioner_error() {
+        let error = ProvisionerError::UnknownProvisioner {
+            name: "foobar".to_string(),
+        };
+        assert!(error.to_string().contains("Unknown provisioner"));
+        assert!(error.to_string().contains("foobar"));
+    }
+
+    #[test]
+    fn test_invalid_target_error() {
+        let error = ProvisionerError::InvalidTarget {
+            provisioner: "proxmox-vma".to_string(),
+            target: "/dev/sdc".to_string(),
+            reason: "expects a hostname".to_string(),
+        };
+        assert!(error.to_string().contains("/dev/sdc"));
+        assert!(error.to_string().contains("proxmox-vma"));
+        assert!(error.to_string().contains("expects a hostname"));
+    }
+
+    #[test]
+    fn test_injection_failed_with_source() {
+        let io_error =
+            std::io::Error::new(std::io::ErrorKind::PermissionDenied, "permission denied");
+        let error = ProvisionerError::InjectionFailed { source: io_error };
+        assert!(error.to_string().contains("Failed to inject keys"));
+    }
+
+    #[test]
+    fn test_injection_command_failed_includes_stderr() {
+        let error = ProvisionerError::InjectionCommandFailed {
+            stderr: "guestfish: error: no root device found".to_string(),
+        };
+        assert!(error.to_string().contains("no root device found"));
+    }
+
+    #[test]
+    fn test_no_image_attr_error() {
+        let error = ProvisionerError::NoImageAttr {
+            host: "hydrogen".to_string(),
+        };
+        assert!(error.to_string().contains("hydrogen"));
+        assert!(error.to_string().contains("No image attribute"));
+    }
+
+    #[test]
+    fn test_image_build_failed_error() {
+        let io_error = std::io::Error::other("build failed");
+        let error = ProvisionerError::ImageBuildFailed {
+            host: "carbon".to_string(),
+            stderr: "error: attribute not found".to_string(),
+            source: io_error,
+        };
+        assert!(error.to_string().contains("carbon"));
+        assert!(error.to_string().contains("attribute not found"));
+    }
+
+    #[test]
+    fn test_no_bootstrap_config_error() {
+        let error = ProvisionerError::NoBootstrapConfig {
+            host: "myhost".to_string(),
+        };
+        assert!(error.to_string().contains("myhost"));
+        assert!(error.to_string().contains("No bootstrap configuration"));
     }
 }
