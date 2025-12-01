@@ -33,6 +33,41 @@ impl ProxmoxVmaProvisioner {
         path.extension().is_some_and(|ext| ext == "zst")
     }
 
+    fn find_vma_file(&self, path: &Path, hostname: &str) -> Result<PathBuf> {
+        if path.is_file() {
+            return Ok(path.to_path_buf());
+        }
+
+        if path.is_dir() {
+            // Proxmox VMA files follow the naming convention: vzdump-qemu-<hostname>.vma.zst
+            let expected_zst = path.join(format!("vzdump-qemu-{}.vma.zst", hostname));
+            if expected_zst.exists() {
+                return Ok(expected_zst);
+            }
+
+            let expected_vma = path.join(format!("vzdump-qemu-{}.vma", hostname));
+            if expected_vma.exists() {
+                return Ok(expected_vma);
+            }
+
+            return Err(ProvisionerError::InjectionFailed {
+                provisioner: self.name().to_string(),
+                reason: format!(
+                    "Expected vzdump-qemu-{}.vma.zst in {}, but not found",
+                    hostname,
+                    path.display()
+                ),
+            }
+            .into());
+        }
+
+        Err(ProvisionerError::InjectionFailed {
+            provisioner: self.name().to_string(),
+            reason: format!("Path does not exist: {}", path.display()),
+        }
+        .into())
+    }
+
     fn decompress(&self, input: &Path, output: &Path) -> Result<()> {
         let cmd_output = Command::new("zstd")
             .arg("-d")
@@ -277,6 +312,9 @@ impl Provisioner for ProxmoxVmaProvisioner {
     ) -> Result<InjectionResult> {
         self.check_dependencies()?;
 
+        // Find the actual VMA file (Nix outputs a directory containing the file)
+        let vma_file = self.find_vma_file(image_path, &host_keys.hostname)?;
+
         // Create a temp directory for extraction
         let temp_dir = tempfile::Builder::new()
             .prefix("snow-vma-")
@@ -290,12 +328,12 @@ impl Provisioner for ProxmoxVmaProvisioner {
         let extract_dir = work_dir.join("extracted");
 
         // Step 1: Decompress if needed
-        let vma_path = if Self::is_compressed(image_path) {
+        let vma_path = if Self::is_compressed(&vma_file) {
             let decompressed = work_dir.join("image.vma");
-            self.decompress(image_path, &decompressed)?;
+            self.decompress(&vma_file, &decompressed)?;
             decompressed
         } else {
-            image_path.to_path_buf()
+            vma_file.clone()
         };
 
         // Step 2: Extract VMA to raw disks
