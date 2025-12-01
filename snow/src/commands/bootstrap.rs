@@ -120,7 +120,31 @@ impl BootstrapArgs {
 
         println!("Bootstrapping {} ({})...", self.hostname, provisioner_name);
 
-        // Build image first if configured (fail fast before generating keys)
+        // Generate keys first (needed for SOPS update before image build)
+        keygen_backend.check_dependencies()?;
+        println!("  → Generating SSH host key...");
+        let keys = snowlib::bootstrap::bootstrap_host(&self.hostname, keygen_backend.as_ref())?;
+        println!("  ✓ Generated SSH host key");
+
+        // Update SOPS before building image so secrets are encrypted for the new host
+        if self.update_sops {
+            println!("  → Updating .sops.yaml...");
+            let result = sops_backend.update_sops(
+                flake.flake_root(),
+                &self.hostname,
+                &keys.age_public_key,
+            )?;
+            if result.files_updated > 0 {
+                println!(
+                    "  ✓ Updated .sops.yaml and re-encrypted {} secret file(s)",
+                    result.files_updated
+                );
+            } else {
+                println!("  ✓ Updated .sops.yaml");
+            }
+        }
+
+        // Build image after SOPS update so secrets are properly encrypted
         let image_path = if let Some(image_attr) = &bootstrap_config.image_attr {
             println!("  → Building image...");
             let output_mode = if self.verbose {
@@ -145,30 +169,6 @@ impl BootstrapArgs {
         } else {
             None
         };
-
-        // Generate keys
-        keygen_backend.check_dependencies()?;
-        println!("  → Generating SSH host key...");
-        let keys = snowlib::bootstrap::bootstrap_host(&self.hostname, keygen_backend.as_ref())?;
-        println!("  ✓ Generated SSH host key");
-
-        // Update SOPS if requested
-        if self.update_sops {
-            println!("  → Updating .sops.yaml...");
-            let result = sops_backend.update_sops(
-                flake.flake_root(),
-                &self.hostname,
-                &keys.age_public_key,
-            )?;
-            if result.files_updated > 0 {
-                println!(
-                    "  ✓ Updated .sops.yaml and re-encrypted {} secret file(s)",
-                    result.files_updated
-                );
-            } else {
-                println!("  ✓ Updated .sops.yaml");
-            }
-        }
 
         // Inject keys if we have an image
         if let Some(store_path) = &image_path {
