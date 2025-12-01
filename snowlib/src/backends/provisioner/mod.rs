@@ -19,6 +19,7 @@
 //! - **proxmox-vma**: Injects keys into Proxmox VMA backup images by extracting,
 //!   modifying with guestfish, and repacking.
 
+mod command;
 mod guestfish;
 mod manual;
 #[cfg(any(debug_assertions, test))]
@@ -26,6 +27,10 @@ mod mock;
 mod proxmox_vma;
 mod raw;
 mod sd_image;
+
+#[cfg(any(debug_assertions, test))]
+pub use command::MockCommandExecutor;
+pub use command::{CommandExecutor, CommandOutput, SystemCommandExecutor};
 
 pub use manual::ManualProvisioner;
 #[cfg(any(debug_assertions, test))]

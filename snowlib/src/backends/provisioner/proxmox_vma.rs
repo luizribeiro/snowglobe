@@ -1,32 +1,33 @@
 //! Proxmox VMA provisioner
 //!
-//! Injects SSH keys into Proxmox VMA backup images. VMA (Virtual Machine Archive)
-//! is the native backup format for Proxmox VE.
-//!
-//! The injection process:
-//! 1. Decompress .vma.zst to .vma (if compressed)
-//! 2. Extract .vma to raw disk files
-//! 3. Inject SSH keys using guestfish
-//! 4. Repack raw disks to .vma
-//! 5. Compress back to .vma.zst
+//! Injects SSH keys into Proxmox VMA backup images and deploys them to Proxmox hosts.
 
+use super::command::{CommandExecutor, CommandOutput, SystemCommandExecutor};
 use super::{
     guestfish, InjectionResult, Provisioner, ProvisionerConfig, ProvisioningResult, TargetType,
 };
 use crate::bootstrap::HostKeys;
 use crate::error::{ProvisionerError, Result};
-use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::sync::Arc;
 
-/// Provisioner for Proxmox VMA backup images
+/// Proxmox VMA provisioner
 ///
 /// Uses vma for extraction/repacking and guestfish for rootless key injection.
-pub struct ProxmoxVmaProvisioner;
+pub struct ProxmoxVmaProvisioner {
+    executor: Arc<dyn CommandExecutor>,
+}
 
 impl ProxmoxVmaProvisioner {
     pub fn new() -> Self {
-        Self
+        Self {
+            executor: Arc::new(SystemCommandExecutor::new()),
+        }
+    }
+
+    #[cfg(any(debug_assertions, test))]
+    pub fn with_executor(executor: Arc<dyn CommandExecutor>) -> Self {
+        Self { executor }
     }
 
     fn is_compressed(path: &Path) -> bool {
@@ -39,7 +40,6 @@ impl ProxmoxVmaProvisioner {
         }
 
         if path.is_dir() {
-            // Proxmox VMA files follow the naming convention: vzdump-qemu-<hostname>.vma.zst
             let expected_zst = path.join(format!("vzdump-qemu-{}.vma.zst", hostname));
             if expected_zst.exists() {
                 return Ok(expected_zst);
@@ -68,100 +68,87 @@ impl ProxmoxVmaProvisioner {
         .into())
     }
 
-    fn decompress(&self, input: &Path, output: &Path) -> Result<()> {
-        let cmd_output = Command::new("zstd")
-            .arg("-d")
-            .arg("-f")
-            .arg(input)
-            .arg("-o")
-            .arg(output)
-            .output()
-            .map_err(|e| ProvisionerError::InjectionCommandFailed {
-                provisioner: self.name().to_string(),
-                command: "zstd".to_string(),
-                stderr: format!("Failed to execute: {}", e),
-            })?;
+    fn run_tool(&self, tool: &str, args: &[&str], operation: &str) -> Result<CommandOutput> {
+        let output = self.executor.execute(tool, args)?;
 
-        if !cmd_output.status.success() {
+        if !output.success {
             return Err(ProvisionerError::InjectionFailed {
                 provisioner: self.name().to_string(),
                 reason: format!(
-                    "Failed to decompress {} (exit code {}): {}",
-                    input.display(),
-                    cmd_output.status.code().unwrap_or(-1),
-                    String::from_utf8_lossy(&cmd_output.stderr)
+                    "{} failed (exit {}): {}",
+                    operation,
+                    output.exit_code.unwrap_or(-1),
+                    output.stderr_str()
                 ),
             }
             .into());
         }
+
+        Ok(output)
+    }
+
+    fn run_remote(&self, ssh_dest: &str, cmd: &str, operation: &str) -> Result<CommandOutput> {
+        let output = self.executor.execute_remote(ssh_dest, cmd)?;
+
+        if !output.success {
+            return Err(ProvisionerError::DeploymentFailed {
+                provisioner: self.name().to_string(),
+                reason: format!(
+                    "{} failed (exit {}): {}",
+                    operation,
+                    output.exit_code.unwrap_or(-1),
+                    output.stderr_str()
+                ),
+            }
+            .into());
+        }
+
+        Ok(output)
+    }
+
+    fn decompress(&self, input: &Path, output: &Path) -> Result<()> {
+        self.run_tool(
+            "zstd",
+            &[
+                "-d",
+                "-f",
+                &input.to_string_lossy(),
+                "-o",
+                &output.to_string_lossy(),
+            ],
+            "Decompression",
+        )?;
         Ok(())
     }
 
     fn compress(&self, input: &Path, output: &Path) -> Result<()> {
-        let cmd_output = Command::new("zstd")
-            .arg("-f")
-            .arg(input)
-            .arg("-o")
-            .arg(output)
-            .output()
-            .map_err(|e| ProvisionerError::InjectionCommandFailed {
-                provisioner: self.name().to_string(),
-                command: "zstd".to_string(),
-                stderr: format!("Failed to execute: {}", e),
-            })?;
-
-        if !cmd_output.status.success() {
-            return Err(ProvisionerError::InjectionFailed {
-                provisioner: self.name().to_string(),
-                reason: format!(
-                    "Failed to compress {} (exit code {}): {}",
-                    input.display(),
-                    cmd_output.status.code().unwrap_or(-1),
-                    String::from_utf8_lossy(&cmd_output.stderr)
-                ),
-            }
-            .into());
-        }
+        self.run_tool(
+            "zstd",
+            &[
+                "-f",
+                &input.to_string_lossy(),
+                "-o",
+                &output.to_string_lossy(),
+            ],
+            "Compression",
+        )?;
         Ok(())
     }
 
     fn extract_vma(&self, vma_path: &Path, extract_dir: &Path) -> Result<()> {
-        fs::create_dir_all(extract_dir).map_err(|e| ProvisionerError::InjectionFailed {
-            provisioner: self.name().to_string(),
-            reason: format!(
-                "Failed to create extraction directory {}: {}",
-                extract_dir.display(),
-                e
-            ),
-        })?;
-
-        let output = Command::new("vma")
-            .arg("extract")
-            .arg(vma_path)
-            .arg(extract_dir)
-            .output()
-            .map_err(|e| ProvisionerError::InjectionCommandFailed {
-                provisioner: self.name().to_string(),
-                command: "vma extract".to_string(),
-                stderr: e.to_string(),
-            })?;
-
-        if !output.status.success() {
-            return Err(ProvisionerError::InjectionFailed {
-                provisioner: self.name().to_string(),
-                reason: format!(
-                    "vma extract failed: {}",
-                    String::from_utf8_lossy(&output.stderr)
-                ),
-            }
-            .into());
-        }
+        self.run_tool(
+            "vma",
+            &[
+                "extract",
+                &vma_path.to_string_lossy(),
+                &extract_dir.to_string_lossy(),
+            ],
+            "VMA extraction",
+        )?;
         Ok(())
     }
 
     fn find_root_disk(&self, extract_dir: &Path) -> Result<PathBuf> {
-        // VMA extracts disks as disk-drive-<name>.raw
-        // Common patterns: scsi0, virtio0, sata0
         let patterns = ["scsi0", "virtio0", "sata0", "ide0"];
 
         for pattern in patterns {
@@ -172,10 +159,11 @@ impl ProxmoxVmaProvisioner {
         }
 
         // Fallback: find any .raw file
-        let entries = fs::read_dir(extract_dir).map_err(|e| ProvisionerError::InjectionFailed {
-            provisioner: self.name().to_string(),
-            reason: format!("Failed to read extraction directory: {}", e),
-        })?;
+        let entries =
+            std::fs::read_dir(extract_dir).map_err(|e| ProvisionerError::InjectionFailed {
+                provisioner: self.name().to_string(),
+                reason: format!("Failed to read extraction directory: {}", e),
+            })?;
 
         for entry in entries.flatten() {
             let path = entry.path();
@@ -192,40 +180,45 @@ impl ProxmoxVmaProvisioner {
     }
 
     fn create_vma(&self, extract_dir: &Path, output_path: &Path) -> Result<()> {
-        // VMA create requires a config file listing the disks
-        // Format (one per line): <absolute-path-to-raw-file> drive-<name>
-        // Example: /tmp/snow-vma-xyz/extracted/disk-drive-scsi0.raw drive-scsi0
-        let config_path = extract_dir.join("vma.config");
+        let qemu_conf_path = extract_dir.join("qemu-server.conf");
 
-        let mut config_content = String::new();
-        let entries = fs::read_dir(extract_dir).map_err(|e| ProvisionerError::InjectionFailed {
-            provisioner: self.name().to_string(),
-            reason: format!(
-                "Failed to read extraction directory {}: {}",
-                extract_dir.display(),
-                e
-            ),
-        })?;
+        let entries =
+            std::fs::read_dir(extract_dir).map_err(|e| ProvisionerError::InjectionFailed {
+                provisioner: self.name().to_string(),
+                reason: format!(
+                    "Failed to read extraction directory {}: {}",
+                    extract_dir.display(),
+                    e
+                ),
+            })?;
 
+        let mut args: Vec<String> = vec![
+            "create".to_string(),
+            output_path.to_string_lossy().to_string(),
+        ];
+
+        if qemu_conf_path.exists() {
+            args.push("-c".to_string());
+            args.push(qemu_conf_path.to_string_lossy().to_string());
+        }
+
+        let mut disk_count = 0;
         for entry in entries.flatten() {
             let path = entry.path();
             if path.extension().is_some_and(|ext| ext == "raw") {
                 if let Some(filename) = path.file_name().and_then(|f| f.to_str()) {
                     if let Some(drive_name) = filename
-                        .strip_prefix("disk-drive-")
+                        .strip_prefix("disk-")
                         .and_then(|s| s.strip_suffix(".raw"))
                     {
-                        config_content.push_str(&format!(
-                            "{} drive-{}\n",
-                            path.display(),
-                            drive_name
-                        ));
+                        args.push(format!("{}={}", drive_name, path.display()));
+                        disk_count += 1;
                     }
                 }
             }
         }
 
-        if config_content.is_empty() {
+        if disk_count == 0 {
             return Err(ProvisionerError::InjectionFailed {
                 provisioner: self.name().to_string(),
                 reason: format!(
@@ -236,38 +229,8 @@ impl ProxmoxVmaProvisioner {
             .into());
         }
 
-        fs::write(&config_path, &config_content).map_err(|e| {
-            ProvisionerError::InjectionFailed {
-                provisioner: self.name().to_string(),
-                reason: format!(
-                    "Failed to write VMA config to {}: {}",
-                    config_path.display(),
-                    e
-                ),
-            }
-        })?;
-
-        let output = Command::new("vma")
-            .arg("create")
-            .arg(output_path)
-            .arg(&config_path)
-            .output()
-            .map_err(|e| ProvisionerError::InjectionCommandFailed {
-                provisioner: self.name().to_string(),
-                command: "vma create".to_string(),
-                stderr: e.to_string(),
-            })?;
-
-        if !output.status.success() {
-            return Err(ProvisionerError::InjectionFailed {
-                provisioner: self.name().to_string(),
-                reason: format!(
-                    "vma create failed: {}",
-                    String::from_utf8_lossy(&output.stderr)
-                ),
-            }
-            .into());
-        }
+        let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+        self.run_tool("vma", &args_refs, "VMA creation")?;
         Ok(())
     }
 }
@@ -292,7 +255,7 @@ impl Provisioner for ProxmoxVmaProvisioner {
             ("zstd", "Install zstd: nix-shell -p zstd"),
             ("guestfish", "Install libguestfs: nix-shell -p libguestfs"),
         ] {
-            if !which(tool) {
+            if self.executor.which(tool).is_none() {
                 return Err(ProvisionerError::MissingDependency {
                     provisioner: self.name().to_string(),
                     tool: tool.to_string(),
@@ -312,10 +275,8 @@ impl Provisioner for ProxmoxVmaProvisioner {
     ) -> Result<InjectionResult> {
         self.check_dependencies()?;
 
-        // Find the actual VMA file (Nix outputs a directory containing the file)
         let vma_file = self.find_vma_file(image_path, &host_keys.hostname)?;
 
-        // Create a temp directory for extraction
         let temp_dir = tempfile::Builder::new()
             .prefix("snow-vma-")
             .tempdir()
@@ -327,7 +288,6 @@ impl Provisioner for ProxmoxVmaProvisioner {
         let work_dir = temp_dir.path();
         let extract_dir = work_dir.join("extracted");
 
-        // Step 1: Decompress if needed
         let vma_path = if Self::is_compressed(&vma_file) {
             let decompressed = work_dir.join("image.vma");
             self.decompress(&vma_file, &decompressed)?;
@@ -336,31 +296,32 @@ impl Provisioner for ProxmoxVmaProvisioner {
             vma_file.clone()
         };
 
-        // Step 2: Extract VMA to raw disks
         self.extract_vma(&vma_path, &extract_dir)?;
 
-        // Step 3: Find the root disk and inject keys
         let root_disk = self.find_root_disk(&extract_dir)?;
         guestfish::inject_keys(self.name(), &root_disk, host_keys, config.ssh_key_path())?;
 
-        // Step 4: Repack to VMA
         let output_vma = work_dir.join("output.vma");
         self.create_vma(&extract_dir, &output_vma)?;
 
-        // Step 5: Compress and write to final location
-        // Append .new suffix to avoid overwriting the original
-        let final_path = PathBuf::from(format!("{}.new", image_path.display()));
+        let final_path = if Self::is_compressed(&vma_file) {
+            PathBuf::from(format!("/tmp/vzdump-qemu-{}.vma.zst", host_keys.hostname))
+        } else {
+            PathBuf::from(format!("/tmp/vzdump-qemu-{}.vma", host_keys.hostname))
+        };
 
-        if Self::is_compressed(image_path) {
+        if Self::is_compressed(&vma_file) {
             self.compress(&output_vma, &final_path)?;
         } else {
-            fs::copy(&output_vma, &final_path).map_err(|e| ProvisionerError::InjectionFailed {
-                provisioner: self.name().to_string(),
-                reason: format!(
-                    "Failed to copy output VMA to {}: {}",
-                    final_path.display(),
-                    e
-                ),
+            std::fs::copy(&output_vma, &final_path).map_err(|e| {
+                ProvisionerError::InjectionFailed {
+                    provisioner: self.name().to_string(),
+                    reason: format!(
+                        "Failed to copy output VMA to {}: {}",
+                        final_path.display(),
+                        e
+                    ),
+                }
             })?;
         }
 
@@ -410,152 +371,294 @@ After the VM is running:
         };
 
         let ssh_dest = deploy_target.ssh_destination();
+        let deployer = VmaDeployer::new(self, &ssh_dest, image_path, hostname)?;
+        deployer.deploy()
+    }
+}
+
+/// Handles the multi-step VMA deployment process
+struct VmaDeployer<'a> {
+    provisioner: &'a ProxmoxVmaProvisioner,
+    ssh_dest: String,
+    remote_path: String,
+    hostname: String,
+    vmid: u32,
+    extract_dir: String,
+}
+
+impl<'a> VmaDeployer<'a> {
+    fn new(
+        provisioner: &'a ProxmoxVmaProvisioner,
+        ssh_dest: &str,
+        image_path: &Path,
+        hostname: &str,
+    ) -> Result<Self> {
         let filename = image_path
             .file_name()
             .and_then(|n| n.to_str())
             .unwrap_or("image.vma.zst");
         let remote_path = format!("/tmp/{}", filename);
 
-        // Step 1: Copy image to Proxmox host
-        let rsync_output = Command::new("rsync")
-            .arg("-v")
-            .arg("--progress")
-            .arg(image_path)
-            .arg(format!("{}:{}", ssh_dest, remote_path))
-            .output()
-            .map_err(|e| ProvisionerError::DeploymentFailed {
-                provisioner: self.name().to_string(),
-                reason: format!("Failed to execute rsync: {}", e),
-            })?;
+        // Upload image
+        provisioner.run_tool(
+            "rsync",
+            &[
+                "-v",
+                "--progress",
+                &image_path.to_string_lossy(),
+                &format!("{}:{}", ssh_dest, remote_path),
+            ],
+            "Image upload",
+        )?;
 
-        if !rsync_output.status.success() {
-            return Err(ProvisionerError::DeploymentFailed {
-                provisioner: self.name().to_string(),
-                reason: format!(
-                    "rsync failed: {}",
-                    String::from_utf8_lossy(&rsync_output.stderr)
-                ),
-            }
-            .into());
-        }
+        // Get VMID
+        let vmid = Self::get_next_vmid(provisioner, ssh_dest)?;
+        let extract_dir = format!("/tmp/snow-extract-{}", vmid);
 
-        // Step 2: Get next available VMID
-        let vmid_output = Command::new("ssh")
-            .arg(&ssh_dest)
-            .arg("pvesh")
-            .arg("get")
-            .arg("/cluster/nextid")
-            .output()
-            .map_err(|e| ProvisionerError::DeploymentFailed {
-                provisioner: self.name().to_string(),
-                reason: format!("Failed to get next VMID: {}", e),
-            })?;
+        Ok(Self {
+            provisioner,
+            ssh_dest: ssh_dest.to_string(),
+            remote_path,
+            hostname: hostname.to_string(),
+            vmid,
+            extract_dir,
+        })
+    }
 
-        if !vmid_output.status.success() {
-            return Err(ProvisionerError::DeploymentFailed {
-                provisioner: self.name().to_string(),
-                reason: format!(
-                    "Failed to get next VMID: {}",
-                    String::from_utf8_lossy(&vmid_output.stderr)
-                ),
-            }
-            .into());
-        }
+    fn get_next_vmid(provisioner: &ProxmoxVmaProvisioner, ssh_dest: &str) -> Result<u32> {
+        let output = provisioner.run_remote(ssh_dest, "pvesh get /cluster/nextid", "Get VMID")?;
+        let vmid_str = output.stdout_str().trim().to_string();
 
-        let vmid_str = String::from_utf8_lossy(&vmid_output.stdout)
-            .trim()
-            .to_string();
-
-        vmid_str
-            .parse::<u32>()
-            .map_err(|_| ProvisionerError::DeploymentFailed {
-                provisioner: self.name().to_string(),
+        vmid_str.parse::<u32>().map_err(|_| {
+            ProvisionerError::DeploymentFailed {
+                provisioner: "proxmox-vma".to_string(),
                 reason: format!("Invalid VMID returned by Proxmox: '{}'", vmid_str),
-            })?;
-
-        let vmid = vmid_str;
-
-        // Step 3: Restore VM from backup
-        let restore_output = Command::new("ssh")
-            .arg(&ssh_dest)
-            .arg("qmrestore")
-            .arg(&remote_path)
-            .arg(&vmid)
-            .output()
-            .map_err(|e| ProvisionerError::DeploymentFailed {
-                provisioner: self.name().to_string(),
-                reason: format!("Failed to execute qmrestore: {}", e),
-            })?;
-
-        if !restore_output.status.success() {
-            return Err(ProvisionerError::DeploymentFailed {
-                provisioner: self.name().to_string(),
-                reason: format!(
-                    "qmrestore failed: {}",
-                    String::from_utf8_lossy(&restore_output.stderr)
-                ),
             }
-            .into());
-        }
+            .into()
+        })
+    }
 
-        // Step 4: Start VM
-        let start_output = Command::new("ssh")
-            .arg(&ssh_dest)
-            .arg("qm")
-            .arg("start")
-            .arg(&vmid)
-            .output()
-            .map_err(|e| ProvisionerError::DeploymentFailed {
-                provisioner: self.name().to_string(),
-                reason: format!("Failed to execute qm start: {}", e),
-            })?;
-
-        if !start_output.status.success() {
-            return Err(ProvisionerError::DeploymentFailed {
-                provisioner: self.name().to_string(),
-                reason: format!(
-                    "qm start failed: {}",
-                    String::from_utf8_lossy(&start_output.stderr)
-                ),
-            }
-            .into());
-        }
+    fn deploy(self) -> Result<ProvisioningResult> {
+        self.extract_vma()?;
+        let vm_config = self.read_vm_config()?;
+        let disk_path = self.find_disk()?;
+        self.create_vm(&vm_config)?;
+        let disk_volume = self.import_disk(&disk_path)?;
+        self.configure_vm(&disk_volume)?;
+        self.cleanup();
+        self.start_vm()?;
 
         Ok(ProvisioningResult::Success {
             message: format!(
-                "VM {} restored and started on {} (VMID: {})",
-                hostname, deploy_target.hostname, vmid
+                "VM {} created and started on {} (VMID: {})",
+                self.hostname,
+                self.ssh_dest
+                    .split('@')
+                    .next_back()
+                    .unwrap_or(&self.ssh_dest),
+                self.vmid
             ),
         })
     }
+
+    fn extract_vma(&self) -> Result<()> {
+        let cmd = format!(
+            "rm -rf {} && zstd -d -c {} | vma extract - {}",
+            shell_escape(&self.extract_dir),
+            shell_escape(&self.remote_path),
+            shell_escape(&self.extract_dir)
+        );
+        self.provisioner
+            .run_remote(&self.ssh_dest, &cmd, "VMA extraction")
+            .map(|_| ())
+    }
+
+    fn read_vm_config(&self) -> Result<VmConfig> {
+        let cmd = format!("cat {}/qemu-server.conf", shell_escape(&self.extract_dir));
+        let output = self
+            .provisioner
+            .run_remote(&self.ssh_dest, &cmd, "Read VM config")?;
+        Ok(VmConfig::parse(&output.stdout_str()))
+    }
+
+    fn find_disk(&self) -> Result<String> {
+        // Try to find the boot disk from qemu-server.conf first
+        // Look for virtio0, scsi0, sata0, ide0 in that order (common boot disk names)
+        for disk_type in ["virtio0", "scsi0", "sata0", "ide0"] {
+            let disk_file = format!("{}/disk-drive-{}.raw", self.extract_dir, disk_type);
+            let check_cmd = format!("test -f {} && echo exists", shell_escape(&disk_file));
+            if let Ok(output) =
+                self.provisioner
+                    .run_remote(&self.ssh_dest, &check_cmd, "Check disk")
+            {
+                if output.stdout_str().contains("exists") {
+                    return Ok(disk_file);
+                }
+            }
+        }
+
+        // Fallback: find any .raw file
+        let cmd = format!(
+            "ls {}/*.raw 2>/dev/null | head -1",
+            shell_escape(&self.extract_dir)
+        );
+        let output = self
+            .provisioner
+            .run_remote(&self.ssh_dest, &cmd, "Find disk")?;
+        let disk_path = output.stdout_str().trim().to_string();
+
+        if disk_path.is_empty() {
+            return Err(ProvisionerError::DeploymentFailed {
+                provisioner: self.provisioner.name().to_string(),
+                reason: format!("No .raw disk file found in {}", self.extract_dir),
+            }
+            .into());
+        }
+
+        Ok(disk_path)
+    }
+
+    fn create_vm(&self, config: &VmConfig) -> Result<()> {
+        let cmd = format!(
+            "qm create {} --name {} --memory {} --cores {} \
+             --net0 {} --scsihw {} --ostype {} \
+             --bios seabios --serial0 socket --agent {}",
+            self.vmid,
+            shell_escape(&self.hostname),
+            config.memory,
+            config.cores,
+            shell_escape(&config.net0),
+            shell_escape(&config.scsihw),
+            shell_escape(&config.ostype),
+            config.agent,
+        );
+        self.provisioner
+            .run_remote(&self.ssh_dest, &cmd, "Create VM")
+            .map(|_| ())
+    }
+
+    fn import_disk(&self, disk_path: &str) -> Result<String> {
+        let cmd = format!(
+            "qm importdisk {} {} local-lvm --format raw 2>&1",
+            self.vmid,
+            shell_escape(disk_path)
+        );
+        let output = self
+            .provisioner
+            .run_remote(&self.ssh_dest, &cmd, "Import disk")?;
+
+        let disk_volume = parse_imported_disk(&output.stdout_str()).unwrap_or_else(|| {
+            tracing::warn!(
+                "Failed to parse disk volume from importdisk output, using fallback. Output: {}",
+                output.stdout_str()
+            );
+            format!("local-lvm:vm-{}-disk-0", self.vmid)
+        });
+
+        Ok(disk_volume)
+    }
+
+    fn configure_vm(&self, disk_volume: &str) -> Result<()> {
+        let cmd = format!(
+            "qm set {} --virtio0 {} --bootdisk virtio0 --boot order=virtio0",
+            self.vmid,
+            shell_escape(disk_volume)
+        );
+        self.provisioner
+            .run_remote(&self.ssh_dest, &cmd, "Configure VM")
+            .map(|_| ())
+    }
+
+    fn cleanup(&self) {
+        let cmd = format!(
+            "rm -rf {} {}",
+            shell_escape(&self.extract_dir),
+            shell_escape(&self.remote_path)
+        );
+        if let Err(e) = self.provisioner.run_remote(&self.ssh_dest, &cmd, "Cleanup") {
+            tracing::warn!(
+                "Failed to cleanup temporary files on {}: {}",
+                self.ssh_dest,
+                e
+            );
+        }
+    }
+
+    fn start_vm(&self) -> Result<()> {
+        let cmd = format!("qm start {}", self.vmid);
+        self.provisioner
+            .run_remote(&self.ssh_dest, &cmd, "Start VM")
+            .map(|_| ())
+    }
 }
 
-fn which(cmd: &str) -> bool {
-    super::guestfish::which(cmd).is_some()
+/// VM configuration parsed from qemu-server.conf
+struct VmConfig {
+    memory: String,
+    cores: String,
+    scsihw: String,
+    ostype: String,
+    net0: String,
+    agent: String,
+}
+
+impl VmConfig {
+    fn parse(conf: &str) -> Self {
+        Self {
+            memory: parse_conf_value(conf, "memory").unwrap_or_else(|| "4096".to_string()),
+            cores: parse_conf_value(conf, "cores").unwrap_or_else(|| "2".to_string()),
+            scsihw: parse_conf_value(conf, "scsihw")
+                .unwrap_or_else(|| "virtio-scsi-single".to_string()),
+            ostype: parse_conf_value(conf, "ostype").unwrap_or_else(|| "l26".to_string()),
+            net0: parse_conf_value(conf, "net0")
+                .unwrap_or_else(|| "virtio,bridge=vmbr0,firewall=1".to_string()),
+            agent: parse_conf_value(conf, "agent").unwrap_or_else(|| "1".to_string()),
+        }
+    }
+}
+
+/// Parse a value from Proxmox qemu-server.conf format (key: value)
+fn parse_conf_value(conf: &str, key: &str) -> Option<String> {
+    for line in conf.lines() {
+        if let Some(rest) = line.strip_prefix(key) {
+            if let Some(value) = rest.strip_prefix(':') {
+                return Some(value.trim().to_string());
+            }
+        }
+    }
+    None
+}
+
+/// Parse the imported disk volume from qm importdisk output
+fn parse_imported_disk(output: &str) -> Option<String> {
+    for line in output.lines() {
+        if line.contains("Successfully imported") {
+            if let Some(start) = line.find("unused0:") {
+                let rest = &line[start + 8..];
+                if let Some(end) = rest.find('\'') {
+                    return Some(rest[..end].to_string());
+                }
+                return Some(rest.trim_end_matches(&['\'', '"'][..]).to_string());
+            }
+        }
+    }
+    None
+}
+
+/// Escape a string for safe shell use
+fn shell_escape(s: &str) -> String {
+    format!("'{}'", s.replace('\'', "'\\''"))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::backends::provisioner::MockCommandExecutor;
 
     #[test]
-    fn test_proxmox_vma_provisioner_name() {
+    fn test_provisioner_name() {
         let provisioner = ProxmoxVmaProvisioner::new();
         assert_eq!(provisioner.name(), "proxmox-vma");
-    }
-
-    #[test]
-    fn test_proxmox_vma_deployment_instructions() {
-        let provisioner = ProxmoxVmaProvisioner::new();
-        let instructions =
-            provisioner.deployment_instructions(Path::new("/tmp/carbon.vma.zst"), "carbon");
-
-        assert!(instructions.contains("/tmp/carbon.vma.zst"));
-        assert!(instructions.contains("rsync"));
-        assert!(instructions.contains("qmrestore"));
-        assert!(instructions.contains("qm start"));
-        assert!(instructions.contains("carbon"));
-        assert!(instructions.contains("snow push"));
     }
 
     #[test]
@@ -572,24 +675,65 @@ mod tests {
     }
 
     #[test]
-    fn test_check_dependencies_returns_error_when_tools_missing() {
-        let error = ProvisionerError::MissingDependency {
-            provisioner: "proxmox-vma".to_string(),
-            tool: "vma".to_string(),
-            install_hint: "Install from Proxmox VE".to_string(),
-        };
-        assert!(error.to_string().contains("vma"));
-        assert!(error.to_string().contains("proxmox-vma"));
+    fn test_parse_conf_value() {
+        let conf = "memory: 4096\ncores: 2\nscsihw: virtio-scsi-single\n";
+        assert_eq!(parse_conf_value(conf, "memory"), Some("4096".to_string()));
+        assert_eq!(parse_conf_value(conf, "cores"), Some("2".to_string()));
+        assert_eq!(
+            parse_conf_value(conf, "scsihw"),
+            Some("virtio-scsi-single".to_string())
+        );
+        assert_eq!(parse_conf_value(conf, "missing"), None);
     }
 
     #[test]
-    fn test_which_finds_common_command() {
-        assert!(which("sh"));
+    fn test_parse_imported_disk() {
+        let output = "  Logical volume \"vm-100-disk-0\" created.\nSuccessfully imported disk as 'unused0:local-lvm:vm-100-disk-0'";
+        assert_eq!(
+            parse_imported_disk(output),
+            Some("local-lvm:vm-100-disk-0".to_string())
+        );
     }
 
     #[test]
-    fn test_which_returns_false_for_missing_command() {
-        assert!(!which("definitely-not-a-real-command-12345"));
+    fn test_parse_imported_disk_no_match() {
+        let output = "Some random output without disk info";
+        assert_eq!(parse_imported_disk(output), None);
+    }
+
+    #[test]
+    fn test_shell_escape_simple() {
+        assert_eq!(shell_escape("hello"), "'hello'");
+    }
+
+    #[test]
+    fn test_shell_escape_with_quotes() {
+        assert_eq!(shell_escape("it's"), "'it'\\''s'");
+    }
+
+    #[test]
+    fn test_shell_escape_with_spaces() {
+        assert_eq!(shell_escape("hello world"), "'hello world'");
+    }
+
+    #[test]
+    fn test_vm_config_parse_defaults() {
+        let config = VmConfig::parse("");
+        assert_eq!(config.memory, "4096");
+        assert_eq!(config.cores, "2");
+        assert_eq!(config.scsihw, "virtio-scsi-single");
+        assert_eq!(config.ostype, "l26");
+    }
+
+    #[test]
+    fn test_vm_config_parse_custom() {
+        let conf = "memory: 8192\ncores: 4\nscsihw: virtio-scsi-pci\nostype: l26\nnet0: virtio,bridge=vmbr1\nagent: 0";
+        let config = VmConfig::parse(conf);
+        assert_eq!(config.memory, "8192");
+        assert_eq!(config.cores, "4");
+        assert_eq!(config.scsihw, "virtio-scsi-pci");
+        assert_eq!(config.net0, "virtio,bridge=vmbr1");
+        assert_eq!(config.agent, "0");
     }
 
     #[test]
@@ -600,17 +744,139 @@ mod tests {
     }
 
     #[test]
-    fn test_validate_target_accepts_proxmox_host_with_user() {
+    fn test_validate_target_rejects_block_device() {
         let provisioner = ProxmoxVmaProvisioner::new();
-        let target = TargetType::parse("admin@proxmox01.local");
-        assert!(provisioner.validate_target(&target).is_ok());
+        let target = TargetType::BlockDevice(PathBuf::from("/dev/sdc"));
+        let result = provisioner.validate_target(&target);
+        assert!(result.is_err());
     }
 
     #[test]
-    fn test_validate_target_rejects_block_device() {
-        let provisioner = ProxmoxVmaProvisioner::new();
-        let target = TargetType::BlockDevice(std::path::PathBuf::from("/dev/sdc"));
-        let result = provisioner.validate_target(&target);
+    fn test_check_dependencies_with_mock() {
+        let mock = MockCommandExecutor::new().with_available_commands(vec![
+            "vma".to_string(),
+            "zstd".to_string(),
+            "guestfish".to_string(),
+        ]);
+
+        let provisioner = ProxmoxVmaProvisioner::with_executor(Arc::new(mock));
+        assert!(provisioner.check_dependencies().is_ok());
+    }
+
+    #[test]
+    fn test_check_dependencies_missing_vma() {
+        let mock = MockCommandExecutor::new()
+            .with_available_commands(vec!["zstd".to_string(), "guestfish".to_string()]);
+
+        let provisioner = ProxmoxVmaProvisioner::with_executor(Arc::new(mock));
+        let result = provisioner.check_dependencies();
         assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("vma"));
+    }
+
+    #[test]
+    fn test_run_tool_success() {
+        let mock = MockCommandExecutor::new()
+            .with_response("zstd", MockCommandExecutor::success_output("compressed"));
+
+        let provisioner = ProxmoxVmaProvisioner::with_executor(Arc::new(mock));
+        let result = provisioner.run_tool("zstd", &["-d", "test.zst"], "Decompress");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_run_tool_failure() {
+        let mock = MockCommandExecutor::new()
+            .with_response("zstd", MockCommandExecutor::failure_output("zstd: error"))
+            .with_default_success(false);
+
+        let provisioner = ProxmoxVmaProvisioner::with_executor(Arc::new(mock));
+        let result = provisioner.run_tool("zstd", &["-d", "test.zst"], "Decompress");
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Decompress failed"));
+    }
+
+    #[test]
+    fn test_deployment_instructions_contains_key_info() {
+        let provisioner = ProxmoxVmaProvisioner::new();
+        let instructions =
+            provisioner.deployment_instructions(Path::new("/tmp/carbon.vma.zst"), "carbon");
+
+        assert!(instructions.contains("/tmp/carbon.vma.zst"));
+        assert!(instructions.contains("rsync"));
+        assert!(instructions.contains("qmrestore"));
+        assert!(instructions.contains("qm start"));
+        assert!(instructions.contains("carbon"));
+        assert!(instructions.contains("snow push"));
+    }
+
+    // Integration tests for deploy_to_target
+
+    #[test]
+    fn test_vma_deployer_get_next_vmid_success() {
+        let mock = MockCommandExecutor::new()
+            .with_response("pvesh", MockCommandExecutor::success_output("100\n"));
+        let provisioner = ProxmoxVmaProvisioner::with_executor(Arc::new(mock));
+
+        let result = VmaDeployer::get_next_vmid(&provisioner, "root@proxmox");
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 100);
+    }
+
+    #[test]
+    fn test_vma_deployer_get_next_vmid_invalid() {
+        let mock = MockCommandExecutor::new().with_response(
+            "pvesh",
+            MockCommandExecutor::success_output("not-a-number\n"),
+        );
+        let provisioner = ProxmoxVmaProvisioner::with_executor(Arc::new(mock));
+
+        let result = VmaDeployer::get_next_vmid(&provisioner, "root@proxmox");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Invalid VMID"));
+    }
+
+    #[test]
+    fn test_run_remote_success() {
+        let mock = MockCommandExecutor::new()
+            .with_response("ssh", MockCommandExecutor::success_output("success"));
+        let provisioner = ProxmoxVmaProvisioner::with_executor(Arc::new(mock));
+
+        let result = provisioner.run_remote("root@proxmox", "echo test", "Test command");
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().stdout_str(), "success");
+    }
+
+    #[test]
+    fn test_run_remote_failure() {
+        let mock = MockCommandExecutor::new()
+            .with_response(
+                "ssh",
+                MockCommandExecutor::failure_output("connection refused"),
+            )
+            .with_default_success(false);
+        let provisioner = ProxmoxVmaProvisioner::with_executor(Arc::new(mock));
+
+        let result = provisioner.run_remote("root@proxmox", "echo test", "Test command");
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Test command failed"));
+    }
+
+    #[test]
+    fn test_vm_config_preserves_network_settings() {
+        let conf = r#"memory: 8192
+cores: 4
+net0: virtio=AA:BB:CC:DD:EE:FF,bridge=vmbr1,tag=100
+agent: 0
+"#;
+        let config = VmConfig::parse(conf);
+        assert_eq!(config.net0, "virtio=AA:BB:CC:DD:EE:FF,bridge=vmbr1,tag=100");
+        assert_eq!(config.agent, "0");
     }
 }
