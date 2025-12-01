@@ -249,7 +249,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_mock_get_bootstrap_config_returns_default() {
+    async fn test_mock_get_bootstrap_config() {
         let backend = MockNixBackend::new();
         let flake = Flake::test_context();
 
@@ -258,8 +258,8 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(config.provisioner_name(), "manual");
+        assert_eq!(config.provisioner_name(), "mock");
         assert_eq!(config.ssh_key_path(), "/etc/ssh");
-        assert!(!config.has_image_attr());
+        assert!(config.has_image_attr());
     }
 }

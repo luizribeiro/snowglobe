@@ -170,8 +170,11 @@ impl NixBackend for MockNixBackend {
         _host: &str,
         _system_type: SystemType,
     ) -> Result<BootstrapConfig> {
-        // Return default bootstrap config for mock
-        Ok(BootstrapConfig::default())
+        Ok(BootstrapConfig {
+            provisioner: Some("mock".to_string()),
+            image_attr: Some("config.system.build.image".to_string()),
+            ssh_key_path: None,
+        })
     }
 
     async fn build_image(
