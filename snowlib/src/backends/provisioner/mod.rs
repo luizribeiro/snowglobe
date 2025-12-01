@@ -97,6 +97,10 @@ pub enum ProvisioningResult {
 pub struct ProvisionerConfig {
     /// Path where SSH keys should be injected in the image (default: /etc/ssh)
     pub ssh_key_path: Option<String>,
+    /// Root filesystem label (e.g., "nixos", "NIXOS_SD")
+    pub root_fs_label: Option<String>,
+    /// Original root filesystem device path from NixOS config (for error messages)
+    pub root_fs_device: Option<String>,
 }
 
 impl ProvisionerConfig {
@@ -109,8 +113,22 @@ impl ProvisionerConfig {
         self
     }
 
+    pub fn with_root_fs_label(mut self, label: impl Into<String>) -> Self {
+        self.root_fs_label = Some(label.into());
+        self
+    }
+
+    pub fn with_root_fs_device(mut self, device: impl Into<String>) -> Self {
+        self.root_fs_device = Some(device.into());
+        self
+    }
+
     pub fn ssh_key_path(&self) -> &str {
         self.ssh_key_path.as_deref().unwrap_or("/etc/ssh")
+    }
+
+    pub fn root_fs_label(&self) -> Option<&str> {
+        self.root_fs_label.as_deref()
     }
 }
 

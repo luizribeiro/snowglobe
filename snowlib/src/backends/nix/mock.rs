@@ -174,6 +174,7 @@ impl NixBackend for MockNixBackend {
             provisioner: Some("mock".to_string()),
             image_attr: Some("config.system.build.image".to_string()),
             ssh_key_path: None,
+            root_fs_device: Some("/dev/disk/by-label/nixos".to_string()),
         })
     }
 

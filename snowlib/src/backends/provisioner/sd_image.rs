@@ -52,7 +52,7 @@ impl Provisioner for SdImageProvisioner {
         config: &ProvisionerConfig,
     ) -> Result<InjectionResult> {
         self.check_dependencies()?;
-        guestfish::inject_keys(self.name(), image_path, host_keys, config.ssh_key_path())?;
+        guestfish::inject_keys(self.name(), image_path, host_keys, config)?;
 
         Ok(InjectionResult::Success {
             image_path: image_path.to_path_buf(),

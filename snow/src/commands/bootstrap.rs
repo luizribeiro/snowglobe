@@ -114,8 +114,14 @@ impl BootstrapArgs {
         let provisioner = get_provisioner(provisioner_name)?;
         provisioner.check_dependencies()?;
 
-        let config =
+        let mut config =
             ProvisionerConfig::new().with_ssh_key_path(bootstrap_config.ssh_key_path().to_string());
+        if let Some(device) = &bootstrap_config.root_fs_device {
+            config = config.with_root_fs_device(device.clone());
+        }
+        if let Some(label) = bootstrap_config.root_fs_label() {
+            config = config.with_root_fs_label(label.to_string());
+        }
 
         let image_path =
             match provisioner.inject_keys(Path::new(store_path.as_str()), &keys, &config)? {

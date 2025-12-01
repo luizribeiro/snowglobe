@@ -246,6 +246,7 @@ impl NixBackend for SystemNixBackend {
           provisioner = config.config.snowglobe.bootstrap.provisioner or null;
           imageAttr = config.config.snowglobe.bootstrap.imageAttr or null;
           sshKeyPath = config.config.snowglobe.bootstrap.sshKeyPath or null;
+          rootFsDevice = config.config.fileSystems."/".device or null;
         }"#;
 
         let stdout = NixCommand::eval(flake, &flake_ref)

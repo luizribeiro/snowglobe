@@ -1,8 +1,11 @@
 //! Shared guestfish utilities for image provisioners
 //!
 //! Provides rootless key injection into disk images using libguestfs.
+//! Uses filesystem labels from NixOS config (`fileSystems."/".device`) to
+//! reliably locate the root partition via guestfish's `findfs-label`.
 
 use super::command::{CommandExecutor, SystemCommandExecutor};
+use super::ProvisionerConfig;
 use crate::bootstrap::HostKeys;
 use crate::error::{ProvisionerError, Result};
 use std::path::Path;
@@ -20,132 +23,51 @@ pub fn inject_keys(
     provisioner_name: &str,
     image_path: &Path,
     host_keys: &HostKeys,
-    ssh_path: &str,
+    config: &ProvisionerConfig,
 ) -> Result<()> {
     let executor: Arc<dyn CommandExecutor> = Arc::new(SystemCommandExecutor::new());
-    inject_keys_with_executor(provisioner_name, image_path, host_keys, ssh_path, &executor)
+    inject_keys_with_executor(provisioner_name, image_path, host_keys, config, &executor)
 }
 
 /// Inject SSH host keys into a disk image using a custom executor
-#[cfg(any(debug_assertions, test))]
+///
+/// Requires a root filesystem label (from `fileSystems."/".device` in NixOS config).
+/// All standard NixOS images use labels like "nixos" or "NIXOS_SD".
 pub fn inject_keys_with_executor(
     provisioner_name: &str,
     image_path: &Path,
     host_keys: &HostKeys,
-    ssh_path: &str,
+    config: &ProvisionerConfig,
     executor: &Arc<dyn CommandExecutor>,
 ) -> Result<()> {
-    if inject_keys_inspect(provisioner_name, image_path, host_keys, ssh_path, executor).is_ok() {
-        return Ok(());
-    }
+    let label = config.root_fs_label().ok_or_else(|| {
+        let reason = match &config.root_fs_device {
+            Some(device) => format!(
+                "Root filesystem device '{}' is not a label-based path. \
+                 Change fileSystems.\"/\".device to use /dev/disk/by-label/<label> format.",
+                device
+            ),
+            None => "No root filesystem device configured. \
+                     Ensure fileSystems.\"/\".device is set in your NixOS configuration."
+                .to_string(),
+        };
+        ProvisionerError::InjectionFailed {
+            provisioner: provisioner_name.to_string(),
+            reason,
+        }
+    })?;
 
-    inject_keys_manual(provisioner_name, image_path, host_keys, ssh_path, executor)
-}
-
-#[cfg(not(any(debug_assertions, test)))]
-pub fn inject_keys_with_executor(
-    provisioner_name: &str,
-    image_path: &Path,
-    host_keys: &HostKeys,
-    ssh_path: &str,
-    executor: &Arc<dyn CommandExecutor>,
-) -> Result<()> {
-    if inject_keys_inspect(provisioner_name, image_path, host_keys, ssh_path, executor).is_ok() {
-        return Ok(());
-    }
-
-    inject_keys_manual(provisioner_name, image_path, host_keys, ssh_path, executor)
-}
-
-/// Try to inject keys using guestfish inspect mode (-i)
-fn inject_keys_inspect(
-    provisioner_name: &str,
-    image_path: &Path,
-    host_keys: &HostKeys,
-    ssh_path: &str,
-    executor: &Arc<dyn CommandExecutor>,
-) -> Result<()> {
-    let private_key_dest = format!("{}/ssh_host_ed25519_key", ssh_path);
-    let public_key_dest = format!("{}/ssh_host_ed25519_key.pub", ssh_path);
-
-    let private_key_filename = get_filename(provisioner_name, &host_keys.ssh_private_key)?;
-    let public_key_filename = get_filename(provisioner_name, &host_keys.ssh_public_key)?;
-
-    let mut args = vec![
-        "--rw".to_string(),
-        "-a".to_string(),
-        image_path.to_string_lossy().to_string(),
-        "-i".to_string(),
-        "copy-in".to_string(),
-        host_keys.ssh_private_key.to_string_lossy().to_string(),
-        ssh_path.to_string(),
-        ":".to_string(),
-        "copy-in".to_string(),
-        host_keys.ssh_public_key.to_string_lossy().to_string(),
-        ssh_path.to_string(),
-    ];
-
-    if private_key_filename != "ssh_host_ed25519_key" {
-        args.extend([
-            ":".to_string(),
-            "mv".to_string(),
-            format!("{}/{}", ssh_path, private_key_filename),
-            private_key_dest.clone(),
-        ]);
-    }
-    if public_key_filename != "ssh_host_ed25519_key.pub" {
-        args.extend([
-            ":".to_string(),
-            "mv".to_string(),
-            format!("{}/{}", ssh_path, public_key_filename),
-            public_key_dest.clone(),
-        ]);
-    }
-
-    args.extend([
-        ":".to_string(),
-        "chmod".to_string(),
-        "0600".to_string(),
-        private_key_dest,
-        ":".to_string(),
-        "chmod".to_string(),
-        "0644".to_string(),
-        public_key_dest,
-    ]);
-
-    let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-    let output = executor.execute("guestfish", &args_refs)?;
-
-    if !output.success {
+    if label.is_empty() {
         return Err(ProvisionerError::InjectionFailed {
             provisioner: provisioner_name.to_string(),
-            reason: output.stderr_str(),
+            reason: "Root filesystem label is empty".to_string(),
         }
         .into());
     }
 
-    Ok(())
-}
+    let root_device = find_device_by_label(provisioner_name, image_path, label, executor)?;
 
-/// Inject keys by manually mounting the root filesystem
-fn inject_keys_manual(
-    provisioner_name: &str,
-    image_path: &Path,
-    host_keys: &HostKeys,
-    ssh_path: &str,
-    executor: &Arc<dyn CommandExecutor>,
-) -> Result<()> {
-    let filesystems = discover_filesystems(provisioner_name, image_path, executor)?;
-
-    let root_device =
-        find_root_filesystem(&filesystems).ok_or_else(|| ProvisionerError::InjectionFailed {
-            provisioner: provisioner_name.to_string(),
-            reason: format!(
-                "No suitable root filesystem found. Available: {}",
-                filesystems.join(", ")
-            ),
-        })?;
-
+    let ssh_path = config.ssh_key_path();
     let private_key_dest = format!("{}/ssh_host_ed25519_key", ssh_path);
     let public_key_dest = format!("{}/ssh_host_ed25519_key.pub", ssh_path);
 
@@ -205,61 +127,43 @@ chmod 0644 {public_dest}
     Ok(())
 }
 
-/// Discover filesystems in a disk image
-fn discover_filesystems(
+/// Find a filesystem device by its label using guestfish
+fn find_device_by_label(
     provisioner_name: &str,
     image_path: &Path,
+    label: &str,
     executor: &Arc<dyn CommandExecutor>,
-) -> Result<Vec<String>> {
-    let output = executor.execute(
+) -> Result<String> {
+    let script = format!("run\nfindfs-label {}\n", label);
+
+    let output = executor.execute_with_stdin(
         "guestfish",
-        &[
-            "--ro",
-            "-a",
-            &image_path.to_string_lossy(),
-            "run",
-            ":",
-            "list-filesystems",
-        ],
+        &["--ro", "-a", &image_path.to_string_lossy()],
+        script.as_bytes(),
     )?;
 
     if !output.success {
         return Err(ProvisionerError::InjectionFailed {
             provisioner: provisioner_name.to_string(),
-            reason: format!("Failed to list filesystems: {}", output.stderr_str()),
+            reason: format!(
+                "Failed to find filesystem with label '{}': {}",
+                label,
+                output.stderr_str()
+            ),
         }
         .into());
     }
 
-    let filesystems: Vec<String> = output
-        .stdout_str()
-        .lines()
-        .filter_map(|line| {
-            let parts: Vec<&str> = line.split(':').collect();
-            if parts.len() >= 2 {
-                Some(format!("{}:{}", parts[0].trim(), parts[1].trim()))
-            } else {
-                None
-            }
-        })
-        .collect();
+    let device = output.stdout_str().trim().to_string();
+    if device.is_empty() {
+        return Err(ProvisionerError::InjectionFailed {
+            provisioner: provisioner_name.to_string(),
+            reason: format!("No filesystem found with label '{}'", label),
+        }
+        .into());
+    }
 
-    Ok(filesystems)
-}
-
-/// Find the most likely root filesystem from a list
-fn find_root_filesystem(filesystems: &[String]) -> Option<String> {
-    let linux_fs: Vec<&String> = filesystems
-        .iter()
-        .filter(|fs| {
-            let fs_type = fs.split(':').nth(1).unwrap_or("").trim();
-            matches!(fs_type, "ext4" | "ext3" | "ext2" | "btrfs" | "xfs")
-        })
-        .collect();
-
-    linux_fs
-        .last()
-        .map(|fs| fs.split(':').next().unwrap_or("").trim().to_string())
+    Ok(device)
 }
 
 fn get_filename<'a>(provisioner_name: &str, path: &'a Path) -> Result<&'a str> {
@@ -283,6 +187,16 @@ mod tests {
     use super::*;
     use crate::backends::provisioner::MockCommandExecutor;
 
+    fn make_test_host_keys() -> HostKeys {
+        HostKeys {
+            hostname: "testhost".to_string(),
+            ssh_private_key: std::path::PathBuf::from("/tmp/ssh_host_ed25519_key"),
+            ssh_public_key: std::path::PathBuf::from("/tmp/ssh_host_ed25519_key.pub"),
+            age_public_key: "age1test".to_string(),
+            temp_dir_root: std::path::PathBuf::from("/tmp/snow-test"),
+        }
+    }
+
     #[test]
     fn test_get_filename_valid_path() {
         let path = Path::new("/tmp/ssh_host_ed25519_key");
@@ -300,116 +214,135 @@ mod tests {
     }
 
     #[test]
-    fn test_find_root_filesystem_prefers_ext4() {
-        let filesystems = vec!["/dev/sda1: vfat".to_string(), "/dev/sda2: ext4".to_string()];
-        let root = find_root_filesystem(&filesystems);
-        assert_eq!(root, Some("/dev/sda2".to_string()));
-    }
-
-    #[test]
-    fn test_find_root_filesystem_prefers_last_linux_fs() {
-        let filesystems = vec!["/dev/sda1: ext4".to_string(), "/dev/sda2: ext4".to_string()];
-        let root = find_root_filesystem(&filesystems);
-        assert_eq!(root, Some("/dev/sda2".to_string()));
-    }
-
-    #[test]
-    fn test_find_root_filesystem_ignores_non_linux() {
-        let filesystems = vec!["/dev/sda1: vfat".to_string(), "/dev/sda2: swap".to_string()];
-        let root = find_root_filesystem(&filesystems);
-        assert_eq!(root, None);
-    }
-
-    #[test]
-    fn test_find_root_filesystem_supports_btrfs() {
-        let filesystems = vec!["/dev/sda1: btrfs".to_string()];
-        let root = find_root_filesystem(&filesystems);
-        assert_eq!(root, Some("/dev/sda1".to_string()));
-    }
-
-    #[test]
-    fn test_find_root_filesystem_supports_xfs() {
-        let filesystems = vec!["/dev/sda1: xfs".to_string()];
-        let root = find_root_filesystem(&filesystems);
-        assert_eq!(root, Some("/dev/sda1".to_string()));
-    }
-
-    fn make_test_host_keys() -> HostKeys {
-        HostKeys {
-            hostname: "testhost".to_string(),
-            ssh_private_key: std::path::PathBuf::from("/tmp/ssh_host_ed25519_key"),
-            ssh_public_key: std::path::PathBuf::from("/tmp/ssh_host_ed25519_key.pub"),
-            age_public_key: "age1test".to_string(),
-            temp_dir_root: std::path::PathBuf::from("/tmp/snow-test"),
-        }
-    }
-
-    #[test]
-    fn test_discover_filesystems_parses_output() {
+    fn test_inject_keys_with_label() {
         let mock = MockCommandExecutor::new().with_response(
             "guestfish",
-            MockCommandExecutor::success_output("/dev/sda1: vfat\n/dev/sda2: ext4\n"),
+            MockCommandExecutor::success_output("/dev/sda2\n"),
         );
         let executor: Arc<dyn CommandExecutor> = Arc::new(mock);
 
-        let result = discover_filesystems("test", Path::new("/tmp/image.raw"), &executor);
-        assert!(result.is_ok());
-        let fs = result.unwrap();
-        assert_eq!(fs.len(), 2);
-        assert_eq!(fs[0], "/dev/sda1:vfat");
-        assert_eq!(fs[1], "/dev/sda2:ext4");
-    }
-
-    #[test]
-    fn test_discover_filesystems_handles_failure() {
-        let mock = MockCommandExecutor::new()
-            .with_response("guestfish", MockCommandExecutor::failure_output("error"))
-            .with_default_success(false);
-        let executor: Arc<dyn CommandExecutor> = Arc::new(mock);
-
-        let result = discover_filesystems("test", Path::new("/tmp/image.raw"), &executor);
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_inject_keys_inspect_builds_correct_args() {
-        let mock = MockCommandExecutor::new()
-            .with_response("guestfish", MockCommandExecutor::success_output(""));
-        let executor: Arc<dyn CommandExecutor> = Arc::new(mock);
-
         let host_keys = make_test_host_keys();
+        let config = ProvisionerConfig::new().with_root_fs_label("nixos");
 
-        let result = inject_keys_inspect(
-            "test",
-            Path::new("/tmp/image.raw"),
-            &host_keys,
-            "/etc/ssh",
-            &executor,
-        );
-
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn test_inject_keys_manual_fallback() {
-        // This test verifies the fallback from inspect mode to manual mode
-        // When inspect mode fails (no -i in args), manual mode should be attempted
-        // With default_success=true, the manual mode will succeed
-        let mock = MockCommandExecutor::new();
-        let executor: Arc<dyn CommandExecutor> = Arc::new(mock);
-
-        let host_keys = make_test_host_keys();
-
-        // The default mock returns success for all commands
-        // This tests that the function can complete without errors
         let result = inject_keys_with_executor(
             "test",
             Path::new("/tmp/image.raw"),
             &host_keys,
-            "/etc/ssh",
+            &config,
             &executor,
         );
 
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_inject_keys_without_device_fails() {
+        let mock = MockCommandExecutor::new();
+        let executor: Arc<dyn CommandExecutor> = Arc::new(mock);
+
+        let host_keys = make_test_host_keys();
+        let config = ProvisionerConfig::new(); // No device at all
+
+        let result = inject_keys_with_executor(
+            "test",
+            Path::new("/tmp/image.raw"),
+            &host_keys,
+            &config,
+            &executor,
+        );
+
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("No root filesystem device configured"));
+    }
+
+    #[test]
+    fn test_inject_keys_with_non_label_device_fails() {
+        let mock = MockCommandExecutor::new();
+        let executor: Arc<dyn CommandExecutor> = Arc::new(mock);
+
+        let host_keys = make_test_host_keys();
+        let config = ProvisionerConfig::new().with_root_fs_device("/dev/sda2"); // Non-label path
+
+        let result = inject_keys_with_executor(
+            "test",
+            Path::new("/tmp/image.raw"),
+            &host_keys,
+            &config,
+            &executor,
+        );
+
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("/dev/sda2"));
+        assert!(err.contains("not a label-based path"));
+    }
+
+    #[test]
+    fn test_inject_keys_with_empty_label_fails() {
+        let mock = MockCommandExecutor::new();
+        let executor: Arc<dyn CommandExecutor> = Arc::new(mock);
+
+        let host_keys = make_test_host_keys();
+        let config = ProvisionerConfig::new().with_root_fs_label("");
+
+        let result = inject_keys_with_executor(
+            "test",
+            Path::new("/tmp/image.raw"),
+            &host_keys,
+            &config,
+            &executor,
+        );
+
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("label is empty"));
+    }
+
+    #[test]
+    fn test_find_device_by_label_success() {
+        let mock = MockCommandExecutor::new().with_response(
+            "guestfish",
+            MockCommandExecutor::success_output("/dev/sda2\n"),
+        );
+        let executor: Arc<dyn CommandExecutor> = Arc::new(mock);
+
+        let result = find_device_by_label("test", Path::new("/tmp/image.raw"), "nixos", &executor);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "/dev/sda2");
+    }
+
+    #[test]
+    fn test_find_device_by_label_not_found() {
+        let mock = MockCommandExecutor::new()
+            .with_response("guestfish", MockCommandExecutor::success_output(""));
+        let executor: Arc<dyn CommandExecutor> = Arc::new(mock);
+
+        let result = find_device_by_label(
+            "test",
+            Path::new("/tmp/image.raw"),
+            "nonexistent",
+            &executor,
+        );
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("No filesystem found with label"));
+    }
+
+    #[test]
+    fn test_find_device_by_label_command_failure() {
+        let mock = MockCommandExecutor::new()
+            .with_response(
+                "guestfish",
+                MockCommandExecutor::failure_output("findfs-label: no such label"),
+            )
+            .with_default_success(false);
+        let executor: Arc<dyn CommandExecutor> = Arc::new(mock);
+
+        let result =
+            find_device_by_label("test", Path::new("/tmp/image.raw"), "badlabel", &executor);
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("Failed to find filesystem with label"));
     }
 }

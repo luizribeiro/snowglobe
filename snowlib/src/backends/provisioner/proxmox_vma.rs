@@ -299,7 +299,7 @@ impl Provisioner for ProxmoxVmaProvisioner {
         self.extract_vma(&vma_path, &extract_dir)?;
 
         let root_disk = self.find_root_disk(&extract_dir)?;
-        guestfish::inject_keys(self.name(), &root_disk, host_keys, config.ssh_key_path())?;
+        guestfish::inject_keys(self.name(), &root_disk, host_keys, config)?;
 
         let output_vma = work_dir.join("output.vma");
         self.create_vma(&extract_dir, &output_vma)?;

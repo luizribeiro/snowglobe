@@ -22,6 +22,8 @@ pub struct BootstrapConfig {
     pub image_attr: Option<String>,
     /// Path where SSH keys should be injected (default: /etc/ssh)
     pub ssh_key_path: Option<String>,
+    /// Root filesystem device path (e.g., "/dev/disk/by-label/nixos")
+    pub root_fs_device: Option<String>,
 }
 
 impl BootstrapConfig {
@@ -39,6 +41,16 @@ impl BootstrapConfig {
     pub fn has_image_attr(&self) -> bool {
         self.image_attr.is_some()
     }
+
+    /// Extract the root filesystem label from the device path
+    ///
+    /// Parses paths like `/dev/disk/by-label/nixos` to extract `nixos`.
+    /// Returns None if the device path doesn't use a label.
+    pub fn root_fs_label(&self) -> Option<&str> {
+        self.root_fs_device
+            .as_deref()
+            .and_then(|device| device.strip_prefix("/dev/disk/by-label/"))
+    }
 }
 
 /// JSON structure for parsing bootstrap config from Nix evaluation
@@ -49,6 +61,8 @@ pub(crate) struct BootstrapConfigJson {
     pub image_attr: Option<String>,
     #[serde(rename = "sshKeyPath")]
     pub ssh_key_path: Option<String>,
+    #[serde(rename = "rootFsDevice")]
+    pub root_fs_device: Option<String>,
 }
 
 impl From<BootstrapConfigJson> for BootstrapConfig {
@@ -57,6 +71,7 @@ impl From<BootstrapConfigJson> for BootstrapConfig {
             provisioner: json.provisioner.filter(|s| !s.is_empty()),
             image_attr: json.image_attr.filter(|s| !s.is_empty()),
             ssh_key_path: json.ssh_key_path.filter(|s| !s.is_empty()),
+            root_fs_device: json.root_fs_device.filter(|s| !s.is_empty()),
         }
     }
 }
@@ -79,10 +94,12 @@ mod tests {
             provisioner: Some("sd-image".to_string()),
             image_attr: Some("config.system.build.sdImage".to_string()),
             ssh_key_path: Some("/custom/ssh".to_string()),
+            root_fs_device: Some("/dev/disk/by-label/NIXOS_SD".to_string()),
         };
         assert_eq!(config.provisioner_name(), "sd-image");
         assert_eq!(config.ssh_key_path(), "/custom/ssh");
         assert!(config.has_image_attr());
+        assert_eq!(config.root_fs_label(), Some("NIXOS_SD"));
     }
 
     #[test]
@@ -149,5 +166,41 @@ mod tests {
         assert_eq!(config.provisioner_name(), "manual");
         assert_eq!(config.ssh_key_path(), "/etc/ssh");
         assert!(!config.has_image_attr());
+    }
+
+    #[test]
+    fn test_root_fs_label_extracts_label_from_device_path() {
+        let config = BootstrapConfig {
+            root_fs_device: Some("/dev/disk/by-label/nixos".to_string()),
+            ..Default::default()
+        };
+        assert_eq!(config.root_fs_label(), Some("nixos"));
+
+        let config = BootstrapConfig {
+            root_fs_device: Some("/dev/disk/by-label/NIXOS_SD".to_string()),
+            ..Default::default()
+        };
+        assert_eq!(config.root_fs_label(), Some("NIXOS_SD"));
+    }
+
+    #[test]
+    fn test_root_fs_label_returns_none_for_non_label_paths() {
+        // UUID-based path
+        let config = BootstrapConfig {
+            root_fs_device: Some("/dev/disk/by-uuid/abc-123".to_string()),
+            ..Default::default()
+        };
+        assert_eq!(config.root_fs_label(), None);
+
+        // Direct device path
+        let config = BootstrapConfig {
+            root_fs_device: Some("/dev/sda2".to_string()),
+            ..Default::default()
+        };
+        assert_eq!(config.root_fs_label(), None);
+
+        // None
+        let config = BootstrapConfig::default();
+        assert_eq!(config.root_fs_label(), None);
     }
 }
