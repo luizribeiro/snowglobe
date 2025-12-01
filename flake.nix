@@ -68,6 +68,14 @@
               rust-analyzer
               pre-commit
               inputs.nixt.packages.${system}.default
+
+              # Bootstrap dependencies
+              openssh                    # ssh-keygen
+              ssh-to-age                 # age key derivation
+              libguestfs-with-appliance  # guestfish for image provisioning
+              zstd                       # VMA compression
+            ] ++ lib.optionals stdenv.isLinux [
+              (callPackage ./pkgs/vma { })  # Proxmox VMA tool (Linux only)
             ];
 
             shellHook = ''
