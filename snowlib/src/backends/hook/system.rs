@@ -101,32 +101,7 @@ impl HookBackend for SystemHookBackend {
             .unwrap_or("root");
 
         let destination = format!("{}@{}", user, target.hostname);
-
-        // Build remote command with environment variables using 'env' utility
-        // This is safer than prepending VAR=value because it doesn't rely on shell parsing
-        let remote_command = if env.is_empty() {
-            format!(
-                "sh -c {}",
-                shell_escape::escape(hook.command.as_str().into())
-            )
-        } else {
-            let env_args: Vec<String> = env
-                .iter()
-                .map(|(k, v)| {
-                    format!(
-                        "{}={}",
-                        shell_escape::escape(k.into()),
-                        shell_escape::escape(v.into())
-                    )
-                })
-                .collect();
-
-            format!(
-                "env {} sh -c {}",
-                env_args.join(" "),
-                shell_escape::escape(hook.command.as_str().into())
-            )
-        };
+        let remote_command = build_remote_command(&hook.command, env);
 
         let ssh_command = format!(
             "ssh -o ConnectTimeout=10 {} {}",
@@ -136,6 +111,33 @@ impl HookBackend for SystemHookBackend {
 
         self.execute_command(&ssh_command, &HashMap::new(), hook.timeout)
             .await
+    }
+}
+
+/// Build a command string with escaped environment variables for remote execution.
+///
+/// Uses the `env` utility to set variables, which is safer than shell variable assignment.
+/// All values are escaped to prevent command injection.
+fn build_remote_command(command: &str, env: &HashMap<String, String>) -> String {
+    if env.is_empty() {
+        format!("sh -c {}", shell_escape::escape(command.into()))
+    } else {
+        let env_args: Vec<String> = env
+            .iter()
+            .map(|(k, v)| {
+                format!(
+                    "{}={}",
+                    shell_escape::escape(k.into()),
+                    shell_escape::escape(v.into())
+                )
+            })
+            .collect();
+
+        format!(
+            "env {} sh -c {}",
+            env_args.join(" "),
+            shell_escape::escape(command.into())
+        )
     }
 }
 
@@ -314,151 +316,82 @@ mod tests {
         assert!(result.stdout.contains("$(echo injected)"));
     }
 
-    /// Prevents command injection via semicolons in remote SSH execution.
+    /// Prevents command injection via backticks in environment variables.
     #[tokio::test]
-    async fn test_execute_remote_escapes_env_vars_with_semicolon() {
+    async fn test_escaping_prevents_backtick_injection() {
         let backend = SystemHookBackend::new(None, OutputMode::Capture);
-        let hook = HookConfig::test_fixture(
-            "test-hook",
-            HookStage::PreActivate,
-            HookLocation::Remote,
-            "echo $MALICIOUS",
-        );
-        let mut env = HashMap::new();
-        env.insert(
-            "MALICIOUS".to_string(),
-            "value; rm -rf /tmp/test".to_string(),
-        );
-
-        let target = DeployTarget {
-            hostname: "localhost".to_string(),
-            user: None,
-            port: None,
-        };
-
-        let result = backend.execute_remote(&target, &hook, &env).await.unwrap();
-
-        assert!(
-            result.success
-                || result.stderr.contains("Connection refused")
-                || result.stderr.contains("Host key")
-        );
-
-        if result.success {
-            assert!(result.stdout.contains("value; rm -rf /tmp/test"));
-            assert!(!result
-                .stdout
-                .lines()
-                .any(|line| line.trim().is_empty() && !result.stderr.contains("test")));
-        }
-    }
-
-    /// Prevents command injection via backticks in remote SSH execution.
-    #[tokio::test]
-    async fn test_execute_remote_escapes_env_vars_with_backticks() {
-        let backend = SystemHookBackend::new(None, OutputMode::Capture);
-        let hook = HookConfig::test_fixture(
-            "test-hook",
-            HookStage::PreActivate,
-            HookLocation::Remote,
-            "echo $BACKTICK_TEST",
-        );
         let mut env = HashMap::new();
         env.insert("BACKTICK_TEST".to_string(), "`whoami`".to_string());
 
-        let target = DeployTarget {
-            hostname: "localhost".to_string(),
-            user: None,
-            port: None,
-        };
+        // Build the command as it would be for remote execution, then run locally
+        let command = build_remote_command("echo $BACKTICK_TEST", &env);
+        let result = backend
+            .execute_command(&command, &HashMap::new(), 10)
+            .await
+            .unwrap();
 
-        let result = backend.execute_remote(&target, &hook, &env).await.unwrap();
-
-        if result.success {
-            assert!(result.stdout.contains("`whoami`"));
-        }
+        assert!(result.success);
+        // The backticks should be printed literally, not executed
+        assert!(result.stdout.contains("`whoami`"));
     }
 
-    /// Prevents command injection via $() substitution in remote SSH execution.
+    /// Prevents command injection via $() substitution in environment variables.
     #[tokio::test]
-    async fn test_execute_remote_escapes_env_vars_with_dollar_paren() {
+    async fn test_escaping_prevents_dollar_paren_injection() {
         let backend = SystemHookBackend::new(None, OutputMode::Capture);
-        let hook = HookConfig::test_fixture(
-            "test-hook",
-            HookStage::PreActivate,
-            HookLocation::Remote,
-            "echo $SUBSHELL_TEST",
-        );
         let mut env = HashMap::new();
         env.insert("SUBSHELL_TEST".to_string(), "$(echo injected)".to_string());
 
-        let target = DeployTarget {
-            hostname: "localhost".to_string(),
-            user: None,
-            port: None,
-        };
+        let command = build_remote_command("echo $SUBSHELL_TEST", &env);
+        let result = backend
+            .execute_command(&command, &HashMap::new(), 10)
+            .await
+            .unwrap();
 
-        let result = backend.execute_remote(&target, &hook, &env).await.unwrap();
-
-        if result.success {
-            assert!(result.stdout.contains("$(echo injected)"));
-        }
+        assert!(result.success);
+        // The $() should be printed literally, not executed
+        assert!(result.stdout.contains("$(echo injected)"));
     }
 
-    /// Prevents command injection via pipes in remote SSH execution.
+    /// Prevents command injection via pipes in environment variables.
     #[tokio::test]
-    async fn test_execute_remote_escapes_env_vars_with_pipes() {
+    async fn test_escaping_prevents_pipe_injection() {
         let backend = SystemHookBackend::new(None, OutputMode::Capture);
-        let hook = HookConfig::test_fixture(
-            "test-hook",
-            HookStage::PreActivate,
-            HookLocation::Remote,
-            "echo $PIPE_TEST",
-        );
         let mut env = HashMap::new();
         env.insert("PIPE_TEST".to_string(), "data | base64".to_string());
 
-        let target = DeployTarget {
-            hostname: "localhost".to_string(),
-            user: None,
-            port: None,
-        };
+        let command = build_remote_command("echo $PIPE_TEST", &env);
+        let result = backend
+            .execute_command(&command, &HashMap::new(), 10)
+            .await
+            .unwrap();
 
-        let result = backend.execute_remote(&target, &hook, &env).await.unwrap();
-
-        if result.success {
-            assert!(result.stdout.contains("data | base64"));
-            assert!(!result.stdout.contains("ZGF0YQ=="));
-        }
+        assert!(result.success);
+        // The pipe should be printed literally, not executed
+        assert!(result.stdout.contains("data | base64"));
+        // If pipe was executed, we'd see base64 output
+        assert!(!result.stdout.contains("ZGF0YQ=="));
     }
 
-    /// Prevents command injection via quote escaping in remote SSH execution.
+    /// Prevents command injection via quote escaping in environment variables.
     #[tokio::test]
-    async fn test_execute_remote_escapes_env_vars_with_quotes() {
+    async fn test_escaping_prevents_quote_injection() {
         let backend = SystemHookBackend::new(None, OutputMode::Capture);
-        let hook = HookConfig::test_fixture(
-            "test-hook",
-            HookStage::PreActivate,
-            HookLocation::Remote,
-            "echo $QUOTE_TEST",
-        );
         let mut env = HashMap::new();
         env.insert(
             "QUOTE_TEST".to_string(),
             "value\" && echo \"injected".to_string(),
         );
 
-        let target = DeployTarget {
-            hostname: "localhost".to_string(),
-            user: None,
-            port: None,
-        };
+        let command = build_remote_command("echo $QUOTE_TEST", &env);
+        let result = backend
+            .execute_command(&command, &HashMap::new(), 10)
+            .await
+            .unwrap();
 
-        let result = backend.execute_remote(&target, &hook, &env).await.unwrap();
-
-        if result.success {
-            assert!(result.stdout.contains("value\" && echo \"injected"));
-        }
+        assert!(result.success);
+        // The quotes should be printed literally, not break out of the string
+        assert!(result.stdout.contains("value\" && echo \"injected"));
     }
 
     #[tokio::test]
@@ -547,34 +480,25 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_remote_hook_timeout() {
+    async fn test_remote_command_format_timeout() {
+        // Test that commands built for remote execution also timeout properly
         let backend = SystemHookBackend::new(None, OutputMode::Capture);
-        let mut hook = HookConfig::test_fixture(
-            "remote-timeout",
-            HookStage::PreActivate,
-            HookLocation::Remote,
-            "sleep 30",
-        );
-        hook.timeout = 1;
         let env = HashMap::new();
 
-        let target = DeployTarget {
-            hostname: "localhost".to_string(),
-            user: None,
-            port: None,
-        };
+        // Build command as it would be for remote execution
+        let command = build_remote_command("sleep 30", &env);
 
         let start = std::time::Instant::now();
-        let result = backend.execute_remote(&target, &hook, &env).await.unwrap();
+        let result = backend
+            .execute_command(&command, &HashMap::new(), 1)
+            .await
+            .unwrap();
         let elapsed = start.elapsed();
 
-        // Remote hook should also timeout
-        assert!(!result.success, "Remote hook should timeout");
-
-        // Should complete in reasonable time (not wait for full sleep)
+        assert!(!result.success, "Command should timeout");
         assert!(
             elapsed.as_secs() < 10,
-            "Remote timeout should not wait too long"
+            "Should not wait too long after timeout"
         );
     }
 
