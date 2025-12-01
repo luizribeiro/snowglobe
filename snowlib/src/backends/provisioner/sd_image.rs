@@ -1,8 +1,12 @@
 //! SD Image provisioner for Raspberry Pi and similar devices
 //!
 //! Injects SSH keys into raw disk images using guestfish (rootless).
+//! Supports deployment to block devices via dd.
 
-use super::{guestfish, InjectionResult, Provisioner, ProvisionerConfig};
+use super::{
+    deploy_with_dd, guestfish, validate_block_device, InjectionResult, Provisioner,
+    ProvisionerConfig, ProvisioningResult, TargetType,
+};
 use crate::bootstrap::HostKeys;
 use crate::error::{ProvisionerError, Result};
 use std::path::Path;
@@ -67,6 +71,33 @@ After inserting the SD card and booting:
   snow push {hostname}"#
         )
     }
+
+    fn validate_target(&self, target: &TargetType) -> Result<()> {
+        match target {
+            TargetType::BlockDevice(path) => validate_block_device(path, self.name()),
+            _ => Err(ProvisionerError::DeploymentNotSupported {
+                provisioner: self.name().to_string(),
+                reason: format!("sd-image only supports block devices, got {}", target),
+            }
+            .into()),
+        }
+    }
+
+    fn deploy_to_target(
+        &self,
+        image_path: &Path,
+        target: &TargetType,
+        _hostname: &str,
+    ) -> Result<ProvisioningResult> {
+        self.validate_target(target)?;
+
+        let TargetType::BlockDevice(device_path) = target else {
+            unreachable!("validate_target ensures only BlockDevice reaches here");
+        };
+
+        let message = deploy_with_dd(image_path, device_path, self.name())?;
+        Ok(ProvisioningResult::Success { message })
+    }
 }
 
 #[cfg(test)]
@@ -99,5 +130,22 @@ mod tests {
         };
         assert!(error.to_string().contains("guestfish"));
         assert!(error.to_string().contains("sd-image"));
+    }
+
+    #[test]
+    fn test_validate_target_accepts_block_device() {
+        let provisioner = SdImageProvisioner::new();
+        let target = TargetType::BlockDevice(std::path::PathBuf::from("/dev/sdc"));
+        assert!(provisioner.validate_target(&target).is_ok());
+    }
+
+    #[test]
+    fn test_validate_target_rejects_proxmox_host() {
+        let provisioner = SdImageProvisioner::new();
+        let target = TargetType::parse("proxmox01.local");
+        let result = provisioner.validate_target(&target);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("only supports block devices"));
     }
 }

@@ -26,7 +26,7 @@ pub use backends::keygen::{KeyGenBackend, SshKeyPair, SystemKeyGenBackend};
 pub use backends::nix::{NixBackend, SystemNixBackend};
 pub use backends::provisioner::{
     get_provisioner, InjectionResult, ManualProvisioner, Provisioner, ProvisionerConfig,
-    ProxmoxVmaProvisioner, RawProvisioner, SdImageProvisioner,
+    ProvisioningResult, ProxmoxVmaProvisioner, RawProvisioner, SdImageProvisioner, TargetType,
 };
 pub use backends::reboot::{LocalRebootBackend, RebootBackend, RebootCheck, SystemRebootBackend};
 pub use backends::sops::{SopsBackend, SopsUpdateResult, SystemSopsBackend};

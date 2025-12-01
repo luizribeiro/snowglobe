@@ -1,9 +1,10 @@
 use clap::Args;
 use snowlib::{
     get_provisioner, BootstrapConfig, Flake, InjectionResult, KeyGenBackend, NixBackend,
-    OutputMode, ProvisionerConfig, Result, SopsBackend, SystemKeyGenBackend, SystemNixBackend,
-    SystemSopsBackend, SystemType,
+    OutputMode, ProvisionerConfig, ProvisioningResult, Result, SopsBackend, SystemKeyGenBackend,
+    SystemNixBackend, SystemSopsBackend, SystemType, TargetType,
 };
+use std::io::{self, Write};
 use std::path::Path;
 
 /// Bootstrap a new host by generating SSH keys and deriving an age key
@@ -29,6 +30,19 @@ pub struct BootstrapArgs {
     /// on secret files in the secrets/ directory.
     #[arg(long)]
     pub update_sops: bool,
+
+    /// Deploy the provisioned image to a target
+    ///
+    /// Target types:
+    ///   /dev/sdX         - Flash to block device (sd-image, raw)
+    ///   proxmox-host     - Deploy to Proxmox host (proxmox-vma)
+    ///   user@host        - Deploy via SSH (future)
+    #[arg(long)]
+    pub target: Option<String>,
+
+    /// Skip confirmation prompts for destructive operations
+    #[arg(long, short = 'y')]
+    pub yes: bool,
 
     /// Show Nix build output
     #[arg(long, short)]
@@ -168,14 +182,45 @@ impl BootstrapArgs {
             match provisioner.inject_keys(Path::new(store_path.as_str()), &keys, &config)? {
                 InjectionResult::Success { image_path } => {
                     println!("  ✓ Injected SSH keys");
+
+                    // Deploy to target if specified
+                    if let Some(target_str) = &self.target {
+                        let target = TargetType::parse(target_str);
+                        provisioner.validate_target(&target)?;
+
+                        if !self.yes
+                            && requires_confirmation(&target)
+                            && !confirm_destructive_operation(&target)
+                        {
+                            println!("  ✗ Deployment cancelled");
+                            return Ok(());
+                        }
+
+                        println!("  → Deploying to {}...", target);
+                        match provisioner.deploy_to_target(&image_path, &target, &self.hostname)? {
+                            ProvisioningResult::Success { message } => {
+                                println!("  ✓ {}", message);
+                            }
+                            ProvisioningResult::NotSupported { reason } => {
+                                println!("  ⚠ Deployment not supported: {}", reason);
+                            }
+                        }
+                    }
+
                     println!();
                     println!("  Age public key: {}", keys.age_public_key);
                     println!();
-                    println!("Output: {}", image_path.display());
-                    println!();
-                    let instructions =
-                        provisioner.deployment_instructions(&image_path, &self.hostname);
-                    println!("{}", instructions);
+
+                    if self.target.is_none() {
+                        println!("Output: {}", image_path.display());
+                        println!();
+                        let instructions =
+                            provisioner.deployment_instructions(&image_path, &self.hostname);
+                        println!("{}", instructions);
+                    } else {
+                        println!("After the host is running:");
+                        println!("  snow push {}", self.hostname);
+                    }
                 }
                 InjectionResult::ManualRequired { instructions } => {
                     println!("  ⚠ Manual key injection required");
@@ -193,6 +238,36 @@ impl BootstrapArgs {
 
         Ok(())
     }
+}
+
+fn requires_confirmation(target: &TargetType) -> bool {
+    matches!(target, TargetType::BlockDevice(_))
+}
+
+fn confirm_destructive_operation(target: &TargetType) -> bool {
+    let warning = match target {
+        TargetType::BlockDevice(path) => {
+            format!(
+                "⚠  WARNING: This will OVERWRITE all data on {}",
+                path.display()
+            )
+        }
+        TargetType::ProxmoxHost(deploy_target) => {
+            format!(
+                "⚠  This will create a new VM on Proxmox host {}",
+                deploy_target.hostname
+            )
+        }
+    };
+
+    print!("{}\nAre you sure you want to continue? [y/N] ", warning);
+    let _ = io::stdout().flush();
+
+    let mut input = String::new();
+    if io::stdin().read_line(&mut input).is_err() {
+        return false;
+    }
+    input.trim().eq_ignore_ascii_case("y")
 }
 
 fn print_keys_info(keys: &snowlib::bootstrap::HostKeys) {
@@ -349,5 +424,29 @@ mod tests {
             .stdout(predicate::str::contains("Age public key: age1"))
             // Should NOT contain manual SOPS instructions when --update-sops is used
             .stdout(predicate::str::contains("To use with SOPS").not());
+    }
+
+    #[test]
+    fn test_bootstrap_help_shows_target_flag() {
+        snow_cmd()
+            .arg("bootstrap")
+            .arg("--help")
+            .assert()
+            .success()
+            .stdout(predicate::str::contains("--target"))
+            .stdout(predicate::str::contains("/dev/sdX"))
+            .stdout(predicate::str::contains("proxmox-host"));
+    }
+
+    #[test]
+    fn test_bootstrap_help_shows_yes_flag() {
+        snow_cmd()
+            .arg("bootstrap")
+            .arg("--help")
+            .assert()
+            .success()
+            .stdout(predicate::str::contains("--yes"))
+            .stdout(predicate::str::contains("-y"))
+            .stdout(predicate::str::contains("Skip confirmation"));
     }
 }

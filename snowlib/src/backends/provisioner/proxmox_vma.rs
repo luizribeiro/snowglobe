@@ -10,7 +10,9 @@
 //! 4. Repack raw disks to .vma
 //! 5. Compress back to .vma.zst
 
-use super::{guestfish, InjectionResult, Provisioner, ProvisionerConfig};
+use super::{
+    guestfish, InjectionResult, Provisioner, ProvisionerConfig, ProvisioningResult, TargetType,
+};
 use crate::bootstrap::HostKeys;
 use crate::error::{ProvisionerError, Result};
 use std::fs;
@@ -345,6 +347,149 @@ After the VM is running:
   snow push {hostname}"#
         )
     }
+
+    fn validate_target(&self, target: &TargetType) -> Result<()> {
+        match target {
+            TargetType::ProxmoxHost(_) => Ok(()),
+            _ => Err(ProvisionerError::DeploymentNotSupported {
+                provisioner: self.name().to_string(),
+                reason: format!("proxmox-vma only supports Proxmox hosts, got {}", target),
+            }
+            .into()),
+        }
+    }
+
+    fn deploy_to_target(
+        &self,
+        image_path: &Path,
+        target: &TargetType,
+        hostname: &str,
+    ) -> Result<ProvisioningResult> {
+        self.validate_target(target)?;
+
+        let TargetType::ProxmoxHost(deploy_target) = target else {
+            unreachable!("validate_target ensures only ProxmoxHost reaches here");
+        };
+
+        let ssh_dest = deploy_target.ssh_destination();
+        let filename = image_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("image.vma.zst");
+        let remote_path = format!("/tmp/{}", filename);
+
+        // Step 1: Copy image to Proxmox host
+        let rsync_output = Command::new("rsync")
+            .arg("-v")
+            .arg("--progress")
+            .arg(image_path)
+            .arg(format!("{}:{}", ssh_dest, remote_path))
+            .output()
+            .map_err(|e| ProvisionerError::DeploymentFailed {
+                provisioner: self.name().to_string(),
+                reason: format!("Failed to execute rsync: {}", e),
+            })?;
+
+        if !rsync_output.status.success() {
+            return Err(ProvisionerError::DeploymentFailed {
+                provisioner: self.name().to_string(),
+                reason: format!(
+                    "rsync failed: {}",
+                    String::from_utf8_lossy(&rsync_output.stderr)
+                ),
+            }
+            .into());
+        }
+
+        // Step 2: Get next available VMID
+        let vmid_output = Command::new("ssh")
+            .arg(&ssh_dest)
+            .arg("pvesh")
+            .arg("get")
+            .arg("/cluster/nextid")
+            .output()
+            .map_err(|e| ProvisionerError::DeploymentFailed {
+                provisioner: self.name().to_string(),
+                reason: format!("Failed to get next VMID: {}", e),
+            })?;
+
+        if !vmid_output.status.success() {
+            return Err(ProvisionerError::DeploymentFailed {
+                provisioner: self.name().to_string(),
+                reason: format!(
+                    "Failed to get next VMID: {}",
+                    String::from_utf8_lossy(&vmid_output.stderr)
+                ),
+            }
+            .into());
+        }
+
+        let vmid_str = String::from_utf8_lossy(&vmid_output.stdout)
+            .trim()
+            .to_string();
+
+        vmid_str
+            .parse::<u32>()
+            .map_err(|_| ProvisionerError::DeploymentFailed {
+                provisioner: self.name().to_string(),
+                reason: format!("Invalid VMID returned by Proxmox: '{}'", vmid_str),
+            })?;
+
+        let vmid = vmid_str;
+
+        // Step 3: Restore VM from backup
+        let restore_output = Command::new("ssh")
+            .arg(&ssh_dest)
+            .arg("qmrestore")
+            .arg(&remote_path)
+            .arg(&vmid)
+            .output()
+            .map_err(|e| ProvisionerError::DeploymentFailed {
+                provisioner: self.name().to_string(),
+                reason: format!("Failed to execute qmrestore: {}", e),
+            })?;
+
+        if !restore_output.status.success() {
+            return Err(ProvisionerError::DeploymentFailed {
+                provisioner: self.name().to_string(),
+                reason: format!(
+                    "qmrestore failed: {}",
+                    String::from_utf8_lossy(&restore_output.stderr)
+                ),
+            }
+            .into());
+        }
+
+        // Step 4: Start VM
+        let start_output = Command::new("ssh")
+            .arg(&ssh_dest)
+            .arg("qm")
+            .arg("start")
+            .arg(&vmid)
+            .output()
+            .map_err(|e| ProvisionerError::DeploymentFailed {
+                provisioner: self.name().to_string(),
+                reason: format!("Failed to execute qm start: {}", e),
+            })?;
+
+        if !start_output.status.success() {
+            return Err(ProvisionerError::DeploymentFailed {
+                provisioner: self.name().to_string(),
+                reason: format!(
+                    "qm start failed: {}",
+                    String::from_utf8_lossy(&start_output.stderr)
+                ),
+            }
+            .into());
+        }
+
+        Ok(ProvisioningResult::Success {
+            message: format!(
+                "VM {} restored and started on {} (VMID: {})",
+                hostname, deploy_target.hostname, vmid
+            ),
+        })
+    }
 }
 
 fn which(cmd: &str) -> bool {
@@ -407,5 +552,27 @@ mod tests {
     #[test]
     fn test_which_returns_false_for_missing_command() {
         assert!(!which("definitely-not-a-real-command-12345"));
+    }
+
+    #[test]
+    fn test_validate_target_accepts_proxmox_host() {
+        let provisioner = ProxmoxVmaProvisioner::new();
+        let target = TargetType::parse("proxmox01.local");
+        assert!(provisioner.validate_target(&target).is_ok());
+    }
+
+    #[test]
+    fn test_validate_target_accepts_proxmox_host_with_user() {
+        let provisioner = ProxmoxVmaProvisioner::new();
+        let target = TargetType::parse("admin@proxmox01.local");
+        assert!(provisioner.validate_target(&target).is_ok());
+    }
+
+    #[test]
+    fn test_validate_target_rejects_block_device() {
+        let provisioner = ProxmoxVmaProvisioner::new();
+        let target = TargetType::BlockDevice(std::path::PathBuf::from("/dev/sdc"));
+        let result = provisioner.validate_target(&target);
+        assert!(result.is_err());
     }
 }

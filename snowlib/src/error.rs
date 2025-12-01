@@ -381,6 +381,24 @@ pub enum ProvisionerError {
         help("Specify the image build attribute in your NixOS config:\n\n  snowglobe.bootstrap.imageAttr = \"config.system.build.sdImage\";")
     )]
     NoImageAttr { host: String },
+
+    #[error("{provisioner} provisioner does not support deployment: {reason}")]
+    #[diagnostic(
+        code(snow::provisioner::deployment_not_supported),
+        help("This provisioner only generates images for manual deployment.\nUse a different provisioner or deploy the image manually.")
+    )]
+    DeploymentNotSupported { provisioner: String, reason: String },
+
+    #[error("{provisioner} deployment failed: {reason}")]
+    #[diagnostic(
+        code(snow::provisioner::deployment_failed),
+        help("Check the target is accessible and has sufficient permissions.\nFor block devices, ensure you have write access (try with sudo).\nFor Proxmox, ensure SSH access is configured.")
+    )]
+    DeploymentFailed { provisioner: String, reason: String },
+
+    #[error("{provisioner} deployment to {target} was cancelled")]
+    #[diagnostic(code(snow::provisioner::deployment_cancelled))]
+    DeploymentCancelled { provisioner: String, target: String },
 }
 
 #[cfg(test)]

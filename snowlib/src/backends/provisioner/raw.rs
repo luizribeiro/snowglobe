@@ -2,8 +2,12 @@
 //!
 //! Injects SSH keys into generic raw disk images using guestfish (rootless).
 //! Suitable for VM disk images, cloud images, and other raw format images.
+//! Supports deployment to block devices via dd.
 
-use super::{guestfish, InjectionResult, Provisioner, ProvisionerConfig};
+use super::{
+    deploy_with_dd, guestfish, validate_block_device, InjectionResult, Provisioner,
+    ProvisionerConfig, ProvisioningResult, TargetType,
+};
 use crate::bootstrap::HostKeys;
 use crate::error::{ProvisionerError, Result};
 use std::path::Path;
@@ -71,6 +75,33 @@ After the host is running:
   snow push {hostname}"#
         )
     }
+
+    fn validate_target(&self, target: &TargetType) -> Result<()> {
+        match target {
+            TargetType::BlockDevice(path) => validate_block_device(path, self.name()),
+            _ => Err(ProvisionerError::DeploymentNotSupported {
+                provisioner: self.name().to_string(),
+                reason: format!("raw only supports block devices, got {}", target),
+            }
+            .into()),
+        }
+    }
+
+    fn deploy_to_target(
+        &self,
+        image_path: &Path,
+        target: &TargetType,
+        _hostname: &str,
+    ) -> Result<ProvisioningResult> {
+        self.validate_target(target)?;
+
+        let TargetType::BlockDevice(device_path) = target else {
+            unreachable!("validate_target ensures only BlockDevice reaches here");
+        };
+
+        let message = deploy_with_dd(image_path, device_path, self.name())?;
+        Ok(ProvisioningResult::Success { message })
+    }
 }
 
 #[cfg(test)]
@@ -106,5 +137,20 @@ mod tests {
         };
         assert!(error.to_string().contains("guestfish"));
         assert!(error.to_string().contains("raw"));
+    }
+
+    #[test]
+    fn test_validate_target_accepts_block_device() {
+        let provisioner = RawProvisioner::new();
+        let target = TargetType::BlockDevice(std::path::PathBuf::from("/dev/sdc"));
+        assert!(provisioner.validate_target(&target).is_ok());
+    }
+
+    #[test]
+    fn test_validate_target_rejects_proxmox_host() {
+        let provisioner = RawProvisioner::new();
+        let target = TargetType::parse("proxmox01.local");
+        let result = provisioner.validate_target(&target);
+        assert!(result.is_err());
     }
 }
