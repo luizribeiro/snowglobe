@@ -330,23 +330,6 @@ impl Provisioner for ProxmoxVmaProvisioner {
         })
     }
 
-    fn deployment_instructions(&self, output_path: &Path, hostname: &str) -> String {
-        let path = output_path.display();
-        format!(
-            r#"Proxmox VMA image ready: {path}
-
-To deploy to a Proxmox host:
-  1. Copy image:   rsync -v --progress {path} root@<proxmox-host>:/tmp/
-  2. Restore VM:   ssh root@<proxmox-host> 'qmrestore /tmp/{hostname}.vma.zst <VMID>'
-  3. Start VM:     ssh root@<proxmox-host> 'qm start <VMID>'
-
-Replace <proxmox-host> with your Proxmox server and <VMID> with the target VM ID.
-
-After the VM is running:
-  snow push {hostname}"#
-        )
-    }
-
     fn validate_target(&self, target: &TargetType) -> Result<()> {
         match target {
             TargetType::ProxmoxHost(_) => Ok(()),
@@ -797,20 +780,6 @@ mod tests {
             .unwrap_err()
             .to_string()
             .contains("Decompress failed"));
-    }
-
-    #[test]
-    fn test_deployment_instructions_contains_key_info() {
-        let provisioner = ProxmoxVmaProvisioner::new();
-        let instructions =
-            provisioner.deployment_instructions(Path::new("/tmp/carbon.vma.zst"), "carbon");
-
-        assert!(instructions.contains("/tmp/carbon.vma.zst"));
-        assert!(instructions.contains("rsync"));
-        assert!(instructions.contains("qmrestore"));
-        assert!(instructions.contains("qm start"));
-        assert!(instructions.contains("carbon"));
-        assert!(instructions.contains("snow push"));
     }
 
     // Integration tests for deploy_to_target

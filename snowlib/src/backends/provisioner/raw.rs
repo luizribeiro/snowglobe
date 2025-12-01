@@ -61,21 +61,6 @@ impl Provisioner for RawProvisioner {
         })
     }
 
-    fn deployment_instructions(&self, output_path: &Path, hostname: &str) -> String {
-        let path = output_path.display();
-        format!(
-            r#"Raw disk image ready: {path}
-
-Deployment options:
-  - Flash to disk:    sudo dd if={path} of=/dev/sdX bs=4M status=progress
-  - QEMU/KVM:         qemu-system-x86_64 -drive file={path},format=raw
-  - Convert to qcow2: qemu-img convert -f raw -O qcow2 {path} {path}.qcow2
-
-After the host is running:
-  snow push {hostname}"#
-        )
-    }
-
     fn validate_target(&self, target: &TargetType) -> Result<()> {
         match target {
             TargetType::BlockDevice(path) => validate_block_device(path, self.name()),
@@ -112,20 +97,6 @@ mod tests {
     fn test_raw_provisioner_name() {
         let provisioner = RawProvisioner::new();
         assert_eq!(provisioner.name(), "raw");
-    }
-
-    #[test]
-    fn test_raw_deployment_instructions() {
-        let provisioner = RawProvisioner::new();
-        let instructions =
-            provisioner.deployment_instructions(Path::new("/tmp/image.raw"), "server01");
-
-        assert!(instructions.contains("/tmp/image.raw"));
-        assert!(instructions.contains("dd if="));
-        assert!(instructions.contains("qemu-system"));
-        assert!(instructions.contains("qemu-img convert"));
-        assert!(instructions.contains("server01"));
-        assert!(instructions.contains("snow push"));
     }
 
     #[test]

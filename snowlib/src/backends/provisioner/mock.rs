@@ -102,14 +102,6 @@ impl Provisioner for MockProvisioner {
             })
         }
     }
-
-    fn deployment_instructions(&self, output_path: &Path, hostname: &str) -> String {
-        format!(
-            "Mock deployment instructions for {} at {}",
-            hostname,
-            output_path.display()
-        )
-    }
 }
 
 #[cfg(test)]

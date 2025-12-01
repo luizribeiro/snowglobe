@@ -63,18 +63,6 @@ Ensure correct permissions:
 
         Ok(InjectionResult::ManualRequired { instructions })
     }
-
-    fn deployment_instructions(&self, _output_path: &Path, hostname: &str) -> String {
-        format!(
-            r#"Manual deployment required for {}.
-
-After copying keys to the target:
-  1. Boot the target system
-  2. Verify SSH connectivity: ssh root@{}
-  3. Run: snow push {}"#,
-            hostname, hostname, hostname,
-        )
-    }
 }
 
 #[cfg(test)]
@@ -140,15 +128,5 @@ mod tests {
             }
             _ => panic!("Expected ManualRequired result"),
         }
-    }
-
-    #[test]
-    fn test_manual_provisioner_deployment_instructions() {
-        let provisioner = ManualProvisioner::new();
-        let instructions =
-            provisioner.deployment_instructions(Path::new("/tmp/image.img"), "myhost");
-
-        assert!(instructions.contains("myhost"));
-        assert!(instructions.contains("snow push"));
     }
 }

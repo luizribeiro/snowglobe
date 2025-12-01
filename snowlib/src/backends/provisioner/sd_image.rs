@@ -59,19 +59,6 @@ impl Provisioner for SdImageProvisioner {
         })
     }
 
-    fn deployment_instructions(&self, output_path: &Path, hostname: &str) -> String {
-        let path = output_path.display();
-        format!(
-            r#"To deploy the SD image:
-  sudo dd if={path} of=/dev/sdX bs=4M status=progress
-
-Replace /dev/sdX with your SD card device.
-
-After inserting the SD card and booting:
-  snow push {hostname}"#
-        )
-    }
-
     fn validate_target(&self, target: &TargetType) -> Result<()> {
         match target {
             TargetType::BlockDevice(path) => validate_block_device(path, self.name()),
@@ -108,17 +95,6 @@ mod tests {
     fn test_sd_image_provisioner_name() {
         let provisioner = SdImageProvisioner::new();
         assert_eq!(provisioner.name(), "sd-image");
-    }
-
-    #[test]
-    fn test_sd_image_deployment_instructions() {
-        let provisioner = SdImageProvisioner::new();
-        let instructions = provisioner.deployment_instructions(Path::new("/tmp/image.img"), "rpi4");
-
-        assert!(instructions.contains("/tmp/image.img"));
-        assert!(instructions.contains("dd if="));
-        assert!(instructions.contains("rpi4"));
-        assert!(instructions.contains("snow push"));
     }
 
     #[test]

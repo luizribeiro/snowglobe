@@ -151,11 +151,6 @@ pub trait Provisioner: Send + Sync {
         config: &ProvisionerConfig,
     ) -> Result<InjectionResult>;
 
-    /// Get instructions for manual deployment
-    ///
-    /// Returns human-readable instructions for deploying the image manually.
-    fn deployment_instructions(&self, output_path: &Path, hostname: &str) -> String;
-
     /// Validate that a target is supported by this provisioner
     ///
     /// Returns Ok(()) if the target is valid, or an error explaining why not.
