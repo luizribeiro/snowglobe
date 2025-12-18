@@ -46,8 +46,27 @@ impl DeployBackend for LocalDeployBackend {
     ) -> Result<()> {
         let system_type = SystemType::detect_current();
 
-        // Create NixOS system profile generation for rollback support (persistent modes only)
-        if system_type == SystemType::NixOS && should_update_profile(mode) {
+        // Validate mode is supported on Darwin before doing any work
+        if system_type == SystemType::Darwin && mode != ActivationMode::Switch {
+            let msg = match mode {
+                ActivationMode::Boot => {
+                    "Boot mode not supported on Darwin - use switch mode instead"
+                }
+                ActivationMode::Test => {
+                    "Test mode not supported on Darwin - use switch mode instead"
+                }
+                ActivationMode::DryActivate => "Dry-activate mode not supported on Darwin",
+                ActivationMode::Switch => unreachable!(),
+            };
+            return Err(DeployError::Failed {
+                host: target.hostname.clone(),
+                source: std::io::Error::other(msg),
+            }
+            .into());
+        }
+
+        // Create system profile generation for rollback support (persistent modes only)
+        if should_update_profile(mode) {
             let args = [
                 "nix-env",
                 "--profile",
@@ -95,35 +114,9 @@ impl DeployBackend for LocalDeployBackend {
                 )
             }
             SystemType::Darwin => {
+                // Only Switch mode reaches here - others rejected at top of function
                 let activate_script = format!("{}/activate", store_path.as_str());
-
-                match mode {
-                    ActivationMode::Switch => (vec![activate_script], "activate script"),
-                    ActivationMode::Boot => {
-                        return Err(DeployError::Failed {
-                            host: target.hostname.clone(),
-                            source: std::io::Error::other(
-                                "Boot mode not supported on Darwin - use switch mode instead",
-                            ),
-                        }
-                        .into());
-                    }
-                    ActivationMode::Test => {
-                        tracing::warn!(
-                            "Test mode not natively supported on Darwin - using switch instead"
-                        );
-                        (vec![activate_script], "activate script")
-                    }
-                    ActivationMode::DryActivate => {
-                        return Err(DeployError::Failed {
-                            host: target.hostname.clone(),
-                            source: std::io::Error::other(
-                                "Dry-activate mode not supported on Darwin",
-                            ),
-                        }
-                        .into());
-                    }
-                }
+                (vec![activate_script], "activate script")
             }
         };
 
@@ -428,7 +421,7 @@ mod tests {
 
     #[tokio::test]
     #[cfg(target_os = "macos")]
-    async fn test_activate_switch_skips_profile_on_darwin() {
+    async fn test_activate_switch_attempts_profile_update_on_darwin() {
         let backend = create_test_backend();
         let target = create_test_target("localhost");
         let store_path = create_test_store_path("/nix/store/test-darwin-system");
@@ -441,14 +434,8 @@ mod tests {
         let err_string = format!("{:?}", result.unwrap_err());
 
         assert!(
-            err_string.contains("activate") || err_string.contains("Failed to execute"),
-            "Expected error about activation: {}",
-            err_string
-        );
-
-        assert!(
-            !err_string.contains("nix-env") && !err_string.contains("profile"),
-            "Darwin should not attempt profile update: {}",
+            err_string.contains("profile"),
+            "Darwin should attempt profile update: {}",
             err_string
         );
     }
