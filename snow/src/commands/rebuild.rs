@@ -247,11 +247,7 @@ impl RebuildArgs {
             }
             RebootAction::Cancel => {
                 println!("\n❌ Rebuild cancelled");
-                return Err(snowlib::error::DeployError::Failed {
-                    host: hostname,
-                    source: std::io::Error::other("Cancelled by user"),
-                }
-                .into());
+                return Ok(());
             }
         }
 
