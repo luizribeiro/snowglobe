@@ -109,8 +109,8 @@ impl RebuildArgs {
         println!("\n⚠️  Reboot required: {}", reason);
 
         let options = vec![
-            "Activate and reboot now",
-            "Set for next boot only",
+            "Reboot now and activate",
+            "Activate on next boot",
             "Activate immediately (skip reboot, risky)",
             "Cancel",
         ];
