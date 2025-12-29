@@ -1,5 +1,5 @@
 use clap::Args;
-use dialoguer::{theme::ColorfulTheme, Select};
+use dialoguer::{theme::ColorfulTheme, Confirm, Select};
 use snowlib::{
     ActivationMode, DeployBackend, DeployTarget, Flake, LocalDeployBackend, LocalRebootBackend,
     RebootBackend, Result, SystemType,
@@ -111,7 +111,7 @@ impl RebuildArgs {
         let options = vec![
             "Reboot now and activate",
             "Activate on next boot",
-            "Activate immediately (skip reboot, risky)",
+            "Activate immediately",
             "Cancel",
         ];
 
@@ -128,7 +128,22 @@ impl RebuildArgs {
         match selection {
             0 => Ok(RebootAction::BootAndReboot),
             1 => Ok(RebootAction::BootOnly),
-            2 => Ok(RebootAction::SwitchRisky),
+            2 => {
+                let confirmed = Confirm::with_theme(&ColorfulTheme::default())
+                    .with_prompt("This will activate without rebooting, which may leave the system in an inconsistent state. Continue?")
+                    .default(false)
+                    .interact()
+                    .map_err(|e| snowlib::error::DeployError::Failed {
+                        host: "localhost".to_string(),
+                        source: std::io::Error::other(e.to_string()),
+                    })?;
+
+                if confirmed {
+                    Ok(RebootAction::SwitchRisky)
+                } else {
+                    Ok(RebootAction::Cancel)
+                }
+            }
             3 => Ok(RebootAction::Cancel),
             _ => unreachable!(),
         }
