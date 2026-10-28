@@ -1,7 +1,9 @@
 //! Tests for create_deployment_plans and reboot policies
 
 use super::*;
-use crate::backends::reboot::{RebootDetectionConfig, SystemRebootBackend};
+use crate::backends::reboot::{
+    RebootCheck, RebootDetectionConfig, RebootReason, SystemRebootBackend,
+};
 
 #[test]
 fn test_push_results_counts() {
@@ -343,4 +345,43 @@ async fn test_force_overrides_always_policy_with_switch() {
     assert_eq!(plans.len(), 1);
     assert_eq!(blocked.len(), 0);
     assert_eq!(plans[0].activation_mode, ActivationMode::Switch);
+}
+
+#[tokio::test]
+async fn test_darwin_hosts_switch_without_reboot_regardless_of_policy() {
+    use crate::backends::reboot::MockRebootBackend;
+
+    let kernel_changed = RebootReason::KernelChanged {
+        old: "/nix/store/old-kernel".to_string(),
+        new: "/nix/store/new-kernel".to_string(),
+    };
+    let detector = MockRebootBackend::new().with_reboot_required(
+        [("ferrum.example.com".to_string(), kernel_changed)]
+            .into_iter()
+            .collect(),
+    );
+
+    for policy in [
+        RebootPolicy::Auto,
+        RebootPolicy::Never,
+        RebootPolicy::Always,
+    ] {
+        for strategy in [PushStrategy::Auto, PushStrategy::Switch] {
+            let (mut metadata, target, store_path) = make_host("ferrum", None, policy.clone());
+            metadata.system_type = SystemType::Darwin;
+
+            let (plans, blocked) = create_deployment_plans(
+                vec![(metadata, target, store_path)],
+                &detector,
+                strategy,
+                false,
+            )
+            .await
+            .unwrap();
+
+            assert!(blocked.is_empty(), "{:?}/{:?} blocked", policy, strategy);
+            assert_eq!(plans[0].activation_mode, ActivationMode::Switch);
+            assert_eq!(plans[0].reboot_check, Some(RebootCheck::not_required()));
+        }
+    }
 }

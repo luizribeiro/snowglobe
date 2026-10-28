@@ -7,7 +7,7 @@ use crate::backends::deploy::DeployTarget;
 use crate::backends::reboot::{RebootBackend, RebootCheck, RebootReason};
 use crate::error::Result;
 use crate::host::HostMetadata;
-use crate::nix::{ActivationMode, StorePath};
+use crate::nix::{ActivationMode, StorePath, SystemType};
 use crate::reboot::RebootPolicy;
 
 use super::config::PushStrategy;
@@ -37,6 +37,14 @@ async fn determine_activation_strategy(
         )),
         PushStrategy::Test => Ok(ActivationStrategy::Deploy(ActivationMode::Test, None)),
         PushStrategy::Boot => Ok(ActivationStrategy::Deploy(ActivationMode::Boot, None)),
+        // nix-darwin can only switch, and push never reboots Darwin hosts,
+        // so reboot policies and detection don't apply to them
+        PushStrategy::Switch | PushStrategy::Auto if metadata.system_type == SystemType::Darwin => {
+            Ok(ActivationStrategy::Deploy(
+                ActivationMode::Switch,
+                Some(RebootCheck::not_required()),
+            ))
+        }
         PushStrategy::Switch => {
             handle_switch_mode(metadata, target, store_path, reboot_backend, force).await
         }
