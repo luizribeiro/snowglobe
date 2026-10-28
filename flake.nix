@@ -53,6 +53,10 @@
         }
       );
 
+      checks.x86_64-linux.nixos-activate = import ./modules/nixos-activate.test.nix {
+        pkgs = nixpkgs.legacyPackages.x86_64-linux;
+      };
+
       devShells = forEachSystem (system:
         let
           pkgs = nixpkgs.legacyPackages.${system};
