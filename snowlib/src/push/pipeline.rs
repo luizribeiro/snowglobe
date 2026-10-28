@@ -9,7 +9,7 @@ use crate::backends::deploy::{DeployResult, DeployTarget};
 use crate::error::Result;
 use crate::hooks::HookStage;
 use crate::host::HostMetadata;
-use crate::nix::StorePath;
+use crate::nix::{StorePath, SystemType};
 use std::collections::HashMap;
 
 use super::context::PushContext;
@@ -395,8 +395,9 @@ async fn execute_activation_step(
 ///
 /// Reboots the host if:
 /// 1. allow_reboot is true, AND
-/// 2. activation_mode is Boot, AND
-/// 3. Either no reboot check OR reboot is required
+/// 2. the host runs NixOS (Darwin hosts are never rebooted), AND
+/// 3. activation_mode is Boot, AND
+/// 4. Either no reboot check OR reboot is required
 ///
 /// Returns (DeployResult, whether_rebooted)
 async fn execute_reboot_step(
@@ -407,6 +408,7 @@ async fn execute_reboot_step(
     let hostname = &plan.metadata.name;
 
     let should_reboot = push_ctx.config.allow_reboot
+        && plan.metadata.system_type == SystemType::NixOS
         && plan.activation_mode == crate::nix::ActivationMode::Boot
         && (plan.reboot_check.is_none()
             || plan

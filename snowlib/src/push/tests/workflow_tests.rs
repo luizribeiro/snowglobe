@@ -1224,3 +1224,59 @@ async fn test_push_skip_reboot_flag_with_detected_reboot() {
     // Should still have activated successfully (Boot mode without reboot)
     assert!(events.iter().any(|e| e.starts_with("activation_complete")));
 }
+
+#[tokio::test]
+async fn test_push_never_reboots_darwin_hosts() {
+    use crate::backends::reboot::{MockRebootBackend, RebootReason};
+
+    let flake = Flake::test_context();
+    let nix_backend = MockNixBackend::new();
+    let deployer = MockDeployBackend::new();
+    let reboot_backend = MockRebootBackend::new().with_reboot_required(
+        [(
+            "ferrum.example.com".to_string(),
+            RebootReason::CriticalService("audit.service".to_string()),
+        )]
+        .into_iter()
+        .collect(),
+    );
+
+    for strategy in [PushStrategy::Auto, PushStrategy::Switch, PushStrategy::Boot] {
+        let observer = TestObserver::new();
+        let mut ferrum = make_host_metadata("ferrum", Some("default"), RebootPolicy::Always);
+        ferrum.system_type = SystemType::Darwin;
+
+        let config = PushConfiguration {
+            strategy,
+            force: false,
+            concurrency: 1,
+            ignore_phases: false,
+            output_mode: crate::process::OutputMode::Capture,
+            ssh_user: None,
+            allow_reboot: true,
+        };
+
+        let results = {
+            let push_ctx = PushContext::new(
+                &flake,
+                &nix_backend,
+                &deployer,
+                &reboot_backend,
+                &config,
+                &observer,
+                None,
+            );
+            push(&push_ctx, vec![ferrum]).await
+        }
+        .unwrap();
+
+        assert!(!results.phases[0].hosts[0].rebooted);
+        let events = observer.get_events();
+        assert!(
+            !events.iter().any(|e| e.starts_with("reboot_start")),
+            "{:?} push rebooted a Darwin host. Events: {:?}",
+            strategy,
+            events
+        );
+    }
+}
