@@ -1,13 +1,24 @@
-{ pkgs }:
+{ pkgs, systemctl }:
 
 pkgs.writeScriptBin "snowglobe-activate" ''
   #!${pkgs.bash}/bin/bash
   set -e
 
-  if [ $# -lt 2 ]; then
+  usage() {
     echo "Usage: snowglobe-activate <store-path> <mode>" >&2
+    echo "       snowglobe-activate reboot" >&2
     echo "Modes: switch, boot, test, dry-activate" >&2
     exit 1
+  }
+
+  # Rebooting lives here so deploy users only need sudo for this one helper
+  if [ "$1" = "reboot" ]; then
+    [ $# -eq 1 ] || usage
+    exec ${systemctl} reboot
+  fi
+
+  if [ $# -lt 2 ]; then
+    usage
   fi
 
   STORE_PATH="$1"

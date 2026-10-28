@@ -5,7 +5,10 @@ with lib;
 let
   cfg = config.snowglobe.push;
 
-  activationHelper = import ./nixos-activate.nix { inherit pkgs; };
+  activationHelper = import ./nixos-activate.nix {
+    inherit pkgs;
+    systemctl = "${config.systemd.package}/bin/systemctl";
+  };
 in
 {
   imports = [
@@ -20,7 +23,7 @@ in
         Users allowed to run snowglobe-activate without password.
 
         These users will be able to activate any NixOS configuration from the
-        Nix store without requiring a password. This is designed for automated
+        Nix store, and reboot the host, without requiring a password. This is designed for automated
         deployment scenarios (CI/CD, remote push deployments).
 
         Security note: Users in this list can activate any system configuration
