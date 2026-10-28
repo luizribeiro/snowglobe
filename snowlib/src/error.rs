@@ -151,6 +151,13 @@ pub enum DeployError {
         stdout: String,
     },
 
+    #[error("Reboot of host '{host}' was not confirmed: {reason}")]
+    #[diagnostic(
+        code(snow::deploy::reboot_not_confirmed),
+        help("Check that the deploy user can run `sudo snowglobe-activate reboot` on the host")
+    )]
+    RebootNotConfirmed { host: String, reason: String },
+
     #[error("SSH connection failed to {destination}")]
     #[diagnostic(
         code(snow::deploy::ssh_failed),

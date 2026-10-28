@@ -7,10 +7,22 @@ use crate::process::{CommandResult, OutputMode};
 use async_trait::async_trait;
 use std::time::Duration;
 
+/// Prefers the snowglobe-activate helper because deploy users are only granted
+/// passwordless sudo for it; hosts without the snowglobe module fall back to systemctl.
+const REBOOT_COMMAND: &str = "if command -v snowglobe-activate >/dev/null; \
+     then sudo snowglobe-activate reboot; \
+     else sudo systemctl reboot; fi";
+
+const BOOT_ID_PATH: &str = "/proc/sys/kernel/random/boot_id";
+
+/// ssh exits with 255 when the connection drops, which is expected while the host goes down
+const SSH_CONNECTION_LOST: i32 = 255;
+
 /// System reboot detection backend
 pub struct SystemRebootBackend {
     config: RebootDetectionConfig,
     ssh_user: Option<String>,
+    ssh_command: Vec<String>,
 }
 
 impl SystemRebootBackend {
@@ -19,6 +31,7 @@ impl SystemRebootBackend {
         Self {
             config,
             ssh_user: None,
+            ssh_command: vec!["ssh".to_string()],
         }
     }
 
@@ -192,10 +205,18 @@ impl SystemRebootBackend {
 
     /// Execute an SSH command and return the full result
     async fn ssh_exec_full(&self, target: &DeployTarget, command: &str) -> Result<CommandResult> {
+        let (program, leading_args) = self
+            .ssh_command
+            .split_first()
+            .expect("ssh_command is never empty");
         let args = self.build_ssh_args(target, command);
-        let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+        let args_refs: Vec<&str> = leading_args
+            .iter()
+            .chain(args.iter())
+            .map(|s| s.as_str())
+            .collect();
 
-        run_command("ssh", &args_refs, OutputMode::Capture, None, None, &[])
+        run_command(program, &args_refs, OutputMode::Capture, None, None, &[])
             .await
             .map_err(|e| {
                 DeployError::SshFailed {
@@ -226,30 +247,56 @@ impl SystemRebootBackend {
         Ok(String::from_utf8_lossy(&result.stdout).into_owned())
     }
 
-    /// Wait for a host to come back online by repeatedly trying SSH
-    async fn wait_for_host(&self, target: &DeployTarget) -> Result<()> {
-        let max_attempts = self.config.reboot_max_wait / self.config.reboot_retry_interval;
-        let retry_interval = Duration::from_secs(self.config.reboot_retry_interval as u64);
+    async fn read_boot_id(&self, target: &DeployTarget) -> Result<String> {
+        Ok(self
+            .ssh_read_file(target, BOOT_ID_PATH)
+            .await?
+            .trim()
+            .to_string())
+    }
 
-        for attempt in 1..=max_attempts {
-            let test_cmd = "true";
-            let result = self.ssh_exec(target, test_cmd).await;
+    /// Ask the host to reboot, failing if the command was refused (e.g. by sudo)
+    async fn request_reboot(&self, target: &DeployTarget) -> Result<()> {
+        let result = self.ssh_exec_full(target, REBOOT_COMMAND).await?;
 
-            if result.is_ok() && result.unwrap().success() {
-                return Ok(());
+        match result.status.code() {
+            Some(0) | Some(SSH_CONNECTION_LOST) | None => Ok(()),
+            Some(exit_code) => Err(DeployError::CommandFailed {
+                host: target.hostname.clone(),
+                command: REBOOT_COMMAND.to_string(),
+                exit_code,
+                stderr: String::from_utf8_lossy(&result.stderr).trim().to_string(),
+                stdout: String::from_utf8_lossy(&result.stdout).trim().to_string(),
             }
+            .into()),
+        }
+    }
 
-            if attempt < max_attempts {
-                tokio::time::sleep(retry_interval).await;
+    /// Poll until the host answers with a boot ID different from `previous_boot_id`
+    async fn wait_for_new_boot(&self, target: &DeployTarget, previous_boot_id: &str) -> Result<()> {
+        let max_attempts = (self.config.reboot_max_wait / self.config.reboot_retry_interval).max(1);
+        let retry_interval = Duration::from_secs(self.config.reboot_retry_interval as u64);
+        let mut still_on_previous_boot = false;
+
+        for _ in 0..max_attempts {
+            tokio::time::sleep(retry_interval).await;
+
+            match self.read_boot_id(target).await {
+                Ok(boot_id) if boot_id != previous_boot_id => return Ok(()),
+                Ok(_) => still_on_previous_boot = true,
+                Err(_) => still_on_previous_boot = false,
             }
         }
 
-        Err(DeployError::Failed {
+        let reason = if still_on_previous_boot {
+            "boot ID is unchanged, so the host never rebooted"
+        } else {
+            "host did not come back online"
+        };
+
+        Err(DeployError::RebootNotConfirmed {
             host: target.hostname.clone(),
-            source: std::io::Error::other(format!(
-                "Host did not come back online after {} attempts ({} seconds)",
-                max_attempts, self.config.reboot_max_wait
-            )),
+            reason: format!("{} after {} seconds", reason, self.config.reboot_max_wait),
         }
         .into())
     }
@@ -286,18 +333,9 @@ impl RebootBackend for SystemRebootBackend {
     }
 
     async fn reboot_and_wait(&self, target: &DeployTarget) -> Result<()> {
-        let reboot_cmd = "sudo systemctl reboot";
-
-        // We expect this to fail/disconnect as the host reboots
-        let _ = self.ssh_exec(target, reboot_cmd).await;
-
-        // Wait a bit for the reboot to initiate
-        tokio::time::sleep(Duration::from_secs(5)).await;
-
-        // Wait for host to come back
-        self.wait_for_host(target).await?;
-
-        Ok(())
+        let boot_id = self.read_boot_id(target).await?;
+        self.request_reboot(target).await?;
+        self.wait_for_new_boot(target, &boot_id).await
     }
 }
 
@@ -308,6 +346,220 @@ fn shell_escape(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::error::SnowError;
+
+    /// A host simulated by a script that stands in for `ssh`. The host starts on
+    /// boot "boot-1"; `on_reboot` is the shell snippet run for the reboot command.
+    /// Writing `$state/next_boot_id` makes the host come back on that boot after
+    /// one unreachable poll, and `$state/stale_polls` delays that by N polls that
+    /// still answer with the old boot.
+    struct FakeHost {
+        state: tempfile::TempDir,
+    }
+
+    impl FakeHost {
+        fn new(on_reboot: &str) -> Self {
+            let state = tempfile::tempdir().unwrap();
+            let state_path = state.path().display();
+            std::fs::write(state.path().join("boot_id"), "boot-1\n").unwrap();
+            std::fs::write(
+                state.path().join("ssh.sh"),
+                format!(
+                    r#"
+state='{state_path}'
+cmd="${{@: -1}}"
+echo "$cmd" >> "$state/commands"
+case "$cmd" in
+  *boot_id*)
+    stale=$(cat "$state/stale_polls" 2>/dev/null || echo 0)
+    if [ "$stale" -gt 0 ]; then
+      echo $((stale - 1)) > "$state/stale_polls"
+      cat "$state/boot_id"
+      exit 0
+    fi
+    if [ -e "$state/next_boot_id" ]; then
+      mv "$state/next_boot_id" "$state/boot_id"
+      exit 255
+    fi
+    cat "$state/boot_id"
+    ;;
+  *reboot*)
+    {on_reboot}
+    ;;
+esac
+"#
+                ),
+            )
+            .unwrap();
+            Self { state }
+        }
+
+        fn backend(&self, max_wait_secs: u32) -> SystemRebootBackend {
+            let mut backend = SystemRebootBackend::new(RebootDetectionConfig {
+                reboot_max_wait: max_wait_secs,
+                reboot_retry_interval: 1,
+                ..Default::default()
+            });
+            backend.ssh_command = vec![
+                "bash".to_string(),
+                self.state.path().join("ssh.sh").display().to_string(),
+            ];
+            backend
+        }
+
+        fn commands(&self) -> Vec<String> {
+            std::fs::read_to_string(self.state.path().join("commands"))
+                .unwrap_or_default()
+                .lines()
+                .map(str::to_string)
+                .collect()
+        }
+
+        fn reboot_requested(&self) -> bool {
+            self.commands().iter().any(|c| c == REBOOT_COMMAND)
+        }
+    }
+
+    fn fake_target() -> DeployTarget {
+        DeployTarget {
+            user: Some("pusher".to_string()),
+            hostname: "hydrogen.example.com".to_string(),
+            port: None,
+        }
+    }
+
+    fn reboot_not_confirmed_reason(err: SnowError) -> String {
+        match err {
+            SnowError::Deploy(DeployError::RebootNotConfirmed { reason, .. }) => reason,
+            other => panic!("expected RebootNotConfirmed, got {:?}", other),
+        }
+    }
+
+    /// Runs REBOOT_COMMAND with `sudo` stubbed to print what it would run
+    fn sudo_invocation_of_reboot_command(helper_installed: bool) -> String {
+        let helper_stub = if helper_installed {
+            "snowglobe-activate() { :; }"
+        } else {
+            ""
+        };
+        let script = format!(
+            "sudo() {{ echo \"$@\"; }}; {}\n{}",
+            helper_stub, REBOOT_COMMAND
+        );
+        let output = std::process::Command::new("/bin/sh")
+            .args(["-c", &script])
+            .env("PATH", "/nonexistent")
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+        String::from_utf8(output.stdout).unwrap().trim().to_string()
+    }
+
+    #[test]
+    fn test_reboot_command_uses_activation_helper_when_installed() {
+        assert_eq!(
+            sudo_invocation_of_reboot_command(true),
+            "snowglobe-activate reboot"
+        );
+    }
+
+    #[test]
+    fn test_reboot_command_falls_back_to_systemctl_without_helper() {
+        assert_eq!(sudo_invocation_of_reboot_command(false), "systemctl reboot");
+    }
+
+    #[tokio::test]
+    async fn test_reboot_confirmed_when_connection_drops_and_boot_id_changes() {
+        let host = FakeHost::new(r#"echo boot-2 > "$state/next_boot_id"; exit 255"#);
+
+        host.backend(5)
+            .reboot_and_wait(&fake_target())
+            .await
+            .unwrap();
+
+        assert!(host.reboot_requested());
+    }
+
+    #[tokio::test]
+    async fn test_reboot_confirmed_when_host_is_slow_to_go_down() {
+        let host = FakeHost::new(
+            r#"echo 2 > "$state/stale_polls"; echo boot-2 > "$state/next_boot_id"; exit 0"#,
+        );
+
+        host.backend(6)
+            .reboot_and_wait(&fake_target())
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_reboot_fails_fast_when_sudo_refuses() {
+        let host = FakeHost::new(
+            r#"echo "sudo: a password is required" >&2; echo boot-2 > "$state/next_boot_id"; exit 1"#,
+        );
+
+        let err = host
+            .backend(5)
+            .reboot_and_wait(&fake_target())
+            .await
+            .unwrap_err();
+
+        match err {
+            SnowError::Deploy(DeployError::CommandFailed {
+                exit_code, stderr, ..
+            }) => {
+                assert_eq!(exit_code, 1);
+                assert!(stderr.contains("a password is required"));
+            }
+            other => panic!("expected CommandFailed, got {:?}", other),
+        }
+        assert_eq!(
+            host.commands().len(),
+            2,
+            "should not poll for a new boot after the reboot command failed"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_reboot_fails_when_host_keeps_same_boot_id() {
+        let host = FakeHost::new("exit 0");
+
+        let err = host
+            .backend(2)
+            .reboot_and_wait(&fake_target())
+            .await
+            .unwrap_err();
+
+        assert!(reboot_not_confirmed_reason(err).contains("boot ID is unchanged"));
+    }
+
+    #[tokio::test]
+    async fn test_reboot_fails_when_host_never_comes_back() {
+        let host = FakeHost::new(r#"rm "$state/boot_id"; exit 255"#);
+
+        let err = host
+            .backend(2)
+            .reboot_and_wait(&fake_target())
+            .await
+            .unwrap_err();
+
+        assert!(reboot_not_confirmed_reason(err).contains("did not come back online"));
+    }
+
+    #[tokio::test]
+    async fn test_reboot_not_requested_when_boot_id_unreadable() {
+        let host = FakeHost::new("exit 0");
+        std::fs::remove_file(host.state.path().join("boot_id")).unwrap();
+
+        let err = host
+            .backend(2)
+            .reboot_and_wait(&fake_target())
+            .await
+            .unwrap_err();
+
+        assert!(matches!(err, SnowError::Deploy(DeployError::Failed { .. })));
+        assert!(!host.reboot_requested());
+    }
 
     #[test]
     fn test_shell_escape() {
