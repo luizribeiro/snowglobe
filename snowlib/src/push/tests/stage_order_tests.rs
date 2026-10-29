@@ -167,3 +167,28 @@ async fn test_failed_post_deploy_hook_runs_on_failure_hooks() {
         ]
     );
 }
+
+#[tokio::test]
+async fn test_failed_reboot_runs_on_failure_hooks() {
+    let mut harness = PushHarness::new();
+    harness.reboot_backend =
+        MockRebootBackend::new().with_reboot_failures(vec!["boron.example.com".to_string()]);
+    let mut host = kubernetes_node("boron");
+    host.reboot_policy = RebootPolicy::Always;
+
+    let run = harness.run(vec![host]).await;
+
+    let host = run.host("boron");
+    assert!(!host.success);
+    assert_eq!(host.failed_at_step, Some(PipelineStep::Reboot));
+    assert_eq!(host.activation_mode, Some(ActivationMode::Boot));
+    assert!(!host.rebooted);
+    assert!(host
+        .error_message
+        .as_deref()
+        .is_some_and(|msg| msg.starts_with("Deployment succeeded but reboot failed")));
+    assert_eq!(
+        executed_stages(&run),
+        vec![HookStage::PreDeploy, HookStage::OnFailure]
+    );
+}

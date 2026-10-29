@@ -247,11 +247,10 @@ pub async fn execute_host_pipeline(
     };
 
     // Step 4: Reboot (if needed)
-    let (final_result, rebooted) = match execute_reboot_step(push_ctx, &plan, activate_result).await
-    {
-        Ok(result) => result,
+    let rebooted = match execute_reboot_step(push_ctx, &plan).await {
+        Ok(rebooted) => rebooted,
         Err(e) => {
-            return Ok(handle_pipeline_failure(
+            let mut failure = handle_pipeline_failure(
                 push_ctx,
                 &hostname,
                 Some(&plan.target),
@@ -260,7 +259,12 @@ pub async fn execute_host_pipeline(
                 PipelineStep::Reboot,
                 e,
             )
-            .await);
+            .await;
+            failure.activation_mode = Some(plan.activation_mode);
+            failure.error_message = failure
+                .error_message
+                .map(|msg| format!("Deployment succeeded but reboot failed: {}", msg));
+            return Ok(failure);
         }
     };
 
@@ -274,7 +278,7 @@ pub async fn execute_host_pipeline(
         );
     }
 
-    if final_result.success {
+    if activate_result.success {
         execute_hooks_or_return!(
             HookStage::PostDeploy,
             Some(&plan.target),
@@ -286,15 +290,15 @@ pub async fn execute_host_pipeline(
     // Build success result
     Ok(HostDeploymentResult {
         hostname,
-        success: final_result.success,
+        success: activate_result.success,
         failed_at_step: None,
         activation_mode: Some(plan.activation_mode),
         rebooted,
         unchanged: false,
-        error_message: if final_result.success {
+        error_message: if activate_result.success {
             None
         } else {
-            Some(final_result.message)
+            Some(activate_result.message)
         },
     })
 }
@@ -434,12 +438,8 @@ async fn execute_activation_step(
 /// 3. activation_mode is Boot, AND
 /// 4. Either no reboot check OR reboot is required
 ///
-/// Returns (DeployResult, whether_rebooted)
-async fn execute_reboot_step(
-    push_ctx: &PushContext<'_>,
-    plan: &PushPlan,
-    activate_result: DeployResult,
-) -> Result<(DeployResult, bool)> {
+/// Returns whether the host was rebooted
+async fn execute_reboot_step(push_ctx: &PushContext<'_>, plan: &PushPlan) -> Result<bool> {
     let hostname = &plan.metadata.name;
 
     let should_reboot = push_ctx.config.allow_reboot
@@ -452,25 +452,14 @@ async fn execute_reboot_step(
                 .map(|c| c.required)
                 .unwrap_or(false));
 
-    let (final_result, rebooted) = if should_reboot {
-        push_ctx.observer.on_reboot_start(hostname);
+    if !should_reboot {
+        return Ok(false);
+    }
 
-        match push_ctx.reboot_backend.reboot_and_wait(&plan.target).await {
-            Ok(()) => {
-                push_ctx.observer.on_reboot_complete(hostname, true);
-                (activate_result, true)
-            }
-            Err(e) => {
-                push_ctx.observer.on_reboot_complete(hostname, false);
-                (
-                    DeployResult::failure(format!("Deployment succeeded but reboot failed: {}", e)),
-                    false,
-                )
-            }
-        }
-    } else {
-        (activate_result, false)
-    };
-
-    Ok((final_result, rebooted))
+    push_ctx.observer.on_reboot_start(hostname);
+    let result = push_ctx.reboot_backend.reboot_and_wait(&plan.target).await;
+    push_ctx
+        .observer
+        .on_reboot_complete(hostname, result.is_ok());
+    result.map(|()| true)
 }
