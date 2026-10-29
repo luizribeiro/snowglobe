@@ -81,6 +81,14 @@ pub enum NixError {
         source: Box<NixError>,
     },
 
+    #[error("Failed to read hooks file {path}")]
+    #[diagnostic(code(snow::nix::hooks_file_read_failed))]
+    HooksFileReadFailed {
+        path: String,
+        #[source]
+        source: std::io::Error,
+    },
+
     #[error("Nix command execution failed")]
     #[diagnostic(code(snow::nix::command_failed))]
     CommandFailed {

@@ -69,26 +69,32 @@ impl NixBackend for SystemNixBackend {
         host: &str,
         system_type: SystemType,
     ) -> Result<HostMetadata> {
+        let as_metadata_error = |e| match e {
+            crate::error::SnowError::Nix(nix_err) => {
+                crate::error::SnowError::Nix(crate::error::NixError::MetadataFailed {
+                    host: host.to_string(),
+                    source: Box::new(nix_err),
+                })
+            }
+            other => other,
+        };
+
         let flake_ref = format!(".#{}.{}", system_type.flake_attr(), host);
-
-        let apply_expr = metadata_apply_expr();
-
         let stdout = NixCommand::eval(flake, &flake_ref)
-            .apply(&apply_expr)
+            .apply(metadata_apply_expr(&local_nix_system()))
             .json()
             .run()
             .await
-            .map_err(|e| match e {
-                crate::error::SnowError::Nix(nix_err) => {
-                    crate::error::SnowError::Nix(crate::error::NixError::MetadataFailed {
-                        host: host.to_string(),
-                        source: Box::new(nix_err),
-                    })
-                }
-                other => other,
-            })?;
+            .map_err(as_metadata_error)?;
 
-        parse_host_metadata(host, system_type, &stdout)
+        let (mut metadata, hooks_file) = parse_host_metadata(host, system_type, &stdout)?;
+        if let Some(drv) = hooks_file {
+            let path = build_hooks_file(flake, &drv)
+                .await
+                .map_err(as_metadata_error)?;
+            metadata.hooks = read_hooks_file(&path).map_err(as_metadata_error)?;
+        }
+        Ok(metadata)
     }
 
     async fn build_host(
@@ -216,30 +222,129 @@ impl NixBackend for SystemNixBackend {
     }
 }
 
+/// The Nix platform string of the machine running snow, e.g. "aarch64-darwin"
+fn local_nix_system() -> String {
+    nix_system(std::env::consts::ARCH, std::env::consts::OS)
+}
+
+/// Converts Rust's target arch/OS names to a Nix platform string
+fn nix_system(arch: &str, os: &str) -> String {
+    let arch = match arch {
+        "x86" => "i686",
+        "arm" => "armv7l",
+        arch => arch,
+    };
+    let os = match os {
+        "macos" => "darwin",
+        os => os,
+    };
+    format!("{}-{}", arch, os)
+}
+
 /// Builds the `--apply` expression that extracts host metadata as JSON
 ///
-/// Hooks are read only for known stages: removed-stage option stubs throw
-/// when serialized.
-fn metadata_apply_expr() -> String {
-    let hook_stages: String = HookStage::ALL
-        .iter()
-        .map(|stage| format!("\"{}\" = null; ", stage.nix_name()))
-        .collect();
+/// When this machine's platform differs from the host's, the host is
+/// re-evaluated with `snowglobe.localSystem` set to it, so local hooks get
+/// packages that run here. The re-evaluation costs about half a second per
+/// host, so it's skipped when the platforms already match.
+fn metadata_apply_expr(local_system: &str) -> String {
     format!(
-        r#"config: {{
-          hostName = config.config.networking.hostName;
-          domain = config.config.networking.domain or "";
-          phase = config.config.core.pushPhase or null;
-          tags = config.config.core.tags or [];
-          rebootPolicy = config.config.core.rebootPolicy or "auto";
-          serialGroup = config.config.snowglobe.push.serialGroup or null;
-          hooks = builtins.intersectAttrs {{ {hook_stages}}} (config.config.snowglobe.hooks or {{}});
+        r#"host:
+        let
+          needsLocalSystem = host ? options && host.options ? snowglobe && host.options.snowglobe ? localSystem
+            && host.config.snowglobe.localSystem != "{local_system}";
+          extended = if needsLocalSystem
+            then host.extendModules {{
+              modules = [ ({{ lib, ... }}: {{ snowglobe.localSystem = lib.mkForce "{local_system}"; }}) ];
+            }}
+            else host;
+          config = extended.config;
+        in {{
+          hostName = config.networking.hostName;
+          domain = config.networking.domain or "";
+          phase = config.core.pushPhase or null;
+          tags = config.core.tags or [];
+          rebootPolicy = config.core.rebootPolicy or "auto";
+          serialGroup = config.snowglobe.push.serialGroup or null;
+          hooksFile = if config ? snowglobe && config.snowglobe ? hooksFile
+            then config.snowglobe.hooksFile.drvPath
+            else null;
         }}"#
     )
 }
 
+/// Builds the host's hooks file on this machine, which also fetches or builds
+/// what local hooks reference, and returns its path
+async fn build_hooks_file(flake: &Flake, drv: &str) -> Result<String> {
+    let stdout = NixCommand::build(flake, format!("{}^out", drv))
+        .no_link()
+        .print_out_paths()
+        .output_mode(OutputMode::Capture)
+        .run()
+        .await?;
+    Ok(String::from_utf8_lossy(&stdout).trim().to_string())
+}
+
+fn read_hooks_file(path: &str) -> Result<Vec<HookConfig>> {
+    let json =
+        std::fs::read(path).map_err(|source| crate::error::NixError::HooksFileReadFailed {
+            path: path.to_string(),
+            source,
+        })?;
+    parse_hooks(&json)
+}
+
 /// Kept apart from `get_host_metadata` so parsing is testable without invoking nix
-fn parse_host_metadata(host: &str, system_type: SystemType, stdout: &[u8]) -> Result<HostMetadata> {
+///
+/// Returns the metadata (without hooks) and the hooks file's derivation, if any.
+fn parse_host_metadata(
+    host: &str,
+    system_type: SystemType,
+    stdout: &[u8],
+) -> Result<(HostMetadata, Option<String>)> {
+    #[derive(serde::Deserialize)]
+    struct MetadataJson {
+        #[serde(rename = "hostName")]
+        hostname: String,
+        // Domain can be null for hosts that connect to different networks (like laptops)
+        // or when not configured in the NixOS/nix-darwin configuration
+        domain: Option<String>,
+        phase: Option<String>,
+        tags: Vec<String>,
+        #[serde(rename = "rebootPolicy")]
+        reboot_policy: String,
+        #[serde(default, rename = "serialGroup")]
+        serial_group: Option<String>,
+        #[serde(default, rename = "hooksFile")]
+        hooks_file: Option<String>,
+    }
+
+    let meta: MetadataJson =
+        serde_json::from_slice(stdout).map_err(|e| crate::error::NixError::OutputParseFailed {
+            output: String::from_utf8_lossy(stdout).to_string(),
+            source: e,
+        })?;
+
+    let fqdn = match meta.domain {
+        Some(domain) if !domain.is_empty() => format!("{}.{}", meta.hostname, domain),
+        _ => meta.hostname.clone(),
+    };
+
+    let metadata = HostMetadata {
+        name: host.to_string(),
+        phase: meta.phase,
+        tags: meta.tags,
+        fqdn,
+        reboot_policy: RebootPolicy::from_str(&meta.reboot_policy)?,
+        system_type,
+        serial_group: meta.serial_group,
+        hooks: Vec::new(),
+    };
+    Ok((metadata, meta.hooks_file))
+}
+
+/// Parses a hooks file (stage → hook name → hook) into a flat list
+fn parse_hooks(json: &[u8]) -> Result<Vec<HookConfig>> {
     #[derive(serde::Deserialize)]
     struct HookConfigWithoutStage {
         location: HookLocation,
@@ -272,42 +377,19 @@ fn parse_host_metadata(host: &str, system_type: SystemType, stdout: &[u8]) -> Re
         5
     }
 
-    #[derive(serde::Deserialize)]
-    struct MetadataJson {
-        #[serde(rename = "hostName")]
-        hostname: String,
-        // Domain can be null for hosts that connect to different networks (like laptops)
-        // or when not configured in the NixOS/nix-darwin configuration
-        domain: Option<String>,
-        phase: Option<String>,
-        tags: Vec<String>,
-        #[serde(rename = "rebootPolicy")]
-        reboot_policy: String,
-        #[serde(default, rename = "serialGroup")]
-        serial_group: Option<String>,
-        #[serde(default)]
-        hooks: std::collections::HashMap<
-            String,
-            std::collections::HashMap<String, HookConfigWithoutStage>,
-        >,
-    }
+    type HooksByStage = std::collections::HashMap<
+        String,
+        std::collections::HashMap<String, HookConfigWithoutStage>,
+    >;
 
-    let meta: MetadataJson =
-        serde_json::from_slice(stdout).map_err(|e| crate::error::NixError::OutputParseFailed {
-            output: String::from_utf8_lossy(stdout).to_string(),
+    let by_stage: HooksByStage =
+        serde_json::from_slice(json).map_err(|e| crate::error::NixError::OutputParseFailed {
+            output: String::from_utf8_lossy(json).to_string(),
             source: e,
         })?;
 
-    let fqdn = match meta.domain {
-        Some(domain) if !domain.is_empty() => format!("{}.{}", meta.hostname, domain),
-        _ => meta.hostname.clone(),
-    };
-
-    let reboot_policy = RebootPolicy::from_str(&meta.reboot_policy)?;
-
-    // Convert hooks from stage-grouped HashMap to flat Vec
     let mut hooks = Vec::new();
-    for (stage_str, stage_hooks) in meta.hooks {
+    for (stage_str, stage_hooks) in by_stage {
         let stage = HookStage::from_str(&stage_str)?;
         for (hook_name, hook) in stage_hooks {
             hooks.push(HookConfig {
@@ -325,17 +407,7 @@ fn parse_host_metadata(host: &str, system_type: SystemType, stdout: &[u8]) -> Re
             });
         }
     }
-
-    Ok(HostMetadata {
-        name: host.to_string(),
-        phase: meta.phase,
-        tags: meta.tags,
-        fqdn,
-        reboot_policy,
-        system_type,
-        serial_group: meta.serial_group,
-        hooks,
-    })
+    Ok(hooks)
 }
 
 #[cfg(test)]
@@ -343,7 +415,7 @@ mod tests {
     use super::*;
 
     fn try_parse(json: &str) -> Result<HostMetadata> {
-        parse_host_metadata("web01", SystemType::NixOS, json.as_bytes())
+        parse_host_metadata("web01", SystemType::NixOS, json.as_bytes()).map(|(meta, _)| meta)
     }
 
     fn parse(json: &str) -> HostMetadata {
@@ -426,29 +498,100 @@ mod tests {
 
     #[test]
     fn test_metadata_apply_expr_reads_serial_group() {
-        assert!(metadata_apply_expr()
-            .contains("serialGroup = config.config.snowglobe.push.serialGroup or null;"));
+        assert!(metadata_apply_expr("x86_64-linux")
+            .contains("serialGroup = config.snowglobe.push.serialGroup or null;"));
     }
 
     #[test]
-    fn test_parse_metadata_with_hooks() {
-        let meta = parse(
-            r#"{
-            "hostName": "praseodymium",
-            "domain": "example.com",
-            "phase": "p2",
-            "tags": [],
-            "rebootPolicy": "auto",
-            "hooks": {
-                "pre-deploy": {
-                    "drain-node": { "location": "local", "command": "kubectl drain praseodymium", "timeout": 900 }
-                }
-            }
-        }"#,
-        );
+    fn test_metadata_apply_expr_sets_local_system_and_reads_hooks_file() {
+        let expr = metadata_apply_expr("aarch64-darwin");
 
-        assert_eq!(meta.hooks.len(), 1);
-        let hook = &meta.hooks[0];
+        assert!(expr.contains(r#"snowglobe.localSystem = lib.mkForce "aarch64-darwin";"#));
+        assert!(expr.contains("config.snowglobe.hooksFile.drvPath"));
+    }
+
+    #[test]
+    fn test_nix_system_uses_nix_platform_names() {
+        assert_eq!(nix_system("x86_64", "linux"), "x86_64-linux");
+        assert_eq!(nix_system("aarch64", "linux"), "aarch64-linux");
+        assert_eq!(nix_system("aarch64", "macos"), "aarch64-darwin");
+        assert_eq!(nix_system("x86_64", "macos"), "x86_64-darwin");
+        assert_eq!(nix_system("x86", "linux"), "i686-linux");
+        assert_eq!(nix_system("arm", "linux"), "armv7l-linux");
+    }
+
+    #[test]
+    fn test_read_hooks_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("snowglobe-hooks.json");
+        std::fs::write(
+            &path,
+            r#"{"post-deploy": {"uncordon-node": {"location": "local", "command": "kubectl uncordon samarium"}}}"#,
+        )
+        .unwrap();
+
+        let hooks = read_hooks_file(path.to_str().unwrap()).unwrap();
+
+        assert_eq!(hooks.len(), 1);
+        assert_eq!(hooks[0].stage, HookStage::PostDeploy);
+        assert_eq!(hooks[0].command, "kubectl uncordon samarium");
+    }
+
+    #[test]
+    fn test_read_hooks_file_missing() {
+        let err = read_hooks_file("/nonexistent/snowglobe-hooks.json").unwrap_err();
+
+        assert!(matches!(
+            err,
+            crate::error::SnowError::Nix(crate::error::NixError::HooksFileReadFailed { .. })
+        ));
+    }
+
+    #[test]
+    fn test_parse_metadata_returns_hooks_file_derivation() {
+        let (meta, hooks_file) = parse_host_metadata(
+            "praseodymium",
+            SystemType::NixOS,
+            br#"{"hostName": "praseodymium", "domain": "example.com", "phase": "p2", "tags": [],
+                "rebootPolicy": "always", "hooksFile": "/nix/store/abc-snowglobe-hooks.json.drv"}"#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            hooks_file.as_deref(),
+            Some("/nix/store/abc-snowglobe-hooks.json.drv")
+        );
+        assert!(meta.hooks.is_empty());
+    }
+
+    #[test]
+    fn test_parse_metadata_without_hooks_file() {
+        let (_, hooks_file) = parse_host_metadata(
+            "web01",
+            SystemType::NixOS,
+            br#"{"hostName": "web01", "domain": null, "phase": null, "tags": [], "rebootPolicy": "auto", "hooksFile": null}"#,
+        )
+        .unwrap();
+
+        assert_eq!(hooks_file, None);
+    }
+
+    #[test]
+    fn test_parse_hooks() {
+        let hooks = parse_hooks(
+            br#"{
+            "pre-deploy": {
+                "drain-node": { "location": "local", "command": "kubectl drain praseodymium", "timeout": 900 }
+            },
+            "post-deploy": {},
+            "post-reboot": {},
+            "on-failure": {}
+        }"#,
+        )
+        .unwrap();
+
+        assert_eq!(hooks.len(), 1);
+        let hook = &hooks[0];
         assert_eq!(hook.name, "drain-node");
         assert_eq!(hook.stage, HookStage::PreDeploy);
         assert_eq!(hook.timeout, 900);
@@ -472,13 +615,8 @@ mod tests {
     }
 
     #[test]
-    fn test_metadata_apply_expr_reads_only_current_hook_stages() {
-        let expr = metadata_apply_expr();
-
-        assert!(expr.contains("builtins.intersectAttrs"));
-        for stage in HookStage::ALL {
-            assert!(expr.contains(&format!("\"{}\" = null;", stage.nix_name())));
-        }
+    fn test_parse_hooks_rejects_unknown_stage() {
+        assert!(parse_hooks(br#"{"pre-activate": {}}"#).is_err());
     }
 
     #[test]
