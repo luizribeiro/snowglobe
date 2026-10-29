@@ -14,6 +14,8 @@
         (system: { name = system; value = f system; })
         allSystems
       );
+      # Platforms we can build on: the CI runner and ferrum
+      checkedSystems = [ "x86_64-linux" "aarch64-darwin" ];
     in
     {
       # NixOS module for snowglobe deployment support
@@ -64,18 +66,19 @@
         }
       );
 
-      checks.x86_64-linux =
+      checks = nixpkgs.lib.genAttrs checkedSystems (system:
         let
-          pkgs = nixpkgs.legacyPackages.x86_64-linux;
+          pkgs = nixpkgs.legacyPackages.${system};
           runNixTests = import ./nix/run-tests.nix { inherit pkgs; };
         in
         {
-          nixos-activate = import ./modules/nixos-activate.test.nix { inherit pkgs; };
-          snow-package = self.packages.x86_64-linux.snow;
+          snow-package = self.packages.${system}.snow;
           hooks-module = runNixTests "hooks-module" (import ./modules/hooks.test.nix { inherit pkgs; });
           push-module = runNixTests "push-module" (import ./modules/push.test.nix { inherit pkgs; });
           local-pkgs-module = runNixTests "local-pkgs-module" (import ./modules/local-pkgs.test.nix { inherit pkgs; });
-        };
+        } // nixpkgs.lib.optionalAttrs pkgs.stdenv.isLinux {
+          nixos-activate = import ./modules/nixos-activate.test.nix { inherit pkgs; };
+        });
 
       devShells = forEachSystem (system:
         let
