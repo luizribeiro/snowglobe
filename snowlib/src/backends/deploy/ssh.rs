@@ -143,16 +143,7 @@ impl DeployBackend for SshDeployBackend {
             })?;
 
         if !result.status.success() {
-            let stderr = String::from_utf8_lossy(&result.stderr).trim().to_string();
-            let stdout = String::from_utf8_lossy(&result.stdout).trim().to_string();
-            return Err(DeployError::CommandFailed {
-                host: target.hostname.clone(),
-                command,
-                exit_code: result.status.code().unwrap_or(-1),
-                stderr,
-                stdout,
-            }
-            .into());
+            return Err(command_failed(&target.hostname, command, &result).into());
         }
 
         Ok(())
@@ -213,16 +204,7 @@ impl DeployBackend for SshDeployBackend {
                     "sudo nix-env --profile /nix/var/nix/profiles/system --set {}",
                     store_path.as_str()
                 );
-                let stderr = String::from_utf8_lossy(&result.stderr).trim().to_string();
-                let stdout = String::from_utf8_lossy(&result.stdout).trim().to_string();
-                return Err(DeployError::CommandFailed {
-                    host: target.hostname.clone(),
-                    command: command_display,
-                    exit_code: result.status.code().unwrap_or(-1),
-                    stderr,
-                    stdout,
-                }
-                .into());
+                return Err(command_failed(&target.hostname, command_display, &result).into());
             }
         }
 
@@ -267,16 +249,7 @@ impl DeployBackend for SshDeployBackend {
             })?;
 
         if !result.status.success() {
-            let stderr = String::from_utf8_lossy(&result.stderr).trim().to_string();
-            let stdout = String::from_utf8_lossy(&result.stdout).trim().to_string();
-            return Err(DeployError::CommandFailed {
-                host: target.hostname.clone(),
-                command,
-                exit_code: result.status.code().unwrap_or(-1),
-                stderr,
-                stdout,
-            }
-            .into());
+            return Err(command_failed(&target.hostname, command, &result).into());
         }
 
         Ok(())
