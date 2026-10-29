@@ -25,7 +25,10 @@ let
 
   evalHooks = config: (evalConfig config).snowglobe.hooks;
 
-  aarch64Pkgs = import pkgs.path { localSystem = { system = "aarch64-linux"; }; };
+  pkgsFor = system: import pkgs.path { localSystem = { inherit system; }; };
+  aarch64Pkgs = pkgsFor "aarch64-linux";
+  deployerSystem = "x86_64-linux";
+  deployerPkgs = pkgsFor deployerSystem;
 
   # An aarch64 host (e.g. a Raspberry Pi) pushed from an x86_64-linux deployer
   piWithHooks = (pkgs.lib.evalModules {
@@ -34,7 +37,7 @@ let
       ./hooks.nix
       { _module.args.pkgs = aarch64Pkgs; }
       ({ pkgs, localPkgs, ... }: {
-        snowglobe.localSystem = "x86_64-linux";
+        snowglobe.localSystem = deployerSystem;
         snowglobe.hooks.pre-deploy.health-gate = {
           location = "local";
           command = "${localPkgs.hello}/bin/hello --gate";
@@ -363,11 +366,11 @@ in
 
   "test hooks file: is built for the deployer's platform" = {
     expr = piHooksFile.system;
-    expected = "x86_64-linux";
+    expected = deployerSystem;
   };
 
   "test hooks file: depends on what local hooks reference" = {
-    expr = builtins.elem pkgs.hello.drvPath piHooksFileInputs;
+    expr = builtins.elem deployerPkgs.hello.drvPath piHooksFileInputs;
     expected = true;
   };
 
@@ -392,7 +395,7 @@ in
   };
 
   "test remote hook deps: leave local hooks out of the system" = {
-    expr = builtins.elem pkgs.hello.drvPath piRemoteHooksInputs;
+    expr = builtins.elem deployerPkgs.hello.drvPath piRemoteHooksInputs;
     expected = false;
   };
 
