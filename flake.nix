@@ -38,6 +38,17 @@
             };
 
             nativeBuildInputs = [ pkgs.pkg-config ];
+
+            # Some tests shell out to ssh (expecting it to fail) and which
+            nativeCheckInputs = [ pkgs.openssh pkgs.which ];
+
+            # These run the real nix CLI against snow/tests/fixtures, which the
+            # build sandbox can't do; CI runs them through cargo test
+            checkFlags = [
+              "--skip=commands::build::tests"
+              "--skip=commands::list::tests"
+              "--skip=commands::status::tests"
+            ];
             buildInputs = [ ];
 
             meta = {
@@ -59,6 +70,7 @@
         in
         {
           nixos-activate = import ./modules/nixos-activate.test.nix { inherit pkgs; };
+          snow-package = self.packages.x86_64-linux.snow;
           hooks-module = runNixTests "hooks-module" (import ./modules/hooks.test.nix { inherit pkgs; });
           push-module = runNixTests "push-module" (import ./modules/push.test.nix { inherit pkgs; });
           local-pkgs-module = runNixTests "local-pkgs-module" (import ./modules/local-pkgs.test.nix { inherit pkgs; });
