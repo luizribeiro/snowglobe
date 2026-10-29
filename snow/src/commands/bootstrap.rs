@@ -269,42 +269,6 @@ mod tests {
     }
 
     #[test]
-    fn test_bootstrap_with_mock_generates_age_key() {
-        snow_cmd()
-            .arg("bootstrap")
-            .arg("testhost")
-            .arg("--mock")
-            .assert()
-            .success()
-            .stdout(predicate::str::contains("Age public key: age1"))
-            .stdout(predicate::str::contains("Generated SSH host key"));
-    }
-
-    #[test]
-    fn test_bootstrap_shows_provisioner_in_output() {
-        snow_cmd()
-            .arg("bootstrap")
-            .arg("testhost")
-            .arg("--mock")
-            .assert()
-            .success()
-            .stdout(predicate::str::contains("Bootstrapping testhost"));
-    }
-
-    #[test]
-    fn test_bootstrap_with_provisioner_override() {
-        snow_cmd()
-            .arg("bootstrap")
-            .arg("testhost")
-            .arg("--mock")
-            .arg("--provisioner")
-            .arg("mock")
-            .assert()
-            .success()
-            .stdout(predicate::str::contains("Bootstrapping testhost (mock)"));
-    }
-
-    #[test]
     fn test_bootstrap_help_shows_update_sops_flag() {
         snow_cmd()
             .arg("bootstrap")
@@ -313,19 +277,6 @@ mod tests {
             .success()
             .stdout(predicate::str::contains("--update-sops"))
             .stdout(predicate::str::contains(".sops.yaml"));
-    }
-
-    #[test]
-    fn test_bootstrap_with_update_sops_updates_sops_yaml() {
-        snow_cmd()
-            .arg("bootstrap")
-            .arg("testhost")
-            .arg("--mock")
-            .arg("--update-sops")
-            .assert()
-            .success()
-            .stdout(predicate::str::contains("Updating .sops.yaml"))
-            .stdout(predicate::str::contains("Updated .sops.yaml"));
     }
 
     #[test]
@@ -350,5 +301,60 @@ mod tests {
             .stdout(predicate::str::contains("--yes"))
             .stdout(predicate::str::contains("-y"))
             .stdout(predicate::str::contains("Skip confirmation"));
+    }
+
+    // --mock only exists in debug builds
+    #[cfg(debug_assertions)]
+    mod mock_flag {
+        use super::*;
+
+        #[test]
+        fn test_bootstrap_with_mock_generates_age_key() {
+            snow_cmd()
+                .arg("bootstrap")
+                .arg("testhost")
+                .arg("--mock")
+                .assert()
+                .success()
+                .stdout(predicate::str::contains("Age public key: age1"))
+                .stdout(predicate::str::contains("Generated SSH host key"));
+        }
+
+        #[test]
+        fn test_bootstrap_shows_provisioner_in_output() {
+            snow_cmd()
+                .arg("bootstrap")
+                .arg("testhost")
+                .arg("--mock")
+                .assert()
+                .success()
+                .stdout(predicate::str::contains("Bootstrapping testhost"));
+        }
+
+        #[test]
+        fn test_bootstrap_with_provisioner_override() {
+            snow_cmd()
+                .arg("bootstrap")
+                .arg("testhost")
+                .arg("--mock")
+                .arg("--provisioner")
+                .arg("mock")
+                .assert()
+                .success()
+                .stdout(predicate::str::contains("Bootstrapping testhost (mock)"));
+        }
+
+        #[test]
+        fn test_bootstrap_with_update_sops_updates_sops_yaml() {
+            snow_cmd()
+                .arg("bootstrap")
+                .arg("testhost")
+                .arg("--mock")
+                .arg("--update-sops")
+                .assert()
+                .success()
+                .stdout(predicate::str::contains("Updating .sops.yaml"))
+                .stdout(predicate::str::contains("Updated .sops.yaml"));
+        }
     }
 }
