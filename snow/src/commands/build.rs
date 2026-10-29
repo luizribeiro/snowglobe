@@ -119,25 +119,7 @@ impl BuildArgs {
 
         let hostnames = self.resolve_hosts(flake, nix_backend.as_ref()).await?;
 
-        // Get metadata for each host to determine system type
-        let mut host_metadata = Vec::new();
-        for hostname in &hostnames {
-            // Try NixOS first
-            if let Ok(metadata) = nix_backend
-                .get_host_metadata(flake, hostname, snowlib::SystemType::NixOS)
-                .await
-            {
-                host_metadata.push(metadata);
-                continue;
-            }
-            // Then try Darwin
-            if let Ok(metadata) = nix_backend
-                .get_host_metadata(flake, hostname, snowlib::SystemType::Darwin)
-                .await
-            {
-                host_metadata.push(metadata);
-            }
-        }
+        let host_metadata = nix_backend.load_host_metadata(flake, &hostnames).await?;
 
         println!(
             "Building {} {} with concurrency {}...",

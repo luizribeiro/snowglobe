@@ -207,22 +207,7 @@ impl PushArgs {
         let observer = observer::CliObserver::new();
 
         let hostnames = self.resolve_hosts(flake, nix_backend.as_ref()).await?;
-        let mut hosts = Vec::new();
-        for name in hostnames {
-            // Try NixOS first, then Darwin
-            let metadata = match nix_backend
-                .get_host_metadata(flake, &name, snowlib::SystemType::NixOS)
-                .await
-            {
-                Ok(m) => m,
-                Err(_) => {
-                    nix_backend
-                        .get_host_metadata(flake, &name, snowlib::SystemType::Darwin)
-                        .await?
-                }
-            };
-            hosts.push(metadata);
-        }
+        let hosts = nix_backend.load_host_metadata(flake, &hostnames).await?;
 
         let config = snowlib::PushConfiguration {
             strategy: self.push_strategy(),
