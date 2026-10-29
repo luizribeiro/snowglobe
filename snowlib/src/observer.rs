@@ -127,6 +127,11 @@ pub trait PushObserver: Send + Sync {
     /// and would boot the built system
     fn on_host_unchanged(&self, _hostname: &str) {}
 
+    /// Called when a host has to wait for its serial group before deploying
+    ///
+    /// `holder` is the group member currently deploying, if known.
+    fn on_serial_group_wait(&self, _hostname: &str, _group: &str, _holder: Option<&str>) {}
+
     /// Called after activation completes on a host
     ///
     /// # Arguments
@@ -323,6 +328,12 @@ impl PushObserver for CompositeObserver {
     fn on_activation_start(&self, hostname: &str) {
         for observer in &self.observers {
             observer.on_activation_start(hostname);
+        }
+    }
+
+    fn on_serial_group_wait(&self, hostname: &str, group: &str, holder: Option<&str>) {
+        for observer in &self.observers {
+            observer.on_serial_group_wait(hostname, group, holder);
         }
     }
 

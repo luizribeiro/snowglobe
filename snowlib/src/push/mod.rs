@@ -20,6 +20,7 @@ mod hooks;
 mod pipeline;
 mod planning;
 mod results;
+mod serial;
 
 // Re-export public types
 pub use config::{PushConfiguration, PushStrategy};
@@ -34,9 +35,8 @@ use crate::error::Result;
 use crate::host::HostMetadata;
 use futures::stream::{FuturesUnordered, StreamExt};
 use pipeline::execute_host_pipeline;
+use serial::PhaseScheduler;
 use std::collections::HashMap;
-use std::sync::Arc;
-use tokio::sync::Semaphore;
 
 /// Helper to create SkippedPhase entries for all remaining phases
 fn skip_remaining_phases(
@@ -151,17 +151,19 @@ async fn execute_phase(
     let mut sorted_hosts = phase_hosts.to_vec();
     sorted_hosts.sort_by(|a, b| a.name.cmp(&b.name));
 
-    // Semaphore for concurrency control
-    let semaphore = Arc::new(Semaphore::new(push_ctx.config.concurrency));
+    let scheduler = PhaseScheduler::new(push_ctx.config.concurrency, &sorted_hosts);
+    let scheduler = &scheduler;
 
-    // Spawn tasks for each host
     let mut futures = FuturesUnordered::new();
 
     for host_metadata in sorted_hosts {
-        let sem = Arc::clone(&semaphore);
         futures.push(async move {
-            let _permit = sem.acquire().await.expect("semaphore closed");
-            execute_host_pipeline(push_ctx, &host_metadata).await
+            let result = execute_host_pipeline(push_ctx, &host_metadata, scheduler).await;
+            // Backstop for errors that bypass the pipeline's failure handling
+            if !result.as_ref().is_ok_and(|r| r.success) {
+                scheduler.halt_group_of(&host_metadata);
+            }
+            result
         });
     }
 

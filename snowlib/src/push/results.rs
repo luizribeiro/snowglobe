@@ -30,6 +30,8 @@ pub enum PipelineStep {
     Activate,
     Reboot,
     PostDeploy,
+    /// Never started because its serial group halted
+    SerialGroup,
 }
 
 impl fmt::Display for PipelineStep {
@@ -41,6 +43,7 @@ impl fmt::Display for PipelineStep {
             PipelineStep::Activate => write!(f, "activate"),
             PipelineStep::Reboot => write!(f, "reboot"),
             PipelineStep::PostDeploy => write!(f, "post-deploy"),
+            PipelineStep::SerialGroup => write!(f, "serial group"),
         }
     }
 }
@@ -59,6 +62,25 @@ pub struct HostDeploymentResult {
 }
 
 impl HostDeploymentResult {
+    pub fn skipped_by_serial_group(
+        hostname: impl Into<String>,
+        group: &str,
+        failed_host: &str,
+    ) -> Self {
+        Self {
+            hostname: hostname.into(),
+            success: false,
+            failed_at_step: Some(PipelineStep::SerialGroup),
+            activation_mode: None,
+            rebooted: false,
+            unchanged: false,
+            error_message: Some(format!(
+                "skipped: serial group '{}' halted after {} failed",
+                group, failed_host
+            )),
+        }
+    }
+
     pub fn unchanged(hostname: impl Into<String>) -> Self {
         Self {
             hostname: hostname.into(),

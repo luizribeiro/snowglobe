@@ -15,6 +15,7 @@ use std::collections::HashMap;
 use super::context::PushContext;
 use super::planning::create_deployment_plans;
 use super::results::{HostDeploymentResult, PipelineStep, PushPlan};
+use super::serial::PhaseScheduler;
 
 /// Create a deploy target from host metadata and push context
 fn create_target(push_ctx: &PushContext<'_>, metadata: &HostMetadata) -> DeployTarget {
@@ -85,20 +86,24 @@ async fn execute_hooks(
 /// Helper to handle pipeline failures consistently
 async fn handle_pipeline_failure(
     push_ctx: &PushContext<'_>,
-    hostname: &str,
+    scheduler: &PhaseScheduler,
+    host_metadata: &HostMetadata,
     target: Option<&DeployTarget>,
-    phase: Option<&str>,
     store_path: Option<&StorePath>,
     step: PipelineStep,
     error: crate::error::SnowError,
 ) -> HostDeploymentResult {
+    let hostname = host_metadata.name.as_str();
+    // Halt first so no other group member starts while on-failure hooks run
+    scheduler.halt_group_of(host_metadata);
+
     // Execute on-failure hooks (log errors but don't fail)
     if let Err(e) = execute_hooks(
         push_ctx,
         hostname,
         HookStage::OnFailure,
         target,
-        phase,
+        host_metadata.phase.as_deref(),
         store_path,
     )
     .await
@@ -128,9 +133,10 @@ async fn handle_pipeline_failure(
 /// This function is called concurrently for each host in a phase using tokio tasks.
 /// Observer callbacks are used to track when hosts enter/leave steps, enabling
 /// dynamic step span visibility.
-pub async fn execute_host_pipeline(
+pub(super) async fn execute_host_pipeline(
     push_ctx: &PushContext<'_>,
     host_metadata: &HostMetadata,
+    scheduler: &PhaseScheduler,
 ) -> Result<HostDeploymentResult> {
     let hostname = host_metadata.name.clone();
 
@@ -155,9 +161,9 @@ pub async fn execute_host_pipeline(
             {
                 return Ok(handle_pipeline_failure(
                     push_ctx,
-                    &hostname,
+                    scheduler,
+                    host_metadata,
                     $target,
-                    host_metadata.phase.as_deref(),
                     $store_path,
                     $step,
                     e,
@@ -167,15 +173,17 @@ pub async fn execute_host_pipeline(
         };
     }
 
+    let preparation_permit = scheduler.permit().await;
+
     // Step 1: Build
     let store_path = match execute_build_step(push_ctx, host_metadata).await {
         Ok(path) => path,
         Err(e) => {
             return Ok(handle_pipeline_failure(
                 push_ctx,
-                &hostname,
+                scheduler,
+                host_metadata,
                 None,
-                host_metadata.phase.as_deref(),
                 None,
                 PipelineStep::Build,
                 e,
@@ -194,9 +202,9 @@ pub async fn execute_host_pipeline(
     if let Err(e) = execute_copy_step(push_ctx, host_metadata, &store_path).await {
         return Ok(handle_pipeline_failure(
             push_ctx,
-            &hostname,
+            scheduler,
+            host_metadata,
             None,
-            host_metadata.phase.as_deref(),
             Some(&store_path),
             PipelineStep::Copy,
             e,
@@ -212,14 +220,39 @@ pub async fn execute_host_pipeline(
         Err(e) => {
             return Ok(handle_pipeline_failure(
                 push_ctx,
-                &hostname,
+                scheduler,
+                host_metadata,
                 Some(&target),
-                host_metadata.phase.as_deref(),
                 Some(&store_path),
                 PipelineStep::Plan,
                 e,
             )
             .await);
+        }
+    };
+
+    drop(preparation_permit);
+    let section = match scheduler
+        .enter_section(host_metadata, |group, holder| {
+            tracing::info!(
+                "{}: waiting for serial group '{}' (held by {})",
+                hostname,
+                group,
+                holder.unwrap_or("another host")
+            );
+            push_ctx
+                .observer
+                .on_serial_group_wait(&hostname, group, holder);
+        })
+        .await
+    {
+        Ok(section) => section,
+        Err(halted) => {
+            return Ok(HostDeploymentResult::skipped_by_serial_group(
+                hostname,
+                &halted.group,
+                &halted.failed_host,
+            ))
         }
     };
 
@@ -235,9 +268,9 @@ pub async fn execute_host_pipeline(
         Err(e) => {
             return Ok(handle_pipeline_failure(
                 push_ctx,
-                &hostname,
+                scheduler,
+                host_metadata,
                 Some(&plan.target),
-                host_metadata.phase.as_deref(),
                 Some(&plan.store_path),
                 PipelineStep::Activate,
                 e,
@@ -252,9 +285,9 @@ pub async fn execute_host_pipeline(
         Err(e) => {
             let mut failure = handle_pipeline_failure(
                 push_ctx,
-                &hostname,
+                scheduler,
+                host_metadata,
                 Some(&plan.target),
-                host_metadata.phase.as_deref(),
                 Some(&plan.store_path),
                 PipelineStep::Reboot,
                 e,
@@ -285,6 +318,7 @@ pub async fn execute_host_pipeline(
             Some(&plan.store_path),
             PipelineStep::PostDeploy
         );
+        section.succeeded();
     }
 
     // Build success result

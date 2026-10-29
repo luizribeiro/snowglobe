@@ -6,6 +6,7 @@
 //! - workflow_tests: Full workflow integration tests
 //! - profile_tests: Profile update tests
 //! - hook_tests: Hook integration tests
+//! - serial_group_tests: Hosts in a serial group deploying one at a time
 //! - stage_order_tests: Order of planning, hooks, activation and reboot
 //! - unchanged_tests: Skipping hosts that already run the built system
 
@@ -13,6 +14,7 @@ mod hook_tests;
 mod planning_tests;
 mod profile_tests;
 mod push_tests;
+mod serial_group_tests;
 mod stage_order_tests;
 mod unchanged_tests;
 mod workflow_tests;
@@ -243,6 +245,15 @@ impl PushObserver for TestObserver {
             .lock()
             .unwrap()
             .push(format!("activation_start:{}", hostname));
+    }
+
+    fn on_serial_group_wait(&self, hostname: &str, group: &str, holder: Option<&str>) {
+        self.events.lock().unwrap().push(format!(
+            "serial_wait:{}:{}:{}",
+            hostname,
+            group,
+            holder.unwrap_or("-")
+        ));
     }
 
     fn on_host_unchanged(&self, hostname: &str) {
