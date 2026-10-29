@@ -49,6 +49,7 @@ fn create_push_config(strategy: PushStrategy, concurrency: usize) -> PushConfigu
         output_mode: crate::process::OutputMode::Capture,
         ssh_user: None,
         allow_reboot: true,
+        redeploy: false,
     }
 }
 

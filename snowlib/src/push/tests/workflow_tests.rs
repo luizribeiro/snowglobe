@@ -45,6 +45,7 @@ async fn test_push_full_workflow_single_phase_success() {
         output_mode: crate::process::OutputMode::Capture,
         ssh_user: None,
         allow_reboot: true,
+        redeploy: false,
     };
 
     let results = {
@@ -127,6 +128,7 @@ async fn test_push_full_workflow_multi_phase_success() {
         output_mode: crate::process::OutputMode::Capture,
         ssh_user: None,
         allow_reboot: true,
+        redeploy: false,
     };
 
     let results = {
@@ -192,6 +194,7 @@ async fn test_push_build_failure_stops_deployment() {
         output_mode: crate::process::OutputMode::Capture,
         ssh_user: None,
         allow_reboot: true,
+        redeploy: false,
     };
 
     let result = {
@@ -256,6 +259,7 @@ async fn test_push_copy_failure_stops_deployment() {
         output_mode: crate::process::OutputMode::Capture,
         ssh_user: None,
         allow_reboot: true,
+        redeploy: false,
     };
 
     let result = {
@@ -333,6 +337,7 @@ async fn test_push_copy_observer_hooks_called() {
         output_mode: crate::process::OutputMode::Capture,
         ssh_user: None,
         allow_reboot: true,
+        redeploy: false,
     };
 
     {
@@ -406,6 +411,7 @@ async fn test_push_build_observer_hooks_called() {
         output_mode: crate::process::OutputMode::Capture,
         ssh_user: None,
         allow_reboot: true,
+        redeploy: false,
     };
 
     {
@@ -485,6 +491,7 @@ async fn test_push_build_partial_failure() {
         output_mode: crate::process::OutputMode::Capture,
         ssh_user: None,
         allow_reboot: true,
+        redeploy: false,
     };
 
     let result = {
@@ -565,6 +572,7 @@ async fn test_push_ignore_phases_flag() {
         output_mode: crate::process::OutputMode::Capture,
         ssh_user: None,
         allow_reboot: true,
+        redeploy: false,
     };
 
     let results = {
@@ -632,6 +640,7 @@ async fn test_push_phase_failure_stops_next_phase() {
         output_mode: crate::process::OutputMode::Capture,
         ssh_user: None,
         allow_reboot: true,
+        redeploy: false,
     };
 
     // When activation fails, push() returns Err but observer events still fire
@@ -707,6 +716,7 @@ async fn test_push_reboot_execution_success() {
         output_mode: crate::process::OutputMode::Capture,
         ssh_user: None,
         allow_reboot: true,
+        redeploy: false,
     };
 
     let results = {
@@ -797,6 +807,7 @@ async fn test_push_reboot_execution_failure() {
         output_mode: crate::process::OutputMode::Capture,
         ssh_user: None,
         allow_reboot: true,
+        redeploy: false,
     };
 
     let results = {
@@ -874,6 +885,7 @@ async fn test_push_skip_reboot_when_not_required() {
         output_mode: crate::process::OutputMode::Capture,
         ssh_user: None,
         allow_reboot: true,
+        redeploy: false,
     };
 
     let results = {
@@ -947,6 +959,7 @@ async fn test_push_reboot_with_boot_mode() {
         output_mode: crate::process::OutputMode::Capture,
         ssh_user: None,
         allow_reboot: true,
+        redeploy: false,
     };
 
     let results = {
@@ -1002,6 +1015,7 @@ async fn test_push_reboot_policy_always() {
         output_mode: crate::process::OutputMode::Capture,
         ssh_user: None,
         allow_reboot: true,
+        redeploy: false,
     };
 
     let results = {
@@ -1069,6 +1083,7 @@ async fn test_push_reboot_policy_never() {
         output_mode: crate::process::OutputMode::Capture,
         ssh_user: None,
         allow_reboot: true,
+        redeploy: false,
     };
 
     let results = {
@@ -1127,6 +1142,7 @@ async fn test_push_skip_reboot_flag_overrides_always_policy() {
         output_mode: crate::process::OutputMode::Capture,
         ssh_user: None,
         allow_reboot: false,
+        redeploy: false,
     };
 
     let results = {
@@ -1194,6 +1210,7 @@ async fn test_push_skip_reboot_flag_with_detected_reboot() {
         output_mode: crate::process::OutputMode::Capture,
         ssh_user: None,
         allow_reboot: false,
+        redeploy: false,
     };
 
     let results = {
@@ -1254,6 +1271,7 @@ async fn test_push_never_reboots_darwin_hosts() {
             output_mode: crate::process::OutputMode::Capture,
             ssh_user: None,
             allow_reboot: true,
+            redeploy: false,
         };
 
         let results = {

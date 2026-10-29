@@ -110,6 +110,7 @@ async fn test_push_with_multiple_phases() {
         output_mode: crate::process::OutputMode::Capture,
         ssh_user: None,
         allow_reboot: true,
+        redeploy: false,
     };
 
     let results = {
@@ -182,6 +183,7 @@ async fn test_push_stops_on_phase_failure() {
         output_mode: crate::process::OutputMode::Capture,
         ssh_user: None,
         allow_reboot: true,
+        redeploy: false,
     };
 
     // When activation fails, push() returns Err
@@ -405,6 +407,7 @@ async fn test_push_error_message_includes_source() {
         output_mode: crate::process::OutputMode::Capture,
         ssh_user: None,
         allow_reboot: true,
+        redeploy: false,
     };
 
     // When activation fails, push() returns Err
@@ -502,6 +505,7 @@ async fn test_push_error_message_format_with_activation_failure() {
         output_mode: crate::process::OutputMode::Capture,
         ssh_user: None,
         allow_reboot: true,
+        redeploy: false,
     };
 
     // When activation fails, push() returns Err

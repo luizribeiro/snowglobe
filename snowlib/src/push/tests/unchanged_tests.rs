@@ -119,3 +119,24 @@ async fn test_only_unchanged_hosts_are_skipped_in_a_phase() {
     assert!(run.has_event_starting_with("activation_start:cerium"));
     assert!(!run.has_event_starting_with("activation_start:boron"));
 }
+
+#[tokio::test]
+async fn test_redeploy_deploys_unchanged_host() {
+    let mut harness = PushHarness::new();
+    harness.deployer = host_running(
+        "krypton.example.com",
+        HostSystems::both(mock_built_system("krypton")),
+    );
+    harness.config.redeploy = true;
+
+    let run = harness.run(vec![kubernetes_node("krypton")]).await;
+
+    let host = run.host("krypton");
+    assert!(host.success);
+    assert!(!host.unchanged);
+    assert!(run.has_event_starting_with("activation_start:krypton"));
+    assert!(run
+        .executed_hooks
+        .iter()
+        .any(|(_, stage, _, _)| *stage == HookStage::PreActivate));
+}

@@ -52,6 +52,13 @@ pub struct PushArgs {
     #[arg(long)]
     pub skip_reboot: bool,
 
+    /// Deploy hosts even if they already run the built system
+    ///
+    /// Use this to retry a host whose last activation partly failed: NixOS
+    /// records the new system as current before starting services.
+    #[arg(long)]
+    pub redeploy: bool,
+
     /// Override policies and safety checks (use with --switch to ignore reboot policies and detection)
     #[arg(long)]
     pub force: bool,
@@ -225,6 +232,7 @@ impl PushArgs {
             output_mode,
             ssh_user: self.user.clone(),
             allow_reboot: !self.skip_reboot,
+            redeploy: self.redeploy,
         };
 
         // Create hook executor from host metadata
@@ -424,6 +432,7 @@ mod tests {
             boot: false,
             test: false,
             skip_reboot: false,
+            redeploy: false,
             force: false,
             quiet: false,
             user: None,
@@ -450,6 +459,7 @@ mod tests {
             boot: false,
             test: false,
             skip_reboot: false,
+            redeploy: false,
             force: true,
             quiet: false,
             user: None,
@@ -476,6 +486,7 @@ mod tests {
             boot: false,
             test: false,
             skip_reboot: false,
+            redeploy: false,
             force: false,
             quiet: false,
             user: None,
@@ -502,6 +513,7 @@ mod tests {
             boot: false,
             test: false,
             skip_reboot: false,
+            redeploy: false,
             force: false,
             quiet: false,
             user: None,
@@ -528,6 +540,7 @@ mod tests {
             boot: false,
             test: false,
             skip_reboot: false,
+            redeploy: false,
             force: false,
             quiet: false,
             user: None,

@@ -180,7 +180,7 @@ pub async fn execute_host_pipeline(
         }
     };
 
-    if is_unchanged(push_ctx, host_metadata, &store_path).await {
+    if !push_ctx.config.redeploy && is_unchanged(push_ctx, host_metadata, &store_path).await {
         tracing::info!("{}: already running the built system, skipping", hostname);
         push_ctx.observer.on_host_unchanged(&hostname);
         return Ok(HostDeploymentResult::unchanged(hostname));

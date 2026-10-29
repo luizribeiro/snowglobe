@@ -17,6 +17,8 @@ pub struct PushConfiguration {
     pub ssh_user: Option<String>,
     /// Allow automatic reboots (false = never reboot, overrides policy/detection)
     pub allow_reboot: bool,
+    /// Deploy hosts even when they already run and would boot the built system
+    pub redeploy: bool,
 }
 
 impl Default for PushConfiguration {
@@ -29,6 +31,7 @@ impl Default for PushConfiguration {
             output_mode: OutputMode::Display,
             ssh_user: None,
             allow_reboot: true,
+            redeploy: false,
         }
     }
 }

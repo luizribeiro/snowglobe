@@ -135,6 +135,16 @@ fn test_push_phase_flag_in_help() {
 }
 
 #[test]
+fn test_push_redeploy_flag_in_help() {
+    snow_cmd()
+        .arg("push")
+        .arg("--help")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("--redeploy"));
+}
+
+#[test]
 fn test_push_tags_flag_in_help() {
     snow_cmd()
         .arg("push")

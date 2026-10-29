@@ -57,6 +57,7 @@ async fn test_push_with_pre_activate_hooks() {
         output_mode: crate::process::OutputMode::Capture,
         ssh_user: None,
         allow_reboot: true,
+        redeploy: false,
     };
 
     let results = {
@@ -126,6 +127,7 @@ async fn test_push_with_post_activate_hooks() {
         output_mode: crate::process::OutputMode::Capture,
         ssh_user: None,
         allow_reboot: true,
+        redeploy: false,
     };
 
     let results = {
@@ -189,6 +191,7 @@ async fn test_push_with_post_reboot_hooks() {
         output_mode: crate::process::OutputMode::Capture,
         ssh_user: None,
         allow_reboot: true,
+        redeploy: false,
     };
 
     let results = {
@@ -259,6 +262,7 @@ async fn test_push_post_reboot_hooks_not_executed_when_reboot_fails() {
         output_mode: crate::process::OutputMode::Capture,
         ssh_user: None,
         allow_reboot: true,
+        redeploy: false,
     };
 
     let results = {
@@ -340,6 +344,7 @@ async fn test_push_pre_activate_hook_failure_aborts_deployment() {
         output_mode: crate::process::OutputMode::Capture,
         ssh_user: None,
         allow_reboot: true,
+        redeploy: false,
     };
 
     let results = {
@@ -415,6 +420,7 @@ async fn test_push_hook_failure_with_continue_on_failure() {
         output_mode: crate::process::OutputMode::Capture,
         ssh_user: None,
         allow_reboot: true,
+        redeploy: false,
     };
 
     let results = {
@@ -480,6 +486,7 @@ async fn test_push_on_failure_hooks_execute_when_build_fails() {
         output_mode: crate::process::OutputMode::Capture,
         ssh_user: None,
         allow_reboot: true,
+        redeploy: false,
     };
 
     let results = {
@@ -546,6 +553,7 @@ async fn test_push_on_failure_hooks_execute_when_copy_fails() {
         output_mode: crate::process::OutputMode::Capture,
         ssh_user: None,
         allow_reboot: true,
+        redeploy: false,
     };
 
     let results = {
@@ -610,6 +618,7 @@ async fn test_push_environment_variables_passed_to_hooks() {
         output_mode: crate::process::OutputMode::Capture,
         ssh_user: None,
         allow_reboot: true,
+        redeploy: false,
     };
 
     let results = {
@@ -690,6 +699,7 @@ async fn test_push_hooks_execute_in_parallel_for_multiple_hosts() {
         output_mode: crate::process::OutputMode::Capture,
         ssh_user: None,
         allow_reboot: true,
+        redeploy: false,
     };
 
     let results = {
@@ -773,6 +783,7 @@ async fn test_push_hook_failure_in_one_host_doesnt_affect_others() {
         output_mode: crate::process::OutputMode::Capture,
         ssh_user: None,
         allow_reboot: true,
+        redeploy: false,
     };
 
     let results = {
@@ -853,6 +864,7 @@ async fn test_push_hook_with_explicit_environment() {
         output_mode: crate::process::OutputMode::Capture,
         ssh_user: None,
         allow_reboot: false,
+        redeploy: false,
     };
 
     let _results = {
@@ -943,6 +955,7 @@ async fn test_full_pipeline_all_hook_stages_execute_in_order() {
         output_mode: crate::process::OutputMode::Capture,
         ssh_user: None,
         allow_reboot: true,
+        redeploy: false,
     };
 
     let results = {
@@ -1045,6 +1058,7 @@ async fn test_pipeline_environment_variables_propagated_correctly() {
         output_mode: crate::process::OutputMode::Capture,
         ssh_user: None,
         allow_reboot: true,
+        redeploy: false,
     };
 
     let results = {
@@ -1126,6 +1140,7 @@ async fn test_pipeline_hooks_execute_by_priority_order() {
         output_mode: crate::process::OutputMode::Capture,
         ssh_user: None,
         allow_reboot: false,
+        redeploy: false,
     };
 
     let results = {
@@ -1216,6 +1231,7 @@ async fn test_post_reboot_hooks_not_executed_when_no_reboot_needed() {
         output_mode: crate::process::OutputMode::Capture,
         ssh_user: None,
         allow_reboot: false,
+        redeploy: false,
     };
 
     let results = {
@@ -1311,6 +1327,7 @@ async fn test_hook_observer_callbacks_invoked_correctly() {
         output_mode: crate::process::OutputMode::Capture,
         ssh_user: None,
         allow_reboot: false,
+        redeploy: false,
     };
 
     let results = {
@@ -1444,6 +1461,7 @@ async fn test_hook_observer_callbacks_on_failure() {
         output_mode: crate::process::OutputMode::Capture,
         ssh_user: None,
         allow_reboot: false,
+        redeploy: false,
     };
 
     let results = {
