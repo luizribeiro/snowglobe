@@ -426,6 +426,18 @@ impl PushObserver for CliObserver {
         );
     }
 
+    fn on_host_unchanged(&self, hostname: &str) {
+        let mut state = self.state.lock();
+        if state.hosts_done.contains(hostname) {
+            return;
+        }
+        if let Some(ref phase_span) = state.phase_span {
+            // Covers the copy and activate steps this host skips; mark_host_done adds the last
+            phase_span.pb_inc(2);
+        }
+        Self::mark_host_done(&mut state, hostname);
+    }
+
     fn on_build_step_complete(&self, _phase: &str, _success: bool) {}
 
     // ─────────────────────────────────────────────────────────────────────────

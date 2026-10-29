@@ -29,6 +29,7 @@ pub struct MockDeployBackend {
     profile_updates: Arc<Mutex<Vec<(String, ActivationMode)>>>,
     /// Systems per target hostname; hosts not listed run a system no build matches
     host_systems: HashMap<String, HostSystems>,
+    host_systems_failures: Vec<String>,
 }
 
 impl Default for MockDeployBackend {
@@ -40,6 +41,7 @@ impl Default for MockDeployBackend {
             activate_failures: Vec::new(),
             profile_updates: Arc::new(Mutex::new(Vec::new())),
             host_systems: HashMap::new(),
+            host_systems_failures: Vec::new(),
         }
     }
 }
@@ -93,6 +95,12 @@ impl MockDeployBackend {
     /// Set the running and boot-next systems of each target hostname
     pub fn with_host_systems(mut self, systems: HashMap<String, HostSystems>) -> Self {
         self.host_systems = systems;
+        self
+    }
+
+    /// Hosts whose installed systems can't be read
+    pub fn with_host_systems_failures(mut self, hostnames: Vec<String>) -> Self {
+        self.host_systems_failures = hostnames;
         self
     }
 
@@ -202,6 +210,13 @@ impl DeployBackend for MockDeployBackend {
     }
 
     async fn host_systems(&self, target: &DeployTarget) -> Result<HostSystems> {
+        if self.host_systems_failures.contains(&target.hostname) {
+            return Err(crate::error::DeployError::Failed {
+                host: target.hostname.clone(),
+                source: std::io::Error::other("Mock: host_systems failed"),
+            }
+            .into());
+        }
         Ok(self
             .host_systems
             .get(&target.hostname)

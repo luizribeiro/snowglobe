@@ -17,6 +17,7 @@ fn test_push_results_counts() {
                     failed_at_step: None,
                     activation_mode: Some(ActivationMode::Switch),
                     rebooted: false,
+                    unchanged: false,
                     error_message: None,
                 },
                 HostDeploymentResult {
@@ -25,6 +26,7 @@ fn test_push_results_counts() {
                     failed_at_step: Some(PipelineStep::Activate),
                     activation_mode: None,
                     rebooted: false,
+                    unchanged: false,
                     error_message: Some("failed".to_string()),
                 },
                 HostDeploymentResult {
@@ -33,6 +35,7 @@ fn test_push_results_counts() {
                     failed_at_step: None,
                     activation_mode: Some(ActivationMode::Switch),
                     rebooted: false,
+                    unchanged: false,
                     error_message: None,
                 },
             ],
@@ -57,6 +60,7 @@ fn test_push_results_all_succeeded() {
                     failed_at_step: None,
                     activation_mode: Some(ActivationMode::Switch),
                     rebooted: false,
+                    unchanged: false,
                     error_message: None,
                 },
                 HostDeploymentResult {
@@ -65,6 +69,7 @@ fn test_push_results_all_succeeded() {
                     failed_at_step: None,
                     activation_mode: Some(ActivationMode::Switch),
                     rebooted: false,
+                    unchanged: false,
                     error_message: None,
                 },
             ],

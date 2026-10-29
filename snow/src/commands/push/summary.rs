@@ -45,25 +45,31 @@ fn print_phase_header(phase: &snowlib::PhaseResult) {
     }
 }
 
-fn print_host_results(hosts: &[snowlib::HostDeploymentResult]) {
+fn success_labels(host: &snowlib::HostDeploymentResult) -> Vec<&'static str> {
     use snowlib::ActivationMode;
 
+    let mut labels = Vec::new();
+    if let Some(mode) = host.activation_mode {
+        labels.push(match mode {
+            ActivationMode::Switch => "switch",
+            ActivationMode::Boot => "boot",
+            ActivationMode::Test => "test",
+            ActivationMode::DryActivate => "dry-run",
+        });
+    }
+    if host.rebooted {
+        labels.push("rebooted");
+    }
+    if host.unchanged {
+        labels.push("unchanged");
+    }
+    labels
+}
+
+fn print_host_results(hosts: &[snowlib::HostDeploymentResult]) {
     for host in hosts {
         if host.success {
-            let mut parts = Vec::new();
-
-            if let Some(mode) = host.activation_mode {
-                match mode {
-                    ActivationMode::Switch => parts.push("switch"),
-                    ActivationMode::Boot => parts.push("boot"),
-                    ActivationMode::Test => parts.push("test"),
-                    ActivationMode::DryActivate => parts.push("dry-run"),
-                }
-            }
-
-            if host.rebooted {
-                parts.push("rebooted");
-            }
+            let parts = success_labels(host);
 
             let status = if parts.is_empty() {
                 String::new()
@@ -216,6 +222,7 @@ mod tests {
             success: true,
             activation_mode: Some(mode),
             rebooted,
+            unchanged: false,
             failed_at_step: None,
             error_message: None,
         }
@@ -227,6 +234,7 @@ mod tests {
             success: false,
             activation_mode: None,
             rebooted: false,
+            unchanged: false,
             failed_at_step: Some(step),
             error_message: Some(error.to_string()),
         }
@@ -324,6 +332,18 @@ mod tests {
 
         assert!(results.all_succeeded());
         assert_eq!(results.success_count(), 4);
+    }
+
+    #[test]
+    fn test_success_labels() {
+        assert_eq!(
+            super::success_labels(&make_successful_host("h1", ActivationMode::Boot, true)),
+            vec!["boot", "rebooted"]
+        );
+        assert_eq!(
+            super::success_labels(&HostDeploymentResult::unchanged("h2")),
+            vec!["unchanged"]
+        );
     }
 
     #[test]

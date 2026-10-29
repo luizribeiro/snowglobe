@@ -6,11 +6,13 @@
 //! - workflow_tests: Full workflow integration tests
 //! - profile_tests: Profile update tests
 //! - hook_tests: Hook integration tests
+//! - unchanged_tests: Skipping hosts that already run the built system
 
 mod hook_tests;
 mod planning_tests;
 mod profile_tests;
 mod push_tests;
+mod unchanged_tests;
 mod workflow_tests;
 
 use super::planning::create_deployment_plans;
@@ -119,6 +121,7 @@ async fn activate_plans_for_test(
             },
             activation_mode: Some(plan.activation_mode),
             rebooted: false,
+            unchanged: false,
             error_message: if result.success {
                 None
             } else {
@@ -239,6 +242,13 @@ impl PushObserver for TestObserver {
             .push(format!("activation_start:{}", hostname));
     }
 
+    fn on_host_unchanged(&self, hostname: &str) {
+        self.events
+            .lock()
+            .unwrap()
+            .push(format!("unchanged:{}", hostname));
+    }
+
     fn on_activation_complete(&self, hostname: &str, success: bool) {
         self.events.lock().unwrap().push(format!(
             "activation_complete:{}:{}",
@@ -325,4 +335,112 @@ impl PushObserver for TestObserver {
             if success { "ok" } else { "fail" }
         ));
     }
+}
+
+/// Outcome of a push run through [`PushHarness`]
+struct HarnessRun {
+    results: PushResults,
+    events: Vec<String>,
+    executed_hooks: Vec<(String, HookStage, crate::hooks::HookLocation, String)>,
+}
+
+/// Runs `push` with mock backends, hooks and a recording observer
+struct PushHarness {
+    deployer: MockDeployBackend,
+    reboot_backend: crate::backends::reboot::MockRebootBackend,
+    hook_backend: Arc<crate::backends::hook::MockHookBackend>,
+    config: PushConfiguration,
+}
+
+impl PushHarness {
+    fn new() -> Self {
+        Self {
+            deployer: MockDeployBackend::new(),
+            reboot_backend: crate::backends::reboot::MockRebootBackend::new(),
+            hook_backend: Arc::new(crate::backends::hook::MockHookBackend::new()),
+            config: PushConfiguration {
+                output_mode: crate::process::OutputMode::Capture,
+                ..PushConfiguration::default()
+            },
+        }
+    }
+
+    async fn run(&self, hosts: Vec<HostMetadata>) -> HarnessRun {
+        let flake = Flake::test_context();
+        let nix_backend = MockNixBackend::new();
+        let observer = TestObserver::new();
+        let hook_executor = make_hook_executor(self.hook_backend.clone(), &hosts);
+        let push_ctx = PushContext::new(
+            &flake,
+            &nix_backend,
+            &self.deployer,
+            &self.reboot_backend,
+            &self.config,
+            &observer,
+            Some(&hook_executor),
+        );
+
+        let results = push(&push_ctx, hosts).await.unwrap();
+
+        HarnessRun {
+            results,
+            events: observer.get_events(),
+            executed_hooks: self.hook_backend.get_executed_hooks(),
+        }
+    }
+}
+
+impl HarnessRun {
+    fn host(&self, hostname: &str) -> &HostDeploymentResult {
+        self.results
+            .phases
+            .iter()
+            .flat_map(|phase| &phase.hosts)
+            .find(|host| host.hostname == hostname)
+            .unwrap_or_else(|| panic!("no result for {}", hostname))
+    }
+
+    fn has_event(&self, event: &str) -> bool {
+        self.events.iter().any(|e| e == event)
+    }
+
+    fn has_event_starting_with(&self, prefix: &str) -> bool {
+        self.events.iter().any(|e| e.starts_with(prefix))
+    }
+}
+
+/// The store path MockNixBackend builds for `hostname`
+fn mock_built_system(hostname: &str) -> StorePath {
+    StorePath::new(format!("/nix/store/mock-{}", hostname))
+}
+
+/// One hook per stage, as a Kubernetes node would configure them
+fn kubernetes_node_hooks() -> Vec<crate::hooks::HookConfig> {
+    use crate::hooks::{HookConfig, HookLocation};
+    vec![
+        HookConfig::test_fixture(
+            "drain-node",
+            HookStage::PreActivate,
+            HookLocation::Local,
+            "kubectl drain ${SNOW_HOSTNAME}",
+        ),
+        HookConfig::test_fixture(
+            "uncordon-node",
+            HookStage::PostActivate,
+            HookLocation::Local,
+            "kubectl uncordon ${SNOW_HOSTNAME}",
+        ),
+        HookConfig::test_fixture(
+            "wait-node-ready",
+            HookStage::PostReboot,
+            HookLocation::Local,
+            "kubectl wait --for=condition=Ready node/${SNOW_HOSTNAME}",
+        ),
+        HookConfig::test_fixture(
+            "recover-uncordon",
+            HookStage::OnFailure,
+            HookLocation::Local,
+            "kubectl uncordon ${SNOW_HOSTNAME}",
+        ),
+    ]
 }

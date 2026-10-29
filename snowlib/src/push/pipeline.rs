@@ -112,6 +112,7 @@ async fn handle_pipeline_failure(
         failed_at_step: Some(step),
         activation_mode: None,
         rebooted: false,
+        unchanged: false,
         error_message: Some(error.to_string()),
     }
 }
@@ -178,6 +179,12 @@ pub async fn execute_host_pipeline(
             .await);
         }
     };
+
+    if is_unchanged(push_ctx, host_metadata, &store_path).await {
+        tracing::info!("{}: already running the built system, skipping", hostname);
+        push_ctx.observer.on_host_unchanged(&hostname);
+        return Ok(HostDeploymentResult::unchanged(hostname));
+    }
 
     // Step 2: Copy
     if let Err(e) = execute_copy_step(push_ctx, host_metadata, &store_path).await {
@@ -265,12 +272,35 @@ pub async fn execute_host_pipeline(
         failed_at_step: None,
         activation_mode: Some(plan.activation_mode),
         rebooted,
+        unchanged: false,
         error_message: if final_result.success {
             None
         } else {
             Some(final_result.message)
         },
     })
+}
+
+/// Whether the host already runs and would boot `store_path`
+///
+/// If the installed systems can't be read, the host is deployed rather than skipped.
+async fn is_unchanged(
+    push_ctx: &PushContext<'_>,
+    host_metadata: &HostMetadata,
+    store_path: &StorePath,
+) -> bool {
+    let target = create_target(push_ctx, host_metadata);
+    match push_ctx.deploy_backend.host_systems(&target).await {
+        Ok(systems) => systems.are(store_path),
+        Err(e) => {
+            tracing::warn!(
+                "{}: could not read installed systems, deploying anyway: {}",
+                host_metadata.name,
+                e
+            );
+            false
+        }
+    }
 }
 
 /// Execute the build step for a single host

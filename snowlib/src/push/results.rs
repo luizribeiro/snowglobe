@@ -49,7 +49,23 @@ pub struct HostDeploymentResult {
     pub failed_at_step: Option<PipelineStep>, // Which step failed (if any)
     pub activation_mode: Option<ActivationMode>, // How it was activated (if successful)
     pub rebooted: bool,
+    /// Host already ran and would boot the built system, so nothing was deployed
+    pub unchanged: bool,
     pub error_message: Option<String>,
+}
+
+impl HostDeploymentResult {
+    pub fn unchanged(hostname: impl Into<String>) -> Self {
+        Self {
+            hostname: hostname.into(),
+            success: true,
+            failed_at_step: None,
+            activation_mode: None,
+            rebooted: false,
+            unchanged: true,
+            error_message: None,
+        }
+    }
 }
 
 /// Result of deploying all hosts in a single phase

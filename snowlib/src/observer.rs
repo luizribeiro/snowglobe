@@ -123,6 +123,10 @@ pub trait PushObserver: Send + Sync {
     /// - `hostname`: The host being activated
     fn on_activation_start(&self, _hostname: &str) {}
 
+    /// Called when a host is skipped after its build because it already runs
+    /// and would boot the built system
+    fn on_host_unchanged(&self, _hostname: &str) {}
+
     /// Called after activation completes on a host
     ///
     /// # Arguments
@@ -319,6 +323,12 @@ impl PushObserver for CompositeObserver {
     fn on_activation_start(&self, hostname: &str) {
         for observer in &self.observers {
             observer.on_activation_start(hostname);
+        }
+    }
+
+    fn on_host_unchanged(&self, hostname: &str) {
+        for observer in &self.observers {
+            observer.on_host_unchanged(hostname);
         }
     }
 
