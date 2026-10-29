@@ -377,7 +377,7 @@ mod tests {
                 ),
                 HookConfig::test_fixture(
                     "health-check",
-                    HookStage::PostActivate,
+                    HookStage::PostDeploy,
                     HookLocation::Local,
                     "systemctl is-active nginx postgresql redis",
                 ),
@@ -520,7 +520,7 @@ mod tests {
         let executor = HookExecutor::new(backend, hooks_by_host);
 
         assert!(executor.has_hooks_for_stage("test-host", HookStage::PreDeploy));
-        assert!(!executor.has_hooks_for_stage("test-host", HookStage::PostActivate));
+        assert!(!executor.has_hooks_for_stage("test-host", HookStage::PostDeploy));
         assert!(!executor.has_hooks_for_stage("other-host", HookStage::PreDeploy));
     }
 
@@ -537,7 +537,7 @@ mod tests {
             "test-host".to_string(),
             vec![HookConfig::test_fixture(
                 "test-hook",
-                HookStage::PostActivate,
+                HookStage::PostDeploy,
                 HookLocation::Remote,
                 "systemctl restart nginx",
             )],
@@ -553,7 +553,7 @@ mod tests {
         let results = executor
             .execute_hooks_for_stage(
                 "test-host",
-                HookStage::PostActivate,
+                HookStage::PostDeploy,
                 Some(&target),
                 &HashMap::new(),
                 None,
@@ -567,7 +567,7 @@ mod tests {
         let executed = backend.get_executed_hooks();
         assert_eq!(executed.len(), 1);
         assert_eq!(executed[0].0, "test-host");
-        assert_eq!(executed[0].1, HookStage::PostActivate);
+        assert_eq!(executed[0].1, HookStage::PostDeploy);
         assert_eq!(executed[0].2, HookLocation::Remote);
         assert_eq!(executed[0].3, "systemctl restart nginx");
     }
@@ -582,7 +582,7 @@ mod tests {
             "test-host".to_string(),
             vec![HookConfig::test_fixture(
                 "test-hook",
-                HookStage::PostActivate,
+                HookStage::PostDeploy,
                 HookLocation::Remote,
                 "systemctl restart nginx",
             )],
@@ -598,7 +598,7 @@ mod tests {
         let result = executor
             .execute_hooks_for_stage(
                 "test-host",
-                HookStage::PostActivate,
+                HookStage::PostDeploy,
                 Some(&target),
                 &HashMap::new(),
                 None,
@@ -617,7 +617,7 @@ mod tests {
             "test-host".to_string(),
             vec![HookConfig::test_fixture(
                 "test-hook",
-                HookStage::PostActivate,
+                HookStage::PostDeploy,
                 HookLocation::Remote,
                 "systemctl restart nginx",
             )],
@@ -628,7 +628,7 @@ mod tests {
         let result = executor
             .execute_hooks_for_stage(
                 "test-host",
-                HookStage::PostActivate,
+                HookStage::PostDeploy,
                 None,
                 &HashMap::new(),
                 None,
@@ -702,9 +702,9 @@ mod tests {
                 ),
                 HookConfig::test_fixture(
                     "test-hook",
-                    HookStage::PostActivate,
+                    HookStage::PostDeploy,
                     HookLocation::Local,
-                    "post-activate",
+                    "post-deploy",
                 ),
                 HookConfig::test_fixture(
                     "test-hook",
@@ -736,7 +736,7 @@ mod tests {
         executor
             .execute_hooks_for_stage(
                 "test-host",
-                HookStage::PostActivate,
+                HookStage::PostDeploy,
                 None,
                 &HashMap::new(),
                 None,
@@ -767,7 +767,7 @@ mod tests {
         let executed = backend.get_executed_hooks();
         assert_eq!(executed.len(), 4);
         assert_eq!(executed[0].1, HookStage::PreDeploy);
-        assert_eq!(executed[1].1, HookStage::PostActivate);
+        assert_eq!(executed[1].1, HookStage::PostDeploy);
         assert_eq!(executed[2].1, HookStage::PostReboot);
         assert_eq!(executed[3].1, HookStage::OnFailure);
     }
@@ -1612,7 +1612,7 @@ mod tests {
 
         let mut hook = HookConfig::test_fixture(
             "optional-hook",
-            HookStage::PostActivate,
+            HookStage::PostDeploy,
             HookLocation::Local,
             "optional check",
         );
@@ -1629,7 +1629,7 @@ mod tests {
         env.insert("SNOW_HOSTNAME".to_string(), "test-host".to_string());
 
         let results = executor
-            .execute_hooks_for_stage("test-host", HookStage::PostActivate, None, &env, None)
+            .execute_hooks_for_stage("test-host", HookStage::PostDeploy, None, &env, None)
             .await
             .unwrap();
 

@@ -29,6 +29,7 @@ pub enum PipelineStep {
     Plan,
     Activate,
     Reboot,
+    PostDeploy,
 }
 
 impl fmt::Display for PipelineStep {
@@ -39,6 +40,7 @@ impl fmt::Display for PipelineStep {
             PipelineStep::Plan => write!(f, "plan"),
             PipelineStep::Activate => write!(f, "activate"),
             PipelineStep::Reboot => write!(f, "reboot"),
+            PipelineStep::PostDeploy => write!(f, "post-deploy"),
         }
     }
 }

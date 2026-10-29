@@ -37,16 +37,16 @@ in
     expected = true;
   };
 
-  "test hooks module evaluation: evaluates a minimal post-activate hook" = {
+  "test hooks module evaluation: evaluates a minimal post-deploy hook" = {
     expr = let
         hooks = evalHooks {
-          snowglobe.hooks.post-activate.test-hook = {
+          snowglobe.hooks.post-deploy.test-hook = {
             location = "remote";
             command = "systemctl status";
           };
         };
       in
-      hooks.post-activate.test-hook.location == "remote";
+      hooks.post-deploy.test-hook.location == "remote";
     expected = true;
   };
 
@@ -202,19 +202,19 @@ in
     expected = true;
   };
 
-  "test multiple hooks in same stage: allows multiple hooks in post-activate" = {
+  "test multiple hooks in same stage: allows multiple hooks in post-deploy" = {
     expr = let
         hooks = evalHooks {
-          snowglobe.hooks.post-activate = {
+          snowglobe.hooks.post-deploy = {
             a = { location = "local"; command = "cmd-a"; };
             b = { location = "remote"; command = "cmd-b"; };
             c = { location = "local"; command = "cmd-c"; };
           };
         };
       in
-      hooks.post-activate.a.command == "cmd-a" &&
-      hooks.post-activate.b.location == "remote" &&
-      hooks.post-activate.c.command == "cmd-c";
+      hooks.post-deploy.a.command == "cmd-a" &&
+      hooks.post-deploy.b.location == "remote" &&
+      hooks.post-deploy.c.command == "cmd-c";
     expected = true;
   };
 
@@ -223,14 +223,14 @@ in
         hooks = evalHooks {
           snowglobe.hooks = {
             pre-deploy.drain = { location = "local"; command = "kubectl drain"; };
-            post-activate.uncordon = { location = "local"; command = "kubectl uncordon"; };
+            post-deploy.uncordon = { location = "local"; command = "kubectl uncordon"; };
             post-reboot.verify = { location = "remote"; command = "systemctl is-system-running"; };
             on-failure.cleanup = { location = "local"; command = "kubectl uncordon"; };
           };
         };
       in
       hooks.pre-deploy.drain.command == "kubectl drain" &&
-      hooks.post-activate.uncordon.command == "kubectl uncordon" &&
+      hooks.post-deploy.uncordon.command == "kubectl uncordon" &&
       hooks.post-reboot.verify.location == "remote" &&
       hooks.on-failure.cleanup.command == "kubectl uncordon";
     expected = true;
@@ -270,11 +270,11 @@ in
     expected = true;
   };
 
-  "test empty stages: allows empty post-activate" = {
+  "test empty stages: allows empty post-deploy" = {
     expr = let
         hooks = evalHooks {};
       in
-      hooks.post-activate == {};
+      hooks.post-deploy == {};
     expected = true;
   };
 
@@ -304,6 +304,16 @@ in
         };
       in
       builtins.any (m: pkgs.lib.hasInfix "snowglobe.hooks.pre-deploy" m) messages;
+    expected = true;
+  };
+
+  "test removed hook stages: rejects post-activate with a pointer to post-deploy" = {
+    expr = builtins.any (m: pkgs.lib.hasInfix "snowglobe.hooks.post-deploy" m) (failedAssertionMessages {
+      snowglobe.hooks.post-activate.uncordon-node = {
+        location = "local";
+        command = "kubectl uncordon hydrogen";
+      };
+    });
     expected = true;
   };
 

@@ -7,8 +7,9 @@ use serde::{Deserialize, Serialize};
 pub enum HookStage {
     /// Before activation of a host that changes (e.g., drain Kubernetes node)
     PreDeploy,
-    /// After activation completes (e.g., uncordon Kubernetes node)
-    PostActivate,
+    /// Last, once the host runs the new system, after any reboot
+    /// (e.g., uncordon Kubernetes node)
+    PostDeploy,
     /// After host reboots and comes back online
     PostReboot,
     /// When deployment or reboot fails
@@ -18,7 +19,7 @@ pub enum HookStage {
 impl HookStage {
     pub const ALL: [HookStage; 4] = [
         Self::PreDeploy,
-        Self::PostActivate,
+        Self::PostDeploy,
         Self::PostReboot,
         Self::OnFailure,
     ];
@@ -27,7 +28,7 @@ impl HookStage {
     pub fn nix_name(self) -> &'static str {
         match self {
             Self::PreDeploy => "pre-deploy",
-            Self::PostActivate => "post-activate",
+            Self::PostDeploy => "post-deploy",
             Self::PostReboot => "post-reboot",
             Self::OnFailure => "on-failure",
         }
@@ -38,7 +39,7 @@ impl std::fmt::Display for HookStage {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::PreDeploy => write!(f, "PreDeploy"),
-            Self::PostActivate => write!(f, "PostActivate"),
+            Self::PostDeploy => write!(f, "PostDeploy"),
             Self::PostReboot => write!(f, "PostReboot"),
             Self::OnFailure => write!(f, "OnFailure"),
         }
@@ -180,8 +181,8 @@ mod tests {
             HookStage::PreDeploy
         ));
         assert!(matches!(
-            HookStage::from_str("post-activate").unwrap(),
-            HookStage::PostActivate
+            HookStage::from_str("post-deploy").unwrap(),
+            HookStage::PostDeploy
         ));
         assert!(matches!(
             HookStage::from_str("post-reboot").unwrap(),
@@ -252,11 +253,11 @@ mod tests {
     fn test_hook_config_with_defaults() {
         let hook = HookConfig::test_fixture(
             "test-hook",
-            HookStage::PostActivate,
+            HookStage::PostDeploy,
             HookLocation::Remote,
             "systemctl status",
         );
-        assert_eq!(hook.stage, HookStage::PostActivate);
+        assert_eq!(hook.stage, HookStage::PostDeploy);
         assert_eq!(hook.location, HookLocation::Remote);
         assert_eq!(hook.command, "systemctl status");
         assert_eq!(hook.timeout, 300);

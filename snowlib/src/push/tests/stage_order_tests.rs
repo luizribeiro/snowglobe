@@ -52,7 +52,7 @@ async fn test_hooks_wrap_activation_in_order() {
     let pre = position(&run, "hooks_complete:samarium:PreDeploy:ok");
     let activate = position(&run, "activation_start:samarium");
     let activated = position(&run, "activation_complete:samarium:ok");
-    let post = position(&run, "hooks_start:samarium:PostActivate");
+    let post = position(&run, "hooks_start:samarium:PostDeploy");
     assert!(
         pre < activate && activate < activated && activated < post,
         "{:?}",
@@ -77,5 +77,93 @@ async fn test_failed_drain_does_not_start_activation() {
         !run.has_event_starting_with("activation_start"),
         "{:?}",
         run.events
+    );
+}
+
+fn executed_stages(run: &HarnessRun) -> Vec<HookStage> {
+    run.executed_hooks
+        .iter()
+        .map(|(_, stage, _, _)| *stage)
+        .collect()
+}
+
+#[tokio::test]
+async fn test_post_deploy_runs_last_after_a_reboot() {
+    let harness = PushHarness::new();
+    let mut host = kubernetes_node("lanthanum");
+    host.reboot_policy = RebootPolicy::Always;
+
+    let run = harness.run(vec![host]).await;
+
+    assert!(run.host("lanthanum").rebooted);
+    assert_eq!(
+        executed_stages(&run),
+        vec![
+            HookStage::PreDeploy,
+            HookStage::PostReboot,
+            HookStage::PostDeploy
+        ]
+    );
+    let rebooted = position(&run, "reboot_complete:lanthanum:ok");
+    let post_deploy = position(&run, "hooks_start:lanthanum:PostDeploy");
+    assert!(rebooted < post_deploy, "{:?}", run.events);
+}
+
+#[tokio::test]
+async fn test_post_deploy_runs_without_a_reboot() {
+    let run = PushHarness::new()
+        .run(vec![kubernetes_node("cerium")])
+        .await;
+
+    assert!(!run.host("cerium").rebooted);
+    assert_eq!(
+        executed_stages(&run),
+        vec![HookStage::PreDeploy, HookStage::PostDeploy]
+    );
+}
+
+#[tokio::test]
+async fn test_post_deploy_skipped_when_reboot_fails() {
+    let mut harness = PushHarness::new();
+    harness.reboot_backend =
+        MockRebootBackend::new().with_reboot_failures(vec!["curium.example.com".to_string()]);
+    let mut host = kubernetes_node("curium");
+    host.reboot_policy = RebootPolicy::Always;
+
+    let run = harness.run(vec![host]).await;
+
+    assert!(!run.host("curium").success);
+    assert!(!executed_stages(&run).contains(&HookStage::PostDeploy));
+}
+
+#[tokio::test]
+async fn test_failed_post_deploy_hook_runs_on_failure_hooks() {
+    let mut harness = PushHarness::new();
+    harness.hook_backend = Arc::new(
+        crate::backends::hook::MockHookBackend::new()
+            .with_local_failures(vec!["kubectl uncordon ${SNOW_HOSTNAME}".to_string()]),
+    );
+    let mut host = kubernetes_node("oxygen");
+    // Keep the on-failure hook from matching the failing uncordon command
+    for hook in host
+        .hooks
+        .iter_mut()
+        .filter(|h| h.stage == HookStage::OnFailure)
+    {
+        hook.command = "notify-oncall ${SNOW_HOSTNAME}".to_string();
+    }
+
+    let run = harness.run(vec![host]).await;
+
+    let host = run.host("oxygen");
+    assert!(!host.success);
+    assert_eq!(host.failed_at_step, Some(PipelineStep::PostDeploy));
+    assert_eq!(
+        executed_stages(&run),
+        vec![
+            HookStage::PreDeploy,
+            HookStage::PostDeploy,
+            HookStage::OnFailure
+        ]
     );
 }

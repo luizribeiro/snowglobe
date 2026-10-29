@@ -247,7 +247,7 @@ mod tests {
         };
         let hook = HookConfig::test_fixture(
             "test-hook",
-            HookStage::PostActivate,
+            HookStage::PostDeploy,
             HookLocation::Remote,
             "systemctl restart nginx",
         );
@@ -261,7 +261,7 @@ mod tests {
         let executed = backend.get_executed_hooks();
         assert_eq!(executed.len(), 1);
         assert_eq!(executed[0].0, "remote-host");
-        assert_eq!(executed[0].1, HookStage::PostActivate);
+        assert_eq!(executed[0].1, HookStage::PostDeploy);
         assert_eq!(executed[0].2, HookLocation::Remote);
     }
 
@@ -275,7 +275,7 @@ mod tests {
         };
         let hook = HookConfig::test_fixture(
             "test-hook",
-            HookStage::PostActivate,
+            HookStage::PostDeploy,
             HookLocation::Remote,
             "systemctl restart nginx",
         );
@@ -312,9 +312,9 @@ mod tests {
         );
         let hook2 = HookConfig::test_fixture(
             "test-hook",
-            HookStage::PostActivate,
+            HookStage::PostDeploy,
             HookLocation::Remote,
-            "post-activate hook",
+            "post-deploy hook",
         );
 
         backend
@@ -337,6 +337,6 @@ mod tests {
         assert_eq!(executed[1].0, "host2");
         assert_eq!(executed[1].1, HookStage::PreDeploy);
         assert_eq!(executed[2].0, "host1");
-        assert_eq!(executed[2].1, HookStage::PostActivate);
+        assert_eq!(executed[2].1, HookStage::PostDeploy);
     }
 }

@@ -187,14 +187,14 @@ pub trait PushObserver: Send + Sync {
     ///
     /// # Arguments
     /// - `hostname`: The host for which hooks are being executed
-    /// - `stage`: The hook stage (PreDeploy, PostActivate, etc.)
+    /// - `stage`: The hook stage (PreDeploy, PostDeploy, etc.)
     fn on_hooks_start(&self, _hostname: &str, _stage: HookStage) {}
 
     /// Called after all hooks for a stage complete on a host
     ///
     /// # Arguments
     /// - `hostname`: The host for which hooks were executed
-    /// - `stage`: The hook stage (PreDeploy, PostActivate, etc.)
+    /// - `stage`: The hook stage (PreDeploy, PostDeploy, etc.)
     /// - `success`: Whether all hooks succeeded
     fn on_hooks_complete(&self, _hostname: &str, _stage: HookStage, _success: bool) {}
 
@@ -202,7 +202,7 @@ pub trait PushObserver: Send + Sync {
     ///
     /// # Arguments
     /// - `hostname`: The host for which the hook is being executed
-    /// - `stage`: The hook stage (PreDeploy, PostActivate, etc.)
+    /// - `stage`: The hook stage (PreDeploy, PostDeploy, etc.)
     /// - `hook_name`: The name of the hook being executed
     fn on_hook_start(&self, _hostname: &str, _stage: HookStage, _hook_name: &str) {}
 
@@ -210,7 +210,7 @@ pub trait PushObserver: Send + Sync {
     ///
     /// # Arguments
     /// - `hostname`: The host for which the hook was executed
-    /// - `stage`: The hook stage (PreDeploy, PostActivate, etc.)
+    /// - `stage`: The hook stage (PreDeploy, PostDeploy, etc.)
     /// - `hook_name`: The name of the hook that was executed
     /// - `success`: Whether the hook succeeded
     fn on_hook_complete(

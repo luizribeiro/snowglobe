@@ -42,9 +42,9 @@ Lifecycle hooks allow you to execute custom commands at specific points in the d
 
 Hooks are configured in your NixOS configuration and execute automatically during deployment at four stages:
 
-- **`pre-deploy`**: Before activation (e.g., drain cluster nodes)
-- **`post-activate`**: After activation (e.g., uncordon nodes, verify deployment)
-- **`post-reboot`**: After host reboots (e.g., wait for services)
+- **`pre-deploy`**: Before activation, only for hosts that change (e.g., drain cluster nodes)
+- **`post-reboot`**: After host reboots (e.g., wait for the node to be Ready)
+- **`post-deploy`**: Last, once the host runs the new system, with or without a reboot (e.g., uncordon nodes, health gate)
 - **`on-failure`**: When deployment fails (e.g., cleanup, alerts)
 
 ### Quick Example
@@ -60,7 +60,7 @@ Hooks are configured in your NixOS configuration and execute automatically durin
         continueOnFailure = false;
       }
     ];
-    post-activate = [
+    post-deploy = [
       {
         location = "local";
         command = "kubectl uncordon ${config.networking.hostName}";

@@ -428,7 +428,7 @@ fn kubernetes_node_hooks() -> Vec<crate::hooks::HookConfig> {
         ),
         HookConfig::test_fixture(
             "uncordon-node",
-            HookStage::PostActivate,
+            HookStage::PostDeploy,
             HookLocation::Local,
             "kubectl uncordon ${SNOW_HOSTNAME}",
         ),

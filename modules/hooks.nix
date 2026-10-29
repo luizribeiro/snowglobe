@@ -147,6 +147,7 @@ let
 
   removedStages = {
     pre-activate = "Use snowglobe.hooks.pre-deploy instead; it only runs for hosts that change.";
+    post-activate = "Use snowglobe.hooks.post-deploy instead; it runs after any reboot, once the host runs the new system.";
   };
 
   # Removed stages stay declared (so defining them fails with a pointer to the
@@ -189,20 +190,20 @@ in
       '';
     };
 
-    post-activate = mkOption {
+    post-deploy = mkOption {
       type = types.attrsOf hookSubmodule;
       default = {};
       description = ''
-        Hooks to run after activation completes, before any reboot.
+        Hooks to run last, once the host runs the new system: after
+        activation, after any reboot, and after post-reboot hooks.
+        They run whether or not a reboot happened, but only if the
+        deploy (including any reboot) succeeded.
 
         Common use cases:
         - Uncordon cluster nodes
         - Add back to load balancer pool
-        - Verify deployment success
+        - Gate on cluster health before the next host proceeds
         - Update service discovery
-
-        These hooks run after the new configuration is activated but
-        before any required reboot.
       '';
       example = literalExpression ''
         {

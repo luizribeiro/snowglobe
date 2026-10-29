@@ -87,7 +87,7 @@ async fn test_push_with_pre_deploy_hooks() {
 }
 
 #[tokio::test]
-async fn test_push_with_post_activate_hooks() {
+async fn test_push_with_post_deploy_hooks() {
     let flake = Flake::test_context();
     let nix_backend = MockNixBackend::new();
     let deployer = MockDeployBackend::new();
@@ -111,7 +111,7 @@ async fn test_push_with_post_activate_hooks() {
         system_type: SystemType::NixOS,
         hooks: vec![HookConfig::test_fixture(
             "test-hook",
-            HookStage::PostActivate,
+            HookStage::PostDeploy,
             HookLocation::Remote,
             "systemctl start important-service",
         )],
@@ -148,7 +148,7 @@ async fn test_push_with_post_activate_hooks() {
 
     let executed_hooks = hook_backend.get_executed_hooks();
     assert_eq!(executed_hooks.len(), 1);
-    assert_eq!(executed_hooks[0].1, HookStage::PostActivate);
+    assert_eq!(executed_hooks[0].1, HookStage::PostDeploy);
     assert_eq!(executed_hooks[0].2, HookLocation::Remote);
     assert!(executed_hooks[0].3.contains("systemctl start"));
 }
@@ -926,7 +926,7 @@ async fn test_full_pipeline_all_hook_stages_execute_in_order() {
             ),
             HookConfig::test_fixture(
                 "health-check",
-                HookStage::PostActivate,
+                HookStage::PostDeploy,
                 HookLocation::Remote,
                 "systemctl is-active kubelet containerd",
             ),
@@ -991,15 +991,15 @@ async fn test_full_pipeline_all_hook_stages_execute_in_order() {
     assert_eq!(executed_hooks[1].1, HookStage::PreDeploy);
     assert!(executed_hooks[1].3.contains("systemctl stop"));
 
-    assert_eq!(executed_hooks[2].1, HookStage::PostActivate);
-    assert!(executed_hooks[2].3.contains("systemctl is-active"));
-
     // PostReboot hooks execute alphabetically: "slack-notify" < "uncordon-node"
-    assert_eq!(executed_hooks[3].1, HookStage::PostReboot);
-    assert!(executed_hooks[3].3.contains("curl"));
+    assert_eq!(executed_hooks[2].1, HookStage::PostReboot);
+    assert!(executed_hooks[2].3.contains("curl"));
 
-    assert_eq!(executed_hooks[4].1, HookStage::PostReboot);
-    assert!(executed_hooks[4].3.contains("kubectl uncordon"));
+    assert_eq!(executed_hooks[3].1, HookStage::PostReboot);
+    assert!(executed_hooks[3].3.contains("kubectl uncordon"));
+
+    assert_eq!(executed_hooks[4].1, HookStage::PostDeploy);
+    assert!(executed_hooks[4].3.contains("systemctl is-active"));
 }
 
 #[tokio::test]
@@ -1036,7 +1036,7 @@ async fn test_pipeline_environment_variables_propagated_correctly() {
             ),
             HookConfig::test_fixture(
                 "check-store-path",
-                HookStage::PostActivate,
+                HookStage::PostDeploy,
                 HookLocation::Local,
                 "test -n \"$SNOW_STORE_PATH\" && echo \"$SNOW_STORE_PATH\" | grep -q '^/nix/store/'",
             ),
@@ -1207,10 +1207,10 @@ async fn test_post_reboot_hooks_not_executed_when_no_reboot_needed() {
                 "echo pre-deploy",
             ),
             HookConfig::test_fixture(
-                "post-activate-hook",
-                HookStage::PostActivate,
+                "post-deploy-hook",
+                HookStage::PostDeploy,
                 HookLocation::Local,
-                "echo post-activate",
+                "echo post-deploy",
             ),
             HookConfig::test_fixture(
                 "post-reboot-hook",
@@ -1260,11 +1260,11 @@ async fn test_post_reboot_hooks_not_executed_when_no_reboot_needed() {
     assert_eq!(
         executed_hooks.len(),
         2,
-        "Only pre-deploy and post-activate hooks should execute"
+        "Only pre-deploy and post-deploy hooks should execute"
     );
 
     assert_eq!(executed_hooks[0].1, HookStage::PreDeploy);
-    assert_eq!(executed_hooks[1].1, HookStage::PostActivate);
+    assert_eq!(executed_hooks[1].1, HookStage::PostDeploy);
 
     // Verify post-reboot hook did NOT execute
     assert!(
@@ -1310,7 +1310,7 @@ async fn test_hook_observer_callbacks_invoked_correctly() {
             ),
             HookConfig::test_fixture(
                 "post-hook",
-                HookStage::PostActivate,
+                HookStage::PostDeploy,
                 HookLocation::Local,
                 "echo post",
             ),
@@ -1396,26 +1396,26 @@ async fn test_hook_observer_callbacks_invoked_correctly() {
         events
     );
 
-    // Verify PostActivate hooks also trigger observer callbacks
+    // Verify PostDeploy hooks also trigger observer callbacks
     assert!(
         events
             .iter()
-            .any(|e| e == "hooks_start:observer-test:PostActivate"),
-        "hooks_start should be called for PostActivate stage. Events: {:?}",
+            .any(|e| e == "hooks_start:observer-test:PostDeploy"),
+        "hooks_start should be called for PostDeploy stage. Events: {:?}",
         events
     );
     assert!(
         events
             .iter()
-            .any(|e| e == "hook_start:observer-test:PostActivate:post-hook"),
+            .any(|e| e == "hook_start:observer-test:PostDeploy:post-hook"),
         "hook_start should be called for post-hook. Events: {:?}",
         events
     );
     assert!(
         events
             .iter()
-            .any(|e| e == "hooks_complete:observer-test:PostActivate:ok"),
-        "hooks_complete should be called for PostActivate stage. Events: {:?}",
+            .any(|e| e == "hooks_complete:observer-test:PostDeploy:ok"),
+        "hooks_complete should be called for PostDeploy stage. Events: {:?}",
         events
     );
 }

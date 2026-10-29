@@ -119,7 +119,8 @@ async fn handle_pipeline_failure(
 
 /// Execute the full deployment pipeline for a single host
 ///
-/// Runs: Build → (skip if unchanged) → Copy → Plan → Activate → Reboot
+/// Runs: Build → (skip if unchanged) → Copy → Plan → pre-deploy hooks →
+/// Activate → Reboot → post-reboot hooks → post-deploy hooks
 ///
 /// Planning happens before any hook so a host blocked by planning is never
 /// disrupted (e.g. drained) for nothing.
@@ -245,14 +246,6 @@ pub async fn execute_host_pipeline(
         }
     };
 
-    // Step 3.5: Post-activate hooks
-    execute_hooks_or_return!(
-        HookStage::PostActivate,
-        Some(&plan.target),
-        Some(&plan.store_path),
-        PipelineStep::Activate
-    );
-
     // Step 4: Reboot (if needed)
     let (final_result, rebooted) = match execute_reboot_step(push_ctx, &plan, activate_result).await
     {
@@ -278,6 +271,15 @@ pub async fn execute_host_pipeline(
             Some(&plan.target),
             Some(&plan.store_path),
             PipelineStep::Reboot
+        );
+    }
+
+    if final_result.success {
+        execute_hooks_or_return!(
+            HookStage::PostDeploy,
+            Some(&plan.target),
+            Some(&plan.store_path),
+            PipelineStep::PostDeploy
         );
     }
 

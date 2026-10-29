@@ -186,7 +186,7 @@ impl CliObserver {
         stage: HookStage,
     ) -> Option<tracing::Span> {
         match stage {
-            HookStage::PreDeploy | HookStage::PostActivate => {
+            HookStage::PreDeploy | HookStage::PostDeploy => {
                 if let Some(ref mut step) = state.activate_step {
                     if !step.has_active_hosts {
                         step.span.pb_set_style(&step_style(StepColor::Cyan, true));
@@ -223,7 +223,7 @@ impl CliObserver {
         }
 
         match stage {
-            HookStage::PreDeploy | HookStage::PostActivate => {
+            HookStage::PreDeploy | HookStage::PostDeploy => {
                 // Only deactivate if no activate hosts are active either
                 if state.activate_host_spans.is_empty() {
                     if let Some(ref mut step) = state.activate_step {
@@ -624,7 +624,7 @@ impl PushObserver for CliObserver {
 
         let stage_prefix = match stage {
             HookStage::PreDeploy => "pre-deploy",
-            HookStage::PostActivate => "post-activate",
+            HookStage::PostDeploy => "post-deploy",
             HookStage::PostReboot => "post-reboot",
             HookStage::OnFailure => "on-failure",
         };
@@ -632,7 +632,7 @@ impl PushObserver for CliObserver {
         if let Some(parent_span) = step_span {
             // Update the step message to show hook activity
             match stage {
-                HookStage::PreDeploy | HookStage::PostActivate => {
+                HookStage::PreDeploy | HookStage::PostDeploy => {
                     if let Some(ref step) = state.activate_step {
                         step.span
                             .pb_set_message(&format!("Running {} hooks", stage_prefix));
@@ -677,7 +677,7 @@ impl PushObserver for CliObserver {
         if let Some(span) = state.hook_host_spans.get(&key) {
             let stage_prefix = match stage {
                 HookStage::PreDeploy => "pre-deploy",
-                HookStage::PostActivate => "post-activate",
+                HookStage::PostDeploy => "post-deploy",
                 HookStage::PostReboot => "post-reboot",
                 HookStage::OnFailure => "on-failure",
             };

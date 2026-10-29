@@ -7,9 +7,9 @@ Lifecycle hooks enable you to execute custom commands at specific points in the 
 Hooks are configured in your NixOS configuration and execute automatically during deployment:
 
 ```
-Build → Copy → [pre-deploy hooks] → Activate → [post-activate hooks] → Reboot → [post-reboot hooks]
-                                                ↓ (on any failure)
-                                           [on-failure hooks]
+Build → (skip if unchanged) → Copy → Plan → [pre-deploy] → Activate → Reboot? → [post-reboot]? → [post-deploy]
+                                                       ↓ (on any failure)
+                                                  [on-failure]
 ```
 
 ### Key Features
@@ -35,7 +35,7 @@ Hooks are configured under `config.snowglobe.hooks` in your NixOS configuration:
         continueOnFailure = false;  # default: false
       };
     };
-    post-activate = { /* ... */ };
+    post-deploy = { /* ... */ };
     post-reboot = { /* ... */ };
     on-failure = { /* ... */ };
   };
@@ -71,19 +71,24 @@ pre-deploy = {
 };
 ```
 
-#### `post-activate`
+#### `post-deploy`
 
-Runs **after activation completes**, before any reboot.
+Runs **last**, once the host runs the new system: after activation, after any
+reboot, and after `post-reboot` hooks. It runs whether or not a reboot happened,
+but only if the deploy (including any reboot) succeeded.
+
+This replaces `post-activate`, which ran before the reboot; defining
+`snowglobe.hooks.post-activate` now fails evaluation with a pointer here.
 
 **Common use cases:**
 - Uncordon cluster nodes
 - Add back to load balancer pool
-- Verify deployment success
+- Gate on cluster health before the next host proceeds
 - Update service discovery
 
 **Example:**
 ```nix
-post-activate = {
+post-deploy = {
   uncordon-node = {
     location = "local";
     command = "kubectl uncordon ${config.networking.hostName}";
@@ -196,7 +201,7 @@ Controls what happens when a hook fails (non-zero exit code or timeout).
 
 **Example:**
 ```nix
-post-activate = {
+post-deploy = {
   uncordon-node = {
     location = "local";
     command = "kubectl uncordon ${config.networking.hostName}";
@@ -313,7 +318,7 @@ Zero-downtime rolling updates for Kubernetes nodes:
         };
       };
 
-      post-activate = {
+      post-deploy = {
         uncordon-node = {
           location = "local";
           command = "kubectl uncordon ${config.networking.hostName}";
@@ -394,7 +399,7 @@ Remove from and add back to load balancer:
       };
     };
 
-    post-activate = {
+    post-deploy = {
       add-to-pool = {
         location = "local";
         command = "curl -X POST https://lb.example.com/api/pool/add -d '{\"host\": \"${config.networking.hostName}\"}'";
@@ -422,7 +427,7 @@ Validate deployment before considering it successful:
 ```nix
 {
   snowglobe.hooks = {
-    post-activate = {
+    post-deploy = {
       check-services = {
         location = "remote";
         command = "systemctl is-active nginx postgresql";
@@ -515,7 +520,7 @@ pre-deploy = {
 };
 
 # Cleanup operations: always run
-post-activate = {
+post-deploy = {
   uncordon-node = {
     command = "kubectl uncordon ${config.networking.hostName}";
     continueOnFailure = true;
@@ -560,7 +565,7 @@ Define hooks alongside the feature they support:
       pre-deploy = {
         drain-node = { /* kubectl drain */ };
       };
-      post-activate = {
+      post-deploy = {
         uncordon-node = { /* kubectl uncordon */ };
       };
     };
@@ -659,7 +664,7 @@ config.snowglobe.hooks = {
   pre-deploy = {
     drain-node = { location = "local"; command = "kubectl drain ${config.networking.hostName}"; };
   };
-  post-activate = {
+  post-deploy = {
     uncordon-node = { location = "local"; command = "kubectl uncordon ${config.networking.hostName}"; };
   };
 };
