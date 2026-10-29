@@ -3,8 +3,12 @@ use crate::nix::{ActivationMode, StorePath, SystemType};
 use crate::process::r#async::run_command;
 use crate::process::OutputMode;
 use async_trait::async_trait;
+use std::path::Path;
 
-use super::{activation_mode_to_string, should_update_profile, DeployBackend, DeployTarget};
+use super::{
+    activation_mode_to_string, should_update_profile, store_path_from_resolved, DeployBackend,
+    DeployTarget, HostSystems, CURRENT_SYSTEM_LINK, SYSTEM_PROFILE_LINK,
+};
 
 /// Local deployment backend for rebuilding the current host
 ///
@@ -13,6 +17,14 @@ use super::{activation_mode_to_string, should_update_profile, DeployBackend, Dep
 pub struct LocalDeployBackend {
     /// Output mode for subprocess operations
     pub output_mode: OutputMode,
+}
+
+fn store_path_at(link: &Path, host: &str) -> Result<StorePath> {
+    let resolved = std::fs::canonicalize(link).map_err(|e| DeployError::Failed {
+        host: host.to_string(),
+        source: e,
+    })?;
+    store_path_from_resolved(host, &link.to_string_lossy(), &resolved.to_string_lossy())
 }
 
 impl LocalDeployBackend {
@@ -36,6 +48,13 @@ impl LocalDeployBackend {
 impl DeployBackend for LocalDeployBackend {
     async fn copy_closure(&self, _target: &DeployTarget, _store_path: &StorePath) -> Result<()> {
         Ok(())
+    }
+
+    async fn host_systems(&self, target: &DeployTarget) -> Result<HostSystems> {
+        Ok(HostSystems {
+            running: store_path_at(Path::new(CURRENT_SYSTEM_LINK), &target.hostname)?,
+            next_boot: store_path_at(Path::new(SYSTEM_PROFILE_LINK), &target.hostname)?,
+        })
     }
 
     async fn activate(
@@ -165,6 +184,31 @@ impl Default for LocalDeployBackend {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_store_path_at_missing_link_fails() {
+        let dir = tempfile::tempdir().unwrap();
+
+        let err = store_path_at(&dir.path().join("current-system"), "localhost").unwrap_err();
+
+        assert!(matches!(
+            err,
+            crate::error::SnowError::Deploy(DeployError::Failed { .. })
+        ));
+    }
+
+    #[test]
+    fn test_store_path_at_rejects_link_outside_nix_store() {
+        let dir = tempfile::tempdir().unwrap();
+        let system = dir.path().join("system");
+        std::fs::create_dir(&system).unwrap();
+        let link = dir.path().join("current-system");
+        std::os::unix::fs::symlink(&system, &link).unwrap();
+
+        let err = store_path_at(&link, "localhost").unwrap_err();
+
+        assert!(format!("{:?}", err).contains("not a Nix store path"));
+    }
 
     #[tokio::test]
     async fn test_copy_closure_is_noop() {

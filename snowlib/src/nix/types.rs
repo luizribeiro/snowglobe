@@ -35,7 +35,7 @@ impl SystemType {
 }
 
 /// Nix store path for a built configuration
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StorePath(String);
 
 impl StorePath {

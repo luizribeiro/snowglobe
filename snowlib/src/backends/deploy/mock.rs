@@ -1,4 +1,4 @@
-use super::{should_update_profile, DeployBackend, DeployTarget};
+use super::{should_update_profile, DeployBackend, DeployTarget, HostSystems};
 use crate::error::Result;
 use crate::nix::{ActivationMode, StorePath};
 use async_trait::async_trait;
@@ -27,6 +27,8 @@ pub struct MockDeployBackend {
     activate_failures: Vec<String>,
     /// Track which hosts had profile updates (hostname, mode)
     profile_updates: Arc<Mutex<Vec<(String, ActivationMode)>>>,
+    /// Systems per target hostname; hosts not listed run a system no build matches
+    host_systems: HashMap<String, HostSystems>,
 }
 
 impl Default for MockDeployBackend {
@@ -37,6 +39,7 @@ impl Default for MockDeployBackend {
             copy_failures: Vec::new(),
             activate_failures: Vec::new(),
             profile_updates: Arc::new(Mutex::new(Vec::new())),
+            host_systems: HashMap::new(),
         }
     }
 }
@@ -51,10 +54,7 @@ impl MockDeployBackend {
     pub fn from_fixture(fixture: DeploymentFixture) -> Self {
         Self {
             fixture: Some(fixture),
-            should_fail: vec![],
-            copy_failures: vec![],
-            activate_failures: vec![],
-            profile_updates: Arc::new(Mutex::new(Vec::new())),
+            ..Self::default()
         }
     }
 
@@ -87,6 +87,12 @@ impl MockDeployBackend {
     /// Set copy failures for simple mode (when not using fixtures)
     pub fn with_copy_failures(mut self, hostnames: Vec<String>) -> Self {
         self.copy_failures = hostnames;
+        self
+    }
+
+    /// Set the running and boot-next systems of each target hostname
+    pub fn with_host_systems(mut self, systems: HashMap<String, HostSystems>) -> Self {
+        self.host_systems = systems;
         self
     }
 
@@ -193,6 +199,19 @@ impl DeployBackend for MockDeployBackend {
         }
 
         Ok(())
+    }
+
+    async fn host_systems(&self, target: &DeployTarget) -> Result<HostSystems> {
+        Ok(self
+            .host_systems
+            .get(&target.hostname)
+            .cloned()
+            .unwrap_or_else(|| {
+                HostSystems::both(StorePath::new(format!(
+                    "/nix/store/mock-running-{}",
+                    target.hostname
+                )))
+            }))
     }
 
     async fn activate(
@@ -368,6 +387,55 @@ pub struct OperationFixture {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn target(hostname: &str) -> DeployTarget {
+        DeployTarget {
+            user: None,
+            hostname: hostname.to_string(),
+            port: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn test_host_systems_returns_configured_systems() {
+        let systems = HostSystems {
+            running: StorePath::new("/nix/store/abc-nixos-system-hydrogen".to_string()),
+            next_boot: StorePath::new("/nix/store/def-nixos-system-hydrogen".to_string()),
+        };
+        let deployer = MockDeployBackend::new().with_host_systems(HashMap::from([(
+            "hydrogen.example.com".to_string(),
+            systems.clone(),
+        )]));
+
+        let reported = deployer
+            .host_systems(&target("hydrogen.example.com"))
+            .await
+            .unwrap();
+
+        assert_eq!(reported, systems);
+    }
+
+    #[tokio::test]
+    async fn test_host_systems_default_to_a_system_no_build_produces() {
+        use crate::backends::nix::{MockNixBackend, NixBackend};
+        use crate::nix::{Flake, SystemType};
+
+        let built = MockNixBackend::new()
+            .build_host(
+                &Flake::test_context(),
+                "oxygen.example.com",
+                SystemType::NixOS,
+                crate::process::OutputMode::Capture,
+            )
+            .await
+            .unwrap();
+        let systems = MockDeployBackend::new()
+            .host_systems(&target("oxygen.example.com"))
+            .await
+            .unwrap();
+
+        assert!(!systems.are(&built));
+    }
 
     #[tokio::test]
     async fn test_mock_deploy_backend_success() {

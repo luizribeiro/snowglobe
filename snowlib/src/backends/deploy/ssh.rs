@@ -1,10 +1,13 @@
 use crate::error::{DeployError, Result};
 use crate::nix::{ActivationMode, StorePath};
 use crate::process::r#async::run_command;
-use crate::process::OutputMode;
+use crate::process::{CommandResult, OutputMode};
 use async_trait::async_trait;
 
-use super::{activation_mode_to_string, should_update_profile, DeployBackend, DeployTarget};
+use super::{
+    activation_mode_to_string, should_update_profile, store_path_from_resolved, DeployBackend,
+    DeployTarget, HostSystems, CURRENT_SYSTEM_LINK, SYSTEM_PROFILE_LINK,
+};
 
 /// Convert command args to a shell-like string representation for error messages
 fn args_to_command_string(program: &str, args: &[&str]) -> String {
@@ -19,6 +22,43 @@ fn args_to_command_string(program: &str, args: &[&str]) -> String {
     } else {
         format!("{} {}", escaped_program, escaped_args.join(" "))
     }
+}
+
+fn command_failed(host: &str, command: String, result: &CommandResult) -> DeployError {
+    DeployError::CommandFailed {
+        host: host.to_string(),
+        command,
+        exit_code: result.status.code().unwrap_or(-1),
+        stderr: String::from_utf8_lossy(&result.stderr).trim().to_string(),
+        stdout: String::from_utf8_lossy(&result.stdout).trim().to_string(),
+    }
+}
+
+const READ_HOST_SYSTEMS_ARGS: [&str; 4] =
+    ["readlink", "-f", CURRENT_SYSTEM_LINK, SYSTEM_PROFILE_LINK];
+
+/// Parse `readlink -f <current-system> <system-profile>`, which prints one line per link
+fn host_systems_from_output(host: &str, result: &CommandResult) -> Result<HostSystems> {
+    if !result.status.success() {
+        return Err(command_failed(host, READ_HOST_SYSTEMS_ARGS.join(" "), result).into());
+    }
+    let stdout = String::from_utf8_lossy(&result.stdout);
+    let lines: Vec<&str> = stdout.lines().collect();
+    let [running, next_boot] = lines.as_slice() else {
+        return Err(DeployError::Failed {
+            host: host.to_string(),
+            source: std::io::Error::other(format!(
+                "expected 2 lines from `{}`, got: {:?}",
+                READ_HOST_SYSTEMS_ARGS.join(" "),
+                stdout
+            )),
+        }
+        .into());
+    };
+    Ok(HostSystems {
+        running: store_path_from_resolved(host, CURRENT_SYSTEM_LINK, running)?,
+        next_boot: store_path_from_resolved(host, SYSTEM_PROFILE_LINK, next_boot)?,
+    })
 }
 
 /// SSH-based deployer using subprocess commands (MVP implementation)
@@ -116,6 +156,20 @@ impl DeployBackend for SshDeployBackend {
         }
 
         Ok(())
+    }
+
+    async fn host_systems(&self, target: &DeployTarget) -> Result<HostSystems> {
+        let args = self.ssh_args(target, &READ_HOST_SYSTEMS_ARGS);
+        let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+
+        let result = run_command("ssh", &args_refs, OutputMode::Capture, None, None, &[])
+            .await
+            .map_err(|e| DeployError::SshFailed {
+                destination: self.get_destination(target),
+                source: e,
+            })?;
+
+        host_systems_from_output(&target.hostname, &result)
     }
 
     async fn activate(
@@ -267,6 +321,84 @@ mod tests {
             deployer.get_destination(&target),
             "deploy@hydrogen.example.com"
         );
+    }
+
+    fn command_result(exit_code: i32, stdout: &str, stderr: &str) -> CommandResult {
+        use std::os::unix::process::ExitStatusExt;
+        CommandResult {
+            stdout: stdout.as_bytes().to_vec(),
+            stderr: stderr.as_bytes().to_vec(),
+            status: std::process::ExitStatus::from_raw(exit_code << 8),
+            timed_out: false,
+        }
+    }
+
+    #[test]
+    fn test_host_systems_from_output_success() {
+        let result = command_result(
+            0,
+            "/nix/store/new-nixos-system-hydrogen\n/nix/store/staged-nixos-system-hydrogen\n",
+            "",
+        );
+
+        let systems = host_systems_from_output("hydrogen", &result).unwrap();
+
+        assert_eq!(
+            systems.running.as_str(),
+            "/nix/store/new-nixos-system-hydrogen"
+        );
+        assert_eq!(
+            systems.next_boot.as_str(),
+            "/nix/store/staged-nixos-system-hydrogen"
+        );
+    }
+
+    #[test]
+    fn test_host_systems_from_output_command_failure() {
+        let result = command_result(255, "", "ssh: Could not resolve hostname hydrogen");
+
+        let err = host_systems_from_output("hydrogen", &result).unwrap_err();
+
+        match err {
+            crate::error::SnowError::Deploy(DeployError::CommandFailed {
+                exit_code,
+                stderr,
+                ..
+            }) => {
+                assert_eq!(exit_code, 255);
+                assert!(stderr.contains("Could not resolve hostname"));
+            }
+            other => panic!("expected CommandFailed, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_host_systems_from_output_rejects_wrong_line_count() {
+        let one_line = command_result(0, "/nix/store/new-nixos-system-hydrogen\n", "");
+        let with_banner = command_result(
+            0,
+            "Welcome to hydrogen!\n/nix/store/a-system\n/nix/store/b-system\n",
+            "",
+        );
+
+        assert!(host_systems_from_output("hydrogen", &one_line).is_err());
+        assert!(host_systems_from_output("hydrogen", &with_banner).is_err());
+    }
+
+    #[test]
+    fn test_host_systems_from_output_rejects_non_store_path() {
+        let result = command_result(0, "/run/current-system\n/nix/store/b-system\n", "");
+
+        assert!(host_systems_from_output("hydrogen", &result).is_err());
+    }
+
+    #[test]
+    fn test_host_systems_from_output_names_the_bad_link() {
+        let result = command_result(0, "/nix/store/a-system\n/nix/var/nix/profiles/system\n", "");
+
+        let err = host_systems_from_output("hydrogen", &result).unwrap_err();
+
+        assert!(format!("{:?}", err).contains("/nix/var/nix/profiles/system resolved to"));
     }
 
     #[tokio::test]
