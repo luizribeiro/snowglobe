@@ -95,100 +95,7 @@ impl NixBackend for SystemNixBackend {
                 other => other,
             })?;
 
-        #[derive(serde::Deserialize)]
-        struct HookConfigWithoutStage {
-            location: HookLocation,
-            command: String,
-            #[serde(default)]
-            environment: std::collections::HashMap<String, String>,
-            #[serde(default, rename = "environmentFiles")]
-            environment_files: Vec<std::path::PathBuf>,
-            #[serde(default = "default_hook_timeout")]
-            timeout: u64,
-            #[serde(default, rename = "continueOnFailure")]
-            continue_on_failure: bool,
-            #[serde(default = "default_hook_priority")]
-            priority: i32,
-            #[serde(default)]
-            retries: u32,
-            #[serde(default = "default_retry_delay", rename = "retryDelay")]
-            retry_delay: u64,
-        }
-
-        fn default_hook_timeout() -> u64 {
-            300
-        }
-
-        fn default_hook_priority() -> i32 {
-            100
-        }
-
-        fn default_retry_delay() -> u64 {
-            5
-        }
-
-        #[derive(serde::Deserialize)]
-        struct MetadataJson {
-            #[serde(rename = "hostName")]
-            hostname: String,
-            // Domain can be null for hosts that connect to different networks (like laptops)
-            // or when not configured in the NixOS/nix-darwin configuration
-            domain: Option<String>,
-            phase: Option<String>,
-            tags: Vec<String>,
-            #[serde(rename = "rebootPolicy")]
-            reboot_policy: String,
-            #[serde(default)]
-            hooks: std::collections::HashMap<
-                String,
-                std::collections::HashMap<String, HookConfigWithoutStage>,
-            >,
-        }
-
-        let meta: MetadataJson = serde_json::from_slice(&stdout).map_err(|e| {
-            crate::error::NixError::OutputParseFailed {
-                output: String::from_utf8_lossy(&stdout).to_string(),
-                source: e,
-            }
-        })?;
-
-        let fqdn = match meta.domain {
-            Some(domain) if !domain.is_empty() => format!("{}.{}", meta.hostname, domain),
-            _ => meta.hostname.clone(),
-        };
-
-        let reboot_policy = RebootPolicy::from_str(&meta.reboot_policy)?;
-
-        // Convert hooks from stage-grouped HashMap to flat Vec
-        let mut hooks = Vec::new();
-        for (stage_str, stage_hooks) in meta.hooks {
-            let stage = HookStage::from_str(&stage_str)?;
-            for (hook_name, hook) in stage_hooks {
-                hooks.push(HookConfig {
-                    name: hook_name,
-                    stage,
-                    location: hook.location,
-                    command: hook.command,
-                    environment: hook.environment,
-                    environment_files: hook.environment_files,
-                    timeout: hook.timeout,
-                    continue_on_failure: hook.continue_on_failure,
-                    priority: hook.priority,
-                    retries: hook.retries,
-                    retry_delay: hook.retry_delay,
-                });
-            }
-        }
-
-        Ok(HostMetadata {
-            name: host.to_string(),
-            phase: meta.phase,
-            tags: meta.tags,
-            fqdn,
-            reboot_policy,
-            system_type,
-            hooks,
-        })
+        parse_host_metadata(host, system_type, &stdout)
     }
 
     async fn build_host(
@@ -316,110 +223,219 @@ impl NixBackend for SystemNixBackend {
     }
 }
 
+/// Kept apart from `get_host_metadata` so parsing is testable without invoking nix
+fn parse_host_metadata(host: &str, system_type: SystemType, stdout: &[u8]) -> Result<HostMetadata> {
+    #[derive(serde::Deserialize)]
+    struct HookConfigWithoutStage {
+        location: HookLocation,
+        command: String,
+        #[serde(default)]
+        environment: std::collections::HashMap<String, String>,
+        #[serde(default, rename = "environmentFiles")]
+        environment_files: Vec<std::path::PathBuf>,
+        #[serde(default = "default_hook_timeout")]
+        timeout: u64,
+        #[serde(default, rename = "continueOnFailure")]
+        continue_on_failure: bool,
+        #[serde(default = "default_hook_priority")]
+        priority: i32,
+        #[serde(default)]
+        retries: u32,
+        #[serde(default = "default_retry_delay", rename = "retryDelay")]
+        retry_delay: u64,
+    }
+
+    fn default_hook_timeout() -> u64 {
+        300
+    }
+
+    fn default_hook_priority() -> i32 {
+        100
+    }
+
+    fn default_retry_delay() -> u64 {
+        5
+    }
+
+    #[derive(serde::Deserialize)]
+    struct MetadataJson {
+        #[serde(rename = "hostName")]
+        hostname: String,
+        // Domain can be null for hosts that connect to different networks (like laptops)
+        // or when not configured in the NixOS/nix-darwin configuration
+        domain: Option<String>,
+        phase: Option<String>,
+        tags: Vec<String>,
+        #[serde(rename = "rebootPolicy")]
+        reboot_policy: String,
+        #[serde(default)]
+        hooks: std::collections::HashMap<
+            String,
+            std::collections::HashMap<String, HookConfigWithoutStage>,
+        >,
+    }
+
+    let meta: MetadataJson =
+        serde_json::from_slice(stdout).map_err(|e| crate::error::NixError::OutputParseFailed {
+            output: String::from_utf8_lossy(stdout).to_string(),
+            source: e,
+        })?;
+
+    let fqdn = match meta.domain {
+        Some(domain) if !domain.is_empty() => format!("{}.{}", meta.hostname, domain),
+        _ => meta.hostname.clone(),
+    };
+
+    let reboot_policy = RebootPolicy::from_str(&meta.reboot_policy)?;
+
+    // Convert hooks from stage-grouped HashMap to flat Vec
+    let mut hooks = Vec::new();
+    for (stage_str, stage_hooks) in meta.hooks {
+        let stage = HookStage::from_str(&stage_str)?;
+        for (hook_name, hook) in stage_hooks {
+            hooks.push(HookConfig {
+                name: hook_name,
+                stage,
+                location: hook.location,
+                command: hook.command,
+                environment: hook.environment,
+                environment_files: hook.environment_files,
+                timeout: hook.timeout,
+                continue_on_failure: hook.continue_on_failure,
+                priority: hook.priority,
+                retries: hook.retries,
+                retry_delay: hook.retry_delay,
+            });
+        }
+    }
+
+    Ok(HostMetadata {
+        name: host.to_string(),
+        phase: meta.phase,
+        tags: meta.tags,
+        fqdn,
+        reboot_policy,
+        system_type,
+        hooks,
+    })
+}
+
 #[cfg(test)]
 mod tests {
+    use super::*;
+
+    fn try_parse(json: &str) -> Result<HostMetadata> {
+        parse_host_metadata("web01", SystemType::NixOS, json.as_bytes())
+    }
+
+    fn parse(json: &str) -> HostMetadata {
+        try_parse(json).unwrap()
+    }
+
     #[test]
-    fn test_metadata_json_with_null_domain() {
-        let json = r#"{
+    fn test_parse_metadata_with_null_domain() {
+        let meta = parse(
+            r#"{
             "hostName": "macbook",
             "domain": null,
             "phase": null,
             "tags": [],
             "rebootPolicy": "auto"
-        }"#;
+        }"#,
+        );
 
-        #[derive(serde::Deserialize)]
-        struct MetadataJson {
-            #[serde(rename = "hostName")]
-            hostname: String,
-            domain: Option<String>,
-            phase: Option<String>,
-            tags: Vec<String>,
-            #[serde(rename = "rebootPolicy")]
-            reboot_policy: String,
-        }
-
-        let meta: MetadataJson = serde_json::from_str(json).unwrap();
-        assert_eq!(meta.hostname, "macbook");
-        assert_eq!(meta.domain, None);
+        assert_eq!(meta.name, "web01");
+        assert_eq!(meta.fqdn, "macbook");
         assert_eq!(meta.phase, None);
-        assert_eq!(meta.tags, Vec::<String>::new());
-        assert_eq!(meta.reboot_policy, "auto");
-
-        let fqdn = match meta.domain {
-            Some(domain) if !domain.is_empty() => format!("{}.{}", meta.hostname, domain),
-            _ => meta.hostname.clone(),
-        };
-        assert_eq!(fqdn, "macbook");
+        assert!(meta.tags.is_empty());
+        assert_eq!(meta.reboot_policy, RebootPolicy::Auto);
+        assert!(meta.hooks.is_empty());
     }
 
     #[test]
-    fn test_metadata_json_with_empty_domain() {
-        let json = r#"{
+    fn test_parse_metadata_with_empty_domain() {
+        let meta = parse(
+            r#"{
             "hostName": "server",
             "domain": "",
             "phase": "p1",
             "tags": ["web"],
             "rebootPolicy": "never"
-        }"#;
+        }"#,
+        );
 
-        #[derive(serde::Deserialize)]
-        struct MetadataJson {
-            #[serde(rename = "hostName")]
-            hostname: String,
-            domain: Option<String>,
-            phase: Option<String>,
-            tags: Vec<String>,
-            #[serde(rename = "rebootPolicy")]
-            reboot_policy: String,
-        }
-
-        let meta: MetadataJson = serde_json::from_str(json).unwrap();
-        assert_eq!(meta.hostname, "server");
-        assert_eq!(meta.domain, Some("".to_string()));
+        assert_eq!(meta.fqdn, "server");
         assert_eq!(meta.phase, Some("p1".to_string()));
         assert_eq!(meta.tags, vec!["web"]);
-        assert_eq!(meta.reboot_policy, "never");
-
-        let fqdn = match meta.domain {
-            Some(domain) if !domain.is_empty() => format!("{}.{}", meta.hostname, domain),
-            _ => meta.hostname.clone(),
-        };
-        assert_eq!(fqdn, "server");
+        assert_eq!(meta.reboot_policy, RebootPolicy::Never);
     }
 
     #[test]
-    fn test_metadata_json_with_valid_domain() {
-        let json = r#"{
+    fn test_parse_metadata_with_valid_domain() {
+        let meta = parse(
+            r#"{
             "hostName": "web01",
             "domain": "example.com",
             "phase": "p2",
             "tags": ["mysql", "ldap"],
             "rebootPolicy": "always"
-        }"#;
+        }"#,
+        );
 
-        #[derive(serde::Deserialize)]
-        struct MetadataJson {
-            #[serde(rename = "hostName")]
-            hostname: String,
-            domain: Option<String>,
-            phase: Option<String>,
-            tags: Vec<String>,
-            #[serde(rename = "rebootPolicy")]
-            reboot_policy: String,
-        }
-
-        let meta: MetadataJson = serde_json::from_str(json).unwrap();
-        assert_eq!(meta.hostname, "web01");
-        assert_eq!(meta.domain, Some("example.com".to_string()));
+        assert_eq!(meta.fqdn, "web01.example.com");
         assert_eq!(meta.phase, Some("p2".to_string()));
         assert_eq!(meta.tags, vec!["mysql", "ldap"]);
-        assert_eq!(meta.reboot_policy, "always");
+        assert_eq!(meta.reboot_policy, RebootPolicy::Always);
+    }
 
-        let fqdn = match meta.domain {
-            Some(domain) if !domain.is_empty() => format!("{}.{}", meta.hostname, domain),
-            _ => meta.hostname.clone(),
-        };
-        assert_eq!(fqdn, "web01.example.com");
+    #[test]
+    fn test_parse_metadata_with_hooks() {
+        let meta = parse(
+            r#"{
+            "hostName": "praseodymium",
+            "domain": "example.com",
+            "phase": "p2",
+            "tags": [],
+            "rebootPolicy": "auto",
+            "hooks": {
+                "pre-activate": {
+                    "drain-node": { "location": "local", "command": "kubectl drain praseodymium", "timeout": 900 }
+                }
+            }
+        }"#,
+        );
+
+        assert_eq!(meta.hooks.len(), 1);
+        let hook = &meta.hooks[0];
+        assert_eq!(hook.name, "drain-node");
+        assert_eq!(hook.stage, HookStage::PreActivate);
+        assert_eq!(hook.timeout, 900);
+        assert_eq!(hook.retries, 0);
+        assert_eq!(hook.priority, 100);
+        assert_eq!(hook.retry_delay, 5);
+        assert!(!hook.continue_on_failure);
+        assert!(hook.environment.is_empty());
+    }
+
+    #[test]
+    fn test_parse_metadata_rejects_invalid_reboot_policy() {
+        let err = try_parse(
+            r#"{"hostName": "web01", "domain": null, "phase": null, "tags": [], "rebootPolicy": "sometimes"}"#,
+        )
+        .unwrap_err();
+
+        assert!(
+            err.to_string().contains("sometimes") || format!("{:?}", err).contains("sometimes")
+        );
+    }
+
+    #[test]
+    fn test_parse_metadata_rejects_malformed_json() {
+        let err = try_parse(r#"{"hostName": "web01""#).unwrap_err();
+
+        assert!(matches!(
+            err,
+            crate::error::SnowError::Nix(crate::error::NixError::OutputParseFailed { .. })
+        ));
     }
 }
