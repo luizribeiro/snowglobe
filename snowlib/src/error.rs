@@ -159,6 +159,19 @@ pub enum DeployError {
         stdout: String,
     },
 
+    #[error(
+        "Hook '{hook}' of host '{host}' references {path}, which is not present on this machine"
+    )]
+    #[diagnostic(
+        code(snow::deploy::hook_path_missing),
+        help("Local hooks run on the machine running snow. Use `localPkgs` (not `pkgs`) for packages in local hook commands so snow builds them for this machine. The path may also have been garbage-collected.")
+    )]
+    HookPathMissing {
+        host: String,
+        hook: String,
+        path: String,
+    },
+
     #[error("Reboot of host '{host}' was not confirmed: {reason}")]
     #[diagnostic(
         code(snow::deploy::reboot_not_confirmed),

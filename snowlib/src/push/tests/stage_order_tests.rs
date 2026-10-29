@@ -222,3 +222,65 @@ async fn test_failed_dry_run_runs_no_on_failure_hooks() {
     assert!(!run.host("oxygen").success);
     assert!(run.executed_hooks.is_empty(), "{:?}", run.executed_hooks);
 }
+
+const MISSING_GATE: &str =
+    "/nix/store/vcy97mavll1fwawj02qr7lkkl0kl2q6y-snowglobe-test-missing-gate";
+
+fn node_with_gate(name: &str, location: crate::hooks::HookLocation) -> HostMetadata {
+    let mut host = kubernetes_node(name);
+    host.hooks.push(crate::hooks::HookConfig::test_fixture(
+        "storage-gate",
+        HookStage::PreDeploy,
+        location,
+        &format!("{}/bin/gate --wait", MISSING_GATE),
+    ));
+    host
+}
+
+#[tokio::test]
+async fn test_local_hook_with_missing_store_path_fails_at_plan() {
+    let run = PushHarness::new()
+        .run(vec![node_with_gate(
+            "promethium",
+            crate::hooks::HookLocation::Local,
+        )])
+        .await;
+
+    let host = run.host("promethium");
+    assert_eq!(host.failed_at_step, Some(PipelineStep::Plan));
+    assert!(
+        host.error_message
+            .as_deref()
+            .is_some_and(|m| m.contains(MISSING_GATE)),
+        "{:?}",
+        host.error_message
+    );
+    assert!(!executed_stages(&run).contains(&HookStage::PreDeploy));
+}
+
+#[tokio::test]
+async fn test_remote_hook_store_paths_are_not_checked_locally() {
+    let run = PushHarness::new()
+        .run(vec![node_with_gate(
+            "promethium",
+            crate::hooks::HookLocation::Remote,
+        )])
+        .await;
+
+    assert!(run.host("promethium").success);
+}
+
+#[tokio::test]
+async fn test_dry_run_skips_the_hook_path_check() {
+    let mut harness = PushHarness::new();
+    harness.config.strategy = PushStrategy::DryRun;
+
+    let run = harness
+        .run(vec![node_with_gate(
+            "promethium",
+            crate::hooks::HookLocation::Local,
+        )])
+        .await;
+
+    assert!(run.host("promethium").success);
+}
