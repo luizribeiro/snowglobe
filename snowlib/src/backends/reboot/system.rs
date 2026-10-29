@@ -437,21 +437,23 @@ esac
 
     /// Runs REBOOT_COMMAND with `sudo` stubbed to print what it would run
     fn sudo_invocation_of_reboot_command(helper_installed: bool) -> String {
-        let helper_stub = if helper_installed {
-            "snowglobe-activate() { :; }"
-        } else {
-            ""
-        };
-        let script = format!(
-            "sudo() {{ echo \"$@\"; }}; {}\n{}",
-            helper_stub, REBOOT_COMMAND
-        );
+        use std::os::unix::fs::PermissionsExt;
+
+        // A stub executable rather than a shell function: POSIX sh rejects
+        // function names with hyphens
+        let bin = tempfile::tempdir().unwrap();
+        if helper_installed {
+            let helper = bin.path().join("snowglobe-activate");
+            std::fs::write(&helper, "#!/bin/sh\nexit 0\n").unwrap();
+            std::fs::set_permissions(&helper, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        let script = format!("sudo() {{ echo \"$@\"; }}\n{}", REBOOT_COMMAND);
         let output = std::process::Command::new("/bin/sh")
             .args(["-c", &script])
-            .env("PATH", "/nonexistent")
+            .env("PATH", bin.path())
             .output()
             .unwrap();
-        assert!(output.status.success());
+        assert!(output.status.success(), "{:?}", output);
         String::from_utf8(output.stdout).unwrap().trim().to_string()
     }
 
