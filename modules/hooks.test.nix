@@ -1,8 +1,6 @@
-{ nixt, pkgs }:
+{ pkgs }:
 
 let
-  inherit (nixt.lib) block describe it;
-
   # Mock assertions module for standalone testing
   # (assertions option is normally provided by NixOS/darwin module system)
   assertionsModule = {
@@ -25,10 +23,9 @@ let
   failedAssertionMessages = config:
     map (a: a.message) (builtins.filter (a: !a.assertion) (evalConfig config).assertions);
 in
-block ./hooks.test.nix [
-  (describe "hooks module evaluation" [
-    (it "evaluates a minimal pre-deploy hook" (
-      let
+{
+  "test hooks module evaluation: evaluates a minimal pre-deploy hook" = {
+    expr = let
         hooks = evalHooks {
           snowglobe.hooks.pre-deploy.test-hook = {
             location = "local";
@@ -36,11 +33,12 @@ block ./hooks.test.nix [
           };
         };
       in
-      hooks.pre-deploy.test-hook.command == "echo test"
-    ))
+      hooks.pre-deploy.test-hook.command == "echo test";
+    expected = true;
+  };
 
-    (it "evaluates a minimal post-activate hook" (
-      let
+  "test hooks module evaluation: evaluates a minimal post-activate hook" = {
+    expr = let
         hooks = evalHooks {
           snowglobe.hooks.post-activate.test-hook = {
             location = "remote";
@@ -48,11 +46,12 @@ block ./hooks.test.nix [
           };
         };
       in
-      hooks.post-activate.test-hook.location == "remote"
-    ))
+      hooks.post-activate.test-hook.location == "remote";
+    expected = true;
+  };
 
-    (it "evaluates post-reboot hooks" (
-      let
+  "test hooks module evaluation: evaluates post-reboot hooks" = {
+    expr = let
         hooks = evalHooks {
           snowglobe.hooks.post-reboot.verify = {
             location = "remote";
@@ -60,11 +59,12 @@ block ./hooks.test.nix [
           };
         };
       in
-      hooks.post-reboot.verify.command == "systemctl is-system-running --wait"
-    ))
+      hooks.post-reboot.verify.command == "systemctl is-system-running --wait";
+    expected = true;
+  };
 
-    (it "evaluates on-failure hooks" (
-      let
+  "test hooks module evaluation: evaluates on-failure hooks" = {
+    expr = let
         hooks = evalHooks {
           snowglobe.hooks.on-failure.cleanup = {
             location = "local";
@@ -73,13 +73,12 @@ block ./hooks.test.nix [
           };
         };
       in
-      hooks.on-failure.cleanup.continueOnFailure == true
-    ))
-  ])
+      hooks.on-failure.cleanup.continueOnFailure == true;
+    expected = true;
+  };
 
-  (describe "hooks default values" [
-    (it "sets default timeout to 300" (
-      let
+  "test hooks default values: sets default timeout to 300" = {
+    expr = let
         hooks = evalHooks {
           snowglobe.hooks.pre-deploy.test = {
             location = "local";
@@ -87,11 +86,12 @@ block ./hooks.test.nix [
           };
         };
       in
-      hooks.pre-deploy.test.timeout == 300
-    ))
+      hooks.pre-deploy.test.timeout == 300;
+    expected = true;
+  };
 
-    (it "sets default continueOnFailure to false" (
-      let
+  "test hooks default values: sets default continueOnFailure to false" = {
+    expr = let
         hooks = evalHooks {
           snowglobe.hooks.pre-deploy.test = {
             location = "local";
@@ -99,11 +99,12 @@ block ./hooks.test.nix [
           };
         };
       in
-      hooks.pre-deploy.test.continueOnFailure == false
-    ))
+      hooks.pre-deploy.test.continueOnFailure == false;
+    expected = true;
+  };
 
-    (it "sets default priority to 100" (
-      let
+  "test hooks default values: sets default priority to 100" = {
+    expr = let
         hooks = evalHooks {
           snowglobe.hooks.pre-deploy.test = {
             location = "local";
@@ -111,11 +112,12 @@ block ./hooks.test.nix [
           };
         };
       in
-      hooks.pre-deploy.test.priority == 100
-    ))
+      hooks.pre-deploy.test.priority == 100;
+    expected = true;
+  };
 
-    (it "sets default environment to empty" (
-      let
+  "test hooks default values: sets default environment to empty" = {
+    expr = let
         hooks = evalHooks {
           snowglobe.hooks.pre-deploy.test = {
             location = "local";
@@ -123,11 +125,12 @@ block ./hooks.test.nix [
           };
         };
       in
-      hooks.pre-deploy.test.environment == {}
-    ))
+      hooks.pre-deploy.test.environment == {};
+    expected = true;
+  };
 
-    (it "sets default environmentFiles to empty" (
-      let
+  "test hooks default values: sets default environmentFiles to empty" = {
+    expr = let
         hooks = evalHooks {
           snowglobe.hooks.pre-deploy.test = {
             location = "local";
@@ -135,13 +138,12 @@ block ./hooks.test.nix [
           };
         };
       in
-      hooks.pre-deploy.test.environmentFiles == []
-    ))
-  ])
+      hooks.pre-deploy.test.environmentFiles == [];
+    expected = true;
+  };
 
-  (describe "hooks custom values" [
-    (it "allows custom timeout" (
-      let
+  "test hooks custom values: allows custom timeout" = {
+    expr = let
         hooks = evalHooks {
           snowglobe.hooks.pre-deploy.test = {
             location = "local";
@@ -150,11 +152,12 @@ block ./hooks.test.nix [
           };
         };
       in
-      hooks.pre-deploy.test.timeout == 600
-    ))
+      hooks.pre-deploy.test.timeout == 600;
+    expected = true;
+  };
 
-    (it "allows custom priority" (
-      let
+  "test hooks custom values: allows custom priority" = {
+    expr = let
         hooks = evalHooks {
           snowglobe.hooks.pre-deploy.test = {
             location = "local";
@@ -163,11 +166,12 @@ block ./hooks.test.nix [
           };
         };
       in
-      hooks.pre-deploy.test.priority == -10
-    ))
+      hooks.pre-deploy.test.priority == -10;
+    expected = true;
+  };
 
-    (it "allows custom environment variables" (
-      let
+  "test hooks custom values: allows custom environment variables" = {
+    expr = let
         hooks = evalHooks {
           snowglobe.hooks.pre-deploy.test = {
             location = "local";
@@ -180,13 +184,12 @@ block ./hooks.test.nix [
         };
       in
       hooks.pre-deploy.test.environment.KUBECONFIG == "/home/user/.kube/config" &&
-      hooks.pre-deploy.test.environment.LOG_LEVEL == "debug"
-    ))
-  ])
+      hooks.pre-deploy.test.environment.LOG_LEVEL == "debug";
+    expected = true;
+  };
 
-  (describe "multiple hooks in same stage" [
-    (it "allows multiple hooks in pre-deploy" (
-      let
+  "test multiple hooks in same stage: allows multiple hooks in pre-deploy" = {
+    expr = let
         hooks = evalHooks {
           snowglobe.hooks.pre-deploy = {
             first = { location = "local"; command = "echo first"; };
@@ -195,11 +198,12 @@ block ./hooks.test.nix [
         };
       in
       hooks.pre-deploy.first.command == "echo first" &&
-      hooks.pre-deploy.second.command == "echo second"
-    ))
+      hooks.pre-deploy.second.command == "echo second";
+    expected = true;
+  };
 
-    (it "allows multiple hooks in post-activate" (
-      let
+  "test multiple hooks in same stage: allows multiple hooks in post-activate" = {
+    expr = let
         hooks = evalHooks {
           snowglobe.hooks.post-activate = {
             a = { location = "local"; command = "cmd-a"; };
@@ -210,13 +214,12 @@ block ./hooks.test.nix [
       in
       hooks.post-activate.a.command == "cmd-a" &&
       hooks.post-activate.b.location == "remote" &&
-      hooks.post-activate.c.command == "cmd-c"
-    ))
-  ])
+      hooks.post-activate.c.command == "cmd-c";
+    expected = true;
+  };
 
-  (describe "hooks across multiple stages" [
-    (it "allows hooks in all stages simultaneously" (
-      let
+  "test hooks across multiple stages: allows hooks in all stages simultaneously" = {
+    expr = let
         hooks = evalHooks {
           snowglobe.hooks = {
             pre-deploy.drain = { location = "local"; command = "kubectl drain"; };
@@ -229,13 +232,12 @@ block ./hooks.test.nix [
       hooks.pre-deploy.drain.command == "kubectl drain" &&
       hooks.post-activate.uncordon.command == "kubectl uncordon" &&
       hooks.post-reboot.verify.location == "remote" &&
-      hooks.on-failure.cleanup.command == "kubectl uncordon"
-    ))
-  ])
+      hooks.on-failure.cleanup.command == "kubectl uncordon";
+    expected = true;
+  };
 
-  (describe "location validation" [
-    (it "accepts local location" (
-      let
+  "test location validation: accepts local location" = {
+    expr = let
         hooks = evalHooks {
           snowglobe.hooks.pre-deploy.test = {
             location = "local";
@@ -243,11 +245,12 @@ block ./hooks.test.nix [
           };
         };
       in
-      hooks.pre-deploy.test.location == "local"
-    ))
+      hooks.pre-deploy.test.location == "local";
+    expected = true;
+  };
 
-    (it "accepts remote location" (
-      let
+  "test location validation: accepts remote location" = {
+    expr = let
         hooks = evalHooks {
           snowglobe.hooks.pre-deploy.test = {
             location = "remote";
@@ -255,43 +258,44 @@ block ./hooks.test.nix [
           };
         };
       in
-      hooks.pre-deploy.test.location == "remote"
-    ))
-  ])
+      hooks.pre-deploy.test.location == "remote";
+    expected = true;
+  };
 
-  (describe "empty stages" [
-    (it "allows empty pre-deploy" (
-      let
+  "test empty stages: allows empty pre-deploy" = {
+    expr = let
         hooks = evalHooks {};
       in
-      hooks.pre-deploy == {}
-    ))
+      hooks.pre-deploy == {};
+    expected = true;
+  };
 
-    (it "allows empty post-activate" (
-      let
+  "test empty stages: allows empty post-activate" = {
+    expr = let
         hooks = evalHooks {};
       in
-      hooks.post-activate == {}
-    ))
+      hooks.post-activate == {};
+    expected = true;
+  };
 
-    (it "allows empty post-reboot" (
-      let
+  "test empty stages: allows empty post-reboot" = {
+    expr = let
         hooks = evalHooks {};
       in
-      hooks.post-reboot == {}
-    ))
+      hooks.post-reboot == {};
+    expected = true;
+  };
 
-    (it "allows empty on-failure" (
-      let
+  "test empty stages: allows empty on-failure" = {
+    expr = let
         hooks = evalHooks {};
       in
-      hooks.on-failure == {}
-    ))
-  ])
+      hooks.on-failure == {};
+    expected = true;
+  };
 
-  (describe "removed hook stages" [
-    (it "rejects pre-activate with a pointer to pre-deploy" (
-      let
+  "test removed hook stages: rejects pre-activate with a pointer to pre-deploy" = {
+    expr = let
         messages = failedAssertionMessages {
           snowglobe.hooks.pre-activate.drain-node = {
             location = "local";
@@ -299,16 +303,17 @@ block ./hooks.test.nix [
           };
         };
       in
-      builtins.any (m: pkgs.lib.hasInfix "snowglobe.hooks.pre-deploy" m) messages
-    ))
+      builtins.any (m: pkgs.lib.hasInfix "snowglobe.hooks.pre-deploy" m) messages;
+    expected = true;
+  };
 
-    (it "has no failed assertions when only current stages are used" (
-      failedAssertionMessages {
+  "test removed hook stages: has no failed assertions when only current stages are used" = {
+    expr = failedAssertionMessages {
         snowglobe.hooks.pre-deploy.drain-node = {
           location = "local";
           command = "kubectl drain hydrogen";
         };
-      } == []
-    ))
-  ])
-]
+      } == [];
+    expected = true;
+  };
+}

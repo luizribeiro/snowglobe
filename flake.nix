@@ -4,10 +4,9 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     systems.url = "github:nix-systems/default";
-    nixt.url = "github:nix-community/nixt";
   };
 
-  outputs = { self, nixpkgs, systems, ... }@inputs:
+  outputs = { self, nixpkgs, systems, ... }:
     let
       # Define forEachSystem without referencing nixpkgs.lib to avoid circular deps
       allSystems = import systems;
@@ -53,9 +52,15 @@
         }
       );
 
-      checks.x86_64-linux.nixos-activate = import ./modules/nixos-activate.test.nix {
-        pkgs = nixpkgs.legacyPackages.x86_64-linux;
-      };
+      checks.x86_64-linux =
+        let
+          pkgs = nixpkgs.legacyPackages.x86_64-linux;
+          runNixTests = import ./nix/run-tests.nix { inherit pkgs; };
+        in
+        {
+          nixos-activate = import ./modules/nixos-activate.test.nix { inherit pkgs; };
+          hooks-module = runNixTests "hooks-module" (import ./modules/hooks.test.nix { inherit pkgs; });
+        };
 
       devShells = forEachSystem (system:
         let
@@ -71,7 +76,6 @@
               cargo-audit
               rust-analyzer
               pre-commit
-              inputs.nixt.packages.${system}.default
 
               # Bootstrap dependencies
               openssh                    # ssh-keygen
@@ -101,14 +105,5 @@
           };
         }
       );
-
-      __nixt = inputs.nixt.lib.grow {
-        blocks = [
-          (import ./modules/hooks.test.nix {
-            inherit (inputs) nixt;
-            pkgs = nixpkgs.legacyPackages.x86_64-linux;
-          })
-        ];
-      };
     };
 }

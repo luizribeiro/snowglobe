@@ -38,8 +38,8 @@ jobs:
       - name: Run tests
         run: nix develop --command cargo test --workspace --verbose
 
-      - name: Run Nix module tests
-        run: nix develop --command nixt --flake .
+      - name: Run Nix checks
+        run: nix flake check
 
       - name: Build debug
         run: nix develop --command cargo build --workspace --verbose
