@@ -192,3 +192,33 @@ async fn test_failed_reboot_runs_on_failure_hooks() {
         vec![HookStage::PreDeploy, HookStage::OnFailure]
     );
 }
+
+#[tokio::test]
+async fn test_dry_run_runs_no_hooks() {
+    let mut harness = PushHarness::new();
+    harness.config.strategy = PushStrategy::DryRun;
+    let mut host = kubernetes_node("hydrogen");
+    host.reboot_policy = RebootPolicy::Always;
+
+    let run = harness.run(vec![host]).await;
+
+    assert!(run.host("hydrogen").success);
+    assert_eq!(
+        run.host("hydrogen").activation_mode,
+        Some(ActivationMode::DryActivate)
+    );
+    assert!(run.executed_hooks.is_empty(), "{:?}", run.executed_hooks);
+}
+
+#[tokio::test]
+async fn test_failed_dry_run_runs_no_on_failure_hooks() {
+    let mut harness = PushHarness::new();
+    harness.config.strategy = PushStrategy::DryRun;
+    harness.deployer =
+        MockDeployBackend::new().with_activate_failures(vec!["oxygen.example.com".to_string()]);
+
+    let run = harness.run(vec![kubernetes_node("oxygen")]).await;
+
+    assert!(!run.host("oxygen").success);
+    assert!(run.executed_hooks.is_empty(), "{:?}", run.executed_hooks);
+}

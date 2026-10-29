@@ -12,6 +12,7 @@ use crate::host::HostMetadata;
 use crate::nix::{StorePath, SystemType};
 use std::collections::HashMap;
 
+use super::config::PushStrategy;
 use super::context::PushContext;
 use super::planning::create_deployment_plans;
 use super::results::{HostDeploymentResult, PipelineStep, PushPlan};
@@ -35,6 +36,10 @@ async fn execute_hooks(
     phase: Option<&str>,
     store_path: Option<&StorePath>,
 ) -> Result<()> {
+    // A dry run changes nothing, so it must not drain nodes or send alerts
+    if push_ctx.config.strategy == PushStrategy::DryRun {
+        return Ok(());
+    }
     if let Some(executor) = push_ctx.hook_executor {
         let mut env = HashMap::new();
         env.insert("SNOW_HOSTNAME".to_string(), hostname.to_string());
