@@ -60,6 +60,7 @@
         {
           nixos-activate = import ./modules/nixos-activate.test.nix { inherit pkgs; };
           hooks-module = runNixTests "hooks-module" (import ./modules/hooks.test.nix { inherit pkgs; });
+          push-module = runNixTests "push-module" (import ./modules/push.test.nix { inherit pkgs; });
         };
 
       devShells = forEachSystem (system:

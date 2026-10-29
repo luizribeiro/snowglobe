@@ -14,6 +14,7 @@ in
   imports = [
     ./bootstrap.nix
     ./hooks.nix
+    ./push.nix
   ];
   options.snowglobe.push = {
     allowedUsers = mkOption {
