@@ -24,6 +24,7 @@ async fn test_push_full_workflow_single_phase_success() {
             tags: vec![],
             reboot_policy: RebootPolicy::Never,
             system_type: SystemType::NixOS,
+            serial_group: None,
             hooks: Vec::new(),
         },
         HostMetadata {
@@ -33,6 +34,7 @@ async fn test_push_full_workflow_single_phase_success() {
             tags: vec![],
             reboot_policy: RebootPolicy::Never,
             system_type: SystemType::NixOS,
+            serial_group: None,
             hooks: Vec::new(),
         },
     ];
@@ -107,6 +109,7 @@ async fn test_push_full_workflow_multi_phase_success() {
             tags: vec![],
             reboot_policy: RebootPolicy::Never,
             system_type: SystemType::NixOS,
+            serial_group: None,
             hooks: Vec::new(),
         },
         HostMetadata {
@@ -116,6 +119,7 @@ async fn test_push_full_workflow_multi_phase_success() {
             tags: vec![],
             reboot_policy: RebootPolicy::Never,
             system_type: SystemType::NixOS,
+            serial_group: None,
             hooks: Vec::new(),
         },
     ];
@@ -183,6 +187,7 @@ async fn test_push_build_failure_stops_deployment() {
         tags: vec![],
         reboot_policy: RebootPolicy::Never,
         system_type: SystemType::NixOS,
+        serial_group: None,
         hooks: Vec::new(),
     }];
 
@@ -248,6 +253,7 @@ async fn test_push_copy_failure_stops_deployment() {
         tags: vec![],
         reboot_policy: RebootPolicy::Never,
         system_type: SystemType::NixOS,
+        serial_group: None,
         hooks: Vec::new(),
     }];
 
@@ -316,6 +322,7 @@ async fn test_push_copy_observer_hooks_called() {
             tags: vec![],
             reboot_policy: RebootPolicy::Never,
             system_type: SystemType::NixOS,
+            serial_group: None,
             hooks: Vec::new(),
         },
         HostMetadata {
@@ -325,6 +332,7 @@ async fn test_push_copy_observer_hooks_called() {
             tags: vec![],
             reboot_policy: RebootPolicy::Never,
             system_type: SystemType::NixOS,
+            serial_group: None,
             hooks: Vec::new(),
         },
     ];
@@ -390,6 +398,7 @@ async fn test_push_build_observer_hooks_called() {
             tags: vec![],
             reboot_policy: RebootPolicy::Never,
             system_type: SystemType::NixOS,
+            serial_group: None,
             hooks: Vec::new(),
         },
         HostMetadata {
@@ -399,6 +408,7 @@ async fn test_push_build_observer_hooks_called() {
             tags: vec![],
             reboot_policy: RebootPolicy::Never,
             system_type: SystemType::NixOS,
+            serial_group: None,
             hooks: Vec::new(),
         },
     ];
@@ -470,6 +480,7 @@ async fn test_push_build_partial_failure() {
             tags: vec![],
             reboot_policy: RebootPolicy::Never,
             system_type: SystemType::NixOS,
+            serial_group: None,
             hooks: Vec::new(),
         },
         HostMetadata {
@@ -479,6 +490,7 @@ async fn test_push_build_partial_failure() {
             tags: vec![],
             reboot_policy: RebootPolicy::Never,
             system_type: SystemType::NixOS,
+            serial_group: None,
             hooks: Vec::new(),
         },
     ];
@@ -551,6 +563,7 @@ async fn test_push_ignore_phases_flag() {
             tags: vec![],
             reboot_policy: RebootPolicy::Never,
             system_type: SystemType::NixOS,
+            serial_group: None,
             hooks: Vec::new(),
         },
         HostMetadata {
@@ -560,6 +573,7 @@ async fn test_push_ignore_phases_flag() {
             tags: vec![],
             reboot_policy: RebootPolicy::Never,
             system_type: SystemType::NixOS,
+            serial_group: None,
             hooks: Vec::new(),
         },
     ];
@@ -619,6 +633,7 @@ async fn test_push_phase_failure_stops_next_phase() {
             tags: vec![],
             reboot_policy: RebootPolicy::Never,
             system_type: SystemType::NixOS,
+            serial_group: None,
             hooks: Vec::new(),
         },
         HostMetadata {
@@ -628,6 +643,7 @@ async fn test_push_phase_failure_stops_next_phase() {
             tags: vec![],
             reboot_policy: RebootPolicy::Never,
             system_type: SystemType::NixOS,
+            serial_group: None,
             hooks: Vec::new(),
         },
     ];

@@ -96,6 +96,7 @@ impl NixBackend for MockNixBackend {
                 fqdn: meta_fix.fqdn.clone(),
                 reboot_policy: RebootPolicy::Auto,
                 system_type,
+                serial_group: None,
                 hooks: Vec::new(),
             })
         } else {
@@ -106,6 +107,7 @@ impl NixBackend for MockNixBackend {
                 fqdn: format!("{}.example.com", host),
                 reboot_policy: RebootPolicy::Auto,
                 system_type,
+                serial_group: None,
                 hooks: Vec::new(),
             })
         }

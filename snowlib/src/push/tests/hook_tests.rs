@@ -31,6 +31,7 @@ async fn test_push_with_pre_deploy_hooks() {
         tags: vec![],
         reboot_policy: RebootPolicy::Auto,
         system_type: SystemType::NixOS,
+        serial_group: None,
         hooks: vec![
             HookConfig::test_fixture(
                 "test-hook",
@@ -109,6 +110,7 @@ async fn test_push_with_post_deploy_hooks() {
         tags: vec![],
         reboot_policy: RebootPolicy::Auto,
         system_type: SystemType::NixOS,
+        serial_group: None,
         hooks: vec![HookConfig::test_fixture(
             "test-hook",
             HookStage::PostDeploy,
@@ -173,6 +175,7 @@ async fn test_push_with_post_reboot_hooks() {
         tags: vec![],
         reboot_policy: RebootPolicy::Always,
         system_type: SystemType::NixOS,
+        serial_group: None,
         hooks: vec![HookConfig::test_fixture(
             "test-hook",
             HookStage::PostReboot,
@@ -244,6 +247,7 @@ async fn test_push_post_reboot_hooks_not_executed_when_reboot_fails() {
         tags: vec![],
         reboot_policy: RebootPolicy::Always,
         system_type: SystemType::NixOS,
+        serial_group: None,
         hooks: vec![HookConfig::test_fixture(
             "test-hook",
             HookStage::PostReboot,
@@ -326,6 +330,7 @@ async fn test_push_pre_deploy_hook_failure_aborts_deployment() {
         tags: vec![],
         reboot_policy: RebootPolicy::Auto,
         system_type: SystemType::NixOS,
+        serial_group: None,
         hooks: vec![HookConfig::test_fixture(
             "test-hook",
             HookStage::PreDeploy,
@@ -407,6 +412,7 @@ async fn test_push_hook_failure_with_continue_on_failure() {
         tags: vec![],
         reboot_policy: RebootPolicy::Auto,
         system_type: SystemType::NixOS,
+        serial_group: None,
         hooks: vec![hook],
     }];
 
@@ -460,6 +466,7 @@ async fn test_push_on_failure_hooks_execute_when_build_fails() {
         tags: vec![],
         reboot_policy: RebootPolicy::Auto,
         system_type: SystemType::NixOS,
+        serial_group: None,
         hooks: vec![
             HookConfig::test_fixture(
                 "test-hook",
@@ -535,6 +542,7 @@ async fn test_push_on_failure_hooks_execute_when_copy_fails() {
         tags: vec![],
         reboot_policy: RebootPolicy::Auto,
         system_type: SystemType::NixOS,
+        serial_group: None,
         hooks: vec![HookConfig::test_fixture(
             "test-hook",
             HookStage::OnFailure,
@@ -600,6 +608,7 @@ async fn test_push_environment_variables_passed_to_hooks() {
         tags: vec![],
         reboot_policy: RebootPolicy::Auto,
         system_type: SystemType::NixOS,
+        serial_group: None,
         hooks: vec![HookConfig::test_fixture(
             "test-hook",
             HookStage::PreDeploy,
@@ -666,6 +675,7 @@ async fn test_push_hooks_execute_in_parallel_for_multiple_hosts() {
             tags: vec![],
             reboot_policy: RebootPolicy::Auto,
             system_type: SystemType::NixOS,
+            serial_group: None,
             hooks: vec![HookConfig::test_fixture(
                 "test-hook",
                 HookStage::PreDeploy,
@@ -680,6 +690,7 @@ async fn test_push_hooks_execute_in_parallel_for_multiple_hosts() {
             tags: vec![],
             reboot_policy: RebootPolicy::Auto,
             system_type: SystemType::NixOS,
+            serial_group: None,
             hooks: vec![HookConfig::test_fixture(
                 "test-hook",
                 HookStage::PreDeploy,
@@ -750,6 +761,7 @@ async fn test_push_hook_failure_in_one_host_doesnt_affect_others() {
             tags: vec![],
             reboot_policy: RebootPolicy::Auto,
             system_type: SystemType::NixOS,
+            serial_group: None,
             hooks: vec![HookConfig::test_fixture(
                 "test-hook",
                 HookStage::PreDeploy,
@@ -764,6 +776,7 @@ async fn test_push_hook_failure_in_one_host_doesnt_affect_others() {
             tags: vec![],
             reboot_policy: RebootPolicy::Auto,
             system_type: SystemType::NixOS,
+            serial_group: None,
             hooks: vec![HookConfig::test_fixture(
                 "test-hook",
                 HookStage::PreDeploy,
@@ -851,6 +864,7 @@ async fn test_push_hook_with_explicit_environment() {
         tags: vec![],
         reboot_policy: RebootPolicy::Never,
         system_type: SystemType::NixOS,
+        serial_group: None,
         hooks: vec![hook],
     }];
 
@@ -911,6 +925,7 @@ async fn test_full_pipeline_all_hook_stages_execute_in_order() {
         tags: vec![],
         reboot_policy: RebootPolicy::Always,
         system_type: SystemType::NixOS,
+        serial_group: None,
         hooks: vec![
             HookConfig::test_fixture(
                 "drain-node",
@@ -1027,6 +1042,7 @@ async fn test_pipeline_environment_variables_propagated_correctly() {
         tags: vec![],
         reboot_policy: RebootPolicy::Always,
         system_type: SystemType::NixOS,
+        serial_group: None,
         hooks: vec![
             HookConfig::test_fixture(
                 "check-env-vars",
@@ -1127,6 +1143,7 @@ async fn test_pipeline_hooks_execute_by_priority_order() {
         tags: vec![],
         reboot_policy: RebootPolicy::Never,
         system_type: SystemType::NixOS,
+        serial_group: None,
         hooks: vec![hook1, hook2, hook3],
     }];
 
@@ -1199,6 +1216,7 @@ async fn test_post_reboot_hooks_not_executed_when_no_reboot_needed() {
         tags: vec![],
         reboot_policy: RebootPolicy::Never,
         system_type: SystemType::NixOS,
+        serial_group: None,
         hooks: vec![
             HookConfig::test_fixture(
                 "pre-deploy-hook",
@@ -1295,6 +1313,7 @@ async fn test_hook_observer_callbacks_invoked_correctly() {
         tags: vec![],
         reboot_policy: RebootPolicy::Never,
         system_type: SystemType::NixOS,
+        serial_group: None,
         hooks: vec![
             HookConfig::test_fixture(
                 "first-hook",
@@ -1443,6 +1462,7 @@ async fn test_hook_observer_callbacks_on_failure() {
         tags: vec![],
         reboot_policy: RebootPolicy::Never,
         system_type: SystemType::NixOS,
+        serial_group: None,
         hooks: vec![HookConfig::test_fixture(
             "failing-hook",
             HookStage::PreDeploy,

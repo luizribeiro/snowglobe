@@ -19,4 +19,6 @@ pub struct HostMetadata {
     pub reboot_policy: RebootPolicy,
     pub system_type: SystemType,
     pub hooks: Vec<HookConfig>,
+    /// Hosts sharing a group run their disruptive steps one at a time within a phase
+    pub serial_group: Option<String>,
 }

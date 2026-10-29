@@ -42,6 +42,7 @@ fn make_host_metadata(
         fqdn: format!("{}.example.com", name),
         reboot_policy,
         system_type: SystemType::NixOS,
+        serial_group: None,
         hooks: Vec::new(),
     }
 }

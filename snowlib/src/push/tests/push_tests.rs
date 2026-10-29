@@ -16,6 +16,7 @@ async fn test_push_with_single_phase() {
                 fqdn: "host1.example.com".to_string(),
                 reboot_policy: RebootPolicy::Auto,
                 system_type: SystemType::NixOS,
+                serial_group: None,
                 hooks: Vec::new(),
             },
             target: DeployTarget {
@@ -35,6 +36,7 @@ async fn test_push_with_single_phase() {
                 fqdn: "host2.example.com".to_string(),
                 reboot_policy: RebootPolicy::Auto,
                 system_type: SystemType::NixOS,
+                serial_group: None,
                 hooks: Vec::new(),
             },
             target: DeployTarget {
@@ -89,6 +91,7 @@ async fn test_push_with_multiple_phases() {
             tags: vec![],
             reboot_policy: RebootPolicy::Auto,
             system_type: SystemType::NixOS,
+            serial_group: None,
             hooks: Vec::new(),
         },
         HostMetadata {
@@ -98,6 +101,7 @@ async fn test_push_with_multiple_phases() {
             tags: vec![],
             reboot_policy: RebootPolicy::Auto,
             system_type: SystemType::NixOS,
+            serial_group: None,
             hooks: Vec::new(),
         },
     ];
@@ -162,6 +166,7 @@ async fn test_push_stops_on_phase_failure() {
             tags: vec![],
             reboot_policy: RebootPolicy::Auto,
             system_type: SystemType::NixOS,
+            serial_group: None,
             hooks: Vec::new(),
         },
         HostMetadata {
@@ -171,6 +176,7 @@ async fn test_push_stops_on_phase_failure() {
             tags: vec![],
             reboot_policy: RebootPolicy::Auto,
             system_type: SystemType::NixOS,
+            serial_group: None,
             hooks: Vec::new(),
         },
     ];
@@ -235,6 +241,7 @@ async fn test_push_with_noop_observer() {
             fqdn: "host1.example.com".to_string(),
             reboot_policy: RebootPolicy::Auto,
             system_type: SystemType::NixOS,
+            serial_group: None,
             hooks: Vec::new(),
         },
         target: DeployTarget {
@@ -266,6 +273,7 @@ async fn test_push_with_default_phase() {
             fqdn: "host1.example.com".to_string(),
             reboot_policy: RebootPolicy::Auto,
             system_type: SystemType::NixOS,
+            serial_group: None,
             hooks: Vec::new(),
         },
         target: DeployTarget {
@@ -303,6 +311,7 @@ async fn test_push_with_partial_failure_in_phase() {
                 fqdn: "host1.example.com".to_string(),
                 reboot_policy: RebootPolicy::Auto,
                 system_type: SystemType::NixOS,
+                serial_group: None,
                 hooks: Vec::new(),
             },
             target: DeployTarget {
@@ -322,6 +331,7 @@ async fn test_push_with_partial_failure_in_phase() {
                 fqdn: "host2.example.com".to_string(),
                 reboot_policy: RebootPolicy::Auto,
                 system_type: SystemType::NixOS,
+                serial_group: None,
                 hooks: Vec::new(),
             },
             target: DeployTarget {
@@ -396,6 +406,7 @@ async fn test_push_error_message_includes_source() {
         tags: vec![],
         reboot_policy: RebootPolicy::Auto,
         system_type: SystemType::NixOS,
+        serial_group: None,
         hooks: Vec::new(),
     }];
 
@@ -494,6 +505,7 @@ async fn test_push_error_message_format_with_activation_failure() {
         tags: vec![],
         reboot_policy: RebootPolicy::Auto,
         system_type: SystemType::NixOS,
+        serial_group: None,
         hooks: Vec::new(),
     }];
 

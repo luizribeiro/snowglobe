@@ -232,6 +232,7 @@ fn metadata_apply_expr() -> String {
           phase = config.config.core.pushPhase or null;
           tags = config.config.core.tags or [];
           rebootPolicy = config.config.core.rebootPolicy or "auto";
+          serialGroup = config.config.snowglobe.push.serialGroup or null;
           hooks = builtins.intersectAttrs {{ {hook_stages}}} (config.config.snowglobe.hooks or {{}});
         }}"#
     )
@@ -282,6 +283,8 @@ fn parse_host_metadata(host: &str, system_type: SystemType, stdout: &[u8]) -> Re
         tags: Vec<String>,
         #[serde(rename = "rebootPolicy")]
         reboot_policy: String,
+        #[serde(default, rename = "serialGroup")]
+        serial_group: Option<String>,
         #[serde(default)]
         hooks: std::collections::HashMap<
             String,
@@ -330,6 +333,7 @@ fn parse_host_metadata(host: &str, system_type: SystemType, stdout: &[u8]) -> Re
         fqdn,
         reboot_policy,
         system_type,
+        serial_group: meta.serial_group,
         hooks,
     })
 }
@@ -354,7 +358,8 @@ mod tests {
             "domain": null,
             "phase": null,
             "tags": [],
-            "rebootPolicy": "auto"
+            "rebootPolicy": "auto",
+            "serialGroup": null
         }"#,
         );
 
@@ -364,6 +369,7 @@ mod tests {
         assert!(meta.tags.is_empty());
         assert_eq!(meta.reboot_policy, RebootPolicy::Auto);
         assert!(meta.hooks.is_empty());
+        assert_eq!(meta.serial_group, None);
     }
 
     #[test]
@@ -400,6 +406,28 @@ mod tests {
         assert_eq!(meta.phase, Some("p2".to_string()));
         assert_eq!(meta.tags, vec!["mysql", "ldap"]);
         assert_eq!(meta.reboot_policy, RebootPolicy::Always);
+    }
+
+    #[test]
+    fn test_parse_metadata_with_serial_group() {
+        let meta = parse(
+            r#"{
+            "hostName": "praseodymium",
+            "domain": "example.com",
+            "phase": "p2",
+            "tags": ["kubernetes"],
+            "rebootPolicy": "always",
+            "serialGroup": "kubernetes"
+        }"#,
+        );
+
+        assert_eq!(meta.serial_group.as_deref(), Some("kubernetes"));
+    }
+
+    #[test]
+    fn test_metadata_apply_expr_reads_serial_group() {
+        assert!(metadata_apply_expr()
+            .contains("serialGroup = config.config.snowglobe.push.serialGroup or null;"));
     }
 
     #[test]
