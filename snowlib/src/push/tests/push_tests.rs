@@ -9,16 +9,7 @@ async fn test_push_with_single_phase() {
 
     let plans = vec![
         PushPlan {
-            metadata: HostMetadata {
-                name: "host1".to_string(),
-                phase: Some("p1".to_string()),
-                tags: vec![],
-                fqdn: "host1.example.com".to_string(),
-                reboot_policy: RebootPolicy::Auto,
-                system_type: SystemType::NixOS,
-                serial_group: None,
-                hooks: Vec::new(),
-            },
+            metadata: make_host_metadata("host1", Some("p1"), RebootPolicy::Auto),
             target: DeployTarget {
                 user: Some("root".to_string()),
                 hostname: "host1.example.com".to_string(),
@@ -29,16 +20,7 @@ async fn test_push_with_single_phase() {
             reboot_check: None,
         },
         PushPlan {
-            metadata: HostMetadata {
-                name: "host2".to_string(),
-                phase: Some("p1".to_string()),
-                tags: vec![],
-                fqdn: "host2.example.com".to_string(),
-                reboot_policy: RebootPolicy::Auto,
-                system_type: SystemType::NixOS,
-                serial_group: None,
-                hooks: Vec::new(),
-            },
+            metadata: make_host_metadata("host2", Some("p1"), RebootPolicy::Auto),
             target: DeployTarget {
                 user: Some("root".to_string()),
                 hostname: "host2.example.com".to_string(),
@@ -84,26 +66,8 @@ async fn test_push_with_multiple_phases() {
 
     // Note: hosts are intentionally out of order to test sorting
     let hosts = vec![
-        HostMetadata {
-            name: "host3".to_string(),
-            fqdn: "host3.example.com".to_string(),
-            phase: Some("p2".to_string()),
-            tags: vec![],
-            reboot_policy: RebootPolicy::Auto,
-            system_type: SystemType::NixOS,
-            serial_group: None,
-            hooks: Vec::new(),
-        },
-        HostMetadata {
-            name: "host1".to_string(),
-            fqdn: "host1.example.com".to_string(),
-            phase: Some("p1".to_string()),
-            tags: vec![],
-            reboot_policy: RebootPolicy::Auto,
-            system_type: SystemType::NixOS,
-            serial_group: None,
-            hooks: Vec::new(),
-        },
+        make_host_metadata("host3", Some("p2"), RebootPolicy::Auto),
+        make_host_metadata("host1", Some("p1"), RebootPolicy::Auto),
     ];
 
     let config = create_push_config(PushStrategy::Switch, 2);
@@ -150,26 +114,8 @@ async fn test_push_stops_on_phase_failure() {
     let observer = TestObserver::new();
 
     let hosts = vec![
-        HostMetadata {
-            name: "host1".to_string(),
-            fqdn: "host1.example.com".to_string(),
-            phase: Some("p1".to_string()),
-            tags: vec![],
-            reboot_policy: RebootPolicy::Auto,
-            system_type: SystemType::NixOS,
-            serial_group: None,
-            hooks: Vec::new(),
-        },
-        HostMetadata {
-            name: "host2".to_string(),
-            fqdn: "host2.example.com".to_string(),
-            phase: Some("p2".to_string()),
-            tags: vec![],
-            reboot_policy: RebootPolicy::Auto,
-            system_type: SystemType::NixOS,
-            serial_group: None,
-            hooks: Vec::new(),
-        },
+        make_host_metadata("host1", Some("p1"), RebootPolicy::Auto),
+        make_host_metadata("host2", Some("p2"), RebootPolicy::Auto),
     ];
 
     let config = create_push_config(PushStrategy::Switch, 2);
@@ -216,16 +162,7 @@ async fn test_push_with_noop_observer() {
     let observer = NoopObserver;
 
     let plans = vec![PushPlan {
-        metadata: HostMetadata {
-            name: "host1".to_string(),
-            phase: Some("p1".to_string()),
-            tags: vec![],
-            fqdn: "host1.example.com".to_string(),
-            reboot_policy: RebootPolicy::Auto,
-            system_type: SystemType::NixOS,
-            serial_group: None,
-            hooks: Vec::new(),
-        },
+        metadata: make_host_metadata("host1", Some("p1"), RebootPolicy::Auto),
         target: DeployTarget {
             user: Some("root".to_string()),
             hostname: "host1.example.com".to_string(),
@@ -248,16 +185,7 @@ async fn test_push_with_default_phase() {
     let observer = TestObserver::new();
 
     let plans = vec![PushPlan {
-        metadata: HostMetadata {
-            name: "host1".to_string(),
-            phase: None, // No phase specified
-            tags: vec![],
-            fqdn: "host1.example.com".to_string(),
-            reboot_policy: RebootPolicy::Auto,
-            system_type: SystemType::NixOS,
-            serial_group: None,
-            hooks: Vec::new(),
-        },
+        metadata: make_host_metadata("host1", None, RebootPolicy::Auto),
         target: DeployTarget {
             user: Some("root".to_string()),
             hostname: "host1.example.com".to_string(),
@@ -286,16 +214,7 @@ async fn test_push_with_partial_failure_in_phase() {
 
     let plans = vec![
         PushPlan {
-            metadata: HostMetadata {
-                name: "host1".to_string(),
-                phase: Some("p1".to_string()),
-                tags: vec![],
-                fqdn: "host1.example.com".to_string(),
-                reboot_policy: RebootPolicy::Auto,
-                system_type: SystemType::NixOS,
-                serial_group: None,
-                hooks: Vec::new(),
-            },
+            metadata: make_host_metadata("host1", Some("p1"), RebootPolicy::Auto),
             target: DeployTarget {
                 user: Some("root".to_string()),
                 hostname: "host1.example.com".to_string(),
@@ -306,16 +225,7 @@ async fn test_push_with_partial_failure_in_phase() {
             reboot_check: None,
         },
         PushPlan {
-            metadata: HostMetadata {
-                name: "host2".to_string(),
-                phase: Some("p1".to_string()),
-                tags: vec![],
-                fqdn: "host2.example.com".to_string(),
-                reboot_policy: RebootPolicy::Auto,
-                system_type: SystemType::NixOS,
-                serial_group: None,
-                hooks: Vec::new(),
-            },
+            metadata: make_host_metadata("host2", Some("p1"), RebootPolicy::Auto),
             target: DeployTarget {
                 user: Some("root".to_string()),
                 hostname: "host2.example.com".to_string(),
@@ -381,16 +291,7 @@ async fn test_push_error_message_includes_source() {
     let reboot_detector = crate::backends::reboot::SystemRebootBackend::new(reboot_config);
     let observer = crate::observer::NoopObserver;
 
-    let hosts = vec![HostMetadata {
-        name: "fail".to_string(),
-        fqdn: "fail.example.com".to_string(),
-        phase: Some("p1".to_string()),
-        tags: vec![],
-        reboot_policy: RebootPolicy::Auto,
-        system_type: SystemType::NixOS,
-        serial_group: None,
-        hooks: Vec::new(),
-    }];
+    let hosts = vec![make_host_metadata("fail", Some("p1"), RebootPolicy::Auto)];
 
     let config = create_push_config(PushStrategy::Switch, 1);
 
@@ -471,16 +372,7 @@ async fn test_push_error_message_format_with_activation_failure() {
     let reboot_detector = crate::backends::reboot::SystemRebootBackend::new(reboot_config);
     let observer = crate::observer::NoopObserver;
 
-    let hosts = vec![HostMetadata {
-        name: "test".to_string(),
-        fqdn: "test.example.com".to_string(),
-        phase: Some("p1".to_string()),
-        tags: vec![],
-        reboot_policy: RebootPolicy::Auto,
-        system_type: SystemType::NixOS,
-        serial_group: None,
-        hooks: Vec::new(),
-    }];
+    let hosts = vec![make_host_metadata("test", Some("p1"), RebootPolicy::Auto)];
 
     let config = create_push_config(PushStrategy::Switch, 1);
 

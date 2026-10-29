@@ -25,13 +25,6 @@ async fn test_push_with_pre_deploy_hooks() {
     let hook_backend = Arc::new(MockHookBackend::new());
 
     let hosts = vec![HostMetadata {
-        name: "test-host".to_string(),
-        fqdn: "test-host.example.com".to_string(),
-        phase: Some("production".to_string()),
-        tags: vec![],
-        reboot_policy: RebootPolicy::Auto,
-        system_type: SystemType::NixOS,
-        serial_group: None,
         hooks: vec![
             HookConfig::test_fixture(
                 "test-hook",
@@ -46,6 +39,7 @@ async fn test_push_with_pre_deploy_hooks() {
                 "systemctl stop important-service",
             ),
         ],
+        ..make_host_metadata("test-host", Some("production"), RebootPolicy::Auto)
     }];
 
     let hook_executor = make_hook_executor(hook_backend.clone(), &hosts);
@@ -95,19 +89,13 @@ async fn test_push_with_post_deploy_hooks() {
     let hook_backend = Arc::new(MockHookBackend::new());
 
     let hosts = vec![HostMetadata {
-        name: "test-host".to_string(),
-        fqdn: "test-host.example.com".to_string(),
-        phase: Some("production".to_string()),
-        tags: vec![],
-        reboot_policy: RebootPolicy::Auto,
-        system_type: SystemType::NixOS,
-        serial_group: None,
         hooks: vec![HookConfig::test_fixture(
             "test-hook",
             HookStage::PostDeploy,
             HookLocation::Remote,
             "systemctl start important-service",
         )],
+        ..make_host_metadata("test-host", Some("production"), RebootPolicy::Auto)
     }];
 
     let hook_executor = make_hook_executor(hook_backend.clone(), &hosts);
@@ -151,19 +139,13 @@ async fn test_push_with_post_reboot_hooks() {
     let hook_backend = Arc::new(MockHookBackend::new());
 
     let hosts = vec![HostMetadata {
-        name: "test-host".to_string(),
-        fqdn: "test-host.example.com".to_string(),
-        phase: Some("production".to_string()),
-        tags: vec![],
-        reboot_policy: RebootPolicy::Always,
-        system_type: SystemType::NixOS,
-        serial_group: None,
         hooks: vec![HookConfig::test_fixture(
             "test-hook",
             HookStage::PostReboot,
             HookLocation::Local,
             "kubectl uncordon ${SNOW_HOSTNAME}",
         )],
+        ..make_host_metadata("test-host", Some("production"), RebootPolicy::Always)
     }];
 
     let hook_executor = make_hook_executor(hook_backend.clone(), &hosts);
@@ -214,19 +196,13 @@ async fn test_push_post_reboot_hooks_not_executed_when_reboot_fails() {
     let hook_backend = Arc::new(MockHookBackend::new());
 
     let hosts = vec![HostMetadata {
-        name: "test-host".to_string(),
-        fqdn: "test-host.example.com".to_string(),
-        phase: Some("production".to_string()),
-        tags: vec![],
-        reboot_policy: RebootPolicy::Always,
-        system_type: SystemType::NixOS,
-        serial_group: None,
         hooks: vec![HookConfig::test_fixture(
             "test-hook",
             HookStage::PostReboot,
             HookLocation::Local,
             "kubectl uncordon ${SNOW_HOSTNAME}",
         )],
+        ..make_host_metadata("test-host", Some("production"), RebootPolicy::Always)
     }];
 
     let hook_executor = make_hook_executor(hook_backend.clone(), &hosts);
@@ -288,19 +264,13 @@ async fn test_push_pre_deploy_hook_failure_aborts_deployment() {
         Arc::new(MockHookBackend::new().with_local_failures(vec!["kubectl".to_string()]));
 
     let hosts = vec![HostMetadata {
-        name: "test-host".to_string(),
-        fqdn: "test-host.example.com".to_string(),
-        phase: Some("production".to_string()),
-        tags: vec![],
-        reboot_policy: RebootPolicy::Auto,
-        system_type: SystemType::NixOS,
-        serial_group: None,
         hooks: vec![HookConfig::test_fixture(
             "test-hook",
             HookStage::PreDeploy,
             HookLocation::Local,
             "kubectl drain ${SNOW_HOSTNAME}",
         )],
+        ..make_host_metadata("test-host", Some("production"), RebootPolicy::Auto)
     }];
 
     let hook_executor = make_hook_executor(hook_backend.clone(), &hosts);
@@ -361,14 +331,8 @@ async fn test_push_hook_failure_with_continue_on_failure() {
     hook.continue_on_failure = true;
 
     let hosts = vec![HostMetadata {
-        name: "test-host".to_string(),
-        fqdn: "test-host.example.com".to_string(),
-        phase: Some("production".to_string()),
-        tags: vec![],
-        reboot_policy: RebootPolicy::Auto,
-        system_type: SystemType::NixOS,
-        serial_group: None,
         hooks: vec![hook],
+        ..make_host_metadata("test-host", Some("production"), RebootPolicy::Auto)
     }];
 
     let hook_executor = make_hook_executor(hook_backend.clone(), &hosts);
@@ -406,13 +370,6 @@ async fn test_push_on_failure_hooks_execute_when_build_fails() {
     let hook_backend = Arc::new(MockHookBackend::new());
 
     let hosts = vec![HostMetadata {
-        name: "test-host".to_string(),
-        fqdn: "test-host.example.com".to_string(),
-        phase: Some("production".to_string()),
-        tags: vec![],
-        reboot_policy: RebootPolicy::Auto,
-        system_type: SystemType::NixOS,
-        serial_group: None,
         hooks: vec![
             HookConfig::test_fixture(
                 "test-hook",
@@ -427,6 +384,7 @@ async fn test_push_on_failure_hooks_execute_when_build_fails() {
                 "cleanup on failure",
             ),
         ],
+        ..make_host_metadata("test-host", Some("production"), RebootPolicy::Auto)
     }];
 
     let hook_executor = make_hook_executor(hook_backend.clone(), &hosts);
@@ -473,19 +431,13 @@ async fn test_push_on_failure_hooks_execute_when_copy_fails() {
     let hook_backend = Arc::new(MockHookBackend::new());
 
     let hosts = vec![HostMetadata {
-        name: "test-host".to_string(),
-        fqdn: "test-host.example.com".to_string(),
-        phase: Some("production".to_string()),
-        tags: vec![],
-        reboot_policy: RebootPolicy::Auto,
-        system_type: SystemType::NixOS,
-        serial_group: None,
         hooks: vec![HookConfig::test_fixture(
             "test-hook",
             HookStage::OnFailure,
             HookLocation::Local,
             "rollback on failure",
         )],
+        ..make_host_metadata("test-host", Some("production"), RebootPolicy::Auto)
     }];
 
     let hook_executor = make_hook_executor(hook_backend.clone(), &hosts);
@@ -530,19 +482,13 @@ async fn test_push_environment_variables_passed_to_hooks() {
     let hook_backend = Arc::new(MockHookBackend::new());
 
     let hosts = vec![HostMetadata {
-        name: "test-host".to_string(),
-        fqdn: "test-host.example.com".to_string(),
-        phase: Some("production".to_string()),
-        tags: vec![],
-        reboot_policy: RebootPolicy::Auto,
-        system_type: SystemType::NixOS,
-        serial_group: None,
         hooks: vec![HookConfig::test_fixture(
             "test-hook",
             HookStage::PreDeploy,
             HookLocation::Local,
             "echo $SNOW_HOSTNAME $SNOW_PHASE $SNOW_STORE_PATH",
         )],
+        ..make_host_metadata("test-host", Some("production"), RebootPolicy::Auto)
     }];
 
     let hook_executor = make_hook_executor(hook_backend.clone(), &hosts);
@@ -588,34 +534,22 @@ async fn test_push_hooks_execute_in_parallel_for_multiple_hosts() {
 
     let hosts = vec![
         HostMetadata {
-            name: "host1".to_string(),
-            fqdn: "host1.example.com".to_string(),
-            phase: Some("production".to_string()),
-            tags: vec![],
-            reboot_policy: RebootPolicy::Auto,
-            system_type: SystemType::NixOS,
-            serial_group: None,
             hooks: vec![HookConfig::test_fixture(
                 "test-hook",
                 HookStage::PreDeploy,
                 HookLocation::Local,
                 "hook for host1",
             )],
+            ..make_host_metadata("host1", Some("production"), RebootPolicy::Auto)
         },
         HostMetadata {
-            name: "host2".to_string(),
-            fqdn: "host2.example.com".to_string(),
-            phase: Some("production".to_string()),
-            tags: vec![],
-            reboot_policy: RebootPolicy::Auto,
-            system_type: SystemType::NixOS,
-            serial_group: None,
             hooks: vec![HookConfig::test_fixture(
                 "test-hook",
                 HookStage::PreDeploy,
                 HookLocation::Local,
                 "hook for host2",
             )],
+            ..make_host_metadata("host2", Some("production"), RebootPolicy::Auto)
         },
     ];
 
@@ -665,34 +599,22 @@ async fn test_push_hook_failure_in_one_host_doesnt_affect_others() {
 
     let hosts = vec![
         HostMetadata {
-            name: "host1".to_string(),
-            fqdn: "host1.example.com".to_string(),
-            phase: Some("production".to_string()),
-            tags: vec![],
-            reboot_policy: RebootPolicy::Auto,
-            system_type: SystemType::NixOS,
-            serial_group: None,
             hooks: vec![HookConfig::test_fixture(
                 "test-hook",
                 HookStage::PreDeploy,
                 HookLocation::Remote,
                 "will fail",
             )],
+            ..make_host_metadata("host1", Some("production"), RebootPolicy::Auto)
         },
         HostMetadata {
-            name: "host2".to_string(),
-            fqdn: "host2.example.com".to_string(),
-            phase: Some("production".to_string()),
-            tags: vec![],
-            reboot_policy: RebootPolicy::Auto,
-            system_type: SystemType::NixOS,
-            serial_group: None,
             hooks: vec![HookConfig::test_fixture(
                 "test-hook",
                 HookStage::PreDeploy,
                 HookLocation::Remote,
                 "will succeed",
             )],
+            ..make_host_metadata("host2", Some("production"), RebootPolicy::Auto)
         },
     ];
 
@@ -922,13 +844,6 @@ async fn test_pipeline_environment_variables_propagated_correctly() {
     ));
 
     let hosts = vec![HostMetadata {
-        name: "web-server-01".to_string(),
-        fqdn: "web-server-01.example.com".to_string(),
-        phase: Some("staging".to_string()),
-        tags: vec![],
-        reboot_policy: RebootPolicy::Always,
-        system_type: SystemType::NixOS,
-        serial_group: None,
         hooks: vec![
             HookConfig::test_fixture(
                 "check-env-vars",
@@ -943,6 +858,7 @@ async fn test_pipeline_environment_variables_propagated_correctly() {
                 "test -n \"$SNOW_STORE_PATH\" && echo \"$SNOW_STORE_PATH\" | grep -q '^/nix/store/'",
             ),
         ],
+        ..make_host_metadata("web-server-01", Some("staging"), RebootPolicy::Always)
     }];
 
     // Create hook executor manually since we're using real backend

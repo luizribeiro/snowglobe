@@ -17,26 +17,8 @@ async fn test_push_full_workflow_single_phase_success() {
     let observer = TestObserver::new();
 
     let hosts = vec![
-        HostMetadata {
-            name: "web1".to_string(),
-            fqdn: "web1.example.com".to_string(),
-            phase: Some("web".to_string()),
-            tags: vec![],
-            reboot_policy: RebootPolicy::Never,
-            system_type: SystemType::NixOS,
-            serial_group: None,
-            hooks: Vec::new(),
-        },
-        HostMetadata {
-            name: "web2".to_string(),
-            fqdn: "web2.example.com".to_string(),
-            phase: Some("web".to_string()),
-            tags: vec![],
-            reboot_policy: RebootPolicy::Never,
-            system_type: SystemType::NixOS,
-            serial_group: None,
-            hooks: Vec::new(),
-        },
+        make_host_metadata("web1", Some("web"), RebootPolicy::Never),
+        make_host_metadata("web2", Some("web"), RebootPolicy::Never),
     ];
 
     let config = create_push_config(PushStrategy::Switch, 2);
@@ -93,26 +75,8 @@ async fn test_push_full_workflow_multi_phase_success() {
     let observer = TestObserver::new();
 
     let hosts = vec![
-        HostMetadata {
-            name: "db1".to_string(),
-            fqdn: "db1.example.com".to_string(),
-            phase: Some("database".to_string()),
-            tags: vec![],
-            reboot_policy: RebootPolicy::Never,
-            system_type: SystemType::NixOS,
-            serial_group: None,
-            hooks: Vec::new(),
-        },
-        HostMetadata {
-            name: "web1".to_string(),
-            fqdn: "web1.example.com".to_string(),
-            phase: Some("web".to_string()),
-            tags: vec![],
-            reboot_policy: RebootPolicy::Never,
-            system_type: SystemType::NixOS,
-            serial_group: None,
-            hooks: Vec::new(),
-        },
+        make_host_metadata("db1", Some("database"), RebootPolicy::Never),
+        make_host_metadata("web1", Some("web"), RebootPolicy::Never),
     ];
 
     let config = create_push_config(PushStrategy::Switch, 2);
@@ -162,16 +126,7 @@ async fn test_push_build_failure_stops_deployment() {
     let reboot_detector = SystemRebootBackend::default();
     let observer = TestObserver::new();
 
-    let hosts = vec![HostMetadata {
-        name: "fail-host".to_string(),
-        fqdn: "fail-host.example.com".to_string(),
-        phase: None,
-        tags: vec![],
-        reboot_policy: RebootPolicy::Never,
-        system_type: SystemType::NixOS,
-        serial_group: None,
-        hooks: Vec::new(),
-    }];
+    let hosts = vec![make_host_metadata("fail-host", None, RebootPolicy::Never)];
 
     let config = create_push_config(PushStrategy::Switch, 1);
 
@@ -219,16 +174,7 @@ async fn test_push_copy_failure_stops_deployment() {
     let reboot_detector = SystemRebootBackend::default();
     let observer = TestObserver::new();
 
-    let hosts = vec![HostMetadata {
-        name: "fail-copy".to_string(),
-        fqdn: "fail-copy.example.com".to_string(),
-        phase: None,
-        tags: vec![],
-        reboot_policy: RebootPolicy::Never,
-        system_type: SystemType::NixOS,
-        serial_group: None,
-        hooks: Vec::new(),
-    }];
+    let hosts = vec![make_host_metadata("fail-copy", None, RebootPolicy::Never)];
 
     let config = create_push_config(PushStrategy::Switch, 1);
 
@@ -279,26 +225,8 @@ async fn test_push_copy_observer_hooks_called() {
     let observer = TestObserver::new();
 
     let hosts = vec![
-        HostMetadata {
-            name: "host1".to_string(),
-            fqdn: "host1.example.com".to_string(),
-            phase: Some("p1".to_string()),
-            tags: vec![],
-            reboot_policy: RebootPolicy::Never,
-            system_type: SystemType::NixOS,
-            serial_group: None,
-            hooks: Vec::new(),
-        },
-        HostMetadata {
-            name: "host2".to_string(),
-            fqdn: "host2.example.com".to_string(),
-            phase: Some("p1".to_string()),
-            tags: vec![],
-            reboot_policy: RebootPolicy::Never,
-            system_type: SystemType::NixOS,
-            serial_group: None,
-            hooks: Vec::new(),
-        },
+        make_host_metadata("host1", Some("p1"), RebootPolicy::Never),
+        make_host_metadata("host2", Some("p1"), RebootPolicy::Never),
     ];
 
     let config = create_push_config(PushStrategy::Switch, 2);
@@ -346,26 +274,8 @@ async fn test_push_build_observer_hooks_called() {
     let observer = TestObserver::new();
 
     let hosts = vec![
-        HostMetadata {
-            name: "host1".to_string(),
-            fqdn: "host1.example.com".to_string(),
-            phase: Some("p1".to_string()),
-            tags: vec![],
-            reboot_policy: RebootPolicy::Never,
-            system_type: SystemType::NixOS,
-            serial_group: None,
-            hooks: Vec::new(),
-        },
-        HostMetadata {
-            name: "host2".to_string(),
-            fqdn: "host2.example.com".to_string(),
-            phase: Some("p1".to_string()),
-            tags: vec![],
-            reboot_policy: RebootPolicy::Never,
-            system_type: SystemType::NixOS,
-            serial_group: None,
-            hooks: Vec::new(),
-        },
+        make_host_metadata("host1", Some("p1"), RebootPolicy::Never),
+        make_host_metadata("host2", Some("p1"), RebootPolicy::Never),
     ];
 
     let config = create_push_config(PushStrategy::Switch, 2);
@@ -419,26 +329,8 @@ async fn test_push_build_partial_failure() {
     let observer = TestObserver::new();
 
     let hosts = vec![
-        HostMetadata {
-            name: "host1".to_string(),
-            fqdn: "host1.example.com".to_string(),
-            phase: Some("p1".to_string()),
-            tags: vec![],
-            reboot_policy: RebootPolicy::Never,
-            system_type: SystemType::NixOS,
-            serial_group: None,
-            hooks: Vec::new(),
-        },
-        HostMetadata {
-            name: "host2".to_string(),
-            fqdn: "host2.example.com".to_string(),
-            phase: Some("p1".to_string()),
-            tags: vec![],
-            reboot_policy: RebootPolicy::Never,
-            system_type: SystemType::NixOS,
-            serial_group: None,
-            hooks: Vec::new(),
-        },
+        make_host_metadata("host1", Some("p1"), RebootPolicy::Never),
+        make_host_metadata("host2", Some("p1"), RebootPolicy::Never),
     ];
 
     let config = create_push_config(PushStrategy::Switch, 2);
@@ -493,26 +385,8 @@ async fn test_push_ignore_phases_flag() {
     let observer = TestObserver::new();
 
     let hosts = vec![
-        HostMetadata {
-            name: "db1".to_string(),
-            fqdn: "db1.example.com".to_string(),
-            phase: Some("database".to_string()),
-            tags: vec![],
-            reboot_policy: RebootPolicy::Never,
-            system_type: SystemType::NixOS,
-            serial_group: None,
-            hooks: Vec::new(),
-        },
-        HostMetadata {
-            name: "web1".to_string(),
-            fqdn: "web1.example.com".to_string(),
-            phase: Some("web".to_string()),
-            tags: vec![],
-            reboot_policy: RebootPolicy::Never,
-            system_type: SystemType::NixOS,
-            serial_group: None,
-            hooks: Vec::new(),
-        },
+        make_host_metadata("db1", Some("database"), RebootPolicy::Never),
+        make_host_metadata("web1", Some("web"), RebootPolicy::Never),
     ];
 
     let config = PushConfiguration {
@@ -557,26 +431,8 @@ async fn test_push_phase_failure_stops_next_phase() {
     let observer = TestObserver::new();
 
     let hosts = vec![
-        HostMetadata {
-            name: "phase1-host".to_string(),
-            fqdn: "phase1-host.example.com".to_string(),
-            phase: Some("phase1".to_string()),
-            tags: vec![],
-            reboot_policy: RebootPolicy::Never,
-            system_type: SystemType::NixOS,
-            serial_group: None,
-            hooks: Vec::new(),
-        },
-        HostMetadata {
-            name: "phase2-host".to_string(),
-            fqdn: "phase2-host.example.com".to_string(),
-            phase: Some("phase2".to_string()),
-            tags: vec![],
-            reboot_policy: RebootPolicy::Never,
-            system_type: SystemType::NixOS,
-            serial_group: None,
-            hooks: Vec::new(),
-        },
+        make_host_metadata("phase1-host", Some("phase1"), RebootPolicy::Never),
+        make_host_metadata("phase2-host", Some("phase2"), RebootPolicy::Never),
     ];
 
     let config = create_push_config(PushStrategy::Switch, 1);
