@@ -8,6 +8,10 @@ let
       type = pkgs.lib.types.listOf pkgs.lib.types.unspecified;
       default = [];
     };
+    options.environment.etc = pkgs.lib.mkOption {
+      type = pkgs.lib.types.attrsOf pkgs.lib.types.anything;
+      default = { };
+    };
   };
 
   evalConfig = config: (pkgs.lib.evalModules {
@@ -38,6 +42,7 @@ let
         snowglobe.hooks.post-deploy.verify = {
           location = "remote";
           command = "${pkgs.hello}/bin/hello --verify";
+          environment.PATH = "${pkgs.jq}/bin";
         };
       })
     ];
@@ -46,6 +51,8 @@ let
   piHooksFile = piWithHooks.snowglobe.hooksFile;
   piHooksFileInputs = builtins.attrNames (builtins.getContext piHooksFile.text);
   piHooksJSON = builtins.fromJSON (builtins.unsafeDiscardStringContext piHooksFile.text);
+  piRemoteHooksText = piWithHooks.environment.etc."snowglobe/remote-hooks".text;
+  piRemoteHooksInputs = builtins.attrNames (builtins.getContext piRemoteHooksText);
 
   failedAssertionMessages = config:
     map (a: a.message) (builtins.filter (a: !a.assertion) (evalConfig config).assertions);
@@ -365,7 +372,7 @@ in
   };
 
   "test hooks file: needs nothing built for the host's platform" = {
-    expr = builtins.elem aarch64Pkgs.hello.drvPath piHooksFileInputs;
+    expr = builtins.any (drv: builtins.elem drv piHooksFileInputs) [ aarch64Pkgs.hello.drvPath aarch64Pkgs.jq.drvPath ];
     expected = false;
   };
 
@@ -377,5 +384,28 @@ in
   "test hooks file: lists current stages only" = {
     expr = builtins.attrNames piHooksJSON;
     expected = [ "on-failure" "post-deploy" "post-reboot" "pre-deploy" ];
+  };
+
+  "test remote hook deps: are referenced from the system's /etc" = {
+    expr = builtins.all (drv: builtins.elem drv piRemoteHooksInputs) [ aarch64Pkgs.hello.drvPath aarch64Pkgs.jq.drvPath ];
+    expected = true;
+  };
+
+  "test remote hook deps: leave local hooks out of the system" = {
+    expr = builtins.elem pkgs.hello.drvPath piRemoteHooksInputs;
+    expected = false;
+  };
+
+  "test remote hook deps: list one line per command and variable" = {
+    expr = builtins.unsafeDiscardStringContext piRemoteHooksText;
+    expected = builtins.unsafeDiscardStringContext ''
+      post-deploy/verify: ${aarch64Pkgs.hello}/bin/hello --verify
+      post-deploy/verify: PATH=${aarch64Pkgs.jq}/bin
+    '';
+  };
+
+  "test remote hook deps: add nothing to /etc without remote hooks" = {
+    expr = (evalConfig { }).environment.etc ? "snowglobe/remote-hooks";
+    expected = false;
   };
 }

@@ -158,12 +158,25 @@ let
   # deployer realizes what they reference. Remote hooks run on the host and
   # reach it through the system closure, so building their dependencies here
   # would mean building for the host's platform on the deployer.
+  discard = builtins.unsafeDiscardStringContext;
+
   hooksForPush = mapAttrs
     (stage: mapAttrs (name: hook:
       if hook.location == "remote"
-      then hook // { command = builtins.unsafeDiscardStringContext hook.command; }
+      then hook // {
+        command = discard hook.command;
+        environment = mapAttrs (_: discard) hook.environment;
+      }
       else hook))
     currentHooks;
+
+  remoteHookLines = concatLists (mapAttrsToList
+    (stage: hooks: concatLists (mapAttrsToList
+      (name: hook:
+        [ "${stage}/${name}: ${hook.command}" ]
+        ++ mapAttrsToList (var: value: "${stage}/${name}: ${var}=${value}") hook.environment)
+      (filterAttrs (_: hook: hook.location == "remote") hooks)))
+    currentHooks);
 in
 {
   imports = [ ./local-pkgs.nix ] ++ mapAttrsToList
@@ -182,6 +195,13 @@ in
   };
 
   config.snowglobe.hooksFile = localPkgs.writeText "snowglobe-hooks.json" (builtins.toJSON hooksForPush);
+
+  # Puts what remote hooks reference into the system closure, so it reaches
+  # the host with the normal closure copy. An /etc file is the mechanism that
+  # works the same on NixOS and nix-darwin.
+  config.environment.etc."snowglobe/remote-hooks" = mkIf (remoteHookLines != [ ]) {
+    text = concatStringsSep "\n" remoteHookLines + "\n";
+  };
 
   options.snowglobe.hooks = {
     pre-deploy = mkOption {
