@@ -14,6 +14,7 @@ let
     modules = [
       assertionsModule
       ./hooks.nix
+      { _module.args.pkgs = pkgs; }
       config
     ];
   }).config;

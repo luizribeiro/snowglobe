@@ -155,7 +155,7 @@ let
   currentHooks = removeAttrs config.snowglobe.hooks (attrNames removedStages);
 in
 {
-  imports = mapAttrsToList
+  imports = [ ./local-pkgs.nix ] ++ mapAttrsToList
     (stage: instructions: mkRemovedOptionModule [ "snowglobe" "hooks" stage ] instructions)
     removedStages;
 
