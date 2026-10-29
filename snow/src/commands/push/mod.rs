@@ -417,139 +417,47 @@ mod tests {
             .is_err());
     }
 
-    // Tests for PushArgs methods
+    fn push_args(flags: &[&str]) -> PushArgs {
+        #[derive(clap::Parser)]
+        struct Cli {
+            #[command(flatten)]
+            args: PushArgs,
+        }
+        <Cli as clap::Parser>::parse_from(std::iter::once("push").chain(flags.iter().copied())).args
+    }
+
     #[test]
     fn test_validate_mutually_exclusive_modes() {
-        let args = PushArgs {
-            hosts: vec![],
-            filter: None,
-            phase: None,
-            phases: vec![],
-            tag: None,
-            tags: vec![],
-            dry_run: true,
-            switch: true,
-            boot: false,
-            test: false,
-            skip_reboot: false,
-            redeploy: false,
-            force: false,
-            quiet: false,
-            user: None,
-            concurrency: 3,
-            ignore_phases: false,
-            #[cfg(debug_assertions)]
-            mock_fixture: None,
-        };
-
-        assert!(args.validate().is_err());
+        assert!(push_args(&["--dry-run", "--switch"]).validate().is_err());
     }
 
     #[test]
     fn test_validate_force_without_switch() {
-        let args = PushArgs {
-            hosts: vec![],
-            filter: None,
-            phase: None,
-            phases: vec![],
-            tag: None,
-            tags: vec![],
-            dry_run: false,
-            switch: false,
-            boot: false,
-            test: false,
-            skip_reboot: false,
-            redeploy: false,
-            force: true,
-            quiet: false,
-            user: None,
-            concurrency: 3,
-            ignore_phases: false,
-            #[cfg(debug_assertions)]
-            mock_fixture: None,
-        };
-
-        assert!(args.validate().is_err());
+        assert!(push_args(&["--force"]).validate().is_err());
     }
 
     #[test]
     fn test_validate_valid_combination() {
-        let args = PushArgs {
-            hosts: vec![],
-            filter: None,
-            phase: None,
-            phases: vec![],
-            tag: None,
-            tags: vec![],
-            dry_run: false,
-            switch: false,
-            boot: false,
-            test: false,
-            skip_reboot: false,
-            redeploy: false,
-            force: false,
-            quiet: false,
-            user: None,
-            concurrency: 3,
-            ignore_phases: false,
-            #[cfg(debug_assertions)]
-            mock_fixture: None,
-        };
-
-        assert!(args.validate().is_ok());
+        assert!(push_args(&["--switch", "--force"]).validate().is_ok());
+        assert!(push_args(&[]).validate().is_ok());
     }
 
     #[test]
     fn test_push_strategy_auto() {
-        let args = PushArgs {
-            hosts: vec![],
-            filter: None,
-            phase: None,
-            phases: vec![],
-            tag: None,
-            tags: vec![],
-            dry_run: false,
-            switch: false,
-            boot: false,
-            test: false,
-            skip_reboot: false,
-            redeploy: false,
-            force: false,
-            quiet: false,
-            user: None,
-            concurrency: 3,
-            ignore_phases: false,
-            #[cfg(debug_assertions)]
-            mock_fixture: None,
-        };
-
-        assert_eq!(args.push_strategy(), PushStrategy::Auto);
+        assert_eq!(push_args(&[]).push_strategy(), PushStrategy::Auto);
     }
 
     #[test]
     fn test_push_strategy_switch() {
-        let args = PushArgs {
-            hosts: vec![],
-            filter: None,
-            phase: None,
-            phases: vec![],
-            tag: None,
-            tags: vec![],
-            dry_run: false,
-            switch: true,
-            boot: false,
-            test: false,
-            skip_reboot: false,
-            redeploy: false,
-            force: false,
-            quiet: false,
-            user: None,
-            concurrency: 3,
-            ignore_phases: false,
-            #[cfg(debug_assertions)]
-            mock_fixture: None,
-        };
+        assert_eq!(
+            push_args(&["--switch"]).push_strategy(),
+            PushStrategy::Switch
+        );
+    }
 
-        assert_eq!(args.push_strategy(), PushStrategy::Switch);
+    #[test]
+    fn test_redeploy_flag() {
+        assert!(push_args(&["--redeploy", "hydrogen"]).redeploy);
+        assert!(!push_args(&["hydrogen"]).redeploy);
     }
 }
