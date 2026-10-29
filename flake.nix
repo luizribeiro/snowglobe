@@ -39,8 +39,9 @@
 
             nativeBuildInputs = [ pkgs.pkg-config ];
 
-            # Some tests shell out to ssh (expecting it to fail) and which
-            nativeCheckInputs = [ pkgs.openssh pkgs.which ];
+            # Some tests shell out to ssh (expecting it to fail), which and
+            # hostname; the darwin sandbox has no /bin on PATH
+            nativeCheckInputs = [ pkgs.openssh pkgs.which pkgs.hostname ];
 
             # These run the real nix CLI against snow/tests/fixtures, which the
             # build sandbox can't do; CI runs them through cargo test
