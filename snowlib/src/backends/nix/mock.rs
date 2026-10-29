@@ -1,5 +1,6 @@
 use super::NixBackend;
 use async_trait::async_trait;
+use std::collections::HashMap;
 use std::time::Duration;
 
 use crate::backends::deploy::{BuildFixture, DeploymentFixture, MetadataFixture};
@@ -18,6 +19,8 @@ use crate::reboot::RebootPolicy;
 pub struct MockNixBackend {
     fixture: Option<DeploymentFixture>,
     build_failures: Vec<String>,
+    /// Extra build time per host, to control the order hosts become ready in tests
+    build_delays: HashMap<String, Duration>,
 }
 
 impl MockNixBackend {
@@ -26,6 +29,7 @@ impl MockNixBackend {
         Self {
             fixture: None,
             build_failures: Vec::new(),
+            build_delays: HashMap::new(),
         }
     }
 
@@ -34,12 +38,18 @@ impl MockNixBackend {
         Self {
             fixture: Some(fixture),
             build_failures: Vec::new(),
+            build_delays: HashMap::new(),
         }
     }
 
     /// Configure hosts that should fail during build
     pub fn with_build_failures(mut self, failures: Vec<String>) -> Self {
         self.build_failures = failures;
+        self
+    }
+
+    pub fn with_build_delays(mut self, delays: HashMap<String, Duration>) -> Self {
+        self.build_delays = delays;
         self
     }
 
@@ -120,6 +130,10 @@ impl NixBackend for MockNixBackend {
         _system_type: SystemType,
         _output_mode: OutputMode,
     ) -> Result<StorePath> {
+        if let Some(delay) = self.build_delays.get(host) {
+            tokio::time::sleep(*delay).await;
+        }
+
         // Check if this host should fail
         if self.build_failures.contains(&host.to_string()) {
             return Err(crate::error::NixError::BuildFailed {

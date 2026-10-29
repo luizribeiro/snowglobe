@@ -31,6 +31,8 @@ pub struct MockHookBackend {
     fail_n_times: std::collections::HashMap<String, u32>,
     /// Track how many times each command has been attempted (for fail_n_times)
     attempt_counters: FailureCounters,
+    /// How long each hook takes, so concurrent hooks visibly overlap
+    delay: Duration,
 }
 
 impl MockHookBackend {
@@ -42,7 +44,13 @@ impl MockHookBackend {
             executed_hooks: Arc::new(Mutex::new(Vec::new())),
             fail_n_times: std::collections::HashMap::new(),
             attempt_counters: Arc::new(Mutex::new(std::collections::HashMap::new())),
+            delay: Duration::ZERO,
         }
+    }
+
+    pub fn with_delay(mut self, delay: Duration) -> Self {
+        self.delay = delay;
+        self
     }
 
     /// Configure local commands that should fail
@@ -134,6 +142,7 @@ impl HookBackend for MockHookBackend {
             .unwrap_or("unknown");
 
         self.record_execution(hostname, hook.stage, HookLocation::Local, &hook.command);
+        tokio::time::sleep(self.delay).await;
 
         if self.should_fail_command(&hook.command) {
             Ok(HookResult::failure(
@@ -163,6 +172,7 @@ impl HookBackend for MockHookBackend {
             HookLocation::Remote,
             &hook.command,
         );
+        tokio::time::sleep(self.delay).await;
 
         // Check command-based failures (including fail_n_times) OR hostname-based failures
         if self.should_fail_command(&hook.command) || self.should_fail_remote(&target.hostname) {

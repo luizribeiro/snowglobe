@@ -68,7 +68,7 @@ fn make_host(
 
 /// Helper to create a HookExecutor from a list of hosts
 fn make_hook_executor(
-    hook_backend: Arc<crate::backends::hook::MockHookBackend>,
+    hook_backend: Arc<dyn crate::backends::hook::HookBackend>,
     hosts: &[HostMetadata],
 ) -> crate::push::hooks::HookExecutor {
     let mut hooks_by_host = std::collections::HashMap::new();
@@ -349,18 +349,23 @@ struct HarnessRun {
 
 /// Runs `push` with mock backends, hooks and a recording observer
 struct PushHarness {
+    nix_backend: MockNixBackend,
     deployer: MockDeployBackend,
     reboot_backend: crate::backends::reboot::MockRebootBackend,
     hook_backend: Arc<crate::backends::hook::MockHookBackend>,
+    /// Runs hooks for real instead of through `hook_backend`
+    real_hook_backend: Option<Arc<dyn crate::backends::hook::HookBackend>>,
     config: PushConfiguration,
 }
 
 impl PushHarness {
     fn new() -> Self {
         Self {
+            nix_backend: MockNixBackend::new(),
             deployer: MockDeployBackend::new(),
             reboot_backend: crate::backends::reboot::MockRebootBackend::new(),
             hook_backend: Arc::new(crate::backends::hook::MockHookBackend::new()),
+            real_hook_backend: None,
             config: PushConfiguration {
                 output_mode: crate::process::OutputMode::Capture,
                 ..PushConfiguration::default()
@@ -370,12 +375,15 @@ impl PushHarness {
 
     async fn run(&self, hosts: Vec<HostMetadata>) -> HarnessRun {
         let flake = Flake::test_context();
-        let nix_backend = MockNixBackend::new();
         let observer = TestObserver::new();
-        let hook_executor = make_hook_executor(self.hook_backend.clone(), &hosts);
+        let hook_backend = self
+            .real_hook_backend
+            .clone()
+            .unwrap_or_else(|| self.hook_backend.clone());
+        let hook_executor = make_hook_executor(hook_backend, &hosts);
         let push_ctx = PushContext::new(
             &flake,
-            &nix_backend,
+            &self.nix_backend,
             &self.deployer,
             &self.reboot_backend,
             &self.config,
