@@ -4,7 +4,8 @@ Lifecycle hooks enable you to execute custom commands at specific points in the 
 
 ## Overview
 
-Hooks are configured in your NixOS configuration and execute automatically during deployment:
+Hooks are configured in your NixOS configuration and execute automatically during deployment
+(see [Host Pipeline](push.md#host-pipeline) for the full per-host order and serial groups):
 
 ```
 Build → (skip if unchanged) → Copy → Plan → [pre-deploy] → Activate → Reboot? → [post-reboot]? → [post-deploy]

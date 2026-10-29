@@ -5,6 +5,8 @@ The `push` command is the primary deployment mechanism in Snowglobe. It builds N
 ## Table of Contents
 
 - [Basic Usage](#basic-usage)
+- [Host Pipeline](#host-pipeline)
+- [Serial Groups](#serial-groups)
 - [Lifecycle Hooks](#lifecycle-hooks)
 - [Reboot Policies](#reboot-policies)
 - [Activation Modes](#activation-modes)
@@ -31,6 +33,90 @@ snow push hydrogen --user deploy
 # Control parallelism
 snow push --concurrency 5
 ```
+
+---
+
+## Host Pipeline
+
+Phases run one after another. Within a phase, every host runs this pipeline
+independently:
+
+```
+1. build
+2. unchanged? ── yes ──▶ done, reported as "unchanged"
+3. copy
+4. plan
+   ┌─ deploy section (one host at a time per serial group) ─────────┐
+5. │ pre-deploy hooks                                               │
+6. │ activate                                                       │
+7. │ reboot (if needed)                                             │
+8. │ post-reboot hooks (only after a reboot)                        │
+9. │ post-deploy hooks                                              │
+   └────────────────────────────────────────────────────────────────┘
+
+A failure at any step stops the host and runs its on-failure hooks.
+```
+
+- **`--concurrency`** limits how many hosts are in steps 1–4 at once, and,
+  separately, how many are inside a deploy section at once. A host waiting for
+  its serial group holds no concurrency slot.
+- **Unchanged hosts** are skipped right after the build. A host is unchanged
+  when both `/run/current-system` (what it runs) and
+  `/nix/var/nix/profiles/system` (what it boots next) already point at the
+  built system. Nix store paths hash every input of the system, so any
+  configuration change produces a different path. Unchanged wins over
+  `rebootPolicy = "always"`: such hosts are not drained or rebooted. If those
+  paths can't be read, the host is deployed (with a warning) rather than
+  skipped.
+- **`--redeploy`** deploys selected hosts even when unchanged. Use it to retry
+  a host whose last activation partly failed: NixOS points
+  `/run/current-system` at the new system before starting services, so such a
+  host otherwise reads as unchanged. It is a full deploy: hooks run, and hosts
+  with `rebootPolicy = "always"` reboot.
+- **Planning happens before any hook**, so a host blocked by planning (for
+  example `--switch` when a reboot is required) is never drained.
+- **post-deploy** runs last, once the host runs the new system, whether or not
+  it rebooted, and only if everything before it succeeded.
+
+---
+
+## Serial Groups
+
+Hosts that share a serial group deploy their disruptive part one at a time
+within a phase, even if the phase contains several of them. This keeps, for
+example, two Kubernetes storage nodes from being drained and rebooted at the
+same time.
+
+```nix
+snowglobe.push.serialGroup = "kubernetes";
+```
+
+- **What is serialized:** the deploy section (steps 5–9 in the diagram
+  above). The next host starts only after the previous one finished all of it,
+  so a post-deploy health gate (e.g. "storage volumes healthy") decides when
+  the next node may start.
+- **What stays parallel:** build, copy and planning. Hosts with nothing to
+  deploy never wait. Hosts in other groups, or without a group, are not
+  affected (beyond the shared `--concurrency` limit).
+- **Order:** hosts go in the order they finish planning. It is neither
+  alphabetical nor configurable. A waiting host is logged as `waiting for
+  serial group 'kubernetes' (held by praseodymium)`.
+- **Activation modes:** `--test` and `--boot` are serialized the same way.
+  `--dry-run` is serialized too, but runs no hooks at all.
+
+### When a host in a serial group fails
+
+- The group stops before the failed host's on-failure hooks run, so no other
+  member starts while they run. This covers a failure at any step, including
+  build, copy, planning, activation, reboot or a hook.
+- Group members that haven't started are reported as failed with
+  `skipped: serial group 'kubernetes' halted after praseodymium failed`. They
+  run no hooks, not even on-failure hooks, since nothing touched them.
+- Hosts outside the group carry on. The phase fails, later phases are skipped,
+  and `snow push` exits non-zero.
+- **Limitation:** only hosts pushed by the same `snow push` invocation
+  coordinate. Two concurrent `snow push` runs don't know about each other's
+  groups.
 
 ---
 
@@ -127,7 +213,9 @@ Never automatically reboots, even if kernel or critical services changed.
 - Systems that require coordinated reboots with external services
 
 #### `always`
-Always reboots after deployment, regardless of what changed.
+Always reboots when the host is deployed, regardless of what changed. Hosts
+that are already running the built system are skipped and not rebooted (see
+[Host Pipeline](#host-pipeline)).
 
 **Behavior:**
 - Always uses `boot` mode
@@ -338,8 +426,9 @@ snow push myhost
 # → Detects kernel upgrade
 # → Uses boot mode
 # → Deploys configuration
-# → Runs `sudo systemctl reboot` via SSH
-# → Waits for host to come back online
+# → Runs `sudo snowglobe-activate reboot` via SSH (or `sudo systemctl reboot`
+#   on hosts without the snowglobe module)
+# → Waits until the host answers with a new boot ID
 # → Shows "Deployed & Rebooted" in results
 ```
 
@@ -413,6 +502,7 @@ snow push myhost --reboot
 | `--quiet`, `-q` | Suppress subprocess output, only show summary |
 | `--user <USER>` | SSH user to use for deployment |
 | `--concurrency <N>` | Max hosts to deploy in parallel (default: 3) |
+| `--redeploy` | Deploy hosts even if they already run the built system |
 
 ---
 
