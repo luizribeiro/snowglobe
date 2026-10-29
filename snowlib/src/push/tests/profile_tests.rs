@@ -41,19 +41,6 @@ fn create_nixos_host_metadata(name: &str, fqdn: &str) -> HostMetadata {
     }
 }
 
-fn create_push_config(strategy: PushStrategy, concurrency: usize) -> PushConfiguration {
-    PushConfiguration {
-        strategy,
-        force: false,
-        concurrency,
-        ignore_phases: false,
-        output_mode: crate::process::OutputMode::Capture,
-        ssh_user: None,
-        allow_reboot: true,
-        redeploy: false,
-    }
-}
-
 #[tokio::test]
 async fn test_push_profile_update_for_switch_mode() {
     let (flake, nix_backend, deployer, reboot_detector, observer) = create_profile_test_backends();

@@ -106,16 +106,7 @@ async fn test_push_with_multiple_phases() {
         },
     ];
 
-    let config = PushConfiguration {
-        strategy: PushStrategy::Switch,
-        force: false,
-        concurrency: 2,
-        ignore_phases: false,
-        output_mode: crate::process::OutputMode::Capture,
-        ssh_user: None,
-        allow_reboot: true,
-        redeploy: false,
-    };
+    let config = create_push_config(PushStrategy::Switch, 2);
 
     let results = {
         let push_ctx = PushContext::new(
@@ -181,16 +172,7 @@ async fn test_push_stops_on_phase_failure() {
         },
     ];
 
-    let config = PushConfiguration {
-        strategy: PushStrategy::Switch,
-        force: false,
-        concurrency: 2,
-        ignore_phases: false,
-        output_mode: crate::process::OutputMode::Capture,
-        ssh_user: None,
-        allow_reboot: true,
-        redeploy: false,
-    };
+    let config = create_push_config(PushStrategy::Switch, 2);
 
     // When activation fails, push() returns Err
     let result = {
@@ -410,16 +392,7 @@ async fn test_push_error_message_includes_source() {
         hooks: Vec::new(),
     }];
 
-    let config = PushConfiguration {
-        strategy: PushStrategy::Switch,
-        force: false,
-        concurrency: 1,
-        ignore_phases: false,
-        output_mode: crate::process::OutputMode::Capture,
-        ssh_user: None,
-        allow_reboot: true,
-        redeploy: false,
-    };
+    let config = create_push_config(PushStrategy::Switch, 1);
 
     // When activation fails, push() returns Err
     let result = {
@@ -509,16 +482,7 @@ async fn test_push_error_message_format_with_activation_failure() {
         hooks: Vec::new(),
     }];
 
-    let config = PushConfiguration {
-        strategy: PushStrategy::Switch,
-        force: false,
-        concurrency: 1,
-        ignore_phases: false,
-        output_mode: crate::process::OutputMode::Capture,
-        ssh_user: None,
-        allow_reboot: true,
-        redeploy: false,
-    };
+    let config = create_push_config(PushStrategy::Switch, 1);
 
     // When activation fails, push() returns Err
     let result = {

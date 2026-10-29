@@ -31,6 +31,15 @@ use crate::observer::{NoopObserver, PushObserver};
 use crate::reboot::RebootPolicy;
 use std::sync::{Arc, Mutex};
 
+fn create_push_config(strategy: PushStrategy, concurrency: usize) -> PushConfiguration {
+    PushConfiguration {
+        strategy,
+        concurrency,
+        output_mode: crate::process::OutputMode::Capture,
+        ..PushConfiguration::default()
+    }
+}
+
 /// Helper to create just HostMetadata for push tests
 fn make_host_metadata(
     name: &str,

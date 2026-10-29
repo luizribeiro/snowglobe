@@ -39,16 +39,7 @@ async fn test_push_full_workflow_single_phase_success() {
         },
     ];
 
-    let config = PushConfiguration {
-        strategy: PushStrategy::Switch,
-        force: false,
-        concurrency: 2,
-        ignore_phases: false,
-        output_mode: crate::process::OutputMode::Capture,
-        ssh_user: None,
-        allow_reboot: true,
-        redeploy: false,
-    };
+    let config = create_push_config(PushStrategy::Switch, 2);
 
     let results = {
         let push_ctx = PushContext::new(
@@ -124,16 +115,7 @@ async fn test_push_full_workflow_multi_phase_success() {
         },
     ];
 
-    let config = PushConfiguration {
-        strategy: PushStrategy::Switch,
-        force: false,
-        concurrency: 2,
-        ignore_phases: false,
-        output_mode: crate::process::OutputMode::Capture,
-        ssh_user: None,
-        allow_reboot: true,
-        redeploy: false,
-    };
+    let config = create_push_config(PushStrategy::Switch, 2);
 
     let results = {
         let push_ctx = PushContext::new(
@@ -191,16 +173,7 @@ async fn test_push_build_failure_stops_deployment() {
         hooks: Vec::new(),
     }];
 
-    let config = PushConfiguration {
-        strategy: PushStrategy::Switch,
-        force: false,
-        concurrency: 1,
-        ignore_phases: false,
-        output_mode: crate::process::OutputMode::Capture,
-        ssh_user: None,
-        allow_reboot: true,
-        redeploy: false,
-    };
+    let config = create_push_config(PushStrategy::Switch, 1);
 
     let result = {
         let push_ctx = PushContext::new(
@@ -257,16 +230,7 @@ async fn test_push_copy_failure_stops_deployment() {
         hooks: Vec::new(),
     }];
 
-    let config = PushConfiguration {
-        strategy: PushStrategy::Switch,
-        force: false,
-        concurrency: 1,
-        ignore_phases: false,
-        output_mode: crate::process::OutputMode::Capture,
-        ssh_user: None,
-        allow_reboot: true,
-        redeploy: false,
-    };
+    let config = create_push_config(PushStrategy::Switch, 1);
 
     let result = {
         let push_ctx = PushContext::new(
@@ -337,16 +301,7 @@ async fn test_push_copy_observer_hooks_called() {
         },
     ];
 
-    let config = PushConfiguration {
-        strategy: PushStrategy::Switch,
-        force: false,
-        concurrency: 2,
-        ignore_phases: false,
-        output_mode: crate::process::OutputMode::Capture,
-        ssh_user: None,
-        allow_reboot: true,
-        redeploy: false,
-    };
+    let config = create_push_config(PushStrategy::Switch, 2);
 
     {
         let push_ctx = PushContext::new(
@@ -413,16 +368,7 @@ async fn test_push_build_observer_hooks_called() {
         },
     ];
 
-    let config = PushConfiguration {
-        strategy: PushStrategy::Switch,
-        force: false,
-        concurrency: 2,
-        ignore_phases: false,
-        output_mode: crate::process::OutputMode::Capture,
-        ssh_user: None,
-        allow_reboot: true,
-        redeploy: false,
-    };
+    let config = create_push_config(PushStrategy::Switch, 2);
 
     {
         let push_ctx = PushContext::new(
@@ -495,16 +441,7 @@ async fn test_push_build_partial_failure() {
         },
     ];
 
-    let config = PushConfiguration {
-        strategy: PushStrategy::Switch,
-        force: false,
-        concurrency: 2,
-        ignore_phases: false,
-        output_mode: crate::process::OutputMode::Capture,
-        ssh_user: None,
-        allow_reboot: true,
-        redeploy: false,
-    };
+    let config = create_push_config(PushStrategy::Switch, 2);
 
     let result = {
         let push_ctx = PushContext::new(
@@ -579,14 +516,8 @@ async fn test_push_ignore_phases_flag() {
     ];
 
     let config = PushConfiguration {
-        strategy: PushStrategy::Switch,
-        force: false,
-        concurrency: 2,
-        ignore_phases: true, // Ignore phase ordering
-        output_mode: crate::process::OutputMode::Capture,
-        ssh_user: None,
-        allow_reboot: true,
-        redeploy: false,
+        ignore_phases: true,
+        ..create_push_config(PushStrategy::Switch, 2)
     };
 
     let results = {
@@ -648,16 +579,7 @@ async fn test_push_phase_failure_stops_next_phase() {
         },
     ];
 
-    let config = PushConfiguration {
-        strategy: PushStrategy::Switch,
-        force: false,
-        concurrency: 1,
-        ignore_phases: false,
-        output_mode: crate::process::OutputMode::Capture,
-        ssh_user: None,
-        allow_reboot: true,
-        redeploy: false,
-    };
+    let config = create_push_config(PushStrategy::Switch, 1);
 
     // When activation fails, push() returns Err but observer events still fire
     let result = {
@@ -724,16 +646,7 @@ async fn test_push_reboot_execution_success() {
         RebootPolicy::Auto,
     )];
 
-    let config = PushConfiguration {
-        strategy: PushStrategy::Auto, // Auto mode will detect reboot requirement
-        force: false,
-        concurrency: 1,
-        ignore_phases: false,
-        output_mode: crate::process::OutputMode::Capture,
-        ssh_user: None,
-        allow_reboot: true,
-        redeploy: false,
-    };
+    let config = create_push_config(PushStrategy::Auto, 1);
 
     let results = {
         let push_ctx = PushContext::new(
@@ -815,16 +728,7 @@ async fn test_push_reboot_execution_failure() {
         RebootPolicy::Auto,
     )];
 
-    let config = PushConfiguration {
-        strategy: PushStrategy::Auto,
-        force: false,
-        concurrency: 1,
-        ignore_phases: false,
-        output_mode: crate::process::OutputMode::Capture,
-        ssh_user: None,
-        allow_reboot: true,
-        redeploy: false,
-    };
+    let config = create_push_config(PushStrategy::Auto, 1);
 
     let results = {
         let push_ctx = PushContext::new(
@@ -893,16 +797,7 @@ async fn test_push_skip_reboot_when_not_required() {
         RebootPolicy::Auto,
     )];
 
-    let config = PushConfiguration {
-        strategy: PushStrategy::Auto,
-        force: false,
-        concurrency: 1,
-        ignore_phases: false,
-        output_mode: crate::process::OutputMode::Capture,
-        ssh_user: None,
-        allow_reboot: true,
-        redeploy: false,
-    };
+    let config = create_push_config(PushStrategy::Auto, 1);
 
     let results = {
         let push_ctx = PushContext::new(
@@ -967,16 +862,7 @@ async fn test_push_reboot_with_boot_mode() {
         RebootPolicy::Auto,
     )];
 
-    let config = PushConfiguration {
-        strategy: PushStrategy::Boot, // Explicit Boot mode
-        force: false,
-        concurrency: 1,
-        ignore_phases: false,
-        output_mode: crate::process::OutputMode::Capture,
-        ssh_user: None,
-        allow_reboot: true,
-        redeploy: false,
-    };
+    let config = create_push_config(PushStrategy::Boot, 1);
 
     let results = {
         let push_ctx = PushContext::new(
@@ -1023,16 +909,7 @@ async fn test_push_reboot_policy_always() {
         RebootPolicy::Always, // Always reboot
     )];
 
-    let config = PushConfiguration {
-        strategy: PushStrategy::Auto,
-        force: false,
-        concurrency: 1,
-        ignore_phases: false,
-        output_mode: crate::process::OutputMode::Capture,
-        ssh_user: None,
-        allow_reboot: true,
-        redeploy: false,
-    };
+    let config = create_push_config(PushStrategy::Auto, 1);
 
     let results = {
         let push_ctx = PushContext::new(
@@ -1091,16 +968,7 @@ async fn test_push_reboot_policy_never() {
         RebootPolicy::Never, // Never reboot
     )];
 
-    let config = PushConfiguration {
-        strategy: PushStrategy::Auto,
-        force: false,
-        concurrency: 1,
-        ignore_phases: false,
-        output_mode: crate::process::OutputMode::Capture,
-        ssh_user: None,
-        allow_reboot: true,
-        redeploy: false,
-    };
+    let config = create_push_config(PushStrategy::Auto, 1);
 
     let results = {
         let push_ctx = PushContext::new(
@@ -1151,14 +1019,8 @@ async fn test_push_skip_reboot_flag_overrides_always_policy() {
     )];
 
     let config = PushConfiguration {
-        strategy: PushStrategy::Auto,
-        force: false,
-        concurrency: 1,
-        ignore_phases: false,
-        output_mode: crate::process::OutputMode::Capture,
-        ssh_user: None,
         allow_reboot: false,
-        redeploy: false,
+        ..create_push_config(PushStrategy::Auto, 1)
     };
 
     let results = {
@@ -1219,14 +1081,8 @@ async fn test_push_skip_reboot_flag_with_detected_reboot() {
     )];
 
     let config = PushConfiguration {
-        strategy: PushStrategy::Auto,
-        force: false,
-        concurrency: 1,
-        ignore_phases: false,
-        output_mode: crate::process::OutputMode::Capture,
-        ssh_user: None,
         allow_reboot: false,
-        redeploy: false,
+        ..create_push_config(PushStrategy::Auto, 1)
     };
 
     let results = {
@@ -1279,16 +1135,7 @@ async fn test_push_never_reboots_darwin_hosts() {
         let mut ferrum = make_host_metadata("ferrum", Some("default"), RebootPolicy::Always);
         ferrum.system_type = SystemType::Darwin;
 
-        let config = PushConfiguration {
-            strategy,
-            force: false,
-            concurrency: 1,
-            ignore_phases: false,
-            output_mode: crate::process::OutputMode::Capture,
-            ssh_user: None,
-            allow_reboot: true,
-            redeploy: false,
-        };
+        let config = create_push_config(strategy, 1);
 
         let results = {
             let push_ctx = PushContext::new(
