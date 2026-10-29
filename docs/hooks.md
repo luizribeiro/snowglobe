@@ -179,6 +179,49 @@ Executes on the **target host via SSH**.
 }
 ```
 
+## Packages in Hook Commands
+
+Hook commands can reference packages through Nix interpolation, and snow makes
+sure those packages exist where the hook runs. Which package set to use depends
+on where the hook runs:
+
+| Location | Runs on | Use | Shipped by |
+|----------|---------|-----|------------|
+| `local` | the machine running `snow push` | `localPkgs` | snow builds them on that machine before deploying |
+| `remote` | the target host | `pkgs` | the host's system closure, copied by `snow push` |
+
+This covers both the `command` and the `environment` values of a hook.
+
+```nix
+{ pkgs, localPkgs, config, ... }:
+{
+  snowglobe.hooks.pre-deploy.drain-node = {
+    location = "local";
+    command = "${localPkgs.kubectl}/bin/kubectl drain ${config.networking.hostName}";
+  };
+
+  snowglobe.hooks.post-deploy.verify = {
+    location = "remote";
+    command = "${pkgs.curl}/bin/curl -fsS http://localhost:8080/health";
+  };
+}
+```
+
+`localPkgs` is the host's own nixpkgs (same pinned version) built for the
+platform of the machine running snow. A Mac pushing to an aarch64 Raspberry Pi
+gets a Mac `kubectl` in local hooks and an aarch64 `curl` in remote hooks. It
+includes the host's `nixpkgs.config` and `nixpkgs.overlays`. When the
+platforms differ, overlays baked into an externally supplied `nixpkgs.pkgs`
+aren't carried over.
+
+Commands that don't reference store paths (e.g. plain `kubectl` from the
+deploying machine's `PATH`) keep working as before.
+
+If a local hook's command references a store path that isn't present on the
+deploying machine, typically because it used `pkgs` instead of `localPkgs`,
+the host fails during planning, before any hook runs, with an error naming the
+hook and the path. `--dry-run` skips this check, since it runs no hooks.
+
 ## Error Handling
 
 ### `continueOnFailure`

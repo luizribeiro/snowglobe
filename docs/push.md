@@ -57,6 +57,11 @@ independently:
 A failure at any step stops the host and runs its on-failure hooks.
 ```
 
+- **Before any host starts**, snow loads every host's metadata, including its
+  hooks: it builds each host's hooks file on the deploying machine, which also
+  fetches or builds the packages local hooks reference (see [Packages in Hook
+  Commands](hooks.md#packages-in-hook-commands)). If that fails for a host,
+  the push stops before anything is deployed.
 - **`--concurrency`** limits how many hosts are in steps 1–4 at once, and,
   separately, how many are inside a deploy section at once. A host waiting for
   its serial group holds no concurrency slot.
