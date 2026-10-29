@@ -15,6 +15,25 @@ pub enum HookStage {
     OnFailure,
 }
 
+impl HookStage {
+    pub const ALL: [HookStage; 4] = [
+        Self::PreActivate,
+        Self::PostActivate,
+        Self::PostReboot,
+        Self::OnFailure,
+    ];
+
+    /// Attribute name under `snowglobe.hooks` in the NixOS/nix-darwin module
+    pub fn nix_name(self) -> &'static str {
+        match self {
+            Self::PreActivate => "pre-activate",
+            Self::PostActivate => "post-activate",
+            Self::PostReboot => "post-reboot",
+            Self::OnFailure => "on-failure",
+        }
+    }
+}
+
 impl std::fmt::Display for HookStage {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -30,15 +49,15 @@ impl std::str::FromStr for HookStage {
     type Err = crate::error::SnowError;
 
     fn from_str(s: &str) -> Result<Self> {
-        match s {
-            "pre-activate" => Ok(Self::PreActivate),
-            "post-activate" => Ok(Self::PostActivate),
-            "post-reboot" => Ok(Self::PostReboot),
-            "on-failure" => Ok(Self::OnFailure),
-            _ => Err(crate::error::NixError::EvalFailed {
+        match Self::ALL.into_iter().find(|stage| stage.nix_name() == s) {
+            Some(stage) => Ok(stage),
+            None => Err(crate::error::NixError::EvalFailed {
                 stderr: format!(
-                    "Invalid hook stage '{}'. Valid values are: 'pre-activate', 'post-activate', 'post-reboot', 'on-failure'",
-                    s
+                    "Invalid hook stage '{}'. Valid values are: {}",
+                    s,
+                    Self::ALL
+                        .map(|stage| format!("'{}'", stage.nix_name()))
+                        .join(", ")
                 ),
                 source: std::io::Error::other("Invalid hook stage"),
             }
@@ -172,6 +191,16 @@ mod tests {
             HookStage::from_str("on-failure").unwrap(),
             HookStage::OnFailure
         ));
+    }
+
+    #[test]
+    fn test_nix_name_matches_serde_name() {
+        for stage in HookStage::ALL {
+            assert_eq!(
+                serde_json::to_value(stage).unwrap(),
+                serde_json::Value::String(stage.nix_name().to_string())
+            );
+        }
     }
 
     #[test]

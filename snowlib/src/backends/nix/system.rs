@@ -71,17 +71,10 @@ impl NixBackend for SystemNixBackend {
     ) -> Result<HostMetadata> {
         let flake_ref = format!(".#{}.{}", system_type.flake_attr(), host);
 
-        let apply_expr = r#"config: {
-          hostName = config.config.networking.hostName;
-          domain = config.config.networking.domain or "";
-          phase = config.config.core.pushPhase or null;
-          tags = config.config.core.tags or [];
-          rebootPolicy = config.config.core.rebootPolicy or "auto";
-          hooks = config.config.snowglobe.hooks or {};
-        }"#;
+        let apply_expr = metadata_apply_expr();
 
         let stdout = NixCommand::eval(flake, &flake_ref)
-            .apply(apply_expr)
+            .apply(&apply_expr)
             .json()
             .run()
             .await
@@ -221,6 +214,27 @@ impl NixBackend for SystemNixBackend {
 
         Ok(StorePath::new(path))
     }
+}
+
+/// Builds the `--apply` expression that extracts host metadata as JSON
+///
+/// Hooks are read only for known stages: removed-stage option stubs throw
+/// when serialized.
+fn metadata_apply_expr() -> String {
+    let hook_stages: String = HookStage::ALL
+        .iter()
+        .map(|stage| format!("\"{}\" = null; ", stage.nix_name()))
+        .collect();
+    format!(
+        r#"config: {{
+          hostName = config.config.networking.hostName;
+          domain = config.config.networking.domain or "";
+          phase = config.config.core.pushPhase or null;
+          tags = config.config.core.tags or [];
+          rebootPolicy = config.config.core.rebootPolicy or "auto";
+          hooks = builtins.intersectAttrs {{ {hook_stages}}} (config.config.snowglobe.hooks or {{}});
+        }}"#
+    )
 }
 
 /// Kept apart from `get_host_metadata` so parsing is testable without invoking nix
@@ -427,6 +441,16 @@ mod tests {
         assert!(
             err.to_string().contains("sometimes") || format!("{:?}", err).contains("sometimes")
         );
+    }
+
+    #[test]
+    fn test_metadata_apply_expr_reads_only_current_hook_stages() {
+        let expr = metadata_apply_expr();
+
+        assert!(expr.contains("builtins.intersectAttrs"));
+        for stage in HookStage::ALL {
+            assert!(expr.contains(&format!("\"{}\" = null;", stage.nix_name())));
+        }
     }
 
     #[test]
