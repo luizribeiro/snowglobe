@@ -119,7 +119,10 @@ async fn handle_pipeline_failure(
 
 /// Execute the full deployment pipeline for a single host
 ///
-/// Runs: Build → Copy → Plan → Activate → Reboot
+/// Runs: Build → (skip if unchanged) → Copy → Plan → Activate → Reboot
+///
+/// Planning happens before any hook so a host blocked by planning is never
+/// disrupted (e.g. drained) for nothing.
 ///
 /// This function is called concurrently for each host in a phase using tokio tasks.
 /// Observer callbacks are used to track when hosts enter/leave steps, enabling
@@ -203,31 +206,44 @@ pub async fn execute_host_pipeline(
     // Create target for hooks and error handling
     let target = create_target(push_ctx, host_metadata);
 
-    // Step 2.5: Pre-activate hooks
+    let plan = match plan_host(push_ctx, host_metadata, &target, &store_path).await {
+        Ok(plan) => plan,
+        Err(e) => {
+            return Ok(handle_pipeline_failure(
+                push_ctx,
+                &hostname,
+                Some(&target),
+                host_metadata.phase.as_deref(),
+                Some(&store_path),
+                PipelineStep::Plan,
+                e,
+            )
+            .await);
+        }
+    };
+
     execute_hooks_or_return!(
         HookStage::PreActivate,
-        Some(&target),
-        Some(&store_path),
+        Some(&plan.target),
+        Some(&plan.store_path),
         PipelineStep::Activate
     );
 
-    // Step 3: Activate (includes planning + activation)
-    let (plan, activate_result) =
-        match execute_activation_step(push_ctx, host_metadata, &store_path).await {
-            Ok(result) => result,
-            Err(e) => {
-                return Ok(handle_pipeline_failure(
-                    push_ctx,
-                    &hostname,
-                    Some(&target),
-                    host_metadata.phase.as_deref(),
-                    Some(&store_path),
-                    PipelineStep::Activate,
-                    e,
-                )
-                .await);
-            }
-        };
+    let activate_result = match execute_activation_step(push_ctx, &plan).await {
+        Ok(result) => result,
+        Err(e) => {
+            return Ok(handle_pipeline_failure(
+                push_ctx,
+                &hostname,
+                Some(&plan.target),
+                host_metadata.phase.as_deref(),
+                Some(&plan.store_path),
+                PipelineStep::Activate,
+                e,
+            )
+            .await);
+        }
+    };
 
     // Step 3.5: Post-activate hooks
     execute_hooks_or_return!(
@@ -359,66 +375,53 @@ async fn execute_copy_step(
     Ok(())
 }
 
-/// Execute the activation step for a single host
-///
-/// Includes deployment planning (with reboot detection) and activation.
-async fn execute_activation_step(
+/// Choose the activation mode for a host (with reboot detection)
+async fn plan_host(
     push_ctx: &PushContext<'_>,
     host_metadata: &HostMetadata,
+    target: &DeployTarget,
     store_path: &StorePath,
-) -> Result<(PushPlan, DeployResult)> {
-    let hostname = &host_metadata.name;
-    let target = create_target(push_ctx, host_metadata);
-
-    // Start the activate observer span before planning so planning work is visible
-    push_ctx.observer.on_activation_start(hostname);
-
-    // Planning: Determine activation strategy
+) -> Result<PushPlan> {
     let (plans, blocked) = create_deployment_plans(
-        vec![(host_metadata.clone(), target, store_path.clone())],
+        vec![(host_metadata.clone(), target.clone(), store_path.clone())],
         push_ctx.reboot_backend,
         push_ctx.config.strategy,
         push_ctx.config.force,
     )
     .await?;
 
-    // Handle blocked hosts
-    if !blocked.is_empty() {
+    if let Some(blocked) = blocked.into_iter().next() {
         return Err(crate::error::SnowError::Deploy(
             crate::error::DeployError::Failed {
-                host: blocked[0].hostname.clone(),
-                source: std::io::Error::other(blocked[0].reason.clone()),
+                host: blocked.hostname,
+                source: std::io::Error::other(blocked.reason),
             },
         ));
     }
 
-    // Should only have one plan
-    let plan = plans.into_iter().next().ok_or_else(|| {
+    plans.into_iter().next().ok_or_else(|| {
         crate::error::SnowError::Deploy(crate::error::DeployError::Failed {
-            host: hostname.clone(),
+            host: host_metadata.name.clone(),
             source: std::io::Error::other("No deployment plan created"),
         })
-    })?;
+    })
+}
 
-    // Execute activation
-    let activate_result = match push_ctx
+/// Activate the planned system on a host
+async fn execute_activation_step(
+    push_ctx: &PushContext<'_>,
+    plan: &PushPlan,
+) -> Result<DeployResult> {
+    let hostname = &plan.metadata.name;
+    push_ctx.observer.on_activation_start(hostname);
+    let result = push_ctx
         .deploy_backend
         .deploy(&plan.target, &plan.store_path, plan.activation_mode)
-        .await
-    {
-        Ok(result) => {
-            push_ctx
-                .observer
-                .on_activation_complete(hostname, result.success);
-            result
-        }
-        Err(e) => {
-            push_ctx.observer.on_activation_complete(hostname, false);
-            return Err(e);
-        }
-    };
-
-    Ok((plan, activate_result))
+        .await;
+    push_ctx
+        .observer
+        .on_activation_complete(hostname, result.as_ref().is_ok_and(|r| r.success));
+    result
 }
 
 /// Execute the reboot step for a single host (if needed)

@@ -6,12 +6,14 @@
 //! - workflow_tests: Full workflow integration tests
 //! - profile_tests: Profile update tests
 //! - hook_tests: Hook integration tests
+//! - stage_order_tests: Order of planning, hooks, activation and reboot
 //! - unchanged_tests: Skipping hosts that already run the built system
 
 mod hook_tests;
 mod planning_tests;
 mod profile_tests;
 mod push_tests;
+mod stage_order_tests;
 mod unchanged_tests;
 mod workflow_tests;
 

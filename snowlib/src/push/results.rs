@@ -26,6 +26,7 @@ pub struct BlockedHost {
 pub enum PipelineStep {
     Build,
     Copy,
+    Plan,
     Activate,
     Reboot,
 }
@@ -35,6 +36,7 @@ impl fmt::Display for PipelineStep {
         match self {
             PipelineStep::Build => write!(f, "build"),
             PipelineStep::Copy => write!(f, "copy"),
+            PipelineStep::Plan => write!(f, "plan"),
             PipelineStep::Activate => write!(f, "activate"),
             PipelineStep::Reboot => write!(f, "reboot"),
         }
