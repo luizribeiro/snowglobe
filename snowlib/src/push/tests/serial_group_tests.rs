@@ -227,29 +227,33 @@ async fn test_waiting_for_the_group_does_not_consume_hook_timeouts() {
         None,
         crate::process::OutputMode::Capture,
     )));
-    let host = |name: &str| {
+    let host = |name: &str, drain: &str, timeout: u64| {
         let mut hook = HookConfig::test_fixture(
             "drain-node",
             HookStage::PreDeploy,
             HookLocation::Local,
-            "sleep 0.6",
+            drain,
         );
-        hook.timeout = 1;
+        hook.timeout = timeout;
         let mut host = make_host_metadata(name, Some("p2"), RebootPolicy::Auto);
         host.hooks = vec![hook];
         host.serial_group = Some("kubernetes".to_string());
         host
     };
+    harness.nix_backend = builds_delayed(&["promethium"], Duration::from_millis(500));
 
     let run = harness
-        .run(vec![host("praseodymium"), host("promethium")])
+        .run(vec![
+            host("praseodymium", "sleep 1.5", 10),
+            host("promethium", "sleep 0.1", 1),
+        ])
         .await;
 
-    // The second host queues ~0.6s and then runs its own 0.6s hook: 1.2s after
-    // it was ready, but within its 1s timeout counted from the hook's start
+    // promethium queues ~1.5s behind praseodymium, past its own 1s timeout,
+    // so it only succeeds if the timeout starts when its hook does
     assert!(run.results.all_succeeded(), "{:?}", run.results);
     assert!(
-        run.has_event_starting_with("serial_wait:"),
+        run.has_event_starting_with("serial_wait:promethium:"),
         "{:?}",
         run.events
     );
