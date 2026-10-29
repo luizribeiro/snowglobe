@@ -43,17 +43,17 @@ pub use push::{
 };
 pub use reboot::RebootPolicy;
 
-#[cfg(debug_assertions)]
+#[cfg(any(debug_assertions, feature = "test-utils"))]
 pub use backends::deploy::{DeploymentFixture, HostFixture, MockDeployBackend, OperationFixture};
-#[cfg(debug_assertions)]
+#[cfg(any(debug_assertions, feature = "test-utils"))]
 pub use backends::hook::MockHookBackend;
-#[cfg(debug_assertions)]
+#[cfg(any(debug_assertions, feature = "test-utils"))]
 pub use backends::keygen::MockKeyGenBackend;
-#[cfg(debug_assertions)]
+#[cfg(any(debug_assertions, feature = "test-utils"))]
 pub use backends::nix::MockNixBackend;
-#[cfg(debug_assertions)]
+#[cfg(any(debug_assertions, feature = "test-utils"))]
 pub use backends::provisioner::MockProvisioner;
-#[cfg(debug_assertions)]
+#[cfg(any(debug_assertions, feature = "test-utils"))]
 pub use backends::reboot::MockRebootBackend;
-#[cfg(debug_assertions)]
+#[cfg(any(debug_assertions, feature = "test-utils"))]
 pub use backends::sops::MockSopsBackend;

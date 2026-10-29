@@ -3,6 +3,10 @@ name = "snowlib"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+# Mock backends and fixtures for other crates' tests; debug builds always have them
+test-utils = []
+
 [dependencies]
 miette = { version = "7.4", features = ["fancy"] }
 thiserror = "2.0"

@@ -1,13 +1,13 @@
 mod common;
 mod local;
-#[cfg(any(debug_assertions, test))]
+#[cfg(any(debug_assertions, test, feature = "test-utils"))]
 mod mock;
 mod ssh;
 mod target;
 
 pub use common::*;
 pub use local::LocalDeployBackend;
-#[cfg(any(debug_assertions, test))]
+#[cfg(any(debug_assertions, test, feature = "test-utils"))]
 pub use mock::{
     BuildFixture, DeploymentFixture, FailureSpec, HostFixture, MetadataFixture, MockDeployBackend,
     OperationFixture,

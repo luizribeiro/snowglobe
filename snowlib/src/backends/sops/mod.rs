@@ -3,11 +3,11 @@
 //! Provides functionality to update .sops.yaml with new host age keys
 //! and run `sops updatekeys` on affected secret files.
 
-#[cfg(any(debug_assertions, test))]
+#[cfg(any(debug_assertions, test, feature = "test-utils"))]
 mod mock;
 mod system;
 
-#[cfg(any(debug_assertions, test))]
+#[cfg(any(debug_assertions, test, feature = "test-utils"))]
 pub use mock::MockSopsBackend;
 pub use system::SystemSopsBackend;
 

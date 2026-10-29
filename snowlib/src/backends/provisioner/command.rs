@@ -146,7 +146,7 @@ impl CommandExecutor for SystemCommandExecutor {
 }
 
 /// Mock command executor for testing
-#[cfg(any(debug_assertions, test))]
+#[cfg(any(debug_assertions, test, feature = "test-utils"))]
 pub struct MockCommandExecutor {
     /// Map of (command, args_pattern) -> CommandOutput
     responses: std::sync::Mutex<std::collections::HashMap<String, CommandOutput>>,
@@ -158,7 +158,7 @@ pub struct MockCommandExecutor {
     default_success: bool,
 }
 
-#[cfg(any(debug_assertions, test))]
+#[cfg(any(debug_assertions, test, feature = "test-utils"))]
 impl MockCommandExecutor {
     pub fn new() -> Self {
         Self {
@@ -216,14 +216,14 @@ impl MockCommandExecutor {
     }
 }
 
-#[cfg(any(debug_assertions, test))]
+#[cfg(any(debug_assertions, test, feature = "test-utils"))]
 impl Default for MockCommandExecutor {
     fn default() -> Self {
         Self::new()
     }
 }
 
-#[cfg(any(debug_assertions, test))]
+#[cfg(any(debug_assertions, test, feature = "test-utils"))]
 impl CommandExecutor for MockCommandExecutor {
     fn execute(&self, cmd: &str, args: &[&str]) -> Result<CommandOutput> {
         let full_cmd = format!("{} {}", cmd, args.join(" "));

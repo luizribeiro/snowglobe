@@ -25,7 +25,7 @@ impl ProxmoxVmaProvisioner {
         }
     }
 
-    #[cfg(any(debug_assertions, test))]
+    #[cfg(any(debug_assertions, test, feature = "test-utils"))]
     pub fn with_executor(executor: Arc<dyn CommandExecutor>) -> Self {
         Self { executor }
     }

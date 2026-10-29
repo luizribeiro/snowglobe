@@ -22,18 +22,18 @@
 mod command;
 mod guestfish;
 mod manual;
-#[cfg(any(debug_assertions, test))]
+#[cfg(any(debug_assertions, test, feature = "test-utils"))]
 mod mock;
 mod proxmox_vma;
 mod raw;
 mod sd_image;
 
-#[cfg(any(debug_assertions, test))]
+#[cfg(any(debug_assertions, test, feature = "test-utils"))]
 pub use command::MockCommandExecutor;
 pub use command::{CommandExecutor, CommandOutput, SystemCommandExecutor};
 
 pub use manual::ManualProvisioner;
-#[cfg(any(debug_assertions, test))]
+#[cfg(any(debug_assertions, test, feature = "test-utils"))]
 pub use mock::MockProvisioner;
 pub use proxmox_vma::ProxmoxVmaProvisioner;
 pub use raw::RawProvisioner;
@@ -203,7 +203,7 @@ pub fn get_provisioner(name: &str) -> Result<Box<dyn Provisioner>> {
         "sd-image" => Ok(Box::new(SdImageProvisioner::new())),
         "raw" => Ok(Box::new(RawProvisioner::new())),
         "proxmox-vma" => Ok(Box::new(ProxmoxVmaProvisioner::new())),
-        #[cfg(any(debug_assertions, test))]
+        #[cfg(any(debug_assertions, test, feature = "test-utils"))]
         "mock" => Ok(Box::new(MockProvisioner::new("mock"))),
         _ => Err(crate::error::ProvisionerError::UnknownProvisioner {
             name: name.to_string(),

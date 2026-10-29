@@ -1,10 +1,10 @@
 mod local;
-#[cfg(any(debug_assertions, test))]
+#[cfg(any(debug_assertions, test, feature = "test-utils"))]
 mod mock;
 mod system;
 
 pub use local::LocalRebootBackend;
-#[cfg(any(debug_assertions, test))]
+#[cfg(any(debug_assertions, test, feature = "test-utils"))]
 pub use mock::MockRebootBackend;
 pub use system::SystemRebootBackend;
 
