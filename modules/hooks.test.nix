@@ -21,6 +21,32 @@ let
 
   evalHooks = config: (evalConfig config).snowglobe.hooks;
 
+  aarch64Pkgs = import pkgs.path { localSystem = { system = "aarch64-linux"; }; };
+
+  # An aarch64 host (e.g. a Raspberry Pi) pushed from an x86_64-linux deployer
+  piWithHooks = (pkgs.lib.evalModules {
+    modules = [
+      assertionsModule
+      ./hooks.nix
+      { _module.args.pkgs = aarch64Pkgs; }
+      ({ pkgs, localPkgs, ... }: {
+        snowglobe.localSystem = "x86_64-linux";
+        snowglobe.hooks.pre-deploy.health-gate = {
+          location = "local";
+          command = "${localPkgs.hello}/bin/hello --gate";
+        };
+        snowglobe.hooks.post-deploy.verify = {
+          location = "remote";
+          command = "${pkgs.hello}/bin/hello --verify";
+        };
+      })
+    ];
+  }).config;
+
+  piHooksFile = piWithHooks.snowglobe.hooksFile;
+  piHooksFileInputs = builtins.attrNames (builtins.getContext piHooksFile.text);
+  piHooksJSON = builtins.fromJSON (builtins.unsafeDiscardStringContext piHooksFile.text);
+
   failedAssertionMessages = config:
     map (a: a.message) (builtins.filter (a: !a.assertion) (evalConfig config).assertions);
 in
@@ -326,5 +352,30 @@ in
         };
       } == [];
     expected = true;
+  };
+
+  "test hooks file: is built for the deployer's platform" = {
+    expr = piHooksFile.system;
+    expected = "x86_64-linux";
+  };
+
+  "test hooks file: depends on what local hooks reference" = {
+    expr = builtins.elem pkgs.hello.drvPath piHooksFileInputs;
+    expected = true;
+  };
+
+  "test hooks file: needs nothing built for the host's platform" = {
+    expr = builtins.elem aarch64Pkgs.hello.drvPath piHooksFileInputs;
+    expected = false;
+  };
+
+  "test hooks file: keeps remote commands verbatim" = {
+    expr = piHooksJSON.post-deploy.verify.command;
+    expected = builtins.unsafeDiscardStringContext "${aarch64Pkgs.hello}/bin/hello --verify";
+  };
+
+  "test hooks file: lists current stages only" = {
+    expr = builtins.attrNames piHooksJSON;
+    expected = [ "on-failure" "post-deploy" "post-reboot" "pre-deploy" ];
   };
 }

@@ -1,4 +1,4 @@
-{ config, lib, ... }:
+{ config, lib, localPkgs, ... }:
 
 # Platform-agnostic hook configuration module
 # This module is imported by both nixos.nix and darwin.nix
@@ -153,11 +153,35 @@ let
   # Removed stages stay declared (so defining them fails with a pointer to the
   # replacement) but throw when read, so validation must skip them
   currentHooks = removeAttrs config.snowglobe.hooks (attrNames removedStages);
+
+  # Local hooks keep their string context so building the hooks file on the
+  # deployer realizes what they reference. Remote hooks run on the host and
+  # reach it through the system closure, so building their dependencies here
+  # would mean building for the host's platform on the deployer.
+  hooksForPush = mapAttrs
+    (stage: mapAttrs (name: hook:
+      if hook.location == "remote"
+      then hook // { command = builtins.unsafeDiscardStringContext hook.command; }
+      else hook))
+    currentHooks;
 in
 {
   imports = [ ./local-pkgs.nix ] ++ mapAttrsToList
     (stage: instructions: mkRemovedOptionModule [ "snowglobe" "hooks" stage ] instructions)
     removedStages;
+
+  options.snowglobe.hooksFile = mkOption {
+    type = types.package;
+    internal = true;
+    readOnly = true;
+    description = ''
+      JSON file with all hooks, built for `snowglobe.localSystem`. snow builds
+      it before deploying, which also fetches or builds what local hooks
+      reference.
+    '';
+  };
+
+  config.snowglobe.hooksFile = localPkgs.writeText "snowglobe-hooks.json" (builtins.toJSON hooksForPush);
 
   options.snowglobe.hooks = {
     pre-deploy = mkOption {
