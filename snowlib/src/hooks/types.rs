@@ -5,8 +5,8 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum HookStage {
-    /// Before activation (e.g., drain Kubernetes node)
-    PreActivate,
+    /// Before activation of a host that changes (e.g., drain Kubernetes node)
+    PreDeploy,
     /// After activation completes (e.g., uncordon Kubernetes node)
     PostActivate,
     /// After host reboots and comes back online
@@ -17,7 +17,7 @@ pub enum HookStage {
 
 impl HookStage {
     pub const ALL: [HookStage; 4] = [
-        Self::PreActivate,
+        Self::PreDeploy,
         Self::PostActivate,
         Self::PostReboot,
         Self::OnFailure,
@@ -26,7 +26,7 @@ impl HookStage {
     /// Attribute name under `snowglobe.hooks` in the NixOS/nix-darwin module
     pub fn nix_name(self) -> &'static str {
         match self {
-            Self::PreActivate => "pre-activate",
+            Self::PreDeploy => "pre-deploy",
             Self::PostActivate => "post-activate",
             Self::PostReboot => "post-reboot",
             Self::OnFailure => "on-failure",
@@ -37,7 +37,7 @@ impl HookStage {
 impl std::fmt::Display for HookStage {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::PreActivate => write!(f, "PreActivate"),
+            Self::PreDeploy => write!(f, "PreDeploy"),
             Self::PostActivate => write!(f, "PostActivate"),
             Self::PostReboot => write!(f, "PostReboot"),
             Self::OnFailure => write!(f, "OnFailure"),
@@ -176,8 +176,8 @@ mod tests {
     #[test]
     fn test_hook_stage_from_str_valid() {
         assert!(matches!(
-            HookStage::from_str("pre-activate").unwrap(),
-            HookStage::PreActivate
+            HookStage::from_str("pre-deploy").unwrap(),
+            HookStage::PreDeploy
         ));
         assert!(matches!(
             HookStage::from_str("post-activate").unwrap(),
@@ -235,13 +235,13 @@ mod tests {
     fn test_hook_config_construction() {
         let mut hook = HookConfig::test_fixture(
             "test-hook",
-            HookStage::PreActivate,
+            HookStage::PreDeploy,
             HookLocation::Local,
             "kubectl drain node1",
         );
         hook.timeout = 600;
         hook.continue_on_failure = true;
-        assert_eq!(hook.stage, HookStage::PreActivate);
+        assert_eq!(hook.stage, HookStage::PreDeploy);
         assert_eq!(hook.location, HookLocation::Local);
         assert_eq!(hook.command, "kubectl drain node1");
         assert_eq!(hook.timeout, 600);

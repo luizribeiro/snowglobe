@@ -42,7 +42,7 @@ Lifecycle hooks allow you to execute custom commands at specific points in the d
 
 Hooks are configured in your NixOS configuration and execute automatically during deployment at four stages:
 
-- **`pre-activate`**: Before activation (e.g., drain cluster nodes)
+- **`pre-deploy`**: Before activation (e.g., drain cluster nodes)
 - **`post-activate`**: After activation (e.g., uncordon nodes, verify deployment)
 - **`post-reboot`**: After host reboots (e.g., wait for services)
 - **`on-failure`**: When deployment fails (e.g., cleanup, alerts)
@@ -52,7 +52,7 @@ Hooks are configured in your NixOS configuration and execute automatically durin
 ```nix
 {
   config.snowglobe.hooks = {
-    pre-activate = [
+    pre-deploy = [
       {
         location = "local";  # Run on machine executing snow
         command = "kubectl drain ${config.networking.hostName}";

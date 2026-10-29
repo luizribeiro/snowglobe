@@ -151,7 +151,7 @@ mod tests {
         let backend = SystemHookBackend::new(None, OutputMode::Capture);
         let hook = HookConfig::test_fixture(
             "test-hook",
-            HookStage::PreActivate,
+            HookStage::PreDeploy,
             HookLocation::Local,
             "echo 'test'",
         );
@@ -167,7 +167,7 @@ mod tests {
         let backend = SystemHookBackend::new(None, OutputMode::Capture);
         let hook = HookConfig::test_fixture(
             "test-hook",
-            HookStage::PreActivate,
+            HookStage::PreDeploy,
             HookLocation::Local,
             "exit 1",
         );
@@ -183,7 +183,7 @@ mod tests {
         let backend = SystemHookBackend::new(None, OutputMode::Capture);
         let hook = HookConfig::test_fixture(
             "test-hook",
-            HookStage::PreActivate,
+            HookStage::PreDeploy,
             HookLocation::Local,
             "echo $TEST_VAR",
         );
@@ -200,7 +200,7 @@ mod tests {
         let backend = SystemHookBackend::new(None, OutputMode::Capture);
         let mut hook = HookConfig::test_fixture(
             "test-hook",
-            HookStage::PreActivate,
+            HookStage::PreDeploy,
             HookLocation::Local,
             "sleep 10",
         );
@@ -221,7 +221,7 @@ mod tests {
         let backend = SystemHookBackend::new(None, OutputMode::Capture);
         let hook = HookConfig::test_fixture(
             "test-hook",
-            HookStage::PreActivate,
+            HookStage::PreDeploy,
             HookLocation::Local,
             "echo \"VAR=$MALICIOUS\"",
         );
@@ -245,7 +245,7 @@ mod tests {
         let backend = SystemHookBackend::new(None, OutputMode::Capture);
         let hook = HookConfig::test_fixture(
             "test-hook",
-            HookStage::PreActivate,
+            HookStage::PreDeploy,
             HookLocation::Local,
             "echo \"VAR=$TEST\"",
         );
@@ -263,7 +263,7 @@ mod tests {
         let backend = SystemHookBackend::new(None, OutputMode::Capture);
         let hook = HookConfig::test_fixture(
             "test-hook",
-            HookStage::PreActivate,
+            HookStage::PreDeploy,
             HookLocation::Local,
             "echo \"VAR=$PIPE_TEST\"",
         );
@@ -282,7 +282,7 @@ mod tests {
         let backend = SystemHookBackend::new(None, OutputMode::Capture);
         let hook = HookConfig::test_fixture(
             "test-hook",
-            HookStage::PreActivate,
+            HookStage::PreDeploy,
             HookLocation::Local,
             "echo \"VAR=$BACKTICK\"",
         );
@@ -304,7 +304,7 @@ mod tests {
         let backend = SystemHookBackend::new(None, OutputMode::Capture);
         let hook = HookConfig::test_fixture(
             "test-hook",
-            HookStage::PreActivate,
+            HookStage::PreDeploy,
             HookLocation::Local,
             "echo \"VAR=$SUBSHELL\"",
         );
@@ -399,7 +399,7 @@ mod tests {
         let backend = SystemHookBackend::new(None, OutputMode::Capture);
         let mut hook = HookConfig::test_fixture(
             "partial-output",
-            HookStage::PreActivate,
+            HookStage::PreDeploy,
             HookLocation::Local,
             "echo 'Starting...'; sleep 10; echo 'Should not appear'",
         );
@@ -424,7 +424,7 @@ mod tests {
         let backend = SystemHookBackend::new(None, OutputMode::Capture);
         let mut hook = HookConfig::test_fixture(
             "large-output",
-            HookStage::PreActivate,
+            HookStage::PreDeploy,
             HookLocation::Local,
             "for i in {1..100}; do echo \"Line $i\"; done; sleep 10",
         );
@@ -451,7 +451,7 @@ mod tests {
         let backend = SystemHookBackend::new(None, OutputMode::Capture);
         let mut hook = HookConfig::test_fixture(
             "timeout-test",
-            HookStage::PreActivate,
+            HookStage::PreDeploy,
             HookLocation::Local,
             "sleep 30",
         );
@@ -507,7 +507,7 @@ mod tests {
         let backend = SystemHookBackend::new(None, OutputMode::Capture);
         let hook = HookConfig::test_fixture(
             "quick-command",
-            HookStage::PreActivate,
+            HookStage::PreDeploy,
             HookLocation::Local,
             "echo 'Quick command'",
         );

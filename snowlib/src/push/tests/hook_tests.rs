@@ -9,7 +9,7 @@ use crate::hooks::{HookConfig, HookLocation, HookStage};
 // ============================================================================
 
 #[tokio::test]
-async fn test_push_with_pre_activate_hooks() {
+async fn test_push_with_pre_deploy_hooks() {
     let flake = Flake::test_context();
     let nix_backend = MockNixBackend::new();
     let deployer = MockDeployBackend::new();
@@ -34,13 +34,13 @@ async fn test_push_with_pre_activate_hooks() {
         hooks: vec![
             HookConfig::test_fixture(
                 "test-hook",
-                HookStage::PreActivate,
+                HookStage::PreDeploy,
                 HookLocation::Local,
                 "kubectl drain ${SNOW_HOSTNAME} --timeout=300s",
             ),
             HookConfig::test_fixture(
                 "test-hook",
-                HookStage::PreActivate,
+                HookStage::PreDeploy,
                 HookLocation::Remote,
                 "systemctl stop important-service",
             ),
@@ -78,10 +78,10 @@ async fn test_push_with_pre_activate_hooks() {
 
     let executed_hooks = hook_backend.get_executed_hooks();
     assert_eq!(executed_hooks.len(), 2);
-    assert_eq!(executed_hooks[0].1, HookStage::PreActivate);
+    assert_eq!(executed_hooks[0].1, HookStage::PreDeploy);
     assert_eq!(executed_hooks[0].2, HookLocation::Local);
     assert!(executed_hooks[0].3.contains("kubectl drain"));
-    assert_eq!(executed_hooks[1].1, HookStage::PreActivate);
+    assert_eq!(executed_hooks[1].1, HookStage::PreDeploy);
     assert_eq!(executed_hooks[1].2, HookLocation::Remote);
     assert!(executed_hooks[1].3.contains("systemctl stop"));
 }
@@ -303,7 +303,7 @@ async fn test_push_post_reboot_hooks_not_executed_when_reboot_fails() {
 }
 
 #[tokio::test]
-async fn test_push_pre_activate_hook_failure_aborts_deployment() {
+async fn test_push_pre_deploy_hook_failure_aborts_deployment() {
     let flake = Flake::test_context();
     let nix_backend = MockNixBackend::new();
     let deployer = MockDeployBackend::new();
@@ -328,7 +328,7 @@ async fn test_push_pre_activate_hook_failure_aborts_deployment() {
         system_type: SystemType::NixOS,
         hooks: vec![HookConfig::test_fixture(
             "test-hook",
-            HookStage::PreActivate,
+            HookStage::PreDeploy,
             HookLocation::Local,
             "kubectl drain ${SNOW_HOSTNAME}",
         )],
@@ -368,7 +368,7 @@ async fn test_push_pre_activate_hook_failure_aborts_deployment() {
     assert_eq!(
         phase_result.hosts[0].failed_at_step,
         Some(PipelineStep::Activate),
-        "Pre-activate hook failure should be reported as Activate step failure"
+        "Pre-deploy hook failure should be reported as Activate step failure"
     );
 
     let executed_hooks = hook_backend.get_executed_hooks();
@@ -394,7 +394,7 @@ async fn test_push_hook_failure_with_continue_on_failure() {
 
     let mut hook = HookConfig::test_fixture(
         "test-hook",
-        HookStage::PreActivate,
+        HookStage::PreDeploy,
         HookLocation::Local,
         "kubectl drain ${SNOW_HOSTNAME}",
     );
@@ -463,9 +463,9 @@ async fn test_push_on_failure_hooks_execute_when_build_fails() {
         hooks: vec![
             HookConfig::test_fixture(
                 "test-hook",
-                HookStage::PreActivate,
+                HookStage::PreDeploy,
                 HookLocation::Local,
-                "pre-activate hook",
+                "pre-deploy hook",
             ),
             HookConfig::test_fixture(
                 "test-hook",
@@ -512,8 +512,8 @@ async fn test_push_on_failure_hooks_execute_when_build_fails() {
         "OnFailure hook should execute when build fails"
     );
     assert!(
-        !executed_hooks.iter().any(|h| h.1 == HookStage::PreActivate),
-        "PreActivate hook should not execute when build fails"
+        !executed_hooks.iter().any(|h| h.1 == HookStage::PreDeploy),
+        "PreDeploy hook should not execute when build fails"
     );
 }
 
@@ -602,7 +602,7 @@ async fn test_push_environment_variables_passed_to_hooks() {
         system_type: SystemType::NixOS,
         hooks: vec![HookConfig::test_fixture(
             "test-hook",
-            HookStage::PreActivate,
+            HookStage::PreDeploy,
             HookLocation::Local,
             "echo $SNOW_HOSTNAME $SNOW_PHASE $SNOW_STORE_PATH",
         )],
@@ -668,7 +668,7 @@ async fn test_push_hooks_execute_in_parallel_for_multiple_hosts() {
             system_type: SystemType::NixOS,
             hooks: vec![HookConfig::test_fixture(
                 "test-hook",
-                HookStage::PreActivate,
+                HookStage::PreDeploy,
                 HookLocation::Local,
                 "hook for host1",
             )],
@@ -682,7 +682,7 @@ async fn test_push_hooks_execute_in_parallel_for_multiple_hosts() {
             system_type: SystemType::NixOS,
             hooks: vec![HookConfig::test_fixture(
                 "test-hook",
-                HookStage::PreActivate,
+                HookStage::PreDeploy,
                 HookLocation::Local,
                 "hook for host2",
             )],
@@ -752,7 +752,7 @@ async fn test_push_hook_failure_in_one_host_doesnt_affect_others() {
             system_type: SystemType::NixOS,
             hooks: vec![HookConfig::test_fixture(
                 "test-hook",
-                HookStage::PreActivate,
+                HookStage::PreDeploy,
                 HookLocation::Remote,
                 "will fail",
             )],
@@ -766,7 +766,7 @@ async fn test_push_hook_failure_in_one_host_doesnt_affect_others() {
             system_type: SystemType::NixOS,
             hooks: vec![HookConfig::test_fixture(
                 "test-hook",
-                HookStage::PreActivate,
+                HookStage::PreDeploy,
                 HookLocation::Remote,
                 "will succeed",
             )],
@@ -837,7 +837,7 @@ async fn test_push_hook_with_explicit_environment() {
 
     let mut hook = HookConfig::test_fixture(
         "env-test",
-        HookStage::PreActivate,
+        HookStage::PreDeploy,
         HookLocation::Local,
         "echo $CUSTOM_VAR",
     );
@@ -885,7 +885,7 @@ async fn test_push_hook_with_explicit_environment() {
     let executed = hook_backend.get_executed_hooks();
     assert_eq!(executed.len(), 1);
     assert_eq!(executed[0].0, "test-host");
-    assert_eq!(executed[0].1, HookStage::PreActivate);
+    assert_eq!(executed[0].1, HookStage::PreDeploy);
 }
 
 // ============================================================================
@@ -914,13 +914,13 @@ async fn test_full_pipeline_all_hook_stages_execute_in_order() {
         hooks: vec![
             HookConfig::test_fixture(
                 "drain-node",
-                HookStage::PreActivate,
+                HookStage::PreDeploy,
                 HookLocation::Local,
                 "kubectl drain k8s-node-01 --ignore-daemonsets --timeout=5m",
             ),
             HookConfig::test_fixture(
                 "stop-services",
-                HookStage::PreActivate,
+                HookStage::PreDeploy,
                 HookLocation::Remote,
                 "systemctl stop kubelet containerd",
             ),
@@ -985,10 +985,10 @@ async fn test_full_pipeline_all_hook_stages_execute_in_order() {
 
     // Verify hooks executed in correct order
     // Within each stage, hooks execute alphabetically by name
-    assert_eq!(executed_hooks[0].1, HookStage::PreActivate);
+    assert_eq!(executed_hooks[0].1, HookStage::PreDeploy);
     assert!(executed_hooks[0].3.contains("kubectl drain"));
 
-    assert_eq!(executed_hooks[1].1, HookStage::PreActivate);
+    assert_eq!(executed_hooks[1].1, HookStage::PreDeploy);
     assert!(executed_hooks[1].3.contains("systemctl stop"));
 
     assert_eq!(executed_hooks[2].1, HookStage::PostActivate);
@@ -1030,7 +1030,7 @@ async fn test_pipeline_environment_variables_propagated_correctly() {
         hooks: vec![
             HookConfig::test_fixture(
                 "check-env-vars",
-                HookStage::PreActivate,
+                HookStage::PreDeploy,
                 HookLocation::Local,
                 "test -n \"$SNOW_HOSTNAME\" && test -n \"$SNOW_PHASE\" && test \"$SNOW_HOSTNAME\" = \"web-server-01\" && test \"$SNOW_PHASE\" = \"staging\"",
             ),
@@ -1098,7 +1098,7 @@ async fn test_pipeline_hooks_execute_by_priority_order() {
 
     let mut hook1 = HookConfig::test_fixture(
         "third-priority",
-        HookStage::PreActivate,
+        HookStage::PreDeploy,
         HookLocation::Local,
         "echo third",
     );
@@ -1106,7 +1106,7 @@ async fn test_pipeline_hooks_execute_by_priority_order() {
 
     let mut hook2 = HookConfig::test_fixture(
         "first-priority",
-        HookStage::PreActivate,
+        HookStage::PreDeploy,
         HookLocation::Local,
         "echo first",
     );
@@ -1114,7 +1114,7 @@ async fn test_pipeline_hooks_execute_by_priority_order() {
 
     let mut hook3 = HookConfig::test_fixture(
         "second-priority",
-        HookStage::PreActivate,
+        HookStage::PreDeploy,
         HookLocation::Local,
         "echo second",
     );
@@ -1201,10 +1201,10 @@ async fn test_post_reboot_hooks_not_executed_when_no_reboot_needed() {
         system_type: SystemType::NixOS,
         hooks: vec![
             HookConfig::test_fixture(
-                "pre-activate-hook",
-                HookStage::PreActivate,
+                "pre-deploy-hook",
+                HookStage::PreDeploy,
                 HookLocation::Local,
-                "echo pre-activate",
+                "echo pre-deploy",
             ),
             HookConfig::test_fixture(
                 "post-activate-hook",
@@ -1260,10 +1260,10 @@ async fn test_post_reboot_hooks_not_executed_when_no_reboot_needed() {
     assert_eq!(
         executed_hooks.len(),
         2,
-        "Only pre-activate and post-activate hooks should execute"
+        "Only pre-deploy and post-activate hooks should execute"
     );
 
-    assert_eq!(executed_hooks[0].1, HookStage::PreActivate);
+    assert_eq!(executed_hooks[0].1, HookStage::PreDeploy);
     assert_eq!(executed_hooks[1].1, HookStage::PostActivate);
 
     // Verify post-reboot hook did NOT execute
@@ -1298,13 +1298,13 @@ async fn test_hook_observer_callbacks_invoked_correctly() {
         hooks: vec![
             HookConfig::test_fixture(
                 "first-hook",
-                HookStage::PreActivate,
+                HookStage::PreDeploy,
                 HookLocation::Local,
                 "echo first",
             ),
             HookConfig::test_fixture(
                 "second-hook",
-                HookStage::PreActivate,
+                HookStage::PreDeploy,
                 HookLocation::Local,
                 "echo second",
             ),
@@ -1348,12 +1348,12 @@ async fn test_hook_observer_callbacks_invoked_correctly() {
 
     let events = observer.get_events();
 
-    // Verify hooks_start called for PreActivate stage
+    // Verify hooks_start called for PreDeploy stage
     assert!(
         events
             .iter()
-            .any(|e| e == "hooks_start:observer-test:PreActivate"),
-        "hooks_start should be called for PreActivate stage. Events: {:?}",
+            .any(|e| e == "hooks_start:observer-test:PreDeploy"),
+        "hooks_start should be called for PreDeploy stage. Events: {:?}",
         events
     );
 
@@ -1361,38 +1361,38 @@ async fn test_hook_observer_callbacks_invoked_correctly() {
     assert!(
         events
             .iter()
-            .any(|e| e == "hook_start:observer-test:PreActivate:first-hook"),
+            .any(|e| e == "hook_start:observer-test:PreDeploy:first-hook"),
         "hook_start should be called for first-hook. Events: {:?}",
         events
     );
     assert!(
         events
             .iter()
-            .any(|e| e == "hook_complete:observer-test:PreActivate:first-hook:ok"),
+            .any(|e| e == "hook_complete:observer-test:PreDeploy:first-hook:ok"),
         "hook_complete should be called for first-hook. Events: {:?}",
         events
     );
     assert!(
         events
             .iter()
-            .any(|e| e == "hook_start:observer-test:PreActivate:second-hook"),
+            .any(|e| e == "hook_start:observer-test:PreDeploy:second-hook"),
         "hook_start should be called for second-hook. Events: {:?}",
         events
     );
     assert!(
         events
             .iter()
-            .any(|e| e == "hook_complete:observer-test:PreActivate:second-hook:ok"),
+            .any(|e| e == "hook_complete:observer-test:PreDeploy:second-hook:ok"),
         "hook_complete should be called for second-hook. Events: {:?}",
         events
     );
 
-    // Verify hooks_complete called for PreActivate stage
+    // Verify hooks_complete called for PreDeploy stage
     assert!(
         events
             .iter()
-            .any(|e| e == "hooks_complete:observer-test:PreActivate:ok"),
-        "hooks_complete should be called for PreActivate stage. Events: {:?}",
+            .any(|e| e == "hooks_complete:observer-test:PreDeploy:ok"),
+        "hooks_complete should be called for PreDeploy stage. Events: {:?}",
         events
     );
 
@@ -1445,7 +1445,7 @@ async fn test_hook_observer_callbacks_on_failure() {
         system_type: SystemType::NixOS,
         hooks: vec![HookConfig::test_fixture(
             "failing-hook",
-            HookStage::PreActivate,
+            HookStage::PreDeploy,
             HookLocation::Local,
             "fail command",
         )],
@@ -1486,7 +1486,7 @@ async fn test_hook_observer_callbacks_on_failure() {
     assert!(
         events
             .iter()
-            .any(|e| e == "hook_start:fail-test:PreActivate:failing-hook"),
+            .any(|e| e == "hook_start:fail-test:PreDeploy:failing-hook"),
         "hook_start should be called even for failing hooks. Events: {:?}",
         events
     );
@@ -1495,7 +1495,7 @@ async fn test_hook_observer_callbacks_on_failure() {
     assert!(
         events
             .iter()
-            .any(|e| e == "hook_complete:fail-test:PreActivate:failing-hook:fail"),
+            .any(|e| e == "hook_complete:fail-test:PreDeploy:failing-hook:fail"),
         "hook_complete should be called with fail status. Events: {:?}",
         events
     );
@@ -1504,7 +1504,7 @@ async fn test_hook_observer_callbacks_on_failure() {
     assert!(
         events
             .iter()
-            .any(|e| e == "hooks_complete:fail-test:PreActivate:fail"),
+            .any(|e| e == "hooks_complete:fail-test:PreDeploy:fail"),
         "hooks_complete should be called with fail status. Events: {:?}",
         events
     );

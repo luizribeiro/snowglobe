@@ -223,7 +223,7 @@ pub async fn execute_host_pipeline(
     };
 
     execute_hooks_or_return!(
-        HookStage::PreActivate,
+        HookStage::PreDeploy,
         Some(&plan.target),
         Some(&plan.store_path),
         PipelineStep::Activate

@@ -287,7 +287,7 @@ mod tests {
         let results = executor
             .execute_hooks_for_stage(
                 "test-host",
-                HookStage::PreActivate,
+                HookStage::PreDeploy,
                 None,
                 &HashMap::new(),
                 None,
@@ -308,7 +308,7 @@ mod tests {
         let results = executor
             .execute_hooks_for_stage(
                 "test-host",
-                HookStage::PreActivate,
+                HookStage::PreDeploy,
                 None,
                 &HashMap::new(),
                 None,
@@ -328,7 +328,7 @@ mod tests {
             "test-host".to_string(),
             vec![HookConfig::test_fixture(
                 "drain-node",
-                HookStage::PreActivate,
+                HookStage::PreDeploy,
                 HookLocation::Local,
                 "kubectl drain test-host --ignore-daemonsets --timeout=5m",
             )],
@@ -339,7 +339,7 @@ mod tests {
         let results = executor
             .execute_hooks_for_stage(
                 "test-host",
-                HookStage::PreActivate,
+                HookStage::PreDeploy,
                 None,
                 &HashMap::new(),
                 None,
@@ -365,13 +365,13 @@ mod tests {
             vec![
                 HookConfig::test_fixture(
                     "drain-node",
-                    HookStage::PreActivate,
+                    HookStage::PreDeploy,
                     HookLocation::Local,
                     "kubectl drain test-host --ignore-daemonsets --timeout=5m",
                 ),
                 HookConfig::test_fixture(
                     "consul-maint",
-                    HookStage::PreActivate,
+                    HookStage::PreDeploy,
                     HookLocation::Local,
                     "consul maint -enable -reason='NixOS upgrade'",
                 ),
@@ -389,7 +389,7 @@ mod tests {
         let results = executor
             .execute_hooks_for_stage(
                 "test-host",
-                HookStage::PreActivate,
+                HookStage::PreDeploy,
                 None,
                 &HashMap::new(),
                 None,
@@ -415,7 +415,7 @@ mod tests {
             "test-host".to_string(),
             vec![HookConfig::test_fixture(
                 "test-hook",
-                HookStage::PreActivate,
+                HookStage::PreDeploy,
                 HookLocation::Local,
                 "exit 1",
             )],
@@ -426,7 +426,7 @@ mod tests {
         let result = executor
             .execute_hooks_for_stage(
                 "test-host",
-                HookStage::PreActivate,
+                HookStage::PreDeploy,
                 None,
                 &HashMap::new(),
                 None,
@@ -443,7 +443,7 @@ mod tests {
         let mut hooks_by_host = HashMap::new();
         let mut hook = HookConfig::test_fixture(
             "test-hook",
-            HookStage::PreActivate,
+            HookStage::PreDeploy,
             HookLocation::Local,
             "exit 1",
         );
@@ -455,7 +455,7 @@ mod tests {
         let results = executor
             .execute_hooks_for_stage(
                 "test-host",
-                HookStage::PreActivate,
+                HookStage::PreDeploy,
                 None,
                 &HashMap::new(),
                 None,
@@ -474,7 +474,7 @@ mod tests {
 
         let mut hook = HookConfig::test_fixture(
             "failing-hook",
-            HookStage::PreActivate,
+            HookStage::PreDeploy,
             HookLocation::Local,
             "exit 1",
         );
@@ -488,7 +488,7 @@ mod tests {
         let results = executor
             .execute_hooks_for_stage(
                 "test-host",
-                HookStage::PreActivate,
+                HookStage::PreDeploy,
                 None,
                 &HashMap::new(),
                 None,
@@ -511,7 +511,7 @@ mod tests {
             "test-host".to_string(),
             vec![HookConfig::test_fixture(
                 "drain-node",
-                HookStage::PreActivate,
+                HookStage::PreDeploy,
                 HookLocation::Local,
                 "kubectl drain test-host --ignore-daemonsets",
             )],
@@ -519,9 +519,9 @@ mod tests {
 
         let executor = HookExecutor::new(backend, hooks_by_host);
 
-        assert!(executor.has_hooks_for_stage("test-host", HookStage::PreActivate));
+        assert!(executor.has_hooks_for_stage("test-host", HookStage::PreDeploy));
         assert!(!executor.has_hooks_for_stage("test-host", HookStage::PostActivate));
-        assert!(!executor.has_hooks_for_stage("other-host", HookStage::PreActivate));
+        assert!(!executor.has_hooks_for_stage("other-host", HookStage::PreDeploy));
     }
 
     // ========================================================================
@@ -648,13 +648,13 @@ mod tests {
             vec![
                 HookConfig::test_fixture(
                     "test-hook",
-                    HookStage::PreActivate,
+                    HookStage::PreDeploy,
                     HookLocation::Local,
                     "kubectl drain ${SNOW_HOSTNAME}",
                 ),
                 HookConfig::test_fixture(
                     "test-hook",
-                    HookStage::PreActivate,
+                    HookStage::PreDeploy,
                     HookLocation::Remote,
                     "systemctl stop important-service",
                 ),
@@ -672,13 +672,7 @@ mod tests {
         env.insert("SNOW_HOSTNAME".to_string(), "test-host".to_string());
 
         let results = executor
-            .execute_hooks_for_stage(
-                "test-host",
-                HookStage::PreActivate,
-                Some(&target),
-                &env,
-                None,
-            )
+            .execute_hooks_for_stage("test-host", HookStage::PreDeploy, Some(&target), &env, None)
             .await
             .unwrap();
 
@@ -702,9 +696,9 @@ mod tests {
             vec![
                 HookConfig::test_fixture(
                     "test-hook",
-                    HookStage::PreActivate,
+                    HookStage::PreDeploy,
                     HookLocation::Local,
-                    "pre-activate",
+                    "pre-deploy",
                 ),
                 HookConfig::test_fixture(
                     "test-hook",
@@ -732,7 +726,7 @@ mod tests {
         executor
             .execute_hooks_for_stage(
                 "test-host",
-                HookStage::PreActivate,
+                HookStage::PreDeploy,
                 None,
                 &HashMap::new(),
                 None,
@@ -772,7 +766,7 @@ mod tests {
 
         let executed = backend.get_executed_hooks();
         assert_eq!(executed.len(), 4);
-        assert_eq!(executed[0].1, HookStage::PreActivate);
+        assert_eq!(executed[0].1, HookStage::PreDeploy);
         assert_eq!(executed[1].1, HookStage::PostActivate);
         assert_eq!(executed[2].1, HookStage::PostReboot);
         assert_eq!(executed[3].1, HookStage::OnFailure);
@@ -787,7 +781,7 @@ mod tests {
             "test-host".to_string(),
             vec![HookConfig::test_fixture(
                 "test-hook",
-                HookStage::PreActivate,
+                HookStage::PreDeploy,
                 HookLocation::Local,
                 "echo $SNOW_HOSTNAME $SNOW_PHASE $SNOW_STORE_PATH",
             )],
@@ -801,7 +795,7 @@ mod tests {
         env.insert("SNOW_STORE_PATH".to_string(), "/nix/store/test".to_string());
 
         let results = executor
-            .execute_hooks_for_stage("test-host", HookStage::PreActivate, None, &env, None)
+            .execute_hooks_for_stage("test-host", HookStage::PreDeploy, None, &env, None)
             .await
             .unwrap();
 
@@ -824,19 +818,19 @@ mod tests {
             vec![
                 HookConfig::test_fixture(
                     "drain-node",
-                    HookStage::PreActivate,
+                    HookStage::PreDeploy,
                     HookLocation::Local,
                     "kubectl drain test-host --ignore-daemonsets",
                 ),
                 HookConfig::test_fixture(
                     "failing-check",
-                    HookStage::PreActivate,
+                    HookStage::PreDeploy,
                     HookLocation::Local,
                     "consul lock check/readiness",
                 ),
                 HookConfig::test_fixture(
                     "should-not-run",
-                    HookStage::PreActivate,
+                    HookStage::PreDeploy,
                     HookLocation::Local,
                     "systemctl stop critical-service",
                 ),
@@ -849,7 +843,7 @@ mod tests {
         env.insert("SNOW_HOSTNAME".to_string(), "test-host".to_string());
 
         let result = executor
-            .execute_hooks_for_stage("test-host", HookStage::PreActivate, None, &env, None)
+            .execute_hooks_for_stage("test-host", HookStage::PreDeploy, None, &env, None)
             .await;
 
         assert!(result.is_err());
@@ -870,7 +864,7 @@ mod tests {
 
         let mut hook = HookConfig::test_fixture(
             "env-test-hook",
-            HookStage::PreActivate,
+            HookStage::PreDeploy,
             HookLocation::Local,
             "echo $SECRET_KEY $API_TOKEN",
         );
@@ -884,7 +878,7 @@ mod tests {
         let results = executor
             .execute_hooks_for_stage(
                 "test-host",
-                HookStage::PreActivate,
+                HookStage::PreDeploy,
                 None,
                 &HashMap::new(),
                 None,
@@ -910,7 +904,7 @@ mod tests {
 
         let mut hook = HookConfig::test_fixture(
             "precedence-test",
-            HookStage::PreActivate,
+            HookStage::PreDeploy,
             HookLocation::Local,
             "echo $VAR",
         );
@@ -927,7 +921,7 @@ mod tests {
         let results = executor
             .execute_hooks_for_stage(
                 "test-host",
-                HookStage::PreActivate,
+                HookStage::PreDeploy,
                 None,
                 &HashMap::new(),
                 None,
@@ -950,7 +944,7 @@ mod tests {
 
         let mut hook = HookConfig::test_fixture(
             "missing-env-file",
-            HookStage::PreActivate,
+            HookStage::PreDeploy,
             HookLocation::Local,
             "echo test",
         );
@@ -965,7 +959,7 @@ mod tests {
         let result = executor
             .execute_hooks_for_stage(
                 "test-host",
-                HookStage::PreActivate,
+                HookStage::PreDeploy,
                 None,
                 &HashMap::new(),
                 None,
@@ -984,7 +978,7 @@ mod tests {
 
         let mut hook = HookConfig::test_fixture(
             "missing-env-file-continue",
-            HookStage::PreActivate,
+            HookStage::PreDeploy,
             HookLocation::Local,
             "echo test",
         );
@@ -999,7 +993,7 @@ mod tests {
         let results = executor
             .execute_hooks_for_stage(
                 "test-host",
-                HookStage::PreActivate,
+                HookStage::PreDeploy,
                 None,
                 &HashMap::new(),
                 None,
@@ -1025,7 +1019,7 @@ mod tests {
 
         let mut hook = HookConfig::test_fixture(
             "multi-env-file",
-            HookStage::PreActivate,
+            HookStage::PreDeploy,
             HookLocation::Local,
             "echo $VAR1 $VAR2",
         );
@@ -1039,7 +1033,7 @@ mod tests {
         let results = executor
             .execute_hooks_for_stage(
                 "test-host",
-                HookStage::PreActivate,
+                HookStage::PreDeploy,
                 None,
                 &HashMap::new(),
                 None,
@@ -1245,7 +1239,7 @@ mod tests {
 
         let mut hook1 = HookConfig::test_fixture(
             "z-last-alphabetically",
-            HookStage::PreActivate,
+            HookStage::PreDeploy,
             HookLocation::Local,
             "etcdctl set /deploy/status preparing",
         );
@@ -1253,7 +1247,7 @@ mod tests {
 
         let mut hook2 = HookConfig::test_fixture(
             "a-first-alphabetically",
-            HookStage::PreActivate,
+            HookStage::PreDeploy,
             HookLocation::Local,
             "consul lock acquire deploy-lock",
         );
@@ -1261,7 +1255,7 @@ mod tests {
 
         let mut hook3 = HookConfig::test_fixture(
             "m-middle-alphabetically",
-            HookStage::PreActivate,
+            HookStage::PreDeploy,
             HookLocation::Local,
             "kubectl drain node --ignore-daemonsets",
         );
@@ -1275,7 +1269,7 @@ mod tests {
         let results = executor
             .execute_hooks_for_stage(
                 "test-host",
-                HookStage::PreActivate,
+                HookStage::PreDeploy,
                 None,
                 &HashMap::new(),
                 None,
@@ -1307,7 +1301,7 @@ mod tests {
 
         let mut hook1 = HookConfig::test_fixture(
             "z-last",
-            HookStage::PreActivate,
+            HookStage::PreDeploy,
             HookLocation::Local,
             "systemctl stop z-service",
         );
@@ -1315,7 +1309,7 @@ mod tests {
 
         let mut hook2 = HookConfig::test_fixture(
             "a-first",
-            HookStage::PreActivate,
+            HookStage::PreDeploy,
             HookLocation::Local,
             "systemctl stop a-service",
         );
@@ -1323,7 +1317,7 @@ mod tests {
 
         let mut hook3 = HookConfig::test_fixture(
             "m-middle",
-            HookStage::PreActivate,
+            HookStage::PreDeploy,
             HookLocation::Local,
             "systemctl stop m-service",
         );
@@ -1337,7 +1331,7 @@ mod tests {
         let results = executor
             .execute_hooks_for_stage(
                 "test-host",
-                HookStage::PreActivate,
+                HookStage::PreDeploy,
                 None,
                 &HashMap::new(),
                 None,
@@ -1369,7 +1363,7 @@ mod tests {
 
         let mut hook1 = HookConfig::test_fixture(
             "normal-priority",
-            HookStage::PreActivate,
+            HookStage::PreDeploy,
             HookLocation::Local,
             "consul maint -enable",
         );
@@ -1377,7 +1371,7 @@ mod tests {
 
         let mut hook2 = HookConfig::test_fixture(
             "early-priority",
-            HookStage::PreActivate,
+            HookStage::PreDeploy,
             HookLocation::Local,
             "kubectl cordon node",
         );
@@ -1385,7 +1379,7 @@ mod tests {
 
         let mut hook3 = HookConfig::test_fixture(
             "late-priority",
-            HookStage::PreActivate,
+            HookStage::PreDeploy,
             HookLocation::Local,
             "curl -X POST https://webhook.site/notify",
         );
@@ -1399,7 +1393,7 @@ mod tests {
         let results = executor
             .execute_hooks_for_stage(
                 "test-host",
-                HookStage::PreActivate,
+                HookStage::PreDeploy,
                 None,
                 &HashMap::new(),
                 None,
@@ -1460,7 +1454,7 @@ mod tests {
 
         let mut hook = HookConfig::test_fixture(
             "injection-test",
-            HookStage::PreActivate,
+            HookStage::PreDeploy,
             HookLocation::Local,
             &format!("test ! -f {} && echo $MALICIOUS && echo $INJECTION && echo $BACKTICKS && echo $COMMAND_SUB", marker_file.display()),
         );
@@ -1475,7 +1469,7 @@ mod tests {
         env.insert("SNOW_HOSTNAME".to_string(), "test-host".to_string());
 
         let results = executor
-            .execute_hooks_for_stage("test-host", HookStage::PreActivate, None, &env, None)
+            .execute_hooks_for_stage("test-host", HookStage::PreDeploy, None, &env, None)
             .await
             .unwrap();
 
@@ -1583,7 +1577,7 @@ mod tests {
 
         let hook = HookConfig::test_fixture(
             "no-retry",
-            HookStage::PreActivate,
+            HookStage::PreDeploy,
             HookLocation::Local,
             "one-shot command",
         );
@@ -1598,7 +1592,7 @@ mod tests {
         env.insert("SNOW_HOSTNAME".to_string(), "test-host".to_string());
 
         let result = executor
-            .execute_hooks_for_stage("test-host", HookStage::PreActivate, None, &env, None)
+            .execute_hooks_for_stage("test-host", HookStage::PreDeploy, None, &env, None)
             .await;
 
         assert!(
@@ -1655,7 +1649,7 @@ mod tests {
 
         let mut hook = HookConfig::test_fixture(
             "success-hook",
-            HookStage::PreActivate,
+            HookStage::PreDeploy,
             HookLocation::Local,
             "successful command",
         );
@@ -1671,7 +1665,7 @@ mod tests {
         env.insert("SNOW_HOSTNAME".to_string(), "test-host".to_string());
 
         let results = executor
-            .execute_hooks_for_stage("test-host", HookStage::PreActivate, None, &env, None)
+            .execute_hooks_for_stage("test-host", HookStage::PreDeploy, None, &env, None)
             .await
             .unwrap();
 

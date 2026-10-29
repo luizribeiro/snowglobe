@@ -49,7 +49,7 @@ async fn test_hooks_wrap_activation_in_order() {
         .await;
 
     assert!(run.results.all_succeeded());
-    let pre = position(&run, "hooks_complete:samarium:PreActivate:ok");
+    let pre = position(&run, "hooks_complete:samarium:PreDeploy:ok");
     let activate = position(&run, "activation_start:samarium");
     let activated = position(&run, "activation_complete:samarium:ok");
     let post = position(&run, "hooks_start:samarium:PostActivate");

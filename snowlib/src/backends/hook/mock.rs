@@ -197,7 +197,7 @@ mod tests {
         let backend = MockHookBackend::new();
         let hook = HookConfig::test_fixture(
             "test-hook",
-            HookStage::PreActivate,
+            HookStage::PreDeploy,
             HookLocation::Local,
             "kubectl drain node",
         );
@@ -211,7 +211,7 @@ mod tests {
         let executed = backend.get_executed_hooks();
         assert_eq!(executed.len(), 1);
         assert_eq!(executed[0].0, "test-host");
-        assert_eq!(executed[0].1, HookStage::PreActivate);
+        assert_eq!(executed[0].1, HookStage::PreDeploy);
         assert_eq!(executed[0].2, HookLocation::Local);
         assert_eq!(executed[0].3, "kubectl drain node");
     }
@@ -221,7 +221,7 @@ mod tests {
         let backend = MockHookBackend::new().with_local_failures(vec!["kubectl".to_string()]);
         let hook = HookConfig::test_fixture(
             "test-hook",
-            HookStage::PreActivate,
+            HookStage::PreDeploy,
             HookLocation::Local,
             "kubectl drain node",
         );
@@ -306,9 +306,9 @@ mod tests {
 
         let hook1 = HookConfig::test_fixture(
             "test-hook",
-            HookStage::PreActivate,
+            HookStage::PreDeploy,
             HookLocation::Remote,
-            "pre-activate hook",
+            "pre-deploy hook",
         );
         let hook2 = HookConfig::test_fixture(
             "test-hook",
@@ -333,9 +333,9 @@ mod tests {
         let executed = backend.get_executed_hooks();
         assert_eq!(executed.len(), 3);
         assert_eq!(executed[0].0, "host1");
-        assert_eq!(executed[0].1, HookStage::PreActivate);
+        assert_eq!(executed[0].1, HookStage::PreDeploy);
         assert_eq!(executed[1].0, "host2");
-        assert_eq!(executed[1].1, HookStage::PreActivate);
+        assert_eq!(executed[1].1, HookStage::PreDeploy);
         assert_eq!(executed[2].0, "host1");
         assert_eq!(executed[2].1, HookStage::PostActivate);
     }

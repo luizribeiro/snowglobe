@@ -7,7 +7,7 @@ Lifecycle hooks enable you to execute custom commands at specific points in the 
 Hooks are configured in your NixOS configuration and execute automatically during deployment:
 
 ```
-Build → Copy → [pre-activate hooks] → Activate → [post-activate hooks] → Reboot → [post-reboot hooks]
+Build → Copy → [pre-deploy hooks] → Activate → [post-activate hooks] → Reboot → [post-reboot hooks]
                                                 ↓ (on any failure)
                                            [on-failure hooks]
 ```
@@ -27,7 +27,7 @@ Hooks are configured under `config.snowglobe.hooks` in your NixOS configuration:
 ```nix
 {
   config.snowglobe.hooks = {
-    pre-activate = {
+    pre-deploy = {
       drain-node = {
         location = "local";  # or "remote"
         command = "kubectl drain ${config.networking.hostName}";
@@ -44,9 +44,14 @@ Hooks are configured under `config.snowglobe.hooks` in your NixOS configuration:
 
 ### Hook Stages
 
-#### `pre-activate`
+#### `pre-deploy`
 
-Runs **after copying** the new system but **before activation**.
+Runs **after copying** the new system but **before activation**, and only for
+hosts that change: a host already running and booting the built system is
+skipped entirely.
+
+This stage was called `pre-activate`; defining `snowglobe.hooks.pre-activate`
+now fails evaluation with a pointer to `pre-deploy`.
 
 **Common use cases:**
 - Drain cluster nodes (Kubernetes, Nomad)
@@ -56,7 +61,7 @@ Runs **after copying** the new system but **before activation**.
 
 **Example:**
 ```nix
-pre-activate = {
+pre-deploy = {
   drain-node = {
     location = "local";
     command = "kubectl drain --delete-emptydir-data --ignore-daemonsets --timeout=5m ${config.networking.hostName}";
@@ -299,7 +304,7 @@ Zero-downtime rolling updates for Kubernetes nodes:
 {
   config = lib.mkIf config.features.kubernetes.enable {
     snowglobe.hooks = {
-      pre-activate = {
+      pre-deploy = {
         drain-node = {
           location = "local";
           command = "kubectl drain --delete-emptydir-data --ignore-daemonsets --timeout=5m ${config.networking.hostName}";
@@ -346,7 +351,7 @@ Gracefully leave and rejoin Consul cluster:
 ```nix
 {
   snowglobe.hooks = {
-    pre-activate = {
+    pre-deploy = {
       leave-cluster = {
         location = "remote";
         command = "consul leave";
@@ -374,7 +379,7 @@ Remove from and add back to load balancer:
 ```nix
 {
   snowglobe.hooks = {
-    pre-activate = {
+    pre-deploy = {
       remove-from-pool = {
         location = "local";
         command = "curl -X POST https://lb.example.com/api/pool/remove -d '{\"host\": \"${config.networking.hostName}\"}'";
@@ -463,7 +468,7 @@ let
 in
 {
   snowglobe.hooks = {
-    pre-activate = {
+    pre-deploy = {
       notify-start = {
         location = "local";
         command = "${notifySlack} 'Starting deployment to ${config.networking.hostName}'";
@@ -502,7 +507,7 @@ in
 
 ```nix
 # Critical pre-deployment checks: fail fast
-pre-activate = {
+pre-deploy = {
   check-health = {
     command = "check-cluster-health";
     continueOnFailure = false;
@@ -552,7 +557,7 @@ Define hooks alongside the feature they support:
 {
   config = lib.mkIf config.features.kubernetes.enable {
     snowglobe.hooks = {
-      pre-activate = {
+      pre-deploy = {
         drain-node = { /* kubectl drain */ };
       };
       post-activate = {
@@ -625,7 +630,7 @@ snow list -e 'c: c.snowglobe.hooks or {}'
 
 **Common issues:**
 - Hooks configured in wrong location (must be under `config.snowglobe.hooks`)
-- Typo in stage name (must be `pre-activate`, not `preActivate`)
+- Typo in stage name (must be `pre-deploy`, not `preDeploy`)
 - Missing `continueOnFailure` field (defaults to `false`)
 
 ### SSH Issues with Remote Hooks
@@ -651,7 +656,7 @@ push-k8s:
 ```nix
 # features/linux/kubernetes.nix
 config.snowglobe.hooks = {
-  pre-activate = {
+  pre-deploy = {
     drain-node = { location = "local"; command = "kubectl drain ${config.networking.hostName}"; };
   };
   post-activate = {
@@ -676,7 +681,7 @@ snow push --hosts node1,node2,node3
 Hooks integrate with snowglobe's logging via `tracing`:
 
 ```
-INFO  hooks: Executing PreActivate hook for web01: kubectl drain web01
+INFO  hooks: Executing PreDeploy hook for web01: kubectl drain web01
 INFO  hooks: Hook completed successfully for web01 in 12.3s
 ```
 

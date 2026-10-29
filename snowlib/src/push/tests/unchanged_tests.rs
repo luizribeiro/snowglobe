@@ -75,7 +75,7 @@ async fn test_host_booting_a_different_system_is_deployed() {
     assert!(run
         .executed_hooks
         .iter()
-        .any(|(_, stage, _, _)| *stage == HookStage::PreActivate));
+        .any(|(_, stage, _, _)| *stage == HookStage::PreDeploy));
 }
 
 #[tokio::test]
@@ -138,5 +138,5 @@ async fn test_redeploy_deploys_unchanged_host() {
     assert!(run
         .executed_hooks
         .iter()
-        .any(|(_, stage, _, _)| *stage == HookStage::PreActivate));
+        .any(|(_, stage, _, _)| *stage == HookStage::PreDeploy));
 }

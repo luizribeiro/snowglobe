@@ -144,14 +144,28 @@ let
       };
     };
   });
+
+  removedStages = {
+    pre-activate = "Use snowglobe.hooks.pre-deploy instead; it only runs for hosts that change.";
+  };
+
+  # Removed stages stay declared (so defining them fails with a pointer to the
+  # replacement) but throw when read, so validation must skip them
+  currentHooks = removeAttrs config.snowglobe.hooks (attrNames removedStages);
 in
 {
+  imports = mapAttrsToList
+    (stage: instructions: mkRemovedOptionModule [ "snowglobe" "hooks" stage ] instructions)
+    removedStages;
+
   options.snowglobe.hooks = {
-    pre-activate = mkOption {
+    pre-deploy = mkOption {
       type = types.attrsOf hookSubmodule;
       default = {};
       description = ''
         Hooks to run after copying the new system but before activation.
+        They only run for hosts that change: a host already running and
+        booting the built system is skipped entirely.
 
         Common use cases:
         - Drain cluster nodes (Kubernetes, Nomad)
@@ -338,23 +352,23 @@ in
 
       # Collect all validations across all stages
       nameAssertions = lib.flatten (
-        map (stage: validateHookNames stage config.snowglobe.hooks.${stage})
-            (attrNames config.snowglobe.hooks)
+        map (stage: validateHookNames stage currentHooks.${stage})
+            (attrNames currentHooks)
       );
 
       commandAssertions = lib.flatten (
-        map (stage: validateHookCommands stage config.snowglobe.hooks.${stage})
-            (attrNames config.snowglobe.hooks)
+        map (stage: validateHookCommands stage currentHooks.${stage})
+            (attrNames currentHooks)
       );
 
       timeoutAssertions = lib.flatten (
-        map (stage: validateHookTimeouts stage config.snowglobe.hooks.${stage})
-            (attrNames config.snowglobe.hooks)
+        map (stage: validateHookTimeouts stage currentHooks.${stage})
+            (attrNames currentHooks)
       );
 
       retryAssertions = lib.flatten (
-        map (stage: validateHookRetries stage config.snowglobe.hooks.${stage})
-            (attrNames config.snowglobe.hooks)
+        map (stage: validateHookRetries stage currentHooks.${stage})
+            (attrNames currentHooks)
       );
     in
       nameAssertions ++ commandAssertions ++ timeoutAssertions ++ retryAssertions;

@@ -186,7 +186,7 @@ impl CliObserver {
         stage: HookStage,
     ) -> Option<tracing::Span> {
         match stage {
-            HookStage::PreActivate | HookStage::PostActivate => {
+            HookStage::PreDeploy | HookStage::PostActivate => {
                 if let Some(ref mut step) = state.activate_step {
                     if !step.has_active_hosts {
                         step.span.pb_set_style(&step_style(StepColor::Cyan, true));
@@ -223,7 +223,7 @@ impl CliObserver {
         }
 
         match stage {
-            HookStage::PreActivate | HookStage::PostActivate => {
+            HookStage::PreDeploy | HookStage::PostActivate => {
                 // Only deactivate if no activate hosts are active either
                 if state.activate_host_spans.is_empty() {
                     if let Some(ref mut step) = state.activate_step {
@@ -623,7 +623,7 @@ impl PushObserver for CliObserver {
         let step_span = Self::activate_step_for_hook(&mut state, stage);
 
         let stage_prefix = match stage {
-            HookStage::PreActivate => "pre-activate",
+            HookStage::PreDeploy => "pre-deploy",
             HookStage::PostActivate => "post-activate",
             HookStage::PostReboot => "post-reboot",
             HookStage::OnFailure => "on-failure",
@@ -632,7 +632,7 @@ impl PushObserver for CliObserver {
         if let Some(parent_span) = step_span {
             // Update the step message to show hook activity
             match stage {
-                HookStage::PreActivate | HookStage::PostActivate => {
+                HookStage::PreDeploy | HookStage::PostActivate => {
                     if let Some(ref step) = state.activate_step {
                         step.span
                             .pb_set_message(&format!("Running {} hooks", stage_prefix));
@@ -676,7 +676,7 @@ impl PushObserver for CliObserver {
 
         if let Some(span) = state.hook_host_spans.get(&key) {
             let stage_prefix = match stage {
-                HookStage::PreActivate => "pre-activate",
+                HookStage::PreDeploy => "pre-deploy",
                 HookStage::PostActivate => "post-activate",
                 HookStage::PostReboot => "post-reboot",
                 HookStage::OnFailure => "on-failure",

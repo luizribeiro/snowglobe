@@ -422,7 +422,7 @@ fn kubernetes_node_hooks() -> Vec<crate::hooks::HookConfig> {
     vec![
         HookConfig::test_fixture(
             "drain-node",
-            HookStage::PreActivate,
+            HookStage::PreDeploy,
             HookLocation::Local,
             "kubectl drain ${SNOW_HOSTNAME}",
         ),

@@ -412,7 +412,7 @@ mod tests {
             "tags": [],
             "rebootPolicy": "auto",
             "hooks": {
-                "pre-activate": {
+                "pre-deploy": {
                     "drain-node": { "location": "local", "command": "kubectl drain praseodymium", "timeout": 900 }
                 }
             }
@@ -422,7 +422,7 @@ mod tests {
         assert_eq!(meta.hooks.len(), 1);
         let hook = &meta.hooks[0];
         assert_eq!(hook.name, "drain-node");
-        assert_eq!(hook.stage, HookStage::PreActivate);
+        assert_eq!(hook.stage, HookStage::PreDeploy);
         assert_eq!(hook.timeout, 900);
         assert_eq!(hook.retries, 0);
         assert_eq!(hook.priority, 100);
