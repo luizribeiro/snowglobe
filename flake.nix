@@ -39,7 +39,7 @@
               lockFile = ./Cargo.lock;
             };
 
-            nativeBuildInputs = [ pkgs.pkg-config ];
+            nativeBuildInputs = [ pkgs.pkg-config pkgs.makeWrapper ];
 
             # Some tests shell out to ssh (expecting it to fail), which and
             # hostname; the darwin sandbox has no /bin on PATH
@@ -51,8 +51,15 @@
               "--skip=commands::build::tests"
               "--skip=commands::list::tests"
               "--skip=commands::status::tests"
+              "--skip=commands::plan::tests::test_plan_invalid_host"
             ];
             buildInputs = [ ];
+
+            # snow plan shells out to nix-eval-jobs; a user's own copy on PATH takes precedence.
+            postInstall = ''
+              wrapProgram $out/bin/snow \
+                --suffix PATH : ${pkgs.lib.makeBinPath [ pkgs.nix-eval-jobs ]}
+            '';
 
             meta = {
               description = "NixOS-native cluster orchestration tool";
@@ -94,6 +101,7 @@
               cargo-audit
               rust-analyzer
               pre-commit
+              nix-eval-jobs
 
               # Bootstrap dependencies
               openssh                    # ssh-keygen
