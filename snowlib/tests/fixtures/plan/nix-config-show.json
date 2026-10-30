@@ -1,0 +1,15 @@
+{
+  "substituters": {
+    "value": [
+      "https://cache.nixos.org/",
+      "s3://nix-store-cache?priority=1&endpoint=https://truenas.i.thepromisedlan.club:9000",
+      "https://cache.nixos.org/?priority=2"
+    ]
+  },
+  "trusted-substituters": {
+    "value": [
+      "https://cache.nixos.org/?priority=2",
+      "s3://nix-store-cache?priority=1&endpoint=https://truenas.i.thepromisedlan.club:9000"
+    ]
+  }
+}
