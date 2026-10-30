@@ -1,6 +1,7 @@
 pub mod bootstrap;
 pub mod build;
 pub mod list;
+pub mod plan;
 pub mod push;
 pub mod rebuild;
 pub mod status;
@@ -10,6 +11,7 @@ use clap::Subcommand;
 pub use bootstrap::BootstrapArgs;
 pub use build::BuildArgs;
 pub use list::ListArgs;
+pub use plan::PlanArgs;
 pub use push::PushArgs;
 pub use rebuild::RebuildArgs;
 pub use status::StatusArgs;
@@ -20,6 +22,7 @@ pub enum Commands {
     Status(StatusArgs),
     List(ListArgs),
     Build(BuildArgs),
+    Plan(PlanArgs),
     Push(PushArgs),
     Rebuild(RebuildArgs),
 }
@@ -31,6 +34,7 @@ impl Commands {
             Commands::Status(args) => args.run(flake).await,
             Commands::List(args) => args.run(flake).await,
             Commands::Build(args) => args.run(flake).await,
+            Commands::Plan(args) => args.run(flake).await,
             Commands::Push(args) => args.run(flake).await,
             Commands::Rebuild(args) => args.run(flake).await,
         }
