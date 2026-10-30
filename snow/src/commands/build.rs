@@ -7,28 +7,8 @@ use tokio::sync::Semaphore;
 /// Build NixOS configurations for one or more hosts
 #[derive(Debug, Args)]
 pub struct BuildArgs {
-    /// Hosts to build (defaults to all hosts if not specified)
-    pub hosts: Vec<String>,
-
-    /// Filter hosts using a Nix expression (e.g., "config: config.services.nginx.enable or false")
-    #[arg(short = 'e', long, conflicts_with_all = &["phase", "phases", "tag", "tags"])]
-    pub filter: Option<String>,
-
-    /// Filter by deployment phase (e.g., "production")
-    #[arg(long, conflicts_with_all = &["filter", "phases", "tag", "tags"])]
-    pub phase: Option<String>,
-
-    /// Filter by multiple phases (comma-separated, OR logic)
-    #[arg(long, conflicts_with_all = &["filter", "phase", "tag", "tags"], value_delimiter = ',')]
-    pub phases: Vec<String>,
-
-    /// Filter by tag (e.g., "web")
-    #[arg(long, conflicts_with_all = &["filter", "phase", "phases", "tags"])]
-    pub tag: Option<String>,
-
-    /// Filter by multiple tags (comma-separated, OR logic)
-    #[arg(long, conflicts_with_all = &["filter", "phase", "phases", "tag"], value_delimiter = ',')]
-    pub tags: Vec<String>,
+    #[command(flatten)]
+    pub selection: crate::host_selection::HostSelectionArgs,
 
     /// Quiet mode - suppress subprocess output
     #[arg(short, long)]
@@ -51,30 +31,6 @@ pub struct BuildResult {
 }
 
 impl BuildArgs {
-    fn get_filter_expression(&self) -> Result<Option<String>> {
-        crate::filter_helpers::build_filter_expression(
-            self.filter.as_deref(),
-            self.phase.as_deref(),
-            &self.phases,
-            self.tag.as_deref(),
-            &self.tags,
-        )
-    }
-
-    async fn resolve_hosts(
-        &self,
-        flake: &Flake,
-        nix_backend: &dyn NixBackend,
-    ) -> Result<Vec<String>> {
-        crate::host_selection::resolve_hosts_from_args(
-            flake,
-            nix_backend,
-            self.get_filter_expression()?.as_deref(),
-            &self.hosts,
-        )
-        .await
-    }
-
     fn print_results(&self, results: &[BuildResult]) {
         println!();
 
@@ -117,7 +73,7 @@ impl BuildArgs {
             OutputMode::Inherit
         };
 
-        let hostnames = self.resolve_hosts(flake, nix_backend.as_ref()).await?;
+        let hostnames = self.selection.resolve(flake, nix_backend.as_ref()).await?;
 
         let host_metadata = nix_backend.load_host_metadata(flake, &hostnames).await?;
 
@@ -175,56 +131,8 @@ impl BuildArgs {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::test_utils::snow_cmd;
     use predicates::prelude::*;
-
-    #[test]
-    fn test_build_args_defaults() {
-        let args = BuildArgs {
-            hosts: vec![],
-            filter: None,
-            phase: None,
-            phases: vec![],
-            tag: None,
-            tags: vec![],
-            quiet: false,
-            concurrency: 3,
-            #[cfg(debug_assertions)]
-            mock_fixture: None,
-        };
-
-        assert_eq!(args.hosts.len(), 0);
-        assert!(args.filter.is_none());
-        assert!(args.phase.is_none());
-        assert!(args.phases.is_empty());
-        assert!(args.tag.is_none());
-        assert!(args.tags.is_empty());
-        assert!(!args.quiet);
-        assert_eq!(args.concurrency, 3);
-    }
-
-    #[test]
-    fn test_build_args_with_hosts() {
-        let args = BuildArgs {
-            hosts: vec!["host1".to_string(), "host2".to_string()],
-            filter: None,
-            phase: None,
-            phases: vec![],
-            tag: None,
-            tags: vec![],
-            quiet: true,
-            concurrency: 5,
-            #[cfg(debug_assertions)]
-            mock_fixture: None,
-        };
-
-        assert_eq!(args.hosts.len(), 2);
-        assert_eq!(args.hosts[0], "host1");
-        assert_eq!(args.hosts[1], "host2");
-        assert!(args.quiet);
-        assert_eq!(args.concurrency, 5);
-    }
 
     #[test]
     fn test_build_invalid_host() {

@@ -1,19 +1,58 @@
+use clap::Args;
 use snowlib::{Flake, NixBackend, Result};
 use std::collections::HashSet;
 
-/// Helper function for commands with hosts and filter arguments.
-///
-/// Automatically handles the empty vec case, making it convenient for commands
-/// to call with `&self.hosts` without checking if empty first.
-pub async fn resolve_hosts_from_args(
-    flake: &Flake,
-    nix_backend: &dyn NixBackend,
-    filter: Option<&str>,
-    hosts: &[String],
-) -> Result<Vec<String>> {
-    let explicit_hosts = if hosts.is_empty() { None } else { Some(hosts) };
+/// Host selection flags shared by every command that operates on a set of hosts.
+#[derive(Debug, Default, Args)]
+pub struct HostSelectionArgs {
+    /// Hosts to operate on (defaults to all hosts if not specified)
+    pub hosts: Vec<String>,
 
-    resolve_hosts(flake, nix_backend, filter, explicit_hosts).await
+    /// Filter hosts using a Nix expression (e.g., "config: config.services.nginx.enable or false")
+    #[arg(short = 'e', long, conflicts_with_all = &["phase", "phases", "tag", "tags"])]
+    pub filter: Option<String>,
+
+    /// Filter by deployment phase (e.g., "production")
+    #[arg(long, conflicts_with_all = &["filter", "phases", "tag", "tags"])]
+    pub phase: Option<String>,
+
+    /// Filter by multiple phases (comma-separated, OR logic)
+    #[arg(long, conflicts_with_all = &["filter", "phase", "tag", "tags"], value_delimiter = ',')]
+    pub phases: Vec<String>,
+
+    /// Filter by tag (e.g., "web")
+    #[arg(long, conflicts_with_all = &["filter", "phase", "phases", "tags"])]
+    pub tag: Option<String>,
+
+    /// Filter by multiple tags (comma-separated, OR logic)
+    #[arg(long, conflicts_with_all = &["filter", "phase", "phases", "tag"], value_delimiter = ',')]
+    pub tags: Vec<String>,
+}
+
+impl HostSelectionArgs {
+    fn filter_expression(&self) -> Result<Option<String>> {
+        crate::filter_helpers::build_filter_expression(
+            self.filter.as_deref(),
+            self.phase.as_deref(),
+            &self.phases,
+            self.tag.as_deref(),
+            &self.tags,
+        )
+    }
+
+    pub async fn resolve(
+        &self,
+        flake: &Flake,
+        nix_backend: &dyn NixBackend,
+    ) -> Result<Vec<String>> {
+        resolve_hosts(
+            flake,
+            nix_backend,
+            self.filter_expression()?.as_deref(),
+            Some(&self.hosts),
+        )
+        .await
+    }
 }
 
 /// Resolves the final list of hosts to operate on, combining filtering and explicit selection.
@@ -127,6 +166,7 @@ pub async fn resolve_hosts(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use clap::Parser;
     use snowlib::{DeploymentFixture, HostFixture, MockNixBackend, OperationFixture};
 
     fn create_mock_backend_with_hosts(hosts: Vec<&str>) -> MockNixBackend {
@@ -159,6 +199,73 @@ mod tests {
         };
 
         MockNixBackend::from_fixture(fixture)
+    }
+
+    #[derive(clap::Parser)]
+    struct SelectionCli {
+        #[command(flatten)]
+        selection: HostSelectionArgs,
+    }
+
+    fn parse_selection(args: &[&str]) -> std::result::Result<HostSelectionArgs, clap::Error> {
+        SelectionCli::try_parse_from(std::iter::once("snow").chain(args.iter().copied()))
+            .map(|cli| cli.selection)
+    }
+
+    #[test]
+    fn test_selection_parses_hosts_and_comma_separated_tags() {
+        let selection = parse_selection(&["--tags", "web,database", "hydrogen", "oxygen"]).unwrap();
+
+        assert_eq!(selection.hosts, vec!["hydrogen", "oxygen"]);
+        assert_eq!(selection.tags, vec!["web", "database"]);
+        assert_eq!(
+            selection.filter_expression().unwrap().unwrap(),
+            r#"config: builtins.any (tag: builtins.elem tag (config.core.tags or [])) ["web" "database"]"#
+        );
+    }
+
+    #[test]
+    fn test_selection_without_flags_has_no_filter() {
+        let selection = parse_selection(&[]).unwrap();
+
+        assert!(selection.hosts.is_empty());
+        assert!(selection.filter_expression().unwrap().is_none());
+    }
+
+    #[test]
+    fn test_selection_rejects_conflicting_filters() {
+        for args in [
+            &["--phase", "production", "--tag", "web"][..],
+            &["-e", "c: true", "--phases", "staging"][..],
+        ] {
+            let err = parse_selection(args).err().unwrap();
+            assert_eq!(err.kind(), clap::error::ErrorKind::ArgumentConflict);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_selection_resolve_without_hosts_returns_all_hosts() {
+        let backend = create_mock_backend_with_hosts(vec!["hydrogen", "oxygen"]);
+        let flake = Flake::new(None).unwrap();
+
+        let result = parse_selection(&[])
+            .unwrap()
+            .resolve(&flake, &backend)
+            .await;
+
+        let hosts: HashSet<String> = result.unwrap().into_iter().collect();
+        assert_eq!(hosts, HashSet::from(["hydrogen".into(), "oxygen".into()]));
+    }
+
+    #[tokio::test]
+    async fn test_selection_resolve_validates_explicit_hosts() {
+        let backend = create_mock_backend_with_hosts(vec!["hydrogen", "oxygen"]);
+        let flake = Flake::new(None).unwrap();
+        let selection = parse_selection(&["hydrogen", "radon"]).unwrap();
+
+        let result = selection.resolve(&flake, &backend).await;
+
+        assert!(result.unwrap_err().to_string().contains("radon"));
     }
 
     #[tokio::test]

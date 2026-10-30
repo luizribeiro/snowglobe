@@ -9,28 +9,8 @@ use snowlib::{Flake, PushStrategy, Result};
 /// Deploy configurations to hosts
 #[derive(Debug, Args)]
 pub struct PushArgs {
-    /// Hosts to push (defaults to all hosts if not specified)
-    pub hosts: Vec<String>,
-
-    /// Filter hosts using a Nix expression (e.g., "config: config.services.nginx.enable or false")
-    #[arg(short = 'e', long, conflicts_with_all = &["phase", "phases", "tag", "tags"])]
-    pub filter: Option<String>,
-
-    /// Filter by deployment phase (e.g., "production")
-    #[arg(long, conflicts_with_all = &["filter", "phases", "tag", "tags"])]
-    pub phase: Option<String>,
-
-    /// Filter by multiple phases (comma-separated, OR logic)
-    #[arg(long, conflicts_with_all = &["filter", "phase", "tag", "tags"], value_delimiter = ',')]
-    pub phases: Vec<String>,
-
-    /// Filter by tag (e.g., "web")
-    #[arg(long, conflicts_with_all = &["filter", "phase", "phases", "tags"])]
-    pub tag: Option<String>,
-
-    /// Filter by multiple tags (comma-separated, OR logic)
-    #[arg(long, conflicts_with_all = &["filter", "phase", "phases", "tag"], value_delimiter = ',')]
-    pub tags: Vec<String>,
+    #[command(flatten)]
+    pub selection: crate::host_selection::HostSelectionArgs,
 
     /// Dry run - show what would change without activating
     #[arg(long)]
@@ -134,34 +114,6 @@ impl PushArgs {
         }
     }
 
-    fn get_filter_expression(&self) -> Result<Option<String>> {
-        crate::filter_helpers::build_filter_expression(
-            self.filter.as_deref(),
-            self.phase.as_deref(),
-            &self.phases,
-            self.tag.as_deref(),
-            &self.tags,
-        )
-    }
-
-    /// Resolve and validate the hosts to push
-    ///
-    /// If no hosts are provided, returns all hosts from the flake (optionally filtered).
-    /// If hosts are provided, validates they exist in the flake (and match the filter if provided).
-    async fn resolve_hosts(
-        &self,
-        flake: &Flake,
-        nix_backend: &dyn snowlib::NixBackend,
-    ) -> Result<Vec<String>> {
-        crate::host_selection::resolve_hosts_from_args(
-            flake,
-            nix_backend,
-            self.get_filter_expression()?.as_deref(),
-            &self.hosts,
-        )
-        .await
-    }
-
     /// Main entry point for the push command
     ///
     /// Orchestrates the entire deployment process by delegating to snowlib's `push()` function.
@@ -206,7 +158,7 @@ impl PushArgs {
         let reboot_backend = crate::backend_factory::create_reboot_backend(self.user.as_deref())?;
         let observer = observer::CliObserver::new();
 
-        let hostnames = self.resolve_hosts(flake, nix_backend.as_ref()).await?;
+        let hostnames = self.selection.resolve(flake, nix_backend.as_ref()).await?;
         let hosts = nix_backend.load_host_metadata(flake, &hostnames).await?;
 
         let config = snowlib::PushConfiguration {
