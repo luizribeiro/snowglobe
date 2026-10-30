@@ -4,6 +4,7 @@ mod derivation;
 mod eval;
 mod narinfo;
 mod report;
+mod run;
 mod substituters;
 
 pub use derivation::{parse_derivation_show, DerivationInfo};
@@ -13,6 +14,7 @@ pub use report::{
     build_report, HostReport, HostStatus, PlanReport, PlannedBuild, PlannedFetch,
     SubstituterLookup, SubstituterSummary, Totals,
 };
+pub use run::{create_plan, PlanTarget};
 pub use substituters::{parse_substituters, ConfiguredSubstituter};
 
 // nix 2.34 omits the store dir from some JSON keys; only the default store is supported.

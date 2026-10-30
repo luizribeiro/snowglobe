@@ -4,6 +4,7 @@
 //! - `NixBackend`: Nix evaluation and building
 //! - `DeployBackend`: Deployment and activation
 //! - `RebootBackend`: Reboot detection and execution
+//! - `PlanBackend`: Build planning queries (cache status, substituters)
 //! - `HookBackend`: Lifecycle hook execution
 //! - `KeyGenBackend`: SSH key generation and age key derivation
 //! - `Provisioner`: Image key injection
@@ -15,6 +16,7 @@ pub mod deploy;
 pub mod hook;
 pub mod keygen;
 pub mod nix;
+pub mod plan;
 pub mod provisioner;
 pub mod reboot;
 pub mod sops;

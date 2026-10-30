@@ -25,6 +25,7 @@ pub use backends::deploy::{
 pub use backends::hook::{HookBackend, SystemHookBackend};
 pub use backends::keygen::{KeyGenBackend, SshKeyPair, SystemKeyGenBackend};
 pub use backends::nix::{NixBackend, SystemNixBackend};
+pub use backends::plan::PlanBackend;
 pub use backends::provisioner::{
     get_provisioner, InjectionResult, ManualProvisioner, Provisioner, ProvisionerConfig,
     ProvisioningResult, ProxmoxVmaProvisioner, RawProvisioner, SdImageProvisioner, TargetType,
@@ -52,6 +53,8 @@ pub use backends::hook::MockHookBackend;
 pub use backends::keygen::MockKeyGenBackend;
 #[cfg(any(debug_assertions, feature = "test-utils"))]
 pub use backends::nix::MockNixBackend;
+#[cfg(any(debug_assertions, feature = "test-utils"))]
+pub use backends::plan::{MockPlanBackend, MockPlanCall};
 #[cfg(any(debug_assertions, feature = "test-utils"))]
 pub use backends::provisioner::MockProvisioner;
 #[cfg(any(debug_assertions, feature = "test-utils"))]

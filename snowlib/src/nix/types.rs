@@ -1,5 +1,5 @@
 /// System type for a host configuration
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SystemType {
     /// NixOS configuration
     NixOS,
