@@ -3,10 +3,8 @@ use std::collections::HashMap;
 use serde::Deserialize;
 use serde_json::{Map, Value};
 
+use super::full_store_path;
 use crate::error::{NixError, Result};
-
-// nix 2.34 omits the store dir from derivation keys; only the default store is supported.
-const STORE_DIR: &str = "/nix/store";
 
 /// Facts about a derivation that will be built, read from `nix derivation show`.
 #[derive(Debug, Clone, PartialEq)]
@@ -71,14 +69,6 @@ impl RawDerivation {
             name: self.name,
             system: self.system,
         }
-    }
-}
-
-fn full_store_path(key: String) -> String {
-    if key.starts_with('/') {
-        key
-    } else {
-        format!("{STORE_DIR}/{key}")
     }
 }
 
