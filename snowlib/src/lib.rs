@@ -25,7 +25,7 @@ pub use backends::deploy::{
 pub use backends::hook::{HookBackend, SystemHookBackend};
 pub use backends::keygen::{KeyGenBackend, SshKeyPair, SystemKeyGenBackend};
 pub use backends::nix::{NixBackend, SystemNixBackend};
-pub use backends::plan::PlanBackend;
+pub use backends::plan::{PlanBackend, SystemPlanBackend};
 pub use backends::provisioner::{
     get_provisioner, InjectionResult, ManualProvisioner, Provisioner, ProvisionerConfig,
     ProvisioningResult, ProxmoxVmaProvisioner, RawProvisioner, SdImageProvisioner, TargetType,

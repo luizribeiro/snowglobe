@@ -4,6 +4,7 @@
 //! commands with proper error handling and output management.
 
 use std::path::PathBuf;
+use std::time::Duration;
 
 use crate::error::{NixError, Result};
 use crate::nix::Flake;
@@ -23,6 +24,7 @@ pub(crate) struct NixCommand {
     args: Vec<String>,
     working_dir: Option<PathBuf>,
     output_mode: OutputMode,
+    timeout: Option<Duration>,
 }
 
 impl NixCommand {
@@ -40,11 +42,17 @@ impl NixCommand {
             args: args.into_iter().map(Into::into).collect(),
             working_dir: None,
             output_mode: OutputMode::Capture,
+            timeout: None,
         }
     }
 
     pub(crate) fn in_flake(mut self, flake: &Flake) -> Self {
         self.working_dir = Some(flake.flake_root().to_path_buf());
+        self
+    }
+
+    pub(crate) fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
         self
     }
 
@@ -95,15 +103,18 @@ impl NixCommand {
             self.program,
             &args,
             self.output_mode,
-            None,
+            self.timeout,
             self.working_dir.as_deref(),
             &[],
         )
         .await
         .map_err(|e| NixError::CommandFailed { source: e })?;
 
-        if !result.status.success() {
-            let stderr = String::from_utf8_lossy(&result.stderr).to_string();
+        if result.timed_out || !result.status.success() {
+            let mut stderr = String::from_utf8_lossy(&result.stderr).to_string();
+            if result.timed_out {
+                stderr.push_str(&format!("\n{} timed out", self.program));
+            }
             return Err(NixError::EvalFailed {
                 stderr,
                 source: std::io::Error::other("nix command exited with non-zero status"),
@@ -136,6 +147,25 @@ mod tests {
         match err {
             crate::error::SnowError::Nix(NixError::EvalFailed { stderr, .. }) => {
                 assert!(stderr.contains("not-a-drv"), "unexpected stderr: {stderr}")
+            }
+            other => panic!("expected EvalFailed, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_timeout_is_reported() {
+        let err = NixCommand::tool("sleep", ["5"])
+            .timeout(Duration::from_millis(100))
+            .run()
+            .await
+            .unwrap_err();
+
+        match err {
+            crate::error::SnowError::Nix(NixError::EvalFailed { stderr, .. }) => {
+                assert!(
+                    stderr.ends_with("sleep timed out"),
+                    "unexpected stderr: {stderr}"
+                )
             }
             other => panic!("expected EvalFailed, got {other:?}"),
         }
