@@ -14,6 +14,7 @@ pub mod hooks;
 pub mod host;
 pub mod nix;
 pub mod observer;
+pub mod plan;
 pub mod process;
 pub mod push;
 pub mod reboot;
