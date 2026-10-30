@@ -3,6 +3,8 @@
 //! This module provides a builder pattern for constructing and executing Nix CLI
 //! commands with proper error handling and output management.
 
+use std::path::PathBuf;
+
 use crate::error::{NixError, Result};
 use crate::nix::Flake;
 use crate::process::r#async::run_command;
@@ -17,18 +19,33 @@ use crate::process::OutputMode;
 /// This is an internal implementation detail and should not be used outside
 /// the nix module. Use the public functions like `list_hosts()` instead.
 pub(crate) struct NixCommand {
+    program: &'static str,
     args: Vec<String>,
-    flake: Flake,
+    working_dir: Option<PathBuf>,
     output_mode: OutputMode,
 }
 
 impl NixCommand {
     fn new(flake: &Flake) -> Self {
+        Self::tool("nix", Vec::<String>::new()).in_flake(flake)
+    }
+
+    /// Any nix-family program (`nix`, `nix-eval-jobs`), run outside a flake unless `in_flake` is used.
+    pub(crate) fn tool(
+        program: &'static str,
+        args: impl IntoIterator<Item = impl Into<String>>,
+    ) -> Self {
         Self {
-            args: Vec::new(),
-            flake: flake.clone(),
+            program,
+            args: args.into_iter().map(Into::into).collect(),
+            working_dir: None,
             output_mode: OutputMode::Capture,
         }
+    }
+
+    pub(crate) fn in_flake(mut self, flake: &Flake) -> Self {
+        self.working_dir = Some(flake.flake_root().to_path_buf());
+        self
     }
 
     pub(crate) fn eval(flake: &Flake, attr: impl AsRef<str>) -> Self {
@@ -73,11 +90,17 @@ impl NixCommand {
 
     pub(crate) async fn run(self) -> Result<Vec<u8>> {
         let args: Vec<&str> = self.args.iter().map(|s| s.as_str()).collect();
-        let working_dir = self.flake.flake_root();
 
-        let result = run_command("nix", &args, self.output_mode, None, Some(working_dir), &[])
-            .await
-            .map_err(|e| NixError::CommandFailed { source: e })?;
+        let result = run_command(
+            self.program,
+            &args,
+            self.output_mode,
+            None,
+            self.working_dir.as_deref(),
+            &[],
+        )
+        .await
+        .map_err(|e| NixError::CommandFailed { source: e })?;
 
         if !result.status.success() {
             let stderr = String::from_utf8_lossy(&result.stderr).to_string();
@@ -89,5 +112,32 @@ impl NixCommand {
         }
 
         Ok(result.stdout)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_tool_runs_without_a_flake() {
+        let stdout = NixCommand::tool("nix", ["--version"]).run().await.unwrap();
+
+        assert!(String::from_utf8_lossy(&stdout).starts_with("nix (Nix)"));
+    }
+
+    #[tokio::test]
+    async fn test_failure_carries_stderr() {
+        let err = NixCommand::tool("nix", ["derivation", "show", "/nix/store/not-a-drv"])
+            .run()
+            .await
+            .unwrap_err();
+
+        match err {
+            crate::error::SnowError::Nix(NixError::EvalFailed { stderr, .. }) => {
+                assert!(stderr.contains("not-a-drv"), "unexpected stderr: {stderr}")
+            }
+            other => panic!("expected EvalFailed, got {other:?}"),
+        }
     }
 }
