@@ -3,10 +3,15 @@
 mod derivation;
 mod eval;
 mod narinfo;
+mod report;
 
 pub use derivation::{parse_derivation_show, DerivationInfo};
 pub use eval::{parse_eval_jobs, CacheStatus, EvalOutcome, EvaluatedHost, HostEval};
 pub use narinfo::{parse_path_info, NarInfo};
+pub use report::{
+    build_report, HostReport, HostStatus, PlanReport, PlannedBuild, PlannedFetch,
+    SubstituterLookup, SubstituterSummary, Totals,
+};
 
 // nix 2.34 omits the store dir from some JSON keys; only the default store is supported.
 const STORE_DIR: &str = "/nix/store";

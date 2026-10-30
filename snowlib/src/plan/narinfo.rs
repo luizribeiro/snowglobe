@@ -1,12 +1,12 @@
 use std::collections::HashMap;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use super::full_store_path;
 use crate::error::{NixError, Result};
 
 /// Sizes a substituter advertises for a store path.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NarInfo {
     /// `FileSize` is optional in narinfo files.
