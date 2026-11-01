@@ -4,6 +4,7 @@ use crate::error::{DeployError, Result};
 use crate::nix::StorePath;
 use crate::process::r#async::run_command;
 use crate::process::{CommandResult, OutputMode};
+use crate::ssh_options::{ssh_options, Keepalive};
 use async_trait::async_trait;
 use std::time::Duration;
 
@@ -177,12 +178,7 @@ impl SystemRebootBackend {
 
     /// Build SSH command arguments
     fn build_ssh_args(&self, target: &DeployTarget, command: &str) -> Vec<String> {
-        let mut args = vec![
-            "-o".to_string(),
-            "BatchMode=yes".to_string(),
-            "-o".to_string(),
-            format!("ConnectTimeout={}", self.config.ssh_connect_timeout),
-        ];
+        let mut args = ssh_options(self.config.ssh_connect_timeout.into(), Keepalive::Probe);
 
         if let Some(port) = target.port {
             args.push("-p".to_string());
@@ -561,6 +557,21 @@ esac
 
         assert!(matches!(err, SnowError::Deploy(DeployError::Failed { .. })));
         assert!(!host.reboot_requested());
+    }
+
+    #[test]
+    fn test_ssh_args_use_the_configured_connect_timeout_and_keepalives() {
+        let backend = SystemRebootBackend::with_defaults().with_ssh_user("pusher");
+
+        let args = backend
+            .build_ssh_args(&fake_target(), "cat /proc/sys/kernel/random/boot_id")
+            .join(" ");
+
+        assert_eq!(
+            args,
+            "-o BatchMode=yes -o ConnectTimeout=5 -o ServerAliveInterval=15 -o ServerAliveCountMax=3 \
+             pusher@hydrogen.example.com cat /proc/sys/kernel/random/boot_id"
+        );
     }
 
     #[test]
