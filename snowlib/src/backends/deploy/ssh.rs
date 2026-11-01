@@ -38,6 +38,10 @@ fn command_failed(host: &str, command: String, result: &CommandResult) -> Deploy
     }
 }
 
+/// `command -v`'s exit status when the command isn't installed. Anything
+/// else non-zero (ssh failing, a non-POSIX login shell) is not an answer.
+const COMMAND_NOT_FOUND: i32 = 1;
+
 const READ_HOST_SYSTEMS_ARGS: [&str; 4] =
     ["readlink", "-f", CURRENT_SYSTEM_LINK, SYSTEM_PROFILE_LINK];
 
@@ -143,27 +147,37 @@ impl SshDeployBackend {
         args
     }
 
-    /// Check if snowglobe-activate helper is available on target
-    async fn check_helper_available(&self, target: &DeployTarget) -> bool {
+    /// Whether snowglobe-activate is installed on the target
+    ///
+    /// An ssh failure is an error rather than "not installed": guessing wrong
+    /// would silently activate through the fallback path.
+    async fn check_helper_available(&self, target: &DeployTarget) -> Result<bool> {
         let args = self.ssh_args(
             target,
             Keepalive::Probe,
             &["command", "-v", "snowglobe-activate"],
         );
         let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+        let ssh_failed = |source| DeployError::SshFailed {
+            destination: self.get_destination(target),
+            source,
+        };
 
-        match run_command(
-            self.ssh_program(),
-            &args_refs,
-            OutputMode::Capture,
-            None,
-            None,
-            &[],
-        )
-        .await
-        {
-            Ok(output) => output.status.success(),
-            Err(_) => false,
+        let result = run_bounded(self.ssh_program(), &args_refs, self.probe_timeout)
+            .await
+            .map_err(ssh_failed)?;
+        match result.status.code() {
+            Some(0) => Ok(true),
+            Some(COMMAND_NOT_FOUND) => Ok(false),
+            _ => {
+                let stderr = String::from_utf8_lossy(&result.stderr);
+                Err(ssh_failed(std::io::Error::other(format!(
+                    "ssh exited with {}: {}",
+                    result.status,
+                    stderr.trim()
+                )))
+                .into())
+            }
         }
     }
 }
@@ -214,8 +228,7 @@ impl DeployBackend for SshDeployBackend {
     ) -> Result<()> {
         let mode_arg = activation_mode_to_string(mode);
 
-        // Check if snowglobe-activate helper is available on target
-        let helper_available = self.check_helper_available(target).await;
+        let helper_available = self.check_helper_available(target).await?;
 
         // Only update profile separately if helper is NOT available
         // When helper is available, it handles profile update internally
@@ -504,22 +517,6 @@ mod tests {
         );
     }
 
-    fn fake_ssh_deployer(script: &str) -> (tempfile::TempDir, SshDeployBackend) {
-        let dir = tempfile::tempdir().unwrap();
-        let fake_ssh = dir.path().join("ssh");
-        std::fs::write(&fake_ssh, script).unwrap();
-        let deployer = SshDeployBackend::new().with_fake_ssh(&fake_ssh, Duration::from_secs(1));
-        (dir, deployer)
-    }
-
-    fn curium() -> DeployTarget {
-        DeployTarget {
-            user: None,
-            hostname: "curium.example.com".to_string(),
-            port: None,
-        }
-    }
-
     #[tokio::test]
     async fn test_host_systems_times_out_when_ssh_hangs() {
         let (_dir, deployer) = fake_ssh_deployer("exec sleep 30");
@@ -647,56 +644,170 @@ mod tests {
         assert_eq!(args_to_command_string("test", &[""]), "test ''");
     }
 
-    #[tokio::test]
-    async fn test_check_helper_available_executes_without_panic() {
-        let deployer = SshDeployBackend::new();
-        let target = DeployTarget {
-            user: Some("root".to_string()),
-            hostname: "localhost".to_string(),
-            port: None,
-        };
+    fn fake_ssh_deployer(script: &str) -> (tempfile::TempDir, SshDeployBackend) {
+        let dir = tempfile::tempdir().unwrap();
+        let fake_ssh = dir.path().join("ssh");
+        std::fs::write(&fake_ssh, script).unwrap();
+        let deployer = SshDeployBackend::new().with_fake_ssh(&fake_ssh, Duration::from_secs(1));
+        (dir, deployer)
+    }
 
-        let _result = deployer.check_helper_available(&target).await;
+    fn curium() -> DeployTarget {
+        DeployTarget {
+            user: None,
+            hostname: "curium.example.com".to_string(),
+            port: None,
+        }
     }
 
     #[tokio::test]
-    async fn test_check_helper_available_when_command_missing() {
-        let deployer = SshDeployBackend::new();
-        let target = DeployTarget {
-            user: Some("root".to_string()),
-            hostname: "nonexistent-host-that-should-not-exist.invalid".to_string(),
-            port: None,
-        };
+    async fn test_helper_is_available_when_command_finds_it() {
+        let (_dir, deployer) = fake_ssh_deployer("exit 0");
 
-        let result = deployer.check_helper_available(&target).await;
-
-        assert!(!result);
+        assert!(deployer.check_helper_available(&curium()).await.unwrap());
     }
 
     #[tokio::test]
-    async fn test_activate_builds_correct_command_structure() {
-        let deployer = SshDeployBackend::new();
-        let target = DeployTarget {
-            user: Some("root".to_string()),
-            hostname: "nonexistent.invalid".to_string(),
-            port: None,
-        };
-        let store_path = StorePath::new("/nix/store/test-path".to_string());
+    async fn test_helper_is_missing_when_command_does_not_find_it() {
+        let (_dir, deployer) = fake_ssh_deployer("exit 1");
+
+        assert!(!deployer.check_helper_available(&curium()).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn test_helper_check_fails_when_ssh_cannot_connect() {
+        let (_dir, deployer) = fake_ssh_deployer(
+            "echo 'ssh: connect to host curium.example.com port 22: Connection refused' >&2; exit 255",
+        );
+
+        let err = deployer
+            .check_helper_available(&curium())
+            .await
+            .unwrap_err();
+
+        assert!(
+            crate::error::error_chain(&err).contains("Connection refused"),
+            "{err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_helper_check_fails_when_the_login_shell_cannot_run_it() {
+        let (_dir, deployer) =
+            fake_ssh_deployer("echo 'command: Command not found.' >&2; exit 127");
+
+        let err = deployer
+            .check_helper_available(&curium())
+            .await
+            .unwrap_err();
+
+        let reason = crate::error::error_chain(&err);
+        assert!(reason.contains("exit status: 127"), "{reason}");
+        assert!(reason.contains("Command not found"), "{reason}");
+    }
+
+    #[tokio::test]
+    async fn test_helper_check_times_out_when_ssh_hangs() {
+        let (_dir, deployer) = fake_ssh_deployer("exec sleep 30");
+
+        let err = deployer
+            .check_helper_available(&curium())
+            .await
+            .unwrap_err();
+
+        assert!(crate::error::is_timeout(&err), "{err:?}");
+    }
+
+    /// A fake ssh that logs each remote command and exits with
+    /// `helper_status` for the helper check and 0 otherwise
+    fn recording_deployer(helper_status: i32) -> (tempfile::TempDir, SshDeployBackend) {
+        let (dir, deployer) = fake_ssh_deployer(&format!(
+            r#"while [ "$1" != pusher@curium.example.com ]; do [ $# -gt 0 ] || exit 99; shift; done; shift
+echo "$*" >> "$(dirname "$0")/commands"
+case "$*" in "command -v"*) exit {helper_status} ;; esac"#
+        ));
+        (dir, deployer.with_user("pusher"))
+    }
+
+    fn logged_commands(dir: &tempfile::TempDir) -> Vec<String> {
+        std::fs::read_to_string(dir.path().join("commands"))
+            .unwrap()
+            .lines()
+            .map(str::to_string)
+            .collect()
+    }
+
+    const CURIUM_SYSTEM: &str = "/nix/store/6c3x8d0yq2l1-nixos-system-curium-26.05";
+
+    #[tokio::test]
+    async fn test_activate_runs_the_helper_when_installed() {
+        let (dir, deployer) = recording_deployer(0);
+
+        deployer
+            .activate(
+                &curium(),
+                &StorePath::new(CURIUM_SYSTEM.to_string()),
+                ActivationMode::Switch,
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(
+            logged_commands(&dir),
+            [
+                "command -v snowglobe-activate".to_string(),
+                format!("sudo snowglobe-activate {CURIUM_SYSTEM} switch"),
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn test_activate_falls_back_only_when_the_helper_is_missing() {
+        let (dir, deployer) = recording_deployer(1);
+
+        deployer
+            .activate(
+                &curium(),
+                &StorePath::new(CURIUM_SYSTEM.to_string()),
+                ActivationMode::Switch,
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(
+            logged_commands(&dir),
+            [
+                "command -v snowglobe-activate".to_string(),
+                format!(
+                    "sudo nix-env --profile /nix/var/nix/profiles/system --set {CURIUM_SYSTEM}"
+                ),
+                format!("sudo {CURIUM_SYSTEM}/bin/switch-to-configuration switch"),
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn test_activate_stops_when_the_helper_check_fails() {
+        let (dir, deployer) = recording_deployer(255);
 
         let result = deployer
-            .activate(&target, &store_path, ActivationMode::Test)
+            .activate(
+                &curium(),
+                &StorePath::new(CURIUM_SYSTEM.to_string()),
+                ActivationMode::Switch,
+            )
             .await;
 
-        assert!(result.is_err());
-
-        let err_string = format!("{:?}", result.unwrap_err());
         assert!(
-            err_string.contains("sudo")
-                || err_string.contains("snowglobe-activate")
-                || err_string.contains("switch-to-configuration"),
-            "Error should indicate sudo command was attempted: {}",
-            err_string
+            matches!(
+                result,
+                Err(crate::error::SnowError::Deploy(
+                    DeployError::SshFailed { .. }
+                ))
+            ),
+            "{result:?}"
         );
+        assert_eq!(logged_commands(&dir), ["command -v snowglobe-activate"]);
     }
 
     #[tokio::test]
