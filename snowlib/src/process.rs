@@ -126,6 +126,9 @@ pub mod r#async {
 
         let mut cmd = Command::new(program);
         cmd.args(args);
+        // A caller may give up on the command (e.g. an outer deadline), and an
+        // orphaned ssh stuck on a hung agent would never exit on its own
+        cmd.kill_on_drop(true);
         cmd.stdout(std::process::Stdio::piped());
         cmd.stderr(std::process::Stdio::piped());
 
@@ -295,6 +298,33 @@ pub mod r#async {
     mod tests {
         use super::*;
         use std::time::Instant;
+
+        #[tokio::test]
+        async fn test_abandoned_command_is_killed() {
+            let dir = tempfile::tempdir().unwrap();
+            let pid_file = dir.path().join("pid");
+            let script = format!("echo $$ > '{}'; exec sleep 30", pid_file.display());
+
+            let abandoned = tokio::time::timeout(
+                Duration::from_millis(500),
+                run_command("sh", &["-c", &script], OutputMode::Capture, None, None, &[]),
+            )
+            .await;
+            assert!(abandoned.is_err());
+
+            let pid = std::fs::read_to_string(&pid_file).unwrap();
+            let proc_dir = std::path::PathBuf::from(format!("/proc/{}", pid.trim()));
+            for _ in 0..50 {
+                if !proc_dir.exists() {
+                    return;
+                }
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+            panic!(
+                "process {} still running after its caller gave up",
+                pid.trim()
+            );
+        }
 
         #[tokio::test]
         async fn test_async_capture_mode() {
