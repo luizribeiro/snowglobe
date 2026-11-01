@@ -71,7 +71,8 @@ pub struct SshDeployBackend {
     pub ssh_user: Option<String>,
     /// Output mode for subprocess operations
     pub output_mode: OutputMode,
-    ssh_program: String,
+    /// ssh, or in tests a fake: the program followed by its leading arguments
+    ssh_command: Vec<String>,
     probe_timeout: Duration,
 }
 
@@ -80,16 +81,23 @@ impl SshDeployBackend {
         Self {
             ssh_user: None,
             output_mode: OutputMode::Display,
-            ssh_program: "ssh".to_string(),
+            ssh_command: vec!["ssh".to_string()],
             probe_timeout: PROBE_TIMEOUT,
         }
     }
 
+    /// Runs `script` with sh in place of ssh. Running it through sh rather
+    /// than executing it avoids ETXTBSY when another test forks while the
+    /// script is still open for writing.
     #[cfg(test)]
-    fn with_fake_ssh(mut self, program: impl Into<String>, probe_timeout: Duration) -> Self {
-        self.ssh_program = program.into();
+    fn with_fake_ssh(mut self, script: &std::path::Path, probe_timeout: Duration) -> Self {
+        self.ssh_command = vec!["sh".to_string(), script.display().to_string()];
         self.probe_timeout = probe_timeout;
         self
+    }
+
+    fn ssh_program(&self) -> &str {
+        &self.ssh_command[0]
     }
 
     pub fn with_user(mut self, user: impl Into<String>) -> Self {
@@ -122,7 +130,8 @@ impl SshDeployBackend {
         keepalive: Keepalive,
         remote_args: &[&str],
     ) -> Vec<String> {
-        let mut args = ssh_options(CONNECT_TIMEOUT_SECS, keepalive);
+        let mut args = self.ssh_command[1..].to_vec();
+        args.extend(ssh_options(CONNECT_TIMEOUT_SECS, keepalive));
 
         if let Some(port) = target.port {
             args.push("-p".to_string());
@@ -143,7 +152,16 @@ impl SshDeployBackend {
         );
         let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
 
-        match run_command("ssh", &args_refs, OutputMode::Capture, None, None, &[]).await {
+        match run_command(
+            self.ssh_program(),
+            &args_refs,
+            OutputMode::Capture,
+            None,
+            None,
+            &[],
+        )
+        .await
+        {
             Ok(output) => output.status.success(),
             Err(_) => false,
         }
@@ -178,7 +196,7 @@ impl DeployBackend for SshDeployBackend {
         let args = self.ssh_args(target, Keepalive::Probe, &READ_HOST_SYSTEMS_ARGS);
         let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
 
-        let result = run_bounded(&self.ssh_program, &args_refs, self.probe_timeout)
+        let result = run_bounded(self.ssh_program(), &args_refs, self.probe_timeout)
             .await
             .map_err(|e| DeployError::SshFailed {
                 destination: self.get_destination(target),
@@ -214,15 +232,22 @@ impl DeployBackend for SshDeployBackend {
             let ssh_args = self.ssh_args(target, Keepalive::Probe, &nix_env_args);
             let ssh_args_refs: Vec<&str> = ssh_args.iter().map(|s| s.as_str()).collect();
 
-            let result = run_command("ssh", &ssh_args_refs, self.output_mode, None, None, &[])
-                .await
-                .map_err(|e| DeployError::Failed {
-                    host: target.hostname.clone(),
-                    source: std::io::Error::new(
-                        e.kind(),
-                        format!("Failed to update system profile: {}", e),
-                    ),
-                })?;
+            let result = run_command(
+                self.ssh_program(),
+                &ssh_args_refs,
+                self.output_mode,
+                None,
+                None,
+                &[],
+            )
+            .await
+            .map_err(|e| DeployError::Failed {
+                host: target.hostname.clone(),
+                source: std::io::Error::new(
+                    e.kind(),
+                    format!("Failed to update system profile: {}", e),
+                ),
+            })?;
 
             if !result.status.success() {
                 let command_display = format!(
@@ -266,12 +291,19 @@ impl DeployBackend for SshDeployBackend {
         let ssh_args = self.ssh_args(target, Keepalive::Never, &remote_args_refs);
         let ssh_args_refs: Vec<&str> = ssh_args.iter().map(|s| s.as_str()).collect();
 
-        let result = run_command("ssh", &ssh_args_refs, self.output_mode, None, None, &[])
-            .await
-            .map_err(|e| DeployError::SshFailed {
-                destination: self.get_destination(target),
-                source: e,
-            })?;
+        let result = run_command(
+            self.ssh_program(),
+            &ssh_args_refs,
+            self.output_mode,
+            None,
+            None,
+            &[],
+        )
+        .await
+        .map_err(|e| DeployError::SshFailed {
+            destination: self.get_destination(target),
+            source: e,
+        })?;
 
         if !result.status.success() {
             return Err(command_failed(&target.hostname, command, &result).into());
@@ -472,25 +504,27 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn test_host_systems_times_out_when_ssh_hangs() {
+    fn fake_ssh_deployer(script: &str) -> (tempfile::TempDir, SshDeployBackend) {
         let dir = tempfile::tempdir().unwrap();
         let fake_ssh = dir.path().join("ssh");
-        std::fs::write(&fake_ssh, "#!/bin/sh\nexec sleep 30\n").unwrap();
-        std::fs::set_permissions(
-            &fake_ssh,
-            std::os::unix::fs::PermissionsExt::from_mode(0o755),
-        )
-        .unwrap();
-        let deployer = SshDeployBackend::new()
-            .with_fake_ssh(fake_ssh.display().to_string(), Duration::from_secs(1));
-        let target = DeployTarget {
+        std::fs::write(&fake_ssh, script).unwrap();
+        let deployer = SshDeployBackend::new().with_fake_ssh(&fake_ssh, Duration::from_secs(1));
+        (dir, deployer)
+    }
+
+    fn curium() -> DeployTarget {
+        DeployTarget {
             user: None,
             hostname: "curium.example.com".to_string(),
             port: None,
-        };
+        }
+    }
 
-        let err = deployer.host_systems(&target).await.unwrap_err();
+    #[tokio::test]
+    async fn test_host_systems_times_out_when_ssh_hangs() {
+        let (_dir, deployer) = fake_ssh_deployer("exec sleep 30");
+
+        let err = deployer.host_systems(&curium()).await.unwrap_err();
 
         assert!(crate::error::is_timeout(&err), "{err:?}");
     }
