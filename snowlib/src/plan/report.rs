@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use super::{CacheStatus, DerivationInfo, EvalOutcome, EvaluatedHost, HostEval, NarInfo};
 
@@ -14,7 +14,7 @@ pub struct SubstituterLookup {
     pub paths: HashMap<String, NarInfo>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PlanReport {
     pub hosts: Vec<HostReport>,
@@ -24,7 +24,7 @@ pub struct PlanReport {
     pub totals: Totals,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HostReport {
     pub name: String,
@@ -32,7 +32,7 @@ pub struct HostReport {
     pub status: HostStatus,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", tag = "status")]
 pub enum HostStatus {
     #[serde(rename_all = "camelCase")]
@@ -49,7 +49,7 @@ pub enum HostStatus {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PlannedBuild {
     #[serde(flatten)]
@@ -57,7 +57,7 @@ pub struct PlannedBuild {
     pub hosts: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PlannedFetch {
     pub path: String,
@@ -67,7 +67,7 @@ pub struct PlannedFetch {
     pub hosts: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SubstituterSummary {
     pub url: String,
@@ -78,7 +78,7 @@ pub struct SubstituterSummary {
     pub nar_size: u64,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Totals {
     pub builds: usize,

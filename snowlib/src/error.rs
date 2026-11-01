@@ -207,6 +207,32 @@ pub enum IoError {
         #[source]
         source: serde_json::Error,
     },
+
+    #[error("No saved plan at {path}")]
+    #[diagnostic(
+        code(snow::io::no_saved_plan),
+        help("Run `snow plan` first; each run saves its report for `snow plan --last`.")
+    )]
+    NoSavedPlan { path: PathBuf },
+
+    #[error("Saved plan at {path} is unreadable")]
+    #[diagnostic(
+        code(snow::io::invalid_saved_plan),
+        help("It may be from an older snow version. Run `snow plan` again to replace it.")
+    )]
+    InvalidSavedPlan {
+        path: PathBuf,
+        #[source]
+        source: serde_json::Error,
+    },
+
+    #[error("Failed to access state file {path}")]
+    #[diagnostic(code(snow::io::state_file))]
+    StateFile {
+        path: PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
 }
 
 /// Errors related to bootstrap operations (key generation, provisioning)

@@ -7,7 +7,7 @@ use super::full_store_path;
 use crate::error::{NixError, Result};
 
 /// Facts about a derivation that will be built, read from `nix derivation show`.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DerivationInfo {
     pub drv_path: String,
