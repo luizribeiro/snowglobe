@@ -2,9 +2,8 @@ use super::{RebootBackend, RebootCheck, RebootDetectionConfig, RebootReason};
 use crate::backends::deploy::DeployTarget;
 use crate::error::{DeployError, Result};
 use crate::nix::StorePath;
-use crate::process::r#async::run_command;
-use crate::process::{CommandResult, OutputMode};
-use crate::ssh_options::{ssh_options, Keepalive};
+use crate::process::CommandResult;
+use crate::ssh_options::{run_bounded, ssh_options, Keepalive};
 use async_trait::async_trait;
 use std::time::Duration;
 
@@ -153,7 +152,9 @@ impl SystemRebootBackend {
             shell_escape(new_system.as_str())
         );
 
-        self.ssh_exec(target, &dry_activate_cmd).await?;
+        let timeout = Duration::from_secs(self.config.dry_activate_timeout.into());
+        self.ssh_exec_with_timeout(target, &dry_activate_cmd, timeout)
+            .await?;
 
         let check_file_cmd = "test -f /run/nixos/dry-activation-restart-list";
         let file_exists = self.ssh_exec(target, check_file_cmd).await?.success();
@@ -199,8 +200,18 @@ impl SystemRebootBackend {
         Ok(self.ssh_exec_full(target, command).await?.status)
     }
 
-    /// Execute an SSH command and return the full result
+    /// Execute an SSH probe and return the full result
     async fn ssh_exec_full(&self, target: &DeployTarget, command: &str) -> Result<CommandResult> {
+        let timeout = Duration::from_secs(self.config.probe_timeout.into());
+        self.ssh_exec_with_timeout(target, command, timeout).await
+    }
+
+    async fn ssh_exec_with_timeout(
+        &self,
+        target: &DeployTarget,
+        command: &str,
+        timeout: Duration,
+    ) -> Result<CommandResult> {
         let (program, leading_args) = self
             .ssh_command
             .split_first()
@@ -212,7 +223,7 @@ impl SystemRebootBackend {
             .map(|s| s.as_str())
             .collect();
 
-        run_command(program, &args_refs, OutputMode::Capture, None, None, &[])
+        run_bounded(program, &args_refs, timeout)
             .await
             .map_err(|e| {
                 DeployError::SshFailed {
@@ -365,6 +376,9 @@ mod tests {
 state='{state_path}'
 cmd="${{@: -1}}"
 echo "$cmd" >> "$state/commands"
+if [ -e "$state/hang_on" ]; then
+  case "$cmd" in *"$(cat "$state/hang_on")"*) exec sleep 30 ;; esac
+fi
 case "$cmd" in
   *boot_id*)
     stale=$(cat "$state/stale_polls" 2>/dev/null || echo 0)
@@ -394,6 +408,8 @@ esac
             let mut backend = SystemRebootBackend::new(RebootDetectionConfig {
                 reboot_max_wait: max_wait_secs,
                 reboot_retry_interval: 1,
+                probe_timeout: 2,
+                dry_activate_timeout: 1,
                 ..Default::default()
             });
             backend.ssh_command = vec![
@@ -542,6 +558,39 @@ esac
             .unwrap_err();
 
         assert!(reboot_not_confirmed_reason(err).contains("did not come back online"));
+    }
+
+    #[tokio::test]
+    async fn test_hung_probe_fails_instead_of_blocking_the_push() {
+        let host = FakeHost::new("exit 0");
+        std::fs::write(host.state.path().join("hang_on"), "boot_id").unwrap();
+
+        let err = host
+            .backend(5)
+            .reboot_and_wait(&fake_target())
+            .await
+            .unwrap_err();
+
+        let reason = crate::error::error_chain(&err);
+        assert!(reason.contains("did not finish within 2s"), "{reason}");
+        assert!(!host.reboot_requested());
+    }
+
+    #[tokio::test]
+    async fn test_dry_activate_has_its_own_time_limit() {
+        let host = FakeHost::new("exit 0");
+        std::fs::write(host.state.path().join("hang_on"), "dry-activate").unwrap();
+        let new_system =
+            StorePath::new("/nix/store/6c3x8d0yq2l1-nixos-system-curium-26.05".to_string());
+
+        let err = host
+            .backend(5)
+            .check_reboot_required(&fake_target(), &new_system)
+            .await
+            .unwrap_err();
+
+        let reason = crate::error::error_chain(&err);
+        assert!(reason.contains("did not finish within 1s"), "{reason}");
     }
 
     #[tokio::test]
