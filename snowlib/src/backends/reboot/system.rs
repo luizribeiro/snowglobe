@@ -281,29 +281,49 @@ impl SystemRebootBackend {
 
     /// Poll until the host answers with a boot ID different from `previous_boot_id`
     async fn wait_for_new_boot(&self, target: &DeployTarget, previous_boot_id: &str) -> Result<()> {
-        let max_attempts = (self.config.reboot_max_wait / self.config.reboot_retry_interval).max(1);
-        let retry_interval = Duration::from_secs(self.config.reboot_retry_interval as u64);
+        let max_wait = Duration::from_secs(self.config.reboot_max_wait.into());
+        let deadline = tokio::time::Instant::now() + max_wait;
+        let retry_interval = Duration::from_secs(self.config.reboot_retry_interval.max(1).into());
         let mut still_on_previous_boot = false;
+        let mut last_error = None;
 
-        for _ in 0..max_attempts {
-            tokio::time::sleep(retry_interval).await;
-
-            match self.read_boot_id(target).await {
-                Ok(boot_id) if boot_id != previous_boot_id => return Ok(()),
-                Ok(_) => still_on_previous_boot = true,
-                Err(_) => still_on_previous_boot = false,
+        let mut probed = false;
+        loop {
+            tokio::time::sleep_until((tokio::time::Instant::now() + retry_interval).min(deadline))
+                .await;
+            if probed && tokio::time::Instant::now() >= deadline {
+                break;
+            }
+            probed = true;
+            match tokio::time::timeout_at(deadline, self.read_boot_id(target)).await {
+                Ok(Ok(boot_id)) if boot_id != previous_boot_id => return Ok(()),
+                Ok(Ok(_)) => still_on_previous_boot = true,
+                Ok(Err(e)) => {
+                    still_on_previous_boot = false;
+                    tracing::debug!("{}: not back yet: {}", target.hostname, e);
+                    last_error = Some(crate::error::error_chain(&e));
+                }
+                Err(_elapsed) => {
+                    still_on_previous_boot = false;
+                    last_error = Some("a check was still running".to_string());
+                    break;
+                }
             }
         }
 
-        let reason = if still_on_previous_boot {
+        let outcome = if still_on_previous_boot {
             "boot ID is unchanged, so the host never rebooted"
         } else {
             "host did not come back online"
         };
+        let detail = last_error
+            .filter(|_| !still_on_previous_boot)
+            .map(|error| format!(" (last error: {error})"))
+            .unwrap_or_default();
 
         Err(DeployError::RebootNotConfirmed {
             host: target.hostname.clone(),
-            reason: format!("{} after {} seconds", reason, self.config.reboot_max_wait),
+            reason: format!("{outcome} within {} seconds{detail}", max_wait.as_secs()),
         }
         .into())
     }
@@ -381,6 +401,7 @@ if [ -e "$state/hang_on" ]; then
 fi
 case "$cmd" in
   *boot_id*)
+    if [ -e "$state/unreachable" ]; then cat "$state/unreachable" >&2; exit 255; fi
     stale=$(cat "$state/stale_polls" 2>/dev/null || echo 0)
     if [ "$stale" -gt 0 ]; then
       echo $((stale - 1)) > "$state/stale_polls"
@@ -591,6 +612,49 @@ esac
 
         let reason = crate::error::error_chain(&err);
         assert!(reason.contains("did not finish within 1s"), "{reason}");
+    }
+
+    #[tokio::test]
+    async fn test_reboot_wait_ends_at_its_deadline_when_probes_hang() {
+        let host = FakeHost::new(r#"echo boot_id > "$state/hang_on"; exit 255"#);
+
+        let started = std::time::Instant::now();
+        let err = host
+            .backend(4)
+            .reboot_and_wait(&fake_target())
+            .await
+            .unwrap_err();
+
+        assert!(
+            started.elapsed() < Duration::from_secs(7),
+            "{:?}",
+            started.elapsed()
+        );
+        let reason = reboot_not_confirmed_reason(err);
+        assert!(
+            reason.starts_with("host did not come back online within 4 seconds"),
+            "{reason}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_reboot_wait_reports_the_last_probe_error() {
+        let host = FakeHost::new(
+            r#"echo "ssh: connect to host hydrogen.example.com port 22: No route to host" > "$state/unreachable"; exit 255"#,
+        );
+
+        let err = host
+            .backend(3)
+            .reboot_and_wait(&fake_target())
+            .await
+            .unwrap_err();
+
+        let reason = reboot_not_confirmed_reason(err);
+        assert!(
+            reason.starts_with("host did not come back online within 3 seconds (last error: "),
+            "{reason}"
+        );
+        assert!(reason.contains("No route to host"), "{reason}");
     }
 
     #[tokio::test]
