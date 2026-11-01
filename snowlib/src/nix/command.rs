@@ -3,7 +3,7 @@
 //! This module provides a builder pattern for constructing and executing Nix CLI
 //! commands with proper error handling and output management.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use crate::error::{NixError, Result};
@@ -86,6 +86,17 @@ impl NixCommand {
         self
     }
 
+    pub(crate) fn out_link(mut self, link: impl AsRef<Path>) -> Self {
+        self.args.push("--out-link".to_string());
+        self.args.push(link.as_ref().display().to_string());
+        self
+    }
+
+    #[cfg(test)]
+    pub(crate) fn args(&self) -> &[String] {
+        &self.args
+    }
+
     pub(crate) fn print_out_paths(mut self) -> Self {
         self.args.push("--print-out-paths".to_string());
         self
@@ -129,6 +140,32 @@ impl NixCommand {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn test_out_link_roots_the_built_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let link = dir.path().join("radon-hooks");
+
+        let stdout = NixCommand::tool(
+            "nix",
+            [
+                "build",
+                "--expr",
+                r#"builtins.toFile "snowglobe-hooks.json" "[]""#,
+                "--print-out-paths",
+            ],
+        )
+        .out_link(&link)
+        .run()
+        .await
+        .unwrap();
+
+        let built = String::from_utf8(stdout).unwrap();
+        assert_eq!(
+            std::fs::read_link(&link).unwrap().display().to_string(),
+            built.trim()
+        );
+    }
 
     #[tokio::test]
     async fn test_tool_runs_without_a_flake() {

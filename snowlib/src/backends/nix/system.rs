@@ -8,25 +8,66 @@ use crate::host::{Host, HostMetadata};
 use crate::nix::{Flake, NixCommand, StorePath, SystemType};
 use crate::process::OutputMode;
 use crate::reboot::RebootPolicy;
+use std::path::PathBuf;
 use std::str::FromStr;
 
 /// System implementation of NixBackend that executes real Nix commands
 ///
 /// This is the production implementation that invokes `nix eval` and `nix build`
 /// to interact with the actual Nix system.
-#[derive(Debug, Clone)]
-pub struct SystemNixBackend;
+#[derive(Debug, Clone, Default)]
+pub struct SystemNixBackend {
+    gc_roots: Option<PathBuf>,
+}
 
 impl SystemNixBackend {
     pub fn new() -> Self {
-        Self
+        Self::default()
+    }
+
+    /// Roots the hooks files and systems this backend builds in `dir`, so the
+    /// machine's GC can't collect them while the links exist
+    pub fn with_gc_roots(mut self, dir: impl Into<PathBuf>) -> Self {
+        let dir = dir.into();
+        // nix resolves a relative --out-link against the flake, not our cwd
+        assert!(dir.is_absolute(), "GC roots dir must be absolute: {dir:?}");
+        self.gc_roots = Some(dir);
+        self
+    }
+
+    fn link_output(&self, command: NixCommand, host: &str, kind: GcRootKind) -> NixCommand {
+        match &self.gc_roots {
+            Some(dir) => command.out_link(dir.join(gc_root_name(host, kind))),
+            None => command.no_link(),
+        }
+    }
+
+    /// Builds the host's hooks file on this machine, which also fetches or builds
+    /// what local hooks reference, and returns its path
+    async fn build_hooks_file(&self, flake: &Flake, host: &str, drv: &str) -> Result<String> {
+        let command = NixCommand::build(flake, format!("{}^out", drv));
+        let stdout = self
+            .link_output(command, host, GcRootKind::Hooks)
+            .print_out_paths()
+            .output_mode(OutputMode::Capture)
+            .run()
+            .await?;
+        Ok(String::from_utf8_lossy(&stdout).trim().to_string())
     }
 }
 
-impl Default for SystemNixBackend {
-    fn default() -> Self {
-        Self::new()
-    }
+#[derive(Debug, Clone, Copy)]
+enum GcRootKind {
+    Hooks,
+    System,
+}
+
+fn gc_root_name(host: &str, kind: GcRootKind) -> String {
+    let suffix = match kind {
+        GcRootKind::Hooks => "hooks",
+        GcRootKind::System => "system",
+    };
+    format!("{host}-{suffix}")
 }
 
 #[async_trait]
@@ -89,7 +130,8 @@ impl NixBackend for SystemNixBackend {
 
         let (mut metadata, hooks_file) = parse_host_metadata(host, system_type, &stdout)?;
         if let Some(drv) = hooks_file {
-            let path = build_hooks_file(flake, &drv)
+            let path = self
+                .build_hooks_file(flake, host, &drv)
                 .await
                 .map_err(as_metadata_error)?;
             metadata.hooks = read_hooks_file(&path).map_err(as_metadata_error)?;
@@ -111,8 +153,8 @@ impl NixBackend for SystemNixBackend {
             system_type.build_path_suffix()
         );
 
-        let stdout = NixCommand::build(flake, &target)
-            .no_link()
+        let stdout = self
+            .link_output(NixCommand::build(flake, &target), host, GcRootKind::System)
             .print_out_paths()
             .output_mode(output_mode)
             .run()
@@ -191,6 +233,7 @@ impl NixBackend for SystemNixBackend {
         // Build the image attribute: .#nixosConfigurations.hostname.config.system.build.sdImage
         let target = format!(".#{}.{}.{}", system_type.flake_attr(), host, image_attr);
 
+        // Images are copied out right after the build, so they need no GC root
         let stdout = NixCommand::build(flake, &target)
             .no_link()
             .print_out_paths()
@@ -271,18 +314,6 @@ fn metadata_apply_expr(local_system: &str) -> String {
             else null;
         }}"#
     )
-}
-
-/// Builds the host's hooks file on this machine, which also fetches or builds
-/// what local hooks reference, and returns its path
-async fn build_hooks_file(flake: &Flake, drv: &str) -> Result<String> {
-    let stdout = NixCommand::build(flake, format!("{}^out", drv))
-        .no_link()
-        .print_out_paths()
-        .output_mode(OutputMode::Capture)
-        .run()
-        .await?;
-    Ok(String::from_utf8_lossy(&stdout).trim().to_string())
 }
 
 fn read_hooks_file(path: &str) -> Result<Vec<HookConfig>> {
@@ -627,5 +658,48 @@ mod tests {
             err,
             crate::error::SnowError::Nix(crate::error::NixError::OutputParseFailed { .. })
         ));
+    }
+
+    fn link_args(backend: &SystemNixBackend, kind: GcRootKind) -> Vec<String> {
+        let target = ".#nixosConfigurations.radon.config.system.build.toplevel";
+        let command = NixCommand::build(&Flake::test_context(), target);
+        backend.link_output(command, "radon", kind).args()[1..].to_vec()
+    }
+
+    #[test]
+    fn test_system_build_is_rooted_in_the_gc_roots_dir() {
+        let backend = SystemNixBackend::new().with_gc_roots("/tmp/snow-push-x1");
+
+        assert_eq!(
+            link_args(&backend, GcRootKind::System),
+            [
+                ".#nixosConfigurations.radon.config.system.build.toplevel",
+                "--out-link",
+                "/tmp/snow-push-x1/radon-system"
+            ]
+        );
+    }
+
+    #[test]
+    fn test_hooks_and_system_get_separate_roots() {
+        assert_eq!(gc_root_name("radon", GcRootKind::Hooks), "radon-hooks");
+        assert_eq!(gc_root_name("radon", GcRootKind::System), "radon-system");
+    }
+
+    #[test]
+    fn test_builds_are_unrooted_without_gc_roots_dir() {
+        assert_eq!(
+            link_args(&SystemNixBackend::new(), GcRootKind::Hooks),
+            [
+                ".#nixosConfigurations.radon.config.system.build.toplevel",
+                "--no-link"
+            ]
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "must be absolute")]
+    fn test_relative_gc_roots_dir_is_rejected() {
+        let _ = SystemNixBackend::new().with_gc_roots("roots");
     }
 }
