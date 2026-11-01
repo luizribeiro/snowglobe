@@ -149,6 +149,22 @@ pub enum DeployError {
         source: std::io::Error,
     },
 
+    #[error(
+        "{} of {total} {} failed: {}",
+        failed.len(),
+        if *total == 1 { "host" } else { "hosts" },
+        failed.join(", ")
+    )]
+    #[diagnostic(
+        code(snow::deploy::hosts_failed),
+        help("See the per-host errors above")
+    )]
+    HostsFailed {
+        total: usize,
+        /// Each failed host with the step it failed at, e.g. "lanthanum (plan)"
+        failed: Vec<String>,
+    },
+
     #[error("Command failed on host '{host}'\n\nCommand: {command}\nExit code: {exit_code}\n\nStderr:\n{stderr}{}", if stdout.is_empty() { String::new() } else { format!("\n\nStdout:\n{}", stdout) })]
     #[diagnostic(code(snow::deploy::command_failed))]
     CommandFailed {

@@ -196,12 +196,8 @@ impl PushArgs {
 
         summary::print_summary(&results);
 
-        if !results.all_succeeded() {
-            return Err(snowlib::error::DeployError::Failed {
-                host: "multiple".to_string(),
-                source: std::io::Error::other("Some deployments failed"),
-            }
-            .into());
+        if let Some(error) = results.failure_error() {
+            return Err(error.into());
         }
 
         Ok(())

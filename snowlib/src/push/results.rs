@@ -1,5 +1,6 @@
 use crate::backends::deploy::DeployTarget;
 use crate::backends::reboot::RebootCheck;
+use crate::error::DeployError;
 use crate::host::HostMetadata;
 use crate::nix::{ActivationMode, StorePath};
 use std::fmt;
@@ -62,6 +63,14 @@ pub struct HostDeploymentResult {
 }
 
 impl HostDeploymentResult {
+    /// The hostname with the step it failed at, e.g. "lanthanum (plan)"
+    pub fn failure_label(&self) -> String {
+        match self.failed_at_step {
+            Some(step) => format!("{} ({step})", self.hostname),
+            None => self.hostname.clone(),
+        }
+    }
+
     pub fn skipped_by_serial_group(
         hostname: impl Into<String>,
         group: &str,
@@ -144,5 +153,92 @@ impl PushResults {
 
     pub fn all_succeeded(&self) -> bool {
         self.phases.iter().all(|p| p.all_succeeded()) && self.skipped_phases.is_empty()
+    }
+
+    pub fn total_count(&self) -> usize {
+        self.success_count() + self.failure_count() + self.skipped_count()
+    }
+
+    /// `None` when no host failed
+    pub fn failure_error(&self) -> Option<DeployError> {
+        let failed: Vec<String> = self
+            .phases
+            .iter()
+            .flat_map(|p| &p.hosts)
+            .filter(|h| !h.success)
+            .map(HostDeploymentResult::failure_label)
+            .collect();
+        if failed.is_empty() {
+            return None;
+        }
+        Some(DeployError::HostsFailed {
+            total: self.total_count(),
+            failed,
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn host(name: &str, failed_at_step: Option<PipelineStep>) -> HostDeploymentResult {
+        HostDeploymentResult {
+            hostname: name.to_string(),
+            success: failed_at_step.is_none(),
+            failed_at_step,
+            activation_mode: failed_at_step.is_none().then_some(ActivationMode::Switch),
+            rebooted: false,
+            unchanged: false,
+            error_message: failed_at_step.map(|_| "error".to_string()),
+        }
+    }
+
+    fn p3_results(hosts: Vec<HostDeploymentResult>, skipped: Vec<SkippedPhase>) -> PushResults {
+        PushResults {
+            phases: vec![PhaseResult {
+                phase: "p3".to_string(),
+                hosts,
+            }],
+            skipped_phases: skipped,
+        }
+    }
+
+    #[test]
+    fn test_failure_error_names_failed_hosts_and_steps() {
+        let results = p3_results(
+            vec![
+                host("boron", None),
+                host("lanthanum", Some(PipelineStep::Plan)),
+                host("samarium", Some(PipelineStep::Plan)),
+                HostDeploymentResult::skipped_by_serial_group("vanadium", "k8s", "lanthanum"),
+            ],
+            vec![SkippedPhase {
+                phase: "p4".to_string(),
+                hostnames: vec!["cerium".to_string(), "neodymium".to_string()],
+            }],
+        );
+
+        assert_eq!(
+            results.failure_error().unwrap().to_string(),
+            "3 of 6 hosts failed: lanthanum (plan), samarium (plan), vanadium (serial group)"
+        );
+    }
+
+    #[test]
+    fn test_failure_error_for_host_without_step() {
+        let mut radon = host("radon", None);
+        radon.success = false;
+
+        let error = p3_results(vec![radon], vec![]).failure_error().unwrap();
+
+        assert_eq!(error.to_string(), "1 of 1 host failed: radon");
+    }
+
+    #[test]
+    fn test_failure_error_when_all_succeeded() {
+        let results = p3_results(vec![host("boron", None), host("radon", None)], vec![]);
+
+        assert!(results.failure_error().is_none());
     }
 }

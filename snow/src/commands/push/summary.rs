@@ -108,7 +108,7 @@ fn print_skipped_phases(skipped_phases: &[snowlib::SkippedPhase]) {
 }
 
 fn print_overall_summary(results: &snowlib::PushResults) {
-    let total = results.success_count() + results.failure_count() + results.skipped_count();
+    let total = results.total_count();
     let succeeded = results.success_count();
     let failed = results.failure_count();
     let skipped = results.skipped_count();
