@@ -45,13 +45,16 @@
             # hostname; the darwin sandbox has no /bin on PATH
             nativeCheckInputs = [ pkgs.openssh pkgs.which pkgs.hostname ];
 
-            # These run the real nix CLI against snow/tests/fixtures, which the
-            # build sandbox can't do; CI runs them through cargo test
+            # These run the real nix CLI, which the build sandbox can't do; CI
+            # runs them through cargo test
             checkFlags = [
               "--skip=commands::build::tests"
               "--skip=commands::list::tests"
               "--skip=commands::status::tests"
               "--skip=commands::plan::tests::test_plan_invalid_host"
+              "--skip=nix::command::tests::test_tool_runs_without_a_flake"
+              "--skip=nix::command::tests::test_failure_carries_stderr"
+              "--skip=nix::command::tests::test_out_link_roots_the_built_path"
             ];
             buildInputs = [ ];
 
