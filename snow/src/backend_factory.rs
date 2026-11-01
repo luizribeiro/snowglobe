@@ -18,6 +18,29 @@ use snowlib::MockDeployBackend;
 pub fn create_nix_backend(
     #[cfg(debug_assertions)] mock_fixture: &Option<String>,
 ) -> Result<Box<dyn NixBackend>> {
+    nix_backend_or_mock(
+        #[cfg(debug_assertions)]
+        mock_fixture,
+        snowlib::SystemNixBackend::new(),
+    )
+}
+
+/// Like `create_nix_backend`, but roots what it builds in `gc_roots`
+pub fn create_push_nix_backend(
+    #[cfg(debug_assertions)] mock_fixture: &Option<String>,
+    gc_roots: &std::path::Path,
+) -> Result<Box<dyn NixBackend>> {
+    nix_backend_or_mock(
+        #[cfg(debug_assertions)]
+        mock_fixture,
+        snowlib::SystemNixBackend::new().with_gc_roots(gc_roots),
+    )
+}
+
+fn nix_backend_or_mock(
+    #[cfg(debug_assertions)] mock_fixture: &Option<String>,
+    system: snowlib::SystemNixBackend,
+) -> Result<Box<dyn NixBackend>> {
     #[cfg(debug_assertions)]
     {
         if let Some(fixture_path) = mock_fixture {
@@ -28,7 +51,7 @@ pub fn create_nix_backend(
         }
     }
 
-    Ok(Box::new(snowlib::SystemNixBackend::new()))
+    Ok(Box::new(system))
 }
 
 /// Create the appropriate DeployBackend implementation

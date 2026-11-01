@@ -139,9 +139,18 @@ impl PushArgs {
             flake
         };
 
-        let nix_backend = crate::backend_factory::create_nix_backend(
+        // Lives until the push ends: its links stop the GC from collecting the
+        // hooks and systems built for this push
+        let gc_roots = tempfile::Builder::new()
+            .prefix("snow-push-")
+            .tempdir()
+            .map_err(|source| snowlib::error::IoError::TempDir { source })?;
+        let gc_roots_path = std::path::absolute(gc_roots.path())
+            .map_err(|source| snowlib::error::IoError::TempDir { source })?;
+        let nix_backend = crate::backend_factory::create_push_nix_backend(
             #[cfg(debug_assertions)]
             &self.mock_fixture,
+            &gc_roots_path,
         )?;
 
         let output_mode = if self.quiet {

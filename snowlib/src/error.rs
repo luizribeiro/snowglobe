@@ -242,6 +242,16 @@ pub enum IoError {
         source: serde_json::Error,
     },
 
+    #[error("Failed to create a temporary directory")]
+    #[diagnostic(
+        code(snow::io::temp_dir_failed),
+        help("Check that $TMPDIR (or /tmp) is writable")
+    )]
+    TempDir {
+        #[source]
+        source: std::io::Error,
+    },
+
     #[error("Failed to access state file {path}")]
     #[diagnostic(code(snow::io::state_file))]
     StateFile {
