@@ -11,8 +11,8 @@ pub(crate) enum Keepalive {
     /// host that drops off the network leaves ssh waiting until TCP gives up,
     /// which can take two hours.
     Probe,
-    /// Keep waiting: activation restarts the host's network, and cutting the
-    /// session could kill switch-to-configuration halfway through
+    /// Keep waiting, for commands that may restart the host's network
+    /// (activation, hooks): cutting the session could kill them halfway
     Never,
 }
 

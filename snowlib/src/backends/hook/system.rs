@@ -8,6 +8,7 @@ use crate::error::Result;
 use crate::hooks::HookConfig;
 use crate::process::r#async::run_command;
 use crate::process::OutputMode;
+use crate::ssh_options::{ssh_options, Keepalive, CONNECT_TIMEOUT_SECS};
 use async_trait::async_trait;
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
@@ -103,15 +104,21 @@ impl HookBackend for SystemHookBackend {
         let destination = format!("{}@{}", user, target.hostname);
         let remote_command = build_remote_command(&hook.command, env);
 
-        let ssh_command = format!(
-            "ssh -o ConnectTimeout=10 {} {}",
-            shell_escape::escape(destination.into()),
-            shell_escape::escape(remote_command.into())
-        );
+        let ssh_command = ssh_shell_command(&destination, &remote_command);
 
         self.execute_command(&ssh_command, &HashMap::new(), hook.timeout)
             .await
     }
+}
+
+// Hooks may restart the host's network and are already bounded by their timeout
+fn ssh_shell_command(destination: &str, remote_command: &str) -> String {
+    format!(
+        "ssh {} {} {}",
+        ssh_options(CONNECT_TIMEOUT_SECS, Keepalive::Never).join(" "),
+        shell_escape::escape(destination.into()),
+        shell_escape::escape(remote_command.into())
+    )
 }
 
 /// Build a command string with escaped environment variables for remote execution.
@@ -476,6 +483,16 @@ mod tests {
         assert!(
             elapsed.as_secs() < 10,
             "Should not wait too long after timeout"
+        );
+    }
+
+    #[test]
+    fn test_ssh_shell_command_never_prompts_and_bounds_the_connection() {
+        let command = ssh_shell_command("root@curium.example.com", "kubectl uncordon curium");
+
+        assert_eq!(
+            command,
+            "ssh -o BatchMode=yes -o ConnectTimeout=10 'root@curium.example.com' 'kubectl uncordon curium'"
         );
     }
 
