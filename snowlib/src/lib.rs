@@ -18,6 +18,7 @@ pub mod plan;
 pub mod process;
 pub mod push;
 pub mod reboot;
+mod ssh_options;
 
 pub use backends::deploy::{
     DeployBackend, DeployResult, DeployTarget, LocalDeployBackend, SshDeployBackend,

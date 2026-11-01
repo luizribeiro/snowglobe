@@ -2,6 +2,7 @@ use crate::error::{DeployError, Result};
 use crate::nix::{ActivationMode, StorePath};
 use crate::process::r#async::run_command;
 use crate::process::{CommandResult, OutputMode};
+use crate::ssh_options::{nix_sshopts, ssh_options, Keepalive, CONNECT_TIMEOUT_SECS};
 use async_trait::async_trait;
 
 use super::{
@@ -101,8 +102,13 @@ impl SshDeployBackend {
     }
 
     /// Build SSH command args with proper flags
-    fn ssh_args(&self, target: &DeployTarget, remote_args: &[&str]) -> Vec<String> {
-        let mut args = vec!["-o".to_string(), "BatchMode=yes".to_string()];
+    fn ssh_args(
+        &self,
+        target: &DeployTarget,
+        keepalive: Keepalive,
+        remote_args: &[&str],
+    ) -> Vec<String> {
+        let mut args = ssh_options(CONNECT_TIMEOUT_SECS, keepalive);
 
         if let Some(port) = target.port {
             args.push("-p".to_string());
@@ -116,7 +122,11 @@ impl SshDeployBackend {
 
     /// Check if snowglobe-activate helper is available on target
     async fn check_helper_available(&self, target: &DeployTarget) -> bool {
-        let args = self.ssh_args(target, &["command", "-v", "snowglobe-activate"]);
+        let args = self.ssh_args(
+            target,
+            Keepalive::Probe,
+            &["command", "-v", "snowglobe-activate"],
+        );
         let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
 
         match run_command("ssh", &args_refs, OutputMode::Capture, None, None, &[]).await {
@@ -133,7 +143,8 @@ impl DeployBackend for SshDeployBackend {
 
         let args = ["copy", "--to", &ssh_target, store_path.as_str()];
         let command = args_to_command_string("nix", &args);
-        let env = [("NIX_SSHOPTS", "-o BatchMode=yes")];
+        let sshopts = nix_sshopts(std::env::var("NIX_SSHOPTS").ok().as_deref());
+        let env = [("NIX_SSHOPTS", sshopts.as_str())];
 
         let result = run_command("nix", &args, self.output_mode, None, None, &env)
             .await
@@ -150,7 +161,7 @@ impl DeployBackend for SshDeployBackend {
     }
 
     async fn host_systems(&self, target: &DeployTarget) -> Result<HostSystems> {
-        let args = self.ssh_args(target, &READ_HOST_SYSTEMS_ARGS);
+        let args = self.ssh_args(target, Keepalive::Probe, &READ_HOST_SYSTEMS_ARGS);
         let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
 
         let result = run_command("ssh", &args_refs, OutputMode::Capture, None, None, &[])
@@ -186,7 +197,7 @@ impl DeployBackend for SshDeployBackend {
                 "--set",
                 store_path.as_str(),
             ];
-            let ssh_args = self.ssh_args(target, &nix_env_args);
+            let ssh_args = self.ssh_args(target, Keepalive::Probe, &nix_env_args);
             let ssh_args_refs: Vec<&str> = ssh_args.iter().map(|s| s.as_str()).collect();
 
             let result = run_command("ssh", &ssh_args_refs, self.output_mode, None, None, &[])
@@ -238,7 +249,7 @@ impl DeployBackend for SshDeployBackend {
         };
 
         let remote_args_refs: Vec<&str> = remote_args.iter().map(|s| s.as_str()).collect();
-        let ssh_args = self.ssh_args(target, &remote_args_refs);
+        let ssh_args = self.ssh_args(target, Keepalive::Never, &remote_args_refs);
         let ssh_args_refs: Vec<&str> = ssh_args.iter().map(|s| s.as_str()).collect();
 
         let result = run_command("ssh", &ssh_args_refs, self.output_mode, None, None, &[])
@@ -448,6 +459,34 @@ mod tests {
     }
 
     #[test]
+    fn test_ssh_args_bound_the_connection_but_only_probes_drop_silent_hosts() {
+        let deployer = SshDeployBackend::new().with_user("pusher");
+        let target = DeployTarget {
+            user: None,
+            hostname: "curium.example.com".to_string(),
+            port: None,
+        };
+
+        let probe = deployer
+            .ssh_args(&target, Keepalive::Probe, &READ_HOST_SYSTEMS_ARGS)
+            .join(" ");
+        let activation = deployer
+            .ssh_args(&target, Keepalive::Never, &["sudo", "snowglobe-activate"])
+            .join(" ");
+
+        assert!(
+            probe.contains("-o ConnectTimeout=10 -o ServerAliveInterval=15"),
+            "{probe}"
+        );
+        assert!(probe.ends_with("pusher@curium.example.com readlink -f /run/current-system /nix/var/nix/profiles/system"), "{probe}");
+        assert!(
+            activation.contains("-o ConnectTimeout=10 pusher@curium.example.com"),
+            "{activation}"
+        );
+        assert!(!activation.contains("ServerAlive"), "{activation}");
+    }
+
+    #[test]
     fn test_ssh_args_has_batch_mode() {
         let deployer = SshDeployBackend::new();
         let target = DeployTarget {
@@ -456,7 +495,7 @@ mod tests {
             port: Some(2222),
         };
 
-        let args = deployer.ssh_args(&target, &["echo", "test"]);
+        let args = deployer.ssh_args(&target, Keepalive::Probe, &["echo", "test"]);
 
         assert!(
             args.contains(&"BatchMode=yes".to_string()),
