@@ -26,6 +26,8 @@ pub struct BlockedHost {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PipelineStep {
     Build,
+    /// Reading which system the host runs, to skip unchanged hosts
+    Check,
     Copy,
     Plan,
     Activate,
@@ -39,6 +41,7 @@ impl fmt::Display for PipelineStep {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             PipelineStep::Build => write!(f, "build"),
+            PipelineStep::Check => write!(f, "check"),
             PipelineStep::Copy => write!(f, "copy"),
             PipelineStep::Plan => write!(f, "plan"),
             PipelineStep::Activate => write!(f, "activate"),

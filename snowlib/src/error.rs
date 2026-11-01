@@ -499,9 +499,47 @@ pub fn error_chain(error: &(dyn std::error::Error + 'static)) -> String {
     chain
 }
 
+/// Whether `error` or any of its sources is an I/O timeout
+pub fn is_timeout(error: &(dyn std::error::Error + 'static)) -> bool {
+    let mut current = Some(error);
+    while let Some(err) = current {
+        if err
+            .downcast_ref::<std::io::Error>()
+            .is_some_and(|io| io.kind() == std::io::ErrorKind::TimedOut)
+        {
+            return true;
+        }
+        current = err.source();
+    }
+    false
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_is_timeout_finds_a_timeout_behind_ssh_failure() {
+        let error = SnowError::from(DeployError::SshFailed {
+            destination: "pusher@curium.example.com".to_string(),
+            source: std::io::Error::new(
+                std::io::ErrorKind::TimedOut,
+                "ssh did not finish within 60s",
+            ),
+        });
+
+        assert!(is_timeout(&error));
+    }
+
+    #[test]
+    fn test_is_timeout_ignores_other_failures() {
+        let error = SnowError::from(DeployError::SshFailed {
+            destination: "pusher@curium.example.com".to_string(),
+            source: std::io::Error::other("Connection refused"),
+        });
+
+        assert!(!is_timeout(&error));
+    }
 
     #[test]
     fn test_error_chain_includes_the_reason_behind_a_deploy_failure() {

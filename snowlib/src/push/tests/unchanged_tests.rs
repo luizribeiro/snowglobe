@@ -99,6 +99,33 @@ async fn test_host_with_unreadable_systems_is_deployed() {
 }
 
 #[tokio::test]
+async fn test_host_whose_check_times_out_fails_before_the_copy() {
+    let mut harness = PushHarness::new();
+    harness.deployer =
+        MockDeployBackend::new().with_host_systems_timeouts(vec!["curium.example.com".to_string()]);
+
+    let run = harness
+        .run(vec![
+            make_host_metadata("argon", Some("p2"), RebootPolicy::Auto),
+            make_host_metadata("curium", Some("p2"), RebootPolicy::Auto),
+        ])
+        .await;
+
+    let curium = run.host("curium");
+    assert_eq!(curium.failed_at_step, Some(PipelineStep::Check));
+    assert!(
+        curium
+            .error_message
+            .as_deref()
+            .is_some_and(|m| m.contains("did not finish within 60s")),
+        "{:?}",
+        curium.error_message
+    );
+    assert!(!run.has_event_starting_with("copy_start:curium"));
+    assert!(run.host("argon").success);
+}
+
+#[tokio::test]
 async fn test_only_unchanged_hosts_are_skipped_in_a_phase() {
     let mut harness = PushHarness::new();
     harness.deployer = host_running(

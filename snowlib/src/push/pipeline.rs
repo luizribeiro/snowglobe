@@ -199,10 +199,27 @@ pub(super) async fn execute_host_pipeline(
         }
     };
 
-    if !push_ctx.config.redeploy && is_unchanged(push_ctx, host_metadata, &store_path).await {
-        tracing::info!("{}: already running the built system, skipping", hostname);
-        push_ctx.observer.on_host_unchanged(&hostname);
-        return Ok(HostDeploymentResult::unchanged(hostname));
+    if !push_ctx.config.redeploy {
+        match is_unchanged(push_ctx, host_metadata, &store_path).await {
+            Ok(false) => {}
+            Ok(true) => {
+                tracing::info!("{}: already running the built system, skipping", hostname);
+                push_ctx.observer.on_host_unchanged(&hostname);
+                return Ok(HostDeploymentResult::unchanged(hostname));
+            }
+            Err(e) => {
+                return Ok(handle_pipeline_failure(
+                    push_ctx,
+                    scheduler,
+                    host_metadata,
+                    None,
+                    Some(&store_path),
+                    PipelineStep::Check,
+                    e,
+                )
+                .await);
+            }
+        }
     }
 
     // Step 2: Copy
@@ -346,22 +363,25 @@ pub(super) async fn execute_host_pipeline(
 
 /// Whether the host already runs and would boot `store_path`
 ///
-/// If the installed systems can't be read, the host is deployed rather than skipped.
+/// If the installed systems can't be read, the host is deployed rather than
+/// skipped. A timeout fails instead: whatever stalled ssh (e.g. a hung
+/// ssh-agent) would stall the copy next, and the copy has no time limit.
 async fn is_unchanged(
     push_ctx: &PushContext<'_>,
     host_metadata: &HostMetadata,
     store_path: &StorePath,
-) -> bool {
+) -> Result<bool> {
     let target = create_target(push_ctx, host_metadata);
     match push_ctx.deploy_backend.host_systems(&target).await {
-        Ok(systems) => systems.are(store_path),
+        Ok(systems) => Ok(systems.are(store_path)),
+        Err(e) if crate::error::is_timeout(&e) => Err(e),
         Err(e) => {
             tracing::warn!(
                 "{}: could not read installed systems, deploying anyway: {}",
                 host_metadata.name,
                 e
             );
-            false
+            Ok(false)
         }
     }
 }

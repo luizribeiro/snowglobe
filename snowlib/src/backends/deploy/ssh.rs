@@ -2,8 +2,11 @@ use crate::error::{DeployError, Result};
 use crate::nix::{ActivationMode, StorePath};
 use crate::process::r#async::run_command;
 use crate::process::{CommandResult, OutputMode};
-use crate::ssh_options::{nix_sshopts, ssh_options, Keepalive, CONNECT_TIMEOUT_SECS};
+use crate::ssh_options::{
+    nix_sshopts, run_bounded, ssh_options, Keepalive, CONNECT_TIMEOUT_SECS, PROBE_TIMEOUT,
+};
 use async_trait::async_trait;
+use std::time::Duration;
 
 use super::{
     activation_mode_to_string, should_update_profile, store_path_from_resolved, DeployBackend,
@@ -68,6 +71,8 @@ pub struct SshDeployBackend {
     pub ssh_user: Option<String>,
     /// Output mode for subprocess operations
     pub output_mode: OutputMode,
+    ssh_program: String,
+    probe_timeout: Duration,
 }
 
 impl SshDeployBackend {
@@ -75,7 +80,16 @@ impl SshDeployBackend {
         Self {
             ssh_user: None,
             output_mode: OutputMode::Display,
+            ssh_program: "ssh".to_string(),
+            probe_timeout: PROBE_TIMEOUT,
         }
+    }
+
+    #[cfg(test)]
+    fn with_fake_ssh(mut self, program: impl Into<String>, probe_timeout: Duration) -> Self {
+        self.ssh_program = program.into();
+        self.probe_timeout = probe_timeout;
+        self
     }
 
     pub fn with_user(mut self, user: impl Into<String>) -> Self {
@@ -164,7 +178,7 @@ impl DeployBackend for SshDeployBackend {
         let args = self.ssh_args(target, Keepalive::Probe, &READ_HOST_SYSTEMS_ARGS);
         let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
 
-        let result = run_command("ssh", &args_refs, OutputMode::Capture, None, None, &[])
+        let result = run_bounded(&self.ssh_program, &args_refs, self.probe_timeout)
             .await
             .map_err(|e| DeployError::SshFailed {
                 destination: self.get_destination(target),
@@ -456,6 +470,29 @@ mod tests {
             "Error should indicate SSH/deployment failure: {}",
             err_string
         );
+    }
+
+    #[tokio::test]
+    async fn test_host_systems_times_out_when_ssh_hangs() {
+        let dir = tempfile::tempdir().unwrap();
+        let fake_ssh = dir.path().join("ssh");
+        std::fs::write(&fake_ssh, "#!/bin/sh\nexec sleep 30\n").unwrap();
+        std::fs::set_permissions(
+            &fake_ssh,
+            std::os::unix::fs::PermissionsExt::from_mode(0o755),
+        )
+        .unwrap();
+        let deployer = SshDeployBackend::new()
+            .with_fake_ssh(fake_ssh.display().to_string(), Duration::from_secs(1));
+        let target = DeployTarget {
+            user: None,
+            hostname: "curium.example.com".to_string(),
+            port: None,
+        };
+
+        let err = deployer.host_systems(&target).await.unwrap_err();
+
+        assert!(crate::error::is_timeout(&err), "{err:?}");
     }
 
     #[test]

@@ -30,6 +30,7 @@ pub struct MockDeployBackend {
     /// Systems per target hostname; hosts not listed run a system no build matches
     host_systems: HashMap<String, HostSystems>,
     host_systems_failures: Vec<String>,
+    host_systems_timeouts: Vec<String>,
 }
 
 impl Default for MockDeployBackend {
@@ -42,6 +43,7 @@ impl Default for MockDeployBackend {
             profile_updates: Arc::new(Mutex::new(Vec::new())),
             host_systems: HashMap::new(),
             host_systems_failures: Vec::new(),
+            host_systems_timeouts: Vec::new(),
         }
     }
 }
@@ -101,6 +103,12 @@ impl MockDeployBackend {
     /// Hosts whose installed systems can't be read
     pub fn with_host_systems_failures(mut self, hostnames: Vec<String>) -> Self {
         self.host_systems_failures = hostnames;
+        self
+    }
+
+    /// Hosts whose installed-systems probe times out, as with a hung ssh-agent
+    pub fn with_host_systems_timeouts(mut self, hostnames: Vec<String>) -> Self {
+        self.host_systems_timeouts = hostnames;
         self
     }
 
@@ -210,6 +218,16 @@ impl DeployBackend for MockDeployBackend {
     }
 
     async fn host_systems(&self, target: &DeployTarget) -> Result<HostSystems> {
+        if self.host_systems_timeouts.contains(&target.hostname) {
+            return Err(crate::error::DeployError::SshFailed {
+                destination: target.hostname.clone(),
+                source: std::io::Error::new(
+                    std::io::ErrorKind::TimedOut,
+                    "ssh did not finish within 60s",
+                ),
+            }
+            .into());
+        }
         if self.host_systems_failures.contains(&target.hostname) {
             return Err(crate::error::DeployError::Failed {
                 host: target.hostname.clone(),
