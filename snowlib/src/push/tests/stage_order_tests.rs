@@ -260,24 +260,24 @@ fn node_with_gate(name: &str, location: crate::hooks::HookLocation) -> HostMetad
 }
 
 #[tokio::test]
-async fn test_local_hook_with_missing_store_path_fails_at_plan() {
-    let run = PushHarness::new()
-        .run(vec![node_with_gate(
-            "promethium",
-            crate::hooks::HookLocation::Local,
-        )])
-        .await;
+async fn test_local_hook_with_missing_store_path_fails_before_any_build() {
+    let hosts = vec![
+        make_host_metadata("boron", Some("p1"), RebootPolicy::Auto),
+        node_with_gate("promethium", crate::hooks::HookLocation::Local),
+    ];
 
-    let host = run.host("promethium");
-    assert_eq!(host.failed_at_step, Some(PipelineStep::Plan));
+    let (result, events) = PushHarness::new().run_push(hosts).await;
+
     assert!(
-        host.error_message
-            .as_deref()
-            .is_some_and(|m| m.contains(MISSING_GATE)),
-        "{:?}",
-        host.error_message
+        matches!(
+            result,
+            Err(crate::error::SnowError::Deploy(
+                crate::error::DeployError::HookPathMissing { ref host, ref path, .. }
+            )) if host == "promethium" && path == MISSING_GATE
+        ),
+        "{result:?}"
     );
-    assert!(!executed_stages(&run).contains(&HookStage::PreDeploy));
+    assert!(events.is_empty(), "{events:?}");
 }
 
 #[tokio::test]

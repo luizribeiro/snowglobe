@@ -394,6 +394,16 @@ impl PushHarness {
     }
 
     async fn run(&self, hosts: Vec<HostMetadata>) -> HarnessRun {
+        let (results, events) = self.run_push(hosts).await;
+        HarnessRun {
+            results: results.unwrap(),
+            events,
+            executed_hooks: self.hook_backend.get_executed_hooks(),
+        }
+    }
+
+    /// The push's outcome, including an error, and the observer events
+    async fn run_push(&self, hosts: Vec<HostMetadata>) -> (Result<PushResults>, Vec<String>) {
         let flake = Flake::test_context();
         let observer = TestObserver::new();
         let hook_backend = self
@@ -411,13 +421,8 @@ impl PushHarness {
             Some(&hook_executor),
         );
 
-        let results = push(&push_ctx, hosts).await.unwrap();
-
-        HarnessRun {
-            results,
-            events: observer.get_events(),
-            executed_hooks: self.hook_backend.get_executed_hooks(),
-        }
+        let results = push(&push_ctx, hosts).await;
+        (results, observer.get_events())
     }
 }
 

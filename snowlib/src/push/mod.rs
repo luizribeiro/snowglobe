@@ -19,6 +19,7 @@ mod context;
 mod hooks;
 mod pipeline;
 mod planning;
+mod preflight;
 mod results;
 mod serial;
 
@@ -100,6 +101,8 @@ fn skip_remaining_phases(
 /// # }
 /// ```
 pub async fn push(push_ctx: &PushContext<'_>, hosts: Vec<HostMetadata>) -> Result<PushResults> {
+    preflight::check_local_hooks(push_ctx, &hosts)?;
+
     let by_phase = group_by_phase(hosts, push_ctx.config.ignore_phases);
     let phases = sorted_phases(&by_phase);
 
