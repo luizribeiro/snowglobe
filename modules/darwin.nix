@@ -5,9 +5,15 @@ with lib;
 let
   cfg = config.snowglobe.push;
 
+  # With nix.enable = false (e.g. Determinate Nix) nix-darwin doesn't manage
+  # nix, so use the host's own install; sudo's secure_path may not include it.
+  nixEnv =
+    if config.nix.enable or true
+    then "${config.nix.package}/bin/nix-env"
+    else "/nix/var/nix/profiles/default/bin/nix-env";
+
   activationHelper = import ./darwin-activate.nix {
-    inherit pkgs;
-    nixEnv = "${pkgs.nix}/bin/nix-env";
+    inherit pkgs nixEnv;
   };
 in
 {

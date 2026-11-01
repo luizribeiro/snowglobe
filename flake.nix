@@ -83,6 +83,7 @@
           hooks-module = runNixTests "hooks-module" (import ./modules/hooks.test.nix { inherit pkgs; });
           push-module = runNixTests "push-module" (import ./modules/push.test.nix { inherit pkgs; });
           local-pkgs-module = runNixTests "local-pkgs-module" (import ./modules/local-pkgs.test.nix { inherit pkgs; });
+          darwin-activate = import ./modules/darwin-activate.test.nix { inherit pkgs; };
         } // nixpkgs.lib.optionalAttrs pkgs.stdenv.isLinux {
           nixos-activate = import ./modules/nixos-activate.test.nix { inherit pkgs; };
         });

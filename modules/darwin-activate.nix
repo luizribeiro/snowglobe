@@ -52,6 +52,10 @@ pkgs.writeScriptBin "snowglobe-activate" ''
     exit 1
   fi
 
-  # Execute the activation script (Darwin's activate doesn't take mode arguments)
+  # Darwin's activate doesn't record a generation; without it, rollback and
+  # boot-time activation still see the previous system
+  ${nixEnv} --profile /nix/var/nix/profiles/system --set "$STORE_PATH"
+
+  # Darwin's activate doesn't take mode arguments
   exec "$ACTIVATION_SCRIPT"
 ''
