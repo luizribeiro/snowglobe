@@ -100,6 +100,8 @@ async fn handle_pipeline_failure(
     error: crate::error::SnowError,
 ) -> HostDeploymentResult {
     let hostname = host_metadata.name.as_str();
+    let reason = crate::error::error_chain(&error);
+    tracing::error!("{hostname}: failed at {step}: {reason}");
     // Halt first so no other group member starts while on-failure hooks run
     scheduler.halt_group_of(host_metadata);
 
@@ -124,7 +126,7 @@ async fn handle_pipeline_failure(
         activation_mode: None,
         rebooted: false,
         unchanged: false,
-        error_message: Some(error.to_string()),
+        error_message: Some(reason),
     }
 }
 

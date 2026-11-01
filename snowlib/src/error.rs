@@ -455,9 +455,82 @@ pub enum ProvisionerError {
     DeploymentCancelled { provisioner: String, target: String },
 }
 
+/// The error's message followed by each source's, joined with ": ".
+///
+/// Sources whose text the message already quotes are skipped, since many
+/// variants embed their stderr in the message too.
+pub fn error_chain(error: &(dyn std::error::Error + 'static)) -> String {
+    let mut chain = error.to_string();
+    let mut source = error.source();
+    while let Some(cause) = source {
+        let text = cause.to_string();
+        if !chain.contains(&text) {
+            chain.push_str(": ");
+            chain.push_str(&text);
+        }
+        source = cause.source();
+    }
+    chain
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_error_chain_includes_the_reason_behind_a_deploy_failure() {
+        let error = SnowError::from(DeployError::Failed {
+            host: "lanthanum".to_string(),
+            source: std::io::Error::other(
+                "Reboot required (kernel changed) but host policy is 'never'",
+            ),
+        });
+
+        assert_eq!(
+            error_chain(&error),
+            "Failed to deploy to host 'lanthanum': Reboot required (kernel changed) but host policy is 'never'"
+        );
+    }
+
+    #[test]
+    fn test_error_chain_follows_nested_sources() {
+        let error = SnowError::from(NixError::MetadataFailed {
+            host: "ferrum".to_string(),
+            source: Box::new(NixError::CommandFailed {
+                source: std::io::Error::other("nix: command not found"),
+            }),
+        });
+
+        assert_eq!(
+            error_chain(&error),
+            "Failed to get metadata for host 'ferrum': Nix command execution failed: nix: command not found"
+        );
+    }
+
+    #[test]
+    fn test_error_chain_skips_sources_already_in_the_message() {
+        let error = NixError::BuildFailed {
+            host: "radon".to_string(),
+            stderr: "error: builder for wine failed".to_string(),
+            source: std::io::Error::other("error: builder for wine failed"),
+        };
+
+        assert_eq!(
+            error_chain(&error),
+            "Failed to build host configuration for 'radon':\nerror: builder for wine failed"
+        );
+    }
+
+    #[test]
+    fn test_error_chain_of_error_without_source() {
+        let error = DeployError::HookPathMissing {
+            host: "samarium".to_string(),
+            hook: "wait-storage-healthy".to_string(),
+            path: "/nix/store/715sqm-kubernetes-storage-healthy".to_string(),
+        };
+
+        assert_eq!(error_chain(&error), error.to_string());
+    }
 
     #[test]
     fn test_missing_dependency_error_message() {

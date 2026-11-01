@@ -35,6 +35,28 @@ async fn test_host_blocked_by_planning_is_never_drained() {
     );
 }
 
+#[tokio::test]
+async fn test_blocked_host_keeps_the_reason_it_was_blocked() {
+    let mut harness = PushHarness::new();
+    harness.config.strategy = PushStrategy::Switch;
+    harness.reboot_backend = MockRebootBackend::new().with_reboot_required(HashMap::from([(
+        "neodymium".to_string(),
+        RebootReason::KernelChanged {
+            old: "/nix/store/old-kernel".to_string(),
+            new: "/nix/store/new-kernel".to_string(),
+        },
+    )]));
+
+    let run = harness.run(vec![kubernetes_node("neodymium")]).await;
+
+    let message = run.host("neodymium").error_message.clone().unwrap();
+    assert!(
+        message.starts_with("Failed to deploy to host 'neodymium': Kernel changed:"),
+        "{message}"
+    );
+    assert!(message.contains("/nix/store/new-kernel"), "{message}");
+}
+
 fn position(run: &HarnessRun, event: &str) -> usize {
     run.events
         .iter()
