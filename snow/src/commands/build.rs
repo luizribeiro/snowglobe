@@ -116,23 +116,86 @@ impl BuildArgs {
 
         self.print_results(&results);
 
-        let any_failed = results.iter().any(|r| r.result.is_err());
-        if any_failed {
-            return Err(snowlib::error::DeployError::Failed {
-                host: "multiple".to_string(),
-                source: std::io::Error::other("One or more builds failed"),
-            }
-            .into());
+        match failure_error(&results) {
+            Some(error) => Err(error.into()),
+            None => Ok(()),
         }
-
-        Ok(())
     }
+}
+
+fn failure_error(results: &[BuildResult]) -> Option<snowlib::error::DeployError> {
+    let failed: Vec<String> = results
+        .iter()
+        .filter(|r| r.result.is_err())
+        .map(|r| format!("{} ({})", r.hostname, snowlib::PipelineStep::Build))
+        .collect();
+    if failed.is_empty() {
+        return None;
+    }
+    Some(snowlib::error::DeployError::HostsFailed {
+        total: results.len(),
+        failed,
+    })
 }
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use crate::test_utils::snow_cmd;
     use predicates::prelude::*;
+
+    fn build_result(hostname: &str, ok: bool) -> BuildResult {
+        BuildResult {
+            hostname: hostname.to_string(),
+            result: if ok {
+                Ok(StorePath::new(format!(
+                    "/nix/store/3xv9d1x5qzl1-nixos-system-{hostname}-26.05"
+                )))
+            } else {
+                Err(snowlib::error::NixError::BuildFailed {
+                    host: hostname.to_string(),
+                    stderr: "error: builder for wine-wow-staging-10.12 failed".to_string(),
+                    source: std::io::Error::other("exit status 1"),
+                }
+                .into())
+            },
+        }
+    }
+
+    #[test]
+    fn test_failure_error_names_failed_builds() {
+        let results = vec![
+            build_result("boron", true),
+            build_result("radon", false),
+            build_result("sodium", true),
+        ];
+
+        assert_eq!(
+            failure_error(&results).unwrap().to_string(),
+            "1 of 3 hosts failed: radon (build)"
+        );
+    }
+
+    #[test]
+    fn test_failure_error_lists_every_failed_build() {
+        let results = vec![
+            build_result("boron", false),
+            build_result("radon", false),
+            build_result("sodium", true),
+        ];
+
+        assert_eq!(
+            failure_error(&results).unwrap().to_string(),
+            "2 of 3 hosts failed: boron (build), radon (build)"
+        );
+    }
+
+    #[test]
+    fn test_no_failure_error_when_all_builds_succeed() {
+        let results = vec![build_result("boron", true), build_result("sodium", true)];
+
+        assert!(failure_error(&results).is_none());
+    }
 
     #[test]
     fn test_build_invalid_host() {
