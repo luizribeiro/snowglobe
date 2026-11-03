@@ -94,12 +94,14 @@ fn make_hook_executor(
 #[derive(Clone)]
 struct TestObserver {
     events: Arc<Mutex<Vec<String>>>,
+    done: Arc<Mutex<Vec<HostDeploymentResult>>>,
 }
 
 impl TestObserver {
     fn new() -> Self {
         Self {
             events: Arc::new(Mutex::new(Vec::new())),
+            done: Arc::new(Mutex::new(Vec::new())),
         }
     }
 
@@ -115,6 +117,10 @@ impl PushObserver for TestObserver {
             HostEvent::Started(step) => format!("started:{hostname}:{step}"),
             HostEvent::Finished(step) => format!("finished:{hostname}:{step}"),
             HostEvent::Failed { step, reason } => format!("failed:{hostname}:{step}:{reason}"),
+            HostEvent::Done(result) => {
+                self.done.lock().unwrap().push(result.clone());
+                format!("done:{hostname}")
+            }
             // Recorded by the step callbacks they are forwarded to
             HostEvent::Unchanged | HostEvent::WaitingForSerialGroup { .. } => String::new(),
         };
@@ -313,6 +319,8 @@ impl PushObserver for TestObserver {
 struct HarnessRun {
     results: PushResults,
     events: Vec<String>,
+    /// Results reported through `HostEvent::Done`, in the order reported
+    done: Vec<HostDeploymentResult>,
     executed_hooks: Vec<(String, HookStage, crate::hooks::HookLocation, String)>,
 }
 
@@ -343,16 +351,18 @@ impl PushHarness {
     }
 
     async fn run(&self, hosts: Vec<HostMetadata>) -> HarnessRun {
-        let (results, events) = self.run_push(hosts).await;
+        let (results, observer) = self.run_push(hosts).await;
+        let done = observer.done.lock().unwrap().clone();
         HarnessRun {
             results: results.unwrap(),
-            events,
+            events: observer.get_events(),
+            done,
             executed_hooks: self.hook_backend.get_executed_hooks(),
         }
     }
 
-    /// The push's outcome, including an error, and the observer events
-    async fn run_push(&self, hosts: Vec<HostMetadata>) -> (Result<PushResults>, Vec<String>) {
+    /// The push's outcome, including an error, and what the observer saw
+    async fn run_push(&self, hosts: Vec<HostMetadata>) -> (Result<PushResults>, TestObserver) {
         let flake = Flake::test_context();
         let observer = TestObserver::new();
         let hook_backend = self
@@ -371,7 +381,7 @@ impl PushHarness {
         );
 
         let results = push(&push_ctx, hosts).await;
-        (results, observer.get_events())
+        (results, observer)
     }
 }
 
@@ -399,6 +409,25 @@ fn position(run: &HarnessRun, event: &str) -> usize {
         .iter()
         .position(|e| e == event)
         .unwrap_or_else(|| panic!("missing {}: {:?}", event, run.events))
+}
+
+/// Asserts each host reported `Done` once, with the result push() returned,
+/// and reported nothing after it
+fn assert_done_with_final_results(run: &HarnessRun, hosts: &[&str]) {
+    assert_eq!(run.done.len(), hosts.len(), "{:?}", run.done);
+    for host in hosts {
+        let reported: Vec<_> = run.done.iter().filter(|r| r.hostname == *host).collect();
+        assert_eq!(reported, vec![run.host(host)], "{host}");
+        let done = position(run, &format!("done:{host}"));
+        let host_of = |event: &String| event.split(':').nth(1).map(str::to_string);
+        assert!(
+            run.events[done + 1..]
+                .iter()
+                .all(|e| host_of(e).as_deref() != Some(host)),
+            "{host} reported after done: {:?}",
+            run.events
+        );
+    }
 }
 
 /// The store path MockNixBackend builds for `hostname`

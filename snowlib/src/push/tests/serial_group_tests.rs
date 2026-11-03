@@ -190,6 +190,10 @@ async fn test_failed_deploy_skips_the_rest_of_its_group_only() {
     assert_skipped_after(&run, "promethium", "praseodymium");
     assert_skipped_after(&run, "samarium", "praseodymium");
     assert!(run.host("hydrogen").success);
+    assert_done_with_final_results(
+        &run,
+        &["hydrogen", "praseodymium", "promethium", "samarium"],
+    );
 }
 
 #[tokio::test]

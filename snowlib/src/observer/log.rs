@@ -1,7 +1,7 @@
 //! Writes each host's progress to the log
 
 use super::{HostEvent, PushObserver};
-use crate::push::PipelineStep;
+use crate::push::{HostDeploymentResult, PipelineStep};
 use parking_lot::Mutex;
 use std::collections::HashMap;
 use std::time::Instant;
@@ -40,7 +40,20 @@ impl LogObserver {
                 "{hostname}: waiting for serial group '{group}' (held by {})",
                 holder.as_deref().unwrap_or("another host")
             )),
+            HostEvent::Done(result) => done_line(result),
         }
+    }
+}
+
+/// Failures are logged by the pipeline and unchanged hosts by `Unchanged`
+fn done_line(result: &HostDeploymentResult) -> Option<String> {
+    let hostname = &result.hostname;
+    if result.success && !result.unchanged {
+        return Some(format!("{hostname}: deployed"));
+    }
+    match (result.failed_at_step, &result.error_message) {
+        (Some(PipelineStep::SerialGroup), Some(reason)) => Some(format!("{hostname}: {reason}")),
+        _ => None,
     }
 }
 
@@ -55,6 +68,7 @@ impl PushObserver for LogObserver {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::nix::ActivationMode;
     use std::time::Duration;
 
     fn failed(step: PipelineStep) -> HostEvent {
@@ -124,6 +138,50 @@ mod tests {
         assert_eq!(failure, None);
         assert_eq!(after_failure.as_deref(), Some("cerium: copy finished"));
         assert_eq!(radon.as_deref(), Some("radon: copy finished in 3.0s"));
+    }
+
+    #[test]
+    fn test_done_logs_deploys_and_serial_group_skips_only() {
+        let log = LogObserver::default();
+        let now = Instant::now();
+        let deployed = HostDeploymentResult {
+            hostname: "radon".to_string(),
+            success: true,
+            failed_at_step: None,
+            activation_mode: Some(ActivationMode::Boot),
+            rebooted: true,
+            unchanged: false,
+            error_message: None,
+        };
+        let skipped = HostDeploymentResult::skipped_by_serial_group("samarium", "k8s", "cerium");
+        let failed = HostDeploymentResult {
+            hostname: "cerium".to_string(),
+            success: false,
+            failed_at_step: Some(PipelineStep::Copy),
+            error_message: Some("Copy closure failed".to_string()),
+            ..deployed.clone()
+        };
+        let unchanged = HostDeploymentResult::unchanged("sodium");
+
+        let lines: Vec<_> = [deployed, skipped, failed, unchanged]
+            .into_iter()
+            .map(|result| {
+                let hostname = result.hostname.clone();
+                log.line(&hostname, &HostEvent::Done(result), now)
+            })
+            .collect();
+
+        assert_eq!(
+            lines,
+            vec![
+                Some("radon: deployed".to_string()),
+                Some(
+                    "samarium: skipped: serial group 'k8s' halted after cerium failed".to_string()
+                ),
+                None,
+                None,
+            ]
+        );
     }
 
     #[test]

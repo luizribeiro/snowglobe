@@ -349,7 +349,9 @@ pub(super) async fn execute_host_pipeline(
         scheduler,
         metadata: host_metadata,
     };
-    Ok(host.run().await.unwrap_or_else(|stopped| stopped))
+    let result = host.run().await.unwrap_or_else(|stopped| stopped);
+    host.report(HostEvent::Done(result.clone()));
+    Ok(result)
 }
 
 /// Whether the host already runs and would boot `store_path`

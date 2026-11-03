@@ -253,7 +253,8 @@ async fn test_local_hook_with_missing_store_path_fails_before_any_build() {
         node_with_gate("promethium", crate::hooks::HookLocation::Local),
     ];
 
-    let (result, events) = PushHarness::new().run_push(hosts).await;
+    let (result, observer) = PushHarness::new().run_push(hosts).await;
+    let events = observer.get_events();
 
     assert!(
         matches!(

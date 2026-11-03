@@ -53,7 +53,7 @@ impl fmt::Display for PipelineStep {
 }
 
 /// Result of deploying a single host
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HostDeploymentResult {
     pub hostname: String,
     pub success: bool,

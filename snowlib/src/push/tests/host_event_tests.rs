@@ -209,3 +209,51 @@ async fn test_failed_post_deploy_hook_is_not_a_failed_step() {
     assert!(run.has_event("finished:radon:activate"));
     assert!(failed_events(&run).is_empty(), "{:?}", run.events);
 }
+
+#[tokio::test]
+async fn test_done_carries_each_hosts_final_result() {
+    let mut harness = PushHarness::new();
+    harness.deployer = MockDeployBackend::new()
+        .with_copy_failures(vec!["cerium.example.com".to_string()])
+        .with_host_systems(HashMap::from([(
+            "sodium.example.com".to_string(),
+            HostSystems::both(mock_built_system("sodium")),
+        )]));
+    harness.reboot_backend =
+        MockRebootBackend::new().with_reboot_failures(vec!["boron.example.com".to_string()]);
+    harness.hook_backend = Arc::new(
+        crate::backends::hook::MockHookBackend::new()
+            .with_remote_failures(vec!["vanadium.example.com".to_string()]),
+    );
+    let mut boron = kubernetes_node("boron");
+    boron.reboot_policy = RebootPolicy::Always;
+    let mut vanadium = kubernetes_node("vanadium");
+    vanadium.hooks.push(crate::hooks::HookConfig::test_fixture(
+        "check-disks",
+        HookStage::PreDeploy,
+        crate::hooks::HookLocation::Remote,
+        "smartctl -H /dev/sda",
+    ));
+
+    let run = harness
+        .run(vec![
+            boron,
+            kubernetes_node("cerium"),
+            kubernetes_node("radon"),
+            kubernetes_node("sodium"),
+            vanadium,
+        ])
+        .await;
+
+    assert!(run
+        .host("boron")
+        .error_message
+        .as_deref()
+        .is_some_and(|m| m.starts_with("Deployment succeeded but reboot failed")));
+    assert!(run.host("sodium").unchanged);
+    assert_eq!(
+        run.host("vanadium").failed_at_step,
+        Some(PipelineStep::Activate)
+    );
+    assert_done_with_final_results(&run, &["boron", "cerium", "radon", "sodium", "vanadium"]);
+}

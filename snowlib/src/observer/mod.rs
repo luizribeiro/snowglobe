@@ -29,7 +29,7 @@ mod log;
 pub use log::LogObserver;
 
 use crate::hooks::HookStage;
-use crate::push::PipelineStep;
+use crate::push::{HostDeploymentResult, PipelineStep};
 
 /// Something that happened to one host during a push
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -47,6 +47,8 @@ pub enum HostEvent {
         group: String,
         holder: Option<String>,
     },
+    /// The host is through, whatever the outcome: its final result
+    Done(HostDeploymentResult),
 }
 
 /// Translates a host event into the per-step callbacks below, for observers
@@ -70,7 +72,7 @@ pub fn forward_to_step_callbacks<O: PushObserver + ?Sized>(
         HostEvent::WaitingForSerialGroup { group, holder } => {
             observer.on_serial_group_wait(hostname, group, holder.as_deref())
         }
-        HostEvent::Started(_) => {}
+        HostEvent::Started(_) | HostEvent::Done(_) => {}
     }
 }
 
