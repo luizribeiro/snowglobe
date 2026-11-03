@@ -62,29 +62,6 @@ fn store_path_from_resolved(host: &str, link: &str, resolved: &str) -> Result<St
     Ok(StorePath::new(resolved.to_string()))
 }
 
-/// Result of a deployment operation
-#[derive(Debug, Clone)]
-pub struct DeployResult {
-    pub success: bool,
-    pub message: String,
-}
-
-impl DeployResult {
-    pub fn success(message: impl Into<String>) -> Self {
-        Self {
-            success: true,
-            message: message.into(),
-        }
-    }
-
-    pub fn failure(message: impl Into<String>) -> Self {
-        Self {
-            success: false,
-            message: message.into(),
-        }
-    }
-}
-
 /// Trait for deployment backend implementations
 ///
 /// Implementations must be Send + Sync to support parallel deployments
@@ -103,21 +80,6 @@ pub trait DeployBackend: Send + Sync {
         store_path: &StorePath,
         mode: ActivationMode,
     ) -> Result<()>;
-
-    /// Deploy (copy + activate) in one operation
-    async fn deploy(
-        &self,
-        target: &DeployTarget,
-        store_path: &StorePath,
-        mode: ActivationMode,
-    ) -> Result<DeployResult> {
-        self.copy_closure(target, store_path).await?;
-        self.activate(target, store_path, mode).await?;
-        Ok(DeployResult::success(format!(
-            "Deployed successfully to {}",
-            target.hostname
-        )))
-    }
 }
 
 #[cfg(test)]
