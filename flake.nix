@@ -33,7 +33,17 @@
             pname = "snow";
             version = "0.1.0";
 
-            src = ./.;
+            # Only what cargo reads, so editing docs or tests in nix/ doesn't
+            # rebuild snow and every VM test that runs it
+            src = pkgs.lib.fileset.toSource {
+              root = ./.;
+              fileset = pkgs.lib.fileset.unions [
+                ./Cargo.toml
+                ./Cargo.lock
+                ./snow
+                ./snowlib
+              ];
+            };
 
             cargoLock = {
               lockFile = ./Cargo.lock;
