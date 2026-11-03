@@ -23,7 +23,7 @@ pub struct BlockedHost {
 }
 
 /// Pipeline step where deployment can succeed or fail
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum PipelineStep {
     Build,
     /// Reading which system the host runs, to skip unchanged hosts

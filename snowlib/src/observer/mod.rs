@@ -24,6 +24,10 @@
 //! }
 //! ```
 
+mod log;
+
+pub use log::LogObserver;
+
 use crate::hooks::HookStage;
 use crate::push::PipelineStep;
 
