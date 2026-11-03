@@ -108,188 +108,86 @@ impl TestObserver {
     fn get_events(&self) -> Vec<String> {
         self.events.lock().unwrap().clone()
     }
+
+    fn record(&self, event: String) {
+        self.events.lock().unwrap().push(event);
+    }
+}
+
+/// The step-level names these tests have always asserted on, e.g.
+/// "build_start:cerium" or "activation_complete:cerium:failed"
+fn step_event_name(hostname: &str, event: &crate::observer::HostEvent) -> Option<String> {
+    use crate::observer::HostEvent;
+    let step_name = |step: &PipelineStep| match step {
+        PipelineStep::Build => Some("build"),
+        PipelineStep::Copy => Some("copy"),
+        PipelineStep::Activate => Some("activation"),
+        PipelineStep::Reboot => Some("reboot"),
+        _ => None,
+    };
+    let failed = |step: &PipelineStep| {
+        if *step == PipelineStep::Activate {
+            "failed"
+        } else {
+            "fail"
+        }
+    };
+    match event {
+        HostEvent::Started(step) => Some(format!("{}_start:{hostname}", step_name(step)?)),
+        HostEvent::Finished(step) => Some(format!("{}_complete:{hostname}:ok", step_name(step)?)),
+        HostEvent::Failed { step, .. } => Some(format!(
+            "{}_complete:{hostname}:{}",
+            step_name(step)?,
+            failed(step)
+        )),
+        HostEvent::Unchanged => Some(format!("unchanged:{hostname}")),
+        HostEvent::WaitingForSerialGroup { group, holder } => Some(format!(
+            "serial_wait:{hostname}:{group}:{}",
+            holder.as_deref().unwrap_or("-")
+        )),
+        HostEvent::Done(_) => None,
+    }
 }
 
 impl PushObserver for TestObserver {
     fn on_host_event(&self, hostname: &str, event: &crate::observer::HostEvent) {
         use crate::observer::HostEvent;
-        let recorded = match event {
-            HostEvent::Started(step) => format!("started:{hostname}:{step}"),
-            HostEvent::Finished(step) => format!("finished:{hostname}:{step}"),
-            HostEvent::Failed { step, reason } => format!("failed:{hostname}:{step}:{reason}"),
+        match event {
+            HostEvent::Started(step) => self.record(format!("started:{hostname}:{step}")),
+            HostEvent::Finished(step) => self.record(format!("finished:{hostname}:{step}")),
+            HostEvent::Failed { step, reason } => {
+                self.record(format!("failed:{hostname}:{step}:{reason}"))
+            }
             HostEvent::Done(result) => {
                 self.done.lock().unwrap().push(result.clone());
-                format!("done:{hostname}")
+                self.record(format!("done:{hostname}"));
             }
-            // Recorded by the step callbacks they are forwarded to
-            HostEvent::Unchanged | HostEvent::WaitingForSerialGroup { .. } => String::new(),
-        };
-        if !recorded.is_empty() {
-            self.events.lock().unwrap().push(recorded);
+            HostEvent::Unchanged | HostEvent::WaitingForSerialGroup { .. } => {}
         }
-        crate::observer::forward_to_step_callbacks(self, hostname, event);
-    }
-
-    fn on_build_step_start(&self, phase: &str, hosts: &[String]) {
-        self.events
-            .lock()
-            .unwrap()
-            .push(format!("build_step_start:{}:{}", phase, hosts.len()));
-    }
-
-    fn on_build_start(&self, hostname: &str) {
-        self.events
-            .lock()
-            .unwrap()
-            .push(format!("build_start:{}", hostname));
-    }
-
-    fn on_build_complete(&self, hostname: &str, success: bool) {
-        self.events.lock().unwrap().push(format!(
-            "build_complete:{}:{}",
-            hostname,
-            if success { "ok" } else { "fail" }
-        ));
-    }
-
-    fn on_build_step_complete(&self, phase: &str, success: bool) {
-        self.events.lock().unwrap().push(format!(
-            "build_step_complete:{}:{}",
-            phase,
-            if success { "ok" } else { "fail" }
-        ));
-    }
-
-    fn on_copy_step_start(&self, phase: &str, hosts: &[String]) {
-        self.events
-            .lock()
-            .unwrap()
-            .push(format!("copy_step_start:{}:{}", phase, hosts.len()));
-    }
-
-    fn on_copy_start(&self, hostname: &str) {
-        self.events
-            .lock()
-            .unwrap()
-            .push(format!("copy_start:{}", hostname));
-    }
-
-    fn on_copy_complete(&self, hostname: &str, success: bool) {
-        self.events.lock().unwrap().push(format!(
-            "copy_complete:{}:{}",
-            hostname,
-            if success { "ok" } else { "fail" }
-        ));
-    }
-
-    fn on_copy_step_complete(&self, phase: &str, success: bool) {
-        self.events.lock().unwrap().push(format!(
-            "copy_step_complete:{}:{}",
-            phase,
-            if success { "ok" } else { "fail" }
-        ));
+        // Many tests assert on these step-level names as well
+        if let Some(name) = step_event_name(hostname, event) {
+            self.record(name);
+        }
     }
 
     fn on_phase_start(&self, phase: &str, hosts: &[String]) {
-        self.events
-            .lock()
-            .unwrap()
-            .push(format!("phase_start:{}:{}", phase, hosts.len()));
-    }
-
-    fn on_deploy_step_start(&self, phase: &str, hosts: &[String]) {
-        self.events
-            .lock()
-            .unwrap()
-            .push(format!("deploy_step_start:{}:{}", phase, hosts.len()));
-    }
-
-    fn on_activation_start(&self, hostname: &str) {
-        self.events
-            .lock()
-            .unwrap()
-            .push(format!("activation_start:{}", hostname));
-    }
-
-    fn on_serial_group_wait(&self, hostname: &str, group: &str, holder: Option<&str>) {
-        self.events.lock().unwrap().push(format!(
-            "serial_wait:{}:{}:{}",
-            hostname,
-            group,
-            holder.unwrap_or("-")
-        ));
-    }
-
-    fn on_host_unchanged(&self, hostname: &str) {
-        self.events
-            .lock()
-            .unwrap()
-            .push(format!("unchanged:{}", hostname));
-    }
-
-    fn on_activation_complete(&self, hostname: &str, success: bool) {
-        self.events.lock().unwrap().push(format!(
-            "activation_complete:{}:{}",
-            hostname,
-            if success { "ok" } else { "failed" }
-        ));
-    }
-
-    fn on_deploy_step_complete(&self, phase: &str, success: bool) {
-        self.events.lock().unwrap().push(format!(
-            "deploy_step_complete:{}:{}",
-            phase,
-            if success { "ok" } else { "fail" }
-        ));
+        self.record(format!("phase_start:{}:{}", phase, hosts.len()));
     }
 
     fn on_phase_complete(&self, phase: &str, success: bool) {
-        self.events.lock().unwrap().push(format!(
+        self.record(format!(
             "phase_complete:{}:{}",
             phase,
             if success { "ok" } else { "failed" }
         ));
     }
 
-    fn on_reboot_start(&self, hostname: &str) {
-        self.events
-            .lock()
-            .unwrap()
-            .push(format!("reboot_start:{}", hostname));
-    }
-
-    fn on_reboot_complete(&self, hostname: &str, success: bool) {
-        self.events.lock().unwrap().push(format!(
-            "reboot_complete:{}:{}",
-            hostname,
-            if success { "ok" } else { "fail" }
-        ));
-    }
-
-    fn on_reboot_step_start(&self, phase: &str, hosts: &[String]) {
-        self.events
-            .lock()
-            .unwrap()
-            .push(format!("reboot_step_start:{}:{}", phase, hosts.len()));
-    }
-
-    fn on_reboot_step_complete(&self, phase: &str, success: bool) {
-        self.events.lock().unwrap().push(format!(
-            "reboot_step_complete:{}:{}",
-            phase,
-            if success { "ok" } else { "fail" }
-        ));
-    }
-
     fn on_hooks_start(&self, hostname: &str, stage: HookStage) {
-        self.events
-            .lock()
-            .unwrap()
-            .push(format!("hooks_start:{}:{}", hostname, stage));
+        self.record(format!("hooks_start:{}:{}", hostname, stage));
     }
 
     fn on_hooks_complete(&self, hostname: &str, stage: HookStage, success: bool) {
-        self.events.lock().unwrap().push(format!(
+        self.record(format!(
             "hooks_complete:{}:{}:{}",
             hostname,
             stage,
@@ -298,14 +196,11 @@ impl PushObserver for TestObserver {
     }
 
     fn on_hook_start(&self, hostname: &str, stage: HookStage, hook_name: &str) {
-        self.events
-            .lock()
-            .unwrap()
-            .push(format!("hook_start:{}:{}:{}", hostname, stage, hook_name));
+        self.record(format!("hook_start:{}:{}:{}", hostname, stage, hook_name));
     }
 
     fn on_hook_complete(&self, hostname: &str, stage: HookStage, hook_name: &str, success: bool) {
-        self.events.lock().unwrap().push(format!(
+        self.record(format!(
             "hook_complete:{}:{}:{}:{}",
             hostname,
             stage,
