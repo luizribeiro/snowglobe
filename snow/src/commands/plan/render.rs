@@ -2,6 +2,8 @@ use std::fmt::Write;
 
 use snowlib::plan::{CacheStatus, HostStatus, PlanReport, PlannedBuild};
 
+use crate::error_summary::error_summary;
+
 pub fn render(report: &PlanReport, show_trivial: bool) -> String {
     let mut out = String::new();
     let host_count = report.hosts.len();
@@ -174,16 +176,6 @@ fn host_summary(status: &HostStatus) -> String {
     }
 }
 
-// Nix errors carry a long trace; the final `error:` line names the cause.
-fn error_summary(error: &str) -> &str {
-    error
-        .lines()
-        .map(str::trim)
-        .filter(|line| line.starts_with("error:"))
-        .next_back()
-        .unwrap_or_else(|| error.lines().next().unwrap_or_default().trim())
-}
-
 fn render_warnings(out: &mut String, report: &PlanReport) {
     let unreachable: Vec<_> = report.unreachable_substituters().collect();
     if unreachable.is_empty() {
@@ -320,18 +312,6 @@ mod tests {
         };
 
         assert_eq!(host_summary(&status), "up to date (in local store)");
-    }
-
-    #[test]
-    fn test_error_summary_without_error_line_uses_first_line() {
-        assert_eq!(error_summary("worker crashed\nsignal 9"), "worker crashed");
-    }
-
-    #[test]
-    fn test_error_summary_uses_last_error_line() {
-        let error = "error:\n       … while evaluating 'toplevel'\n\n       error: attribute 'wine' missing";
-
-        assert_eq!(error_summary(error), "error: attribute 'wine' missing");
     }
 
     #[test]
