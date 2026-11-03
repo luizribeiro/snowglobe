@@ -27,6 +27,7 @@ pub struct MockDeployBackend {
     activate_failures: Vec<String>,
     /// Track which hosts had profile updates (hostname, mode)
     profile_updates: Arc<Mutex<Vec<(String, ActivationMode)>>>,
+    copies: Arc<Mutex<Vec<String>>>,
     /// Systems per target hostname; hosts not listed run a system no build matches
     host_systems: HashMap<String, HostSystems>,
     host_systems_failures: Vec<String>,
@@ -41,6 +42,7 @@ impl Default for MockDeployBackend {
             copy_failures: Vec::new(),
             activate_failures: Vec::new(),
             profile_updates: Arc::new(Mutex::new(Vec::new())),
+            copies: Arc::new(Mutex::new(Vec::new())),
             host_systems: HashMap::new(),
             host_systems_failures: Vec::new(),
             host_systems_timeouts: Vec::new(),
@@ -80,6 +82,16 @@ impl MockDeployBackend {
             .unwrap()
             .iter()
             .any(|(h, _)| h == hostname)
+    }
+
+    /// How many copies to the target `hostname` were attempted
+    pub fn copy_count(&self, hostname: &str) -> usize {
+        self.copies
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|h| *h == hostname)
+            .count()
     }
 
     /// Set failures for simple mode (when not using fixtures) - fails during both copy and activate
@@ -183,6 +195,7 @@ impl DeployBackend for MockDeployBackend {
         }
 
         print!("{}", self.generate_copy_closure_output(&target.hostname));
+        self.copies.lock().unwrap().push(target.hostname.clone());
 
         let (should_fail, error_msg) = self.should_fail_at(&target.hostname, "copy_closure");
 

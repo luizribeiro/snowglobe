@@ -1017,3 +1017,19 @@ async fn test_push_never_reboots_darwin_hosts() {
         );
     }
 }
+
+#[tokio::test]
+async fn test_each_host_gets_its_closure_copied_once() {
+    let harness = PushHarness::new();
+
+    let run = harness
+        .run(vec![
+            make_host_metadata("boron", Some("p1"), RebootPolicy::Never),
+            make_host_metadata("radon", Some("p1"), RebootPolicy::Never),
+        ])
+        .await;
+
+    assert_eq!(run.results.success_count(), 2);
+    assert_eq!(harness.deployer.copy_count("boron.example.com"), 1);
+    assert_eq!(harness.deployer.copy_count("radon.example.com"), 1);
+}

@@ -5,7 +5,7 @@
 //!
 //! The pipeline is fully async, using tokio for concurrent execution of hosts.
 
-use crate::backends::deploy::{DeployResult, DeployTarget};
+use crate::backends::deploy::DeployTarget;
 use crate::error::Result;
 use crate::hooks::HookStage;
 use crate::host::HostMetadata;
@@ -287,21 +287,18 @@ pub(super) async fn execute_host_pipeline(
         PipelineStep::Activate
     );
 
-    let activate_result = match execute_activation_step(push_ctx, &plan).await {
-        Ok(result) => result,
-        Err(e) => {
-            return Ok(handle_pipeline_failure(
-                push_ctx,
-                scheduler,
-                host_metadata,
-                Some(&plan.target),
-                Some(&plan.store_path),
-                PipelineStep::Activate,
-                e,
-            )
-            .await);
-        }
-    };
+    if let Err(e) = execute_activation_step(push_ctx, &plan).await {
+        return Ok(handle_pipeline_failure(
+            push_ctx,
+            scheduler,
+            host_metadata,
+            Some(&plan.target),
+            Some(&plan.store_path),
+            PipelineStep::Activate,
+            e,
+        )
+        .await);
+    }
 
     // Step 4: Reboot (if needed)
     let rebooted = match execute_reboot_step(push_ctx, &plan).await {
@@ -335,29 +332,22 @@ pub(super) async fn execute_host_pipeline(
         );
     }
 
-    if activate_result.success {
-        execute_hooks_or_return!(
-            HookStage::PostDeploy,
-            Some(&plan.target),
-            Some(&plan.store_path),
-            PipelineStep::PostDeploy
-        );
-        section.succeeded();
-    }
+    execute_hooks_or_return!(
+        HookStage::PostDeploy,
+        Some(&plan.target),
+        Some(&plan.store_path),
+        PipelineStep::PostDeploy
+    );
+    section.succeeded();
 
-    // Build success result
     Ok(HostDeploymentResult {
         hostname,
-        success: activate_result.success,
+        success: true,
         failed_at_step: None,
         activation_mode: Some(plan.activation_mode),
         rebooted,
         unchanged: false,
-        error_message: if activate_result.success {
-            None
-        } else {
-            Some(activate_result.message)
-        },
+        error_message: None,
     })
 }
 
@@ -475,19 +465,16 @@ async fn plan_host(
 }
 
 /// Activate the planned system on a host
-async fn execute_activation_step(
-    push_ctx: &PushContext<'_>,
-    plan: &PushPlan,
-) -> Result<DeployResult> {
+async fn execute_activation_step(push_ctx: &PushContext<'_>, plan: &PushPlan) -> Result<()> {
     let hostname = &plan.metadata.name;
     push_ctx.observer.on_activation_start(hostname);
     let result = push_ctx
         .deploy_backend
-        .deploy(&plan.target, &plan.store_path, plan.activation_mode)
+        .activate(&plan.target, &plan.store_path, plan.activation_mode)
         .await;
     push_ctx
         .observer
-        .on_activation_complete(hostname, result.as_ref().is_ok_and(|r| r.success));
+        .on_activation_complete(hostname, result.is_ok());
     result
 }
 
