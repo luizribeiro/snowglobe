@@ -294,3 +294,24 @@ async fn test_dry_run_skips_the_hook_path_check() {
 
     assert!(run.host("promethium").success);
 }
+
+#[tokio::test]
+async fn test_hung_ssh_agent_stops_the_push_before_any_build() {
+    let mut harness = PushHarness::new();
+    harness.deployer = MockDeployBackend::new().with_hung_agent();
+
+    let (result, observer) = harness.run_push(vec![kubernetes_node("cerium")]).await;
+
+    assert!(matches!(
+        result,
+        Err(crate::error::SnowError::Deploy(
+            crate::error::DeployError::SshAgentNotResponding { .. }
+        ))
+    ));
+    assert!(
+        observer.get_events().is_empty(),
+        "{:?}",
+        observer.get_events()
+    );
+    assert_eq!(harness.deployer.copy_count("cerium.example.com"), 0);
+}

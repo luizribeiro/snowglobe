@@ -22,6 +22,11 @@ pub(super) fn check_local_hooks(
         .try_for_each(|host| check_local_hook_paths(host, |path| Path::new(path).exists()))
 }
 
+/// Fails before any host is touched if ssh would hang on the ssh-agent
+pub(super) async fn check_ssh_agent(push_ctx: &PushContext<'_>) -> crate::error::Result<()> {
+    push_ctx.deploy_backend.preflight().await
+}
+
 /// Fails on the first store path a local hook references that `exists` says is missing
 fn check_local_hook_paths(
     host_metadata: &HostMetadata,

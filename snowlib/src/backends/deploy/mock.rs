@@ -28,6 +28,7 @@ pub struct MockDeployBackend {
     /// Track which hosts had profile updates (hostname, mode)
     profile_updates: Arc<Mutex<Vec<(String, ActivationMode)>>>,
     copies: Arc<Mutex<Vec<String>>>,
+    agent_hangs: bool,
     /// Systems per target hostname; hosts not listed run a system no build matches
     host_systems: HashMap<String, HostSystems>,
     host_systems_failures: Vec<String>,
@@ -43,6 +44,7 @@ impl Default for MockDeployBackend {
             activate_failures: Vec::new(),
             profile_updates: Arc::new(Mutex::new(Vec::new())),
             copies: Arc::new(Mutex::new(Vec::new())),
+            agent_hangs: false,
             host_systems: HashMap::new(),
             host_systems_failures: Vec::new(),
             host_systems_timeouts: Vec::new(),
@@ -92,6 +94,12 @@ impl MockDeployBackend {
             .iter()
             .filter(|h| *h == hostname)
             .count()
+    }
+
+    /// Fails preflight the way a hung ssh-agent does
+    pub fn with_hung_agent(mut self) -> Self {
+        self.agent_hangs = true;
+        self
     }
 
     /// Set failures for simple mode (when not using fixtures) - fails during both copy and activate
@@ -189,6 +197,16 @@ impl MockDeployBackend {
 
 #[async_trait]
 impl DeployBackend for MockDeployBackend {
+    async fn preflight(&self) -> Result<()> {
+        if self.agent_hangs {
+            return Err(crate::error::DeployError::SshAgentNotResponding {
+                seconds: crate::ssh_options::AGENT_CHECK_TIMEOUT.as_secs(),
+            }
+            .into());
+        }
+        Ok(())
+    }
+
     async fn copy_closure(&self, target: &DeployTarget, _store_path: &StorePath) -> Result<()> {
         if !cfg!(debug_assertions) {
             tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
