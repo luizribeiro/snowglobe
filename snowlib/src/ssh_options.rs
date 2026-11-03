@@ -2,6 +2,8 @@
 
 use std::time::Duration;
 
+use crate::error::DeployError;
+
 use crate::process::r#async::run_command;
 use crate::process::{CommandResult, OutputMode};
 
@@ -66,6 +68,55 @@ pub(crate) async fn run_bounded(
     Ok(result)
 }
 
+// Agents backed by a hardware key or an app may take a few seconds to list
+pub(crate) const AGENT_CHECK_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// ssh-add's exit status when it can't connect to the agent
+const AGENT_UNREACHABLE: i32 = 2;
+
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum AgentStatus {
+    Responsive,
+    /// ssh still works with key files, so this only deserves a warning
+    Unreachable {
+        reason: String,
+    },
+    /// ssh-add couldn't run or died; nothing is known about the agent
+    Unchecked {
+        reason: String,
+    },
+}
+
+/// Lists the agent's keys with `ssh_add`; an agent that hangs is an error,
+/// since every ssh call would hang on it too
+pub(crate) async fn ssh_agent_status(
+    ssh_add: &str,
+    args: &[&str],
+    timeout: Duration,
+) -> std::result::Result<AgentStatus, DeployError> {
+    let result = match run_bounded(ssh_add, args, timeout).await {
+        Ok(result) => result,
+        Err(e) if e.kind() == std::io::ErrorKind::TimedOut => {
+            return Err(DeployError::SshAgentNotResponding {
+                seconds: timeout.as_secs(),
+            })
+        }
+        Err(e) => {
+            return Ok(AgentStatus::Unchecked {
+                reason: e.to_string(),
+            })
+        }
+    };
+    let stderr = String::from_utf8_lossy(&result.stderr).trim().to_string();
+    Ok(match result.status.code() {
+        Some(0 | 1) => AgentStatus::Responsive,
+        Some(AGENT_UNREACHABLE) => AgentStatus::Unreachable { reason: stderr },
+        _ => AgentStatus::Unchecked {
+            reason: format!("ssh-add exited with {}: {stderr}", result.status),
+        },
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -114,5 +165,63 @@ mod tests {
 
         assert_eq!(result.stdout, b"boot-2\n");
         assert_eq!(result.status.code(), Some(3));
+    }
+
+    async fn status_from_fake_ssh_add(
+        script: &str,
+    ) -> std::result::Result<AgentStatus, DeployError> {
+        ssh_agent_status("sh", &["-c", script], Duration::from_secs(1)).await
+    }
+
+    #[tokio::test]
+    async fn test_hung_agent_fails_the_check() {
+        let result = status_from_fake_ssh_add("sleep 10").await;
+
+        assert!(matches!(
+            result,
+            Err(DeployError::SshAgentNotResponding { seconds: 1 })
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_agent_with_or_without_keys_is_responsive() {
+        let with_keys =
+            status_from_fake_ssh_add("echo '256 SHA256:Xq0x luiz@sodium (ED25519)'; exit 0").await;
+        let without_keys =
+            status_from_fake_ssh_add("echo 'The agent has no identities.'; exit 1").await;
+
+        assert_eq!(with_keys.unwrap(), AgentStatus::Responsive);
+        assert_eq!(without_keys.unwrap(), AgentStatus::Responsive);
+    }
+
+    #[tokio::test]
+    async fn test_agent_that_cannot_be_reached_says_why() {
+        let status = status_from_fake_ssh_add(
+            "echo 'Error connecting to agent: No such file or directory' >&2; exit 2",
+        )
+        .await;
+
+        assert_eq!(
+            status.unwrap(),
+            AgentStatus::Unreachable {
+                reason: "Error connecting to agent: No such file or directory".to_string()
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn test_ssh_add_that_cannot_run_or_dies_leaves_the_agent_unchecked() {
+        let missing =
+            ssh_agent_status("/nonexistent/ssh-add", &["-l"], Duration::from_secs(1)).await;
+        let killed = status_from_fake_ssh_add("kill -9 $$").await;
+
+        assert!(
+            matches!(missing, Ok(AgentStatus::Unchecked { .. })),
+            "{missing:?}"
+        );
+        assert!(
+            matches!(killed, Ok(AgentStatus::Unchecked { .. })),
+            "{killed:?}"
+        );
     }
 }

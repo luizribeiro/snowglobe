@@ -78,6 +78,9 @@ pub struct SshDeployBackend {
     /// ssh, or in tests a fake: the program followed by its leading arguments
     ssh_command: Vec<String>,
     probe_timeout: Duration,
+    /// ssh-add, or in tests a fake, like `ssh_command`
+    ssh_add_command: Vec<String>,
+    agent_timeout: Duration,
 }
 
 impl SshDeployBackend {
@@ -87,7 +90,42 @@ impl SshDeployBackend {
             output_mode: OutputMode::Display,
             ssh_command: vec!["ssh".to_string()],
             probe_timeout: PROBE_TIMEOUT,
+            ssh_add_command: vec!["ssh-add".to_string()],
+            agent_timeout: crate::ssh_options::AGENT_CHECK_TIMEOUT,
         }
+    }
+
+    /// Runs `script` with sh in place of ssh-add, as `with_fake_ssh` does for ssh
+    #[cfg(test)]
+    fn with_fake_ssh_add(mut self, script: &std::path::Path, timeout: Duration) -> Self {
+        self.ssh_add_command = vec!["sh".to_string(), script.display().to_string()];
+        self.agent_timeout = timeout;
+        self
+    }
+
+    /// Checks the agent at `socket`, if there is one
+    async fn check_agent(&self, socket: Option<std::ffi::OsString>) -> Result<()> {
+        use crate::ssh_options::{ssh_agent_status, AgentStatus};
+        if socket.is_none() {
+            return Ok(());
+        }
+        let mut args: Vec<&str> = self.ssh_add_command[1..]
+            .iter()
+            .map(String::as_str)
+            .collect();
+        args.push("-l");
+        match ssh_agent_status(&self.ssh_add_command[0], &args, self.agent_timeout).await? {
+            AgentStatus::Responsive => {}
+            AgentStatus::Unreachable { reason } => {
+                tracing::warn!(
+                    "the ssh-agent can't be reached, ssh will only try key files: {reason}"
+                )
+            }
+            AgentStatus::Unchecked { reason } => {
+                tracing::warn!("could not check the ssh-agent: {reason}")
+            }
+        }
+        Ok(())
     }
 
     /// Runs `script` with sh in place of ssh. Running it through sh rather
@@ -184,6 +222,10 @@ impl SshDeployBackend {
 
 #[async_trait]
 impl DeployBackend for SshDeployBackend {
+    async fn preflight(&self) -> Result<()> {
+        self.check_agent(std::env::var_os("SSH_AUTH_SOCK")).await
+    }
+
     async fn copy_closure(&self, target: &DeployTarget, store_path: &StorePath) -> Result<()> {
         let ssh_target = format!("ssh://{}", self.get_destination(target));
 
@@ -946,5 +988,49 @@ case "$*" in "command -v"*) exit {helper_status} ;; esac"#
             "Expected SSH or profile error: {}",
             err_string
         );
+    }
+
+    fn fake_ssh_add_deployer(script: &str) -> (tempfile::TempDir, SshDeployBackend) {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("ssh-add");
+        std::fs::write(&path, script).unwrap();
+        let deployer = SshDeployBackend::new().with_fake_ssh_add(&path, Duration::from_secs(1));
+        (dir, deployer)
+    }
+
+    #[tokio::test]
+    async fn test_agent_is_not_checked_without_a_socket() {
+        let (_dir, deployer) = fake_ssh_add_deployer("sleep 10");
+
+        assert!(deployer.check_agent(None).await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_hung_agent_behind_the_socket_fails_the_check() {
+        let (_dir, deployer) = fake_ssh_add_deployer("sleep 10");
+
+        let result = deployer
+            .check_agent(Some("/run/user/1000/ssh-agent.sock".into()))
+            .await;
+
+        assert!(matches!(
+            result,
+            Err(crate::error::SnowError::Deploy(
+                DeployError::SshAgentNotResponding { seconds: 1 }
+            ))
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_unreachable_agent_does_not_fail_the_check() {
+        let (_dir, deployer) = fake_ssh_add_deployer(
+            "echo 'Error connecting to agent: Connection refused' >&2; exit 2",
+        );
+
+        let result = deployer
+            .check_agent(Some("/home/luiz/.ssh/ssh_auth_sock".into()))
+            .await;
+
+        assert!(result.is_ok());
     }
 }

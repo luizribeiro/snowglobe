@@ -188,6 +188,13 @@ pub enum DeployError {
         path: String,
     },
 
+    #[error("The ssh-agent did not answer within {seconds}s")]
+    #[diagnostic(
+        code(snow::deploy::ssh_agent_not_responding),
+        help("Every ssh connection would hang on it. Check it with `ssh-add -l`, then restart the agent or unset SSH_AUTH_SOCK.")
+    )]
+    SshAgentNotResponding { seconds: u64 },
+
     #[error("Reboot of host '{host}' was not confirmed: {reason}")]
     #[diagnostic(
         code(snow::deploy::reboot_not_confirmed),
