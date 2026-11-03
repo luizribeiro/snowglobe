@@ -108,6 +108,7 @@ impl std::fmt::Display for RebootReason {
 /// dry-activate builds the switch plan for the whole system, which takes
 /// far longer than a probe on big systems
 const DEFAULT_DRY_ACTIVATE_TIMEOUT_SECS: u32 = 300;
+pub const DEFAULT_REBOOT_MAX_WAIT_SECS: u32 = 600;
 
 /// Configuration for reboot detection
 #[derive(Debug, Clone)]
@@ -141,7 +142,7 @@ impl Default for RebootDetectionConfig {
             check_kernel: true,
             check_initrd: true,
             ssh_connect_timeout: 5,
-            reboot_max_wait: 600,
+            reboot_max_wait: DEFAULT_REBOOT_MAX_WAIT_SECS,
             reboot_retry_interval: 5,
             probe_timeout: crate::ssh_options::PROBE_TIMEOUT.as_secs() as u32,
             dry_activate_timeout: DEFAULT_DRY_ACTIVATE_TIMEOUT_SECS,

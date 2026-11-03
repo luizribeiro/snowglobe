@@ -29,7 +29,10 @@ pub use backends::provisioner::{
     get_provisioner, InjectionResult, ManualProvisioner, Provisioner, ProvisionerConfig,
     ProvisioningResult, ProxmoxVmaProvisioner, RawProvisioner, SdImageProvisioner, TargetType,
 };
-pub use backends::reboot::{LocalRebootBackend, RebootBackend, RebootCheck, SystemRebootBackend};
+pub use backends::reboot::{
+    LocalRebootBackend, RebootBackend, RebootCheck, SystemRebootBackend,
+    DEFAULT_REBOOT_MAX_WAIT_SECS,
+};
 pub use backends::sops::{SopsBackend, SopsUpdateResult, SystemSopsBackend};
 pub use bootstrap::BootstrapConfig;
 pub use error::{BootstrapError, ProvisionerError, Result};

@@ -507,6 +507,7 @@ snow push myhost --reboot
 | `--quiet`, `-q` | Suppress subprocess output, only show summary |
 | `--user <USER>` | SSH user to use for deployment |
 | `--concurrency <N>` | Max hosts to deploy in parallel (default: 3) |
+| `--reboot-timeout <SECONDS>` | How long to wait for a rebooted host to come back (default: 600) |
 | `--redeploy` | Deploy hosts even if they already run the built system |
 
 ---
@@ -813,7 +814,7 @@ The default behavior (`snow push`) is designed to **do the right thing automatic
 - **Detects** when a reboot is actually necessary
 - **Chooses** the appropriate activation mode
 - **Handles** reboots automatically
-- **Waits** for hosts to come back online
+- **Waits** for hosts to come back online (up to 10 minutes; `--reboot-timeout` changes it)
 - **Scales** to multi-host deployments
 
 This matches how production deployments actually work: you want the tool to handle the complexity and edge cases, not require manual decision-making for every deployment.

@@ -46,6 +46,12 @@ impl SystemRebootBackend {
         self
     }
 
+    /// How long to wait for a rebooted host to answer again
+    pub fn with_reboot_max_wait(mut self, seconds: u32) -> Self {
+        self.config.reboot_max_wait = seconds;
+        self
+    }
+
     /// Get the effective SSH destination
     fn get_destination(&self, target: &DeployTarget) -> String {
         if let Some(ref user) = self.ssh_user {
@@ -635,6 +641,21 @@ esac
             reason.starts_with("host did not come back online within 4 seconds"),
             "{reason}"
         );
+    }
+
+    #[tokio::test]
+    async fn test_reboot_max_wait_can_be_changed_after_construction() {
+        let host = FakeHost::new(r#"rm "$state/boot_id"; exit 255"#);
+
+        let err = host
+            .backend(600)
+            .with_reboot_max_wait(2)
+            .reboot_and_wait(&fake_target())
+            .await
+            .unwrap_err();
+
+        let reason = reboot_not_confirmed_reason(err);
+        assert!(reason.contains("within 2 seconds"), "{reason}");
     }
 
     #[tokio::test]

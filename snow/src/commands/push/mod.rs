@@ -52,6 +52,15 @@ pub struct PushArgs {
     #[arg(long)]
     pub user: Option<String>,
 
+    /// Seconds to wait for a rebooted host to come back before failing it
+    #[arg(
+        long,
+        default_value_t = snowlib::DEFAULT_REBOOT_MAX_WAIT_SECS,
+        value_name = "SECONDS",
+        value_parser = clap::value_parser!(u32).range(1..)
+    )]
+    pub reboot_timeout: u32,
+
     /// Maximum number of hosts to push in parallel (must be at least 1)
     #[arg(long, default_value = "3", value_parser = clap::value_parser!(u32).range(1..))]
     pub concurrency: u32,
@@ -165,7 +174,10 @@ impl PushArgs {
             &self.mock_fixture,
             output_mode,
         )?;
-        let reboot_backend = crate::backend_factory::create_reboot_backend(self.user.as_deref())?;
+        let reboot_backend = crate::backend_factory::create_reboot_backend(
+            self.user.as_deref(),
+            self.reboot_timeout,
+        )?;
         let observer = snowlib::observer::CompositeObserver::new(vec![
             Box::new(snowlib::LogObserver::default()),
             Box::new(observer::CliObserver::new()),
@@ -367,13 +379,18 @@ mod tests {
             .is_err());
     }
 
-    fn push_args(flags: &[&str]) -> PushArgs {
+    fn try_push_args(flags: &[&str]) -> std::result::Result<PushArgs, clap::Error> {
         #[derive(clap::Parser)]
         struct Cli {
             #[command(flatten)]
             args: PushArgs,
         }
-        <Cli as clap::Parser>::parse_from(std::iter::once("push").chain(flags.iter().copied())).args
+        <Cli as clap::Parser>::try_parse_from(std::iter::once("push").chain(flags.iter().copied()))
+            .map(|cli| cli.args)
+    }
+
+    fn push_args(flags: &[&str]) -> PushArgs {
+        try_push_args(flags).unwrap()
     }
 
     #[test]
@@ -403,6 +420,20 @@ mod tests {
             push_args(&["--switch"]).push_strategy(),
             PushStrategy::Switch
         );
+    }
+
+    #[test]
+    fn test_reboot_timeout_flag() {
+        assert_eq!(
+            push_args(&[]).reboot_timeout,
+            snowlib::DEFAULT_REBOOT_MAX_WAIT_SECS
+        );
+        assert_eq!(push_args(&["--reboot-timeout", "45"]).reboot_timeout, 45);
+    }
+
+    #[test]
+    fn test_reboot_timeout_must_be_positive() {
+        assert!(try_push_args(&["--reboot-timeout", "0"]).is_err());
     }
 
     #[test]

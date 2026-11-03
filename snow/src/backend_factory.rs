@@ -78,8 +78,11 @@ pub fn create_deploy_backend(
 /// Create the RebootBackend with appropriate configuration
 ///
 /// Returns a SystemRebootBackend configured with the specified SSH user (if any).
-pub fn create_reboot_backend(ssh_user: Option<&str>) -> Result<SystemRebootBackend> {
-    let mut backend = SystemRebootBackend::default();
+pub fn create_reboot_backend(
+    ssh_user: Option<&str>,
+    reboot_timeout_secs: u32,
+) -> Result<SystemRebootBackend> {
+    let mut backend = SystemRebootBackend::default().with_reboot_max_wait(reboot_timeout_secs);
 
     if let Some(user) = ssh_user {
         backend = backend.with_ssh_user(user);
