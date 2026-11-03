@@ -6,11 +6,13 @@
 //! - workflow_tests: Full workflow integration tests
 //! - profile_tests: Profile update tests
 //! - hook_tests: Hook integration tests
+//! - host_event_tests: Per-host events reported to observers
 //! - serial_group_tests: Hosts in a serial group deploying one at a time
 //! - stage_order_tests: Order of planning, hooks, activation and reboot
 //! - unchanged_tests: Skipping hosts that already run the built system
 
 mod hook_tests;
+mod host_event_tests;
 mod planning_tests;
 mod profile_tests;
 mod push_tests;
@@ -107,6 +109,21 @@ impl TestObserver {
 }
 
 impl PushObserver for TestObserver {
+    fn on_host_event(&self, hostname: &str, event: &crate::observer::HostEvent) {
+        use crate::observer::HostEvent;
+        let recorded = match event {
+            HostEvent::Started(step) => format!("started:{hostname}:{step}"),
+            HostEvent::Finished(step) => format!("finished:{hostname}:{step}"),
+            HostEvent::Failed { step, reason } => format!("failed:{hostname}:{step}:{reason}"),
+            // Recorded by the step callbacks they are forwarded to
+            HostEvent::Unchanged | HostEvent::WaitingForSerialGroup { .. } => String::new(),
+        };
+        if !recorded.is_empty() {
+            self.events.lock().unwrap().push(recorded);
+        }
+        crate::observer::forward_to_step_callbacks(self, hostname, event);
+    }
+
     fn on_build_step_start(&self, phase: &str, hosts: &[String]) {
         self.events
             .lock()

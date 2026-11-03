@@ -10,13 +10,15 @@ use crate::error::Result;
 use crate::hooks::HookStage;
 use crate::host::HostMetadata;
 use crate::nix::{StorePath, SystemType};
+use crate::observer::HostEvent;
 use std::collections::HashMap;
+use std::future::Future;
 
 use super::config::PushStrategy;
 use super::context::PushContext;
 use super::planning::create_deployment_plans;
 use super::results::{HostDeploymentResult, PipelineStep, PushPlan};
-use super::serial::PhaseScheduler;
+use super::serial::{PhaseScheduler, Section};
 
 /// Create a deploy target from host metadata and push context
 fn create_target(push_ctx: &PushContext<'_>, metadata: &HostMetadata) -> DeployTarget {
@@ -88,267 +90,273 @@ async fn execute_hooks(
     Ok(())
 }
 
-/// Helper to handle pipeline failures consistently
-async fn handle_pipeline_failure(
-    push_ctx: &PushContext<'_>,
-    scheduler: &PhaseScheduler,
-    host_metadata: &HostMetadata,
-    target: Option<&DeployTarget>,
-    store_path: Option<&StorePath>,
-    step: PipelineStep,
-    error: crate::error::SnowError,
-) -> HostDeploymentResult {
-    let hostname = host_metadata.name.as_str();
-    let reason = crate::error::error_chain(&error);
-    tracing::error!("{hostname}: failed at {step}: {reason}");
-    // Halt first so no other group member starts while on-failure hooks run
-    scheduler.halt_group_of(host_metadata);
+/// What a failed host's on-failure hooks are told about it
+#[derive(Clone, Copy, Default)]
+struct FailureContext<'a> {
+    target: Option<&'a DeployTarget>,
+    store_path: Option<&'a StorePath>,
+}
 
-    // Execute on-failure hooks (log errors but don't fail)
-    if let Err(e) = execute_hooks(
-        push_ctx,
-        hostname,
-        HookStage::OnFailure,
-        target,
-        host_metadata.phase.as_deref(),
-        store_path,
-    )
-    .await
-    {
-        tracing::warn!("On-failure hook execution failed for {}: {}", hostname, e);
+/// The result of a host that stopped early, already reported
+type Stopped = HostDeploymentResult;
+
+/// One host's way through the deployment pipeline
+struct HostRun<'a, 'ctx> {
+    push_ctx: &'a PushContext<'ctx>,
+    scheduler: &'a PhaseScheduler,
+    metadata: &'a HostMetadata,
+}
+
+impl HostRun<'_, '_> {
+    fn hostname(&self) -> &str {
+        &self.metadata.name
     }
 
-    HostDeploymentResult {
-        hostname: hostname.to_string(),
-        success: false,
-        failed_at_step: Some(step),
-        activation_mode: None,
-        rebooted: false,
-        unchanged: false,
-        error_message: Some(reason),
+    fn report(&self, event: HostEvent) {
+        self.push_ctx
+            .observer
+            .on_host_event(self.hostname(), &event);
     }
+
+    /// Runs one step, telling the observer when it starts and how it ends
+    async fn step<T>(
+        &self,
+        step: PipelineStep,
+        context: FailureContext<'_>,
+        work: impl Future<Output = Result<T>>,
+    ) -> std::result::Result<T, Stopped> {
+        self.report(HostEvent::Started(step));
+        match work.await {
+            Ok(value) => {
+                self.report(HostEvent::Finished(step));
+                Ok(value)
+            }
+            Err(e) => {
+                let reason = crate::error::error_chain(&e);
+                self.report(HostEvent::Failed {
+                    step,
+                    reason: reason.clone(),
+                });
+                Err(self.fail(step, context, reason).await)
+            }
+        }
+    }
+
+    /// Runs a hook stage; hooks report their own progress to the observer
+    async fn hooks(
+        &self,
+        stage: HookStage,
+        step: PipelineStep,
+        context: FailureContext<'_>,
+    ) -> std::result::Result<(), Stopped> {
+        match self.run_hooks(stage, context).await {
+            Ok(()) => Ok(()),
+            Err(e) => Err(self
+                .fail(step, context, crate::error::error_chain(&e))
+                .await),
+        }
+    }
+
+    /// Waits until the host's serial group lets it deploy
+    async fn enter_serial_section(&self) -> std::result::Result<Section, Stopped> {
+        let hostname = self.hostname();
+        self.scheduler
+            .enter_section(self.metadata, |group, holder| {
+                tracing::info!(
+                    "{}: waiting for serial group '{}' (held by {})",
+                    hostname,
+                    group,
+                    holder.unwrap_or("another host")
+                );
+                self.report(HostEvent::WaitingForSerialGroup {
+                    group: group.to_string(),
+                    holder: holder.map(str::to_string),
+                });
+            })
+            .await
+            .map_err(|halted| {
+                HostDeploymentResult::skipped_by_serial_group(
+                    hostname,
+                    &halted.group,
+                    &halted.failed_host,
+                )
+            })
+    }
+
+    async fn reboot(
+        &self,
+        plan: &PushPlan,
+        context: FailureContext<'_>,
+    ) -> std::result::Result<(), Stopped> {
+        self.step(
+            PipelineStep::Reboot,
+            context,
+            self.push_ctx.reboot_backend.reboot_and_wait(&plan.target),
+        )
+        .await
+        .map_err(|failure| activated_but_reboot_failed(failure, plan))?;
+        self.hooks(HookStage::PostReboot, PipelineStep::Reboot, context)
+            .await
+    }
+
+    async fn run_hooks(&self, stage: HookStage, context: FailureContext<'_>) -> Result<()> {
+        execute_hooks(
+            self.push_ctx,
+            self.hostname(),
+            stage,
+            context.target,
+            self.metadata.phase.as_deref(),
+            context.store_path,
+        )
+        .await
+    }
+
+    async fn fail(
+        &self,
+        step: PipelineStep,
+        context: FailureContext<'_>,
+        reason: String,
+    ) -> HostDeploymentResult {
+        let hostname = self.hostname();
+        tracing::error!("{hostname}: failed at {step}: {reason}");
+        // Halt first so no other group member starts while on-failure hooks run
+        self.scheduler.halt_group_of(self.metadata);
+
+        if let Err(e) = self.run_hooks(HookStage::OnFailure, context).await {
+            tracing::warn!("On-failure hook execution failed for {}: {}", hostname, e);
+        }
+
+        HostDeploymentResult {
+            hostname: hostname.to_string(),
+            success: false,
+            failed_at_step: Some(step),
+            activation_mode: None,
+            rebooted: false,
+            unchanged: false,
+            error_message: Some(reason),
+        }
+    }
+
+    /// Build → (skip if unchanged) → Copy → Plan → pre-deploy hooks →
+    /// Activate → Reboot → post-reboot hooks → post-deploy hooks
+    ///
+    /// Planning happens before any hook so a host blocked by planning is never
+    /// disrupted (e.g. drained) for nothing.
+    async fn run(&self) -> std::result::Result<HostDeploymentResult, Stopped> {
+        let push_ctx = self.push_ctx;
+        let hostname = self.hostname();
+
+        let preparation_permit = self.scheduler.permit().await;
+        let target = create_target(push_ctx, self.metadata);
+
+        let store_path = self
+            .step(
+                PipelineStep::Build,
+                FailureContext::default(),
+                push_ctx.nix_backend.build_host(
+                    push_ctx.flake,
+                    hostname,
+                    self.metadata.system_type,
+                    push_ctx.config.output_mode,
+                ),
+            )
+            .await?;
+        let built = FailureContext {
+            target: None,
+            store_path: Some(&store_path),
+        };
+
+        if !push_ctx.config.redeploy
+            && self
+                .step(
+                    PipelineStep::Check,
+                    built,
+                    is_unchanged(push_ctx, hostname, &target, &store_path),
+                )
+                .await?
+        {
+            tracing::info!("{}: already running the built system, skipping", hostname);
+            self.report(HostEvent::Unchanged);
+            return Ok(HostDeploymentResult::unchanged(hostname));
+        }
+
+        self.step(
+            PipelineStep::Copy,
+            built,
+            push_ctx.deploy_backend.copy_closure(&target, &store_path),
+        )
+        .await?;
+        let deployable = FailureContext {
+            target: Some(&target),
+            store_path: Some(&store_path),
+        };
+
+        let plan = self
+            .step(
+                PipelineStep::Plan,
+                deployable,
+                plan_host(push_ctx, self.metadata, &target, &store_path),
+            )
+            .await?;
+
+        drop(preparation_permit);
+        let section = self.enter_serial_section().await?;
+
+        self.hooks(HookStage::PreDeploy, PipelineStep::Activate, deployable)
+            .await?;
+
+        self.step(
+            PipelineStep::Activate,
+            deployable,
+            push_ctx
+                .deploy_backend
+                .activate(&target, &store_path, plan.activation_mode),
+        )
+        .await?;
+
+        let rebooted = should_reboot(push_ctx, &plan);
+        if rebooted {
+            self.reboot(&plan, deployable).await?;
+        }
+
+        self.hooks(HookStage::PostDeploy, PipelineStep::PostDeploy, deployable)
+            .await?;
+        section.succeeded();
+
+        Ok(HostDeploymentResult {
+            hostname: hostname.to_string(),
+            success: true,
+            failed_at_step: None,
+            activation_mode: Some(plan.activation_mode),
+            rebooted,
+            unchanged: false,
+            error_message: None,
+        })
+    }
+}
+
+fn activated_but_reboot_failed(mut failure: Stopped, plan: &PushPlan) -> Stopped {
+    failure.activation_mode = Some(plan.activation_mode);
+    failure.error_message = failure
+        .error_message
+        .map(|msg| format!("Deployment succeeded but reboot failed: {}", msg));
+    failure
 }
 
 /// Execute the full deployment pipeline for a single host
 ///
-/// Runs: Build → (skip if unchanged) → Copy → Plan → pre-deploy hooks →
-/// Activate → Reboot → post-reboot hooks → post-deploy hooks
-///
-/// Planning happens before any hook so a host blocked by planning is never
-/// disrupted (e.g. drained) for nothing.
-///
 /// This function is called concurrently for each host in a phase using tokio tasks.
-/// Observer callbacks are used to track when hosts enter/leave steps, enabling
-/// dynamic step span visibility.
 pub(super) async fn execute_host_pipeline(
     push_ctx: &PushContext<'_>,
     host_metadata: &HostMetadata,
     scheduler: &PhaseScheduler,
 ) -> Result<HostDeploymentResult> {
-    let hostname = host_metadata.name.clone();
-
-    // Macro to execute hooks and return early on failure
-    //
-    // Automatically handles:
-    // - Phase/hostname context from outer scope
-    // - Error conversion to HostDeploymentResult via handle_pipeline_failure
-    // - On-failure hooks execution (triggered by handle_pipeline_failure)
-    // - Early return from execute_host_pipeline on hook failure
-    macro_rules! execute_hooks_or_return {
-        ($stage:expr, $target:expr, $store_path:expr, $step:expr) => {
-            if let Err(e) = execute_hooks(
-                push_ctx,
-                &hostname,
-                $stage,
-                $target,
-                host_metadata.phase.as_deref(),
-                $store_path,
-            )
-            .await
-            {
-                return Ok(handle_pipeline_failure(
-                    push_ctx,
-                    scheduler,
-                    host_metadata,
-                    $target,
-                    $store_path,
-                    $step,
-                    e,
-                )
-                .await);
-            }
-        };
-    }
-
-    let preparation_permit = scheduler.permit().await;
-
-    // Step 1: Build
-    let store_path = match execute_build_step(push_ctx, host_metadata).await {
-        Ok(path) => path,
-        Err(e) => {
-            return Ok(handle_pipeline_failure(
-                push_ctx,
-                scheduler,
-                host_metadata,
-                None,
-                None,
-                PipelineStep::Build,
-                e,
-            )
-            .await);
-        }
+    let host = HostRun {
+        push_ctx,
+        scheduler,
+        metadata: host_metadata,
     };
-
-    if !push_ctx.config.redeploy {
-        match is_unchanged(push_ctx, host_metadata, &store_path).await {
-            Ok(false) => {}
-            Ok(true) => {
-                tracing::info!("{}: already running the built system, skipping", hostname);
-                push_ctx.observer.on_host_unchanged(&hostname);
-                return Ok(HostDeploymentResult::unchanged(hostname));
-            }
-            Err(e) => {
-                return Ok(handle_pipeline_failure(
-                    push_ctx,
-                    scheduler,
-                    host_metadata,
-                    None,
-                    Some(&store_path),
-                    PipelineStep::Check,
-                    e,
-                )
-                .await);
-            }
-        }
-    }
-
-    // Step 2: Copy
-    if let Err(e) = execute_copy_step(push_ctx, host_metadata, &store_path).await {
-        return Ok(handle_pipeline_failure(
-            push_ctx,
-            scheduler,
-            host_metadata,
-            None,
-            Some(&store_path),
-            PipelineStep::Copy,
-            e,
-        )
-        .await);
-    }
-
-    // Create target for hooks and error handling
-    let target = create_target(push_ctx, host_metadata);
-
-    let plan = match plan_host(push_ctx, host_metadata, &target, &store_path).await {
-        Ok(plan) => plan,
-        Err(e) => {
-            return Ok(handle_pipeline_failure(
-                push_ctx,
-                scheduler,
-                host_metadata,
-                Some(&target),
-                Some(&store_path),
-                PipelineStep::Plan,
-                e,
-            )
-            .await);
-        }
-    };
-
-    drop(preparation_permit);
-    let section = match scheduler
-        .enter_section(host_metadata, |group, holder| {
-            tracing::info!(
-                "{}: waiting for serial group '{}' (held by {})",
-                hostname,
-                group,
-                holder.unwrap_or("another host")
-            );
-            push_ctx
-                .observer
-                .on_serial_group_wait(&hostname, group, holder);
-        })
-        .await
-    {
-        Ok(section) => section,
-        Err(halted) => {
-            return Ok(HostDeploymentResult::skipped_by_serial_group(
-                hostname,
-                &halted.group,
-                &halted.failed_host,
-            ))
-        }
-    };
-
-    execute_hooks_or_return!(
-        HookStage::PreDeploy,
-        Some(&plan.target),
-        Some(&plan.store_path),
-        PipelineStep::Activate
-    );
-
-    if let Err(e) = execute_activation_step(push_ctx, &plan).await {
-        return Ok(handle_pipeline_failure(
-            push_ctx,
-            scheduler,
-            host_metadata,
-            Some(&plan.target),
-            Some(&plan.store_path),
-            PipelineStep::Activate,
-            e,
-        )
-        .await);
-    }
-
-    // Step 4: Reboot (if needed)
-    let rebooted = match execute_reboot_step(push_ctx, &plan).await {
-        Ok(rebooted) => rebooted,
-        Err(e) => {
-            let mut failure = handle_pipeline_failure(
-                push_ctx,
-                scheduler,
-                host_metadata,
-                Some(&plan.target),
-                Some(&plan.store_path),
-                PipelineStep::Reboot,
-                e,
-            )
-            .await;
-            failure.activation_mode = Some(plan.activation_mode);
-            failure.error_message = failure
-                .error_message
-                .map(|msg| format!("Deployment succeeded but reboot failed: {}", msg));
-            return Ok(failure);
-        }
-    };
-
-    // Step 4.5: Post-reboot hooks (only if actually rebooted)
-    if rebooted {
-        execute_hooks_or_return!(
-            HookStage::PostReboot,
-            Some(&plan.target),
-            Some(&plan.store_path),
-            PipelineStep::Reboot
-        );
-    }
-
-    execute_hooks_or_return!(
-        HookStage::PostDeploy,
-        Some(&plan.target),
-        Some(&plan.store_path),
-        PipelineStep::PostDeploy
-    );
-    section.succeeded();
-
-    Ok(HostDeploymentResult {
-        hostname,
-        success: true,
-        failed_at_step: None,
-        activation_mode: Some(plan.activation_mode),
-        rebooted,
-        unchanged: false,
-        error_message: None,
-    })
+    Ok(host.run().await.unwrap_or_else(|stopped| stopped))
 }
 
 /// Whether the host already runs and would boot `store_path`
@@ -358,78 +366,22 @@ pub(super) async fn execute_host_pipeline(
 /// ssh-agent) would stall the copy next, and the copy has no time limit.
 async fn is_unchanged(
     push_ctx: &PushContext<'_>,
-    host_metadata: &HostMetadata,
+    hostname: &str,
+    target: &DeployTarget,
     store_path: &StorePath,
 ) -> Result<bool> {
-    let target = create_target(push_ctx, host_metadata);
-    match push_ctx.deploy_backend.host_systems(&target).await {
+    match push_ctx.deploy_backend.host_systems(target).await {
         Ok(systems) => Ok(systems.are(store_path)),
         Err(e) if crate::error::is_timeout(&e) => Err(e),
         Err(e) => {
             tracing::warn!(
                 "{}: could not read installed systems, deploying anyway: {}",
-                host_metadata.name,
+                hostname,
                 e
             );
             Ok(false)
         }
     }
-}
-
-/// Execute the build step for a single host
-///
-/// Builds the NixOS configuration and returns the store path.
-async fn execute_build_step(
-    push_ctx: &PushContext<'_>,
-    host_metadata: &HostMetadata,
-) -> Result<StorePath> {
-    let hostname = &host_metadata.name;
-
-    push_ctx.observer.on_build_start(hostname);
-    let store_path = match push_ctx
-        .nix_backend
-        .build_host(
-            push_ctx.flake,
-            hostname,
-            host_metadata.system_type,
-            push_ctx.config.output_mode,
-        )
-        .await
-    {
-        Ok(store_path) => store_path,
-        Err(e) => {
-            push_ctx.observer.on_build_complete(hostname, false);
-            return Err(e);
-        }
-    };
-    push_ctx.observer.on_build_complete(hostname, true);
-
-    Ok(store_path)
-}
-
-/// Execute the copy step for a single host
-///
-/// Copies the built closure to the target host.
-async fn execute_copy_step(
-    push_ctx: &PushContext<'_>,
-    host_metadata: &HostMetadata,
-    store_path: &StorePath,
-) -> Result<()> {
-    let hostname = &host_metadata.name;
-    let target = create_target(push_ctx, host_metadata);
-
-    push_ctx.observer.on_copy_start(hostname);
-    if let Err(e) = push_ctx
-        .deploy_backend
-        .copy_closure(&target, store_path)
-        .await
-    {
-        push_ctx.observer.on_copy_complete(hostname, false);
-        return Err(e);
-    }
-    push_ctx.observer.on_copy_complete(hostname, true);
-
-    Ok(())
 }
 
 /// Choose the activation mode for a host (with reboot detection)
@@ -464,50 +416,10 @@ async fn plan_host(
     })
 }
 
-/// Activate the planned system on a host
-async fn execute_activation_step(push_ctx: &PushContext<'_>, plan: &PushPlan) -> Result<()> {
-    let hostname = &plan.metadata.name;
-    push_ctx.observer.on_activation_start(hostname);
-    let result = push_ctx
-        .deploy_backend
-        .activate(&plan.target, &plan.store_path, plan.activation_mode)
-        .await;
-    push_ctx
-        .observer
-        .on_activation_complete(hostname, result.is_ok());
-    result
-}
-
-/// Execute the reboot step for a single host (if needed)
-///
-/// Reboots the host if:
-/// 1. allow_reboot is true, AND
-/// 2. the host runs NixOS (Darwin hosts are never rebooted), AND
-/// 3. activation_mode is Boot, AND
-/// 4. Either no reboot check OR reboot is required
-///
-/// Returns whether the host was rebooted
-async fn execute_reboot_step(push_ctx: &PushContext<'_>, plan: &PushPlan) -> Result<bool> {
-    let hostname = &plan.metadata.name;
-
-    let should_reboot = push_ctx.config.allow_reboot
+/// Whether the host gets rebooted after activation; Darwin hosts never are
+fn should_reboot(push_ctx: &PushContext<'_>, plan: &PushPlan) -> bool {
+    push_ctx.config.allow_reboot
         && plan.metadata.system_type == SystemType::NixOS
         && plan.activation_mode == crate::nix::ActivationMode::Boot
-        && (plan.reboot_check.is_none()
-            || plan
-                .reboot_check
-                .as_ref()
-                .map(|c| c.required)
-                .unwrap_or(false));
-
-    if !should_reboot {
-        return Ok(false);
-    }
-
-    push_ctx.observer.on_reboot_start(hostname);
-    let result = push_ctx.reboot_backend.reboot_and_wait(&plan.target).await;
-    push_ctx
-        .observer
-        .on_reboot_complete(hostname, result.is_ok());
-    result.map(|()| true)
+        && plan.reboot_check.as_ref().is_none_or(|c| c.required)
 }
