@@ -45,7 +45,7 @@ fn print_phase_header(phase: &snowlib::PhaseResult) {
     }
 }
 
-fn success_labels(host: &snowlib::HostDeploymentResult) -> Vec<&'static str> {
+pub(super) fn success_labels(host: &snowlib::HostDeploymentResult) -> Vec<&'static str> {
     use snowlib::ActivationMode;
 
     let mut labels = Vec::new();
