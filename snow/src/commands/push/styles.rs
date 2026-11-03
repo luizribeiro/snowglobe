@@ -1,74 +1,218 @@
-//! Progress bar styling for tracing-indicatif spans
+//! How the push TUI draws a phase header and its host rows
 //!
-//! Extracted from observer.rs to separate presentation concerns from
-//! lifecycle management. All ProgressStyle definitions live here.
+//! Each line is redrawn from the shared board on every tick, so elapsed
+//! times keep moving between events.
 
+use super::board::{format_elapsed, HostBoard, Row, RowKind};
+use super::colors::style;
+use parking_lot::Mutex;
+use std::sync::Arc;
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use tracing_indicatif::style::ProgressStyle;
 
-pub(super) const SPINNER_FRAMES: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+pub(super) type SharedBoard = Arc<Mutex<Option<HostBoard>>>;
 
-#[derive(Clone, Copy)]
-pub(super) enum StepColor {
-    Yellow,
-    Blue,
-    Cyan,
-    Magenta,
+const SPINNER_FRAMES: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+const ROW_INDENT: &str = "  ";
+
+pub(super) fn header_style(board: SharedBoard) -> ProgressStyle {
+    ProgressStyle::with_template("{header} {elapsed_precise:.dim}")
+        .expect("valid template")
+        .with_key(
+            "header",
+            move |_: &indicatif::ProgressState, w: &mut dyn std::fmt::Write| {
+                if let Some(board) = board.lock().as_ref() {
+                    let _ = write!(w, "{}", style(format!("▶ {}", board.header())).bold());
+                }
+            },
+        )
 }
 
-impl StepColor {
-    pub(super) fn as_str(self) -> &'static str {
-        match self {
-            StepColor::Yellow => "yellow",
-            StepColor::Blue => "blue",
-            StepColor::Cyan => "cyan",
-            StepColor::Magenta => "magenta",
-        }
+/// The style of the `slot`-th row, whichever host is listed there right now
+pub(super) fn row_style(board: SharedBoard, slot: usize) -> ProgressStyle {
+    ProgressStyle::with_template("{row}")
+        .expect("valid template")
+        .with_key(
+            "row",
+            move |_: &indicatif::ProgressState, w: &mut dyn std::fmt::Write| {
+                let line = board.lock().as_ref().and_then(|board| {
+                    render_slot(board, slot, Instant::now(), terminal_width(), spinner())
+                });
+                if let Some(line) = line {
+                    let _ = write!(w, "{line}");
+                }
+            },
+        )
+}
+
+/// The `slot`-th row, coloured, or None past the last host
+pub(super) fn render_slot(
+    board: &HostBoard,
+    slot: usize,
+    now: Instant,
+    width: usize,
+    spinner: &str,
+) -> Option<String> {
+    let row = board.rows(now).into_iter().nth(slot)?;
+    let text = row_text(&row, board.hostname_width(), width, spinner);
+    Some(styled(row.kind, text))
+}
+
+/// One row as plain text, cut to fit `width` columns
+pub(super) fn row_text(
+    row: &Row,
+    hostname_width: usize,
+    max_width: usize,
+    spinner: &str,
+) -> String {
+    let icon = match row.kind {
+        RowKind::Failed => "✗",
+        RowKind::Active => spinner,
+        RowKind::Queued => "◷",
+        RowKind::Done => "✓",
+        RowKind::Unchanged => "=",
+    };
+    let elapsed = row.elapsed.map(format_elapsed).unwrap_or_default();
+    let line = format!(
+        "{ROW_INDENT}{icon} {:<hostname_width$}  {:<11} {}",
+        row.hostname, row.step, row.detail
+    );
+    let line = line.trim_end();
+    // Some terminals wrap a line that reaches the last column
+    let usable = max_width.saturating_sub(1);
+    let room = if elapsed.is_empty() {
+        usable
+    } else {
+        usable.saturating_sub(elapsed.chars().count() + 1)
+    };
+    let line = truncate(line, room);
+    if elapsed.is_empty() {
+        line
+    } else {
+        format!("{line:<room$} {elapsed}")
     }
 }
 
-pub(super) fn phase_style(success: bool, show_progress_bar: bool) -> ProgressStyle {
-    let color = if success { "green" } else { "red" };
-    let template = if show_progress_bar {
-        format!(
-            "{{spinner:.{color}.bold}} {{span_name:.{color}.bold}} {{wide_msg:.dim}} {{bar:20.{color}/dim}} {{percent}}% {{elapsed_precise:.dim}}"
-        )
+fn truncate(text: &str, max: usize) -> String {
+    if text.chars().count() <= max {
+        text.to_string()
     } else {
-        format!(
-            "{{spinner:.{color}.bold}} {{span_name:.{color}.bold}} {{wide_msg:.dim}} {{elapsed_precise:.dim}}"
-        )
-    };
-    ProgressStyle::default_bar()
-        .template(&template)
-        .expect("valid template")
-        .tick_strings(SPINNER_FRAMES)
-        .progress_chars("━╸─")
+        let kept: String = text.chars().take(max.saturating_sub(1)).collect();
+        format!("{kept}…")
+    }
 }
 
-pub(super) fn step_style(color: StepColor, active: bool) -> ProgressStyle {
-    let template = if active {
-        format!("  {{span_name:.{}.bold}} {{wide_msg:.dim}}", color.as_str())
-    } else {
-        "  {span_name:.dim}".to_string()
-    };
-    ProgressStyle::default_bar()
-        .template(&template)
-        .expect("valid template")
+fn styled(kind: RowKind, text: String) -> String {
+    match kind {
+        RowKind::Failed => style(text).red().to_string(),
+        RowKind::Active => style(text).cyan().to_string(),
+        RowKind::Queued | RowKind::Unchanged => style(text).dim().to_string(),
+        RowKind::Done => style(text).green().to_string(),
+    }
 }
 
-pub(super) fn host_style() -> ProgressStyle {
-    ProgressStyle::default_bar()
-        .template("      {msg} {elapsed:.dim}")
-        .expect("valid template")
+fn terminal_width() -> usize {
+    console::Term::stderr().size().1 as usize
 }
 
-pub(super) fn failed_step_style() -> ProgressStyle {
-    ProgressStyle::default_bar()
-        .template("  {span_name:.red.bold} {wide_msg:.red.dim}")
-        .expect("valid template")
+fn spinner() -> &'static str {
+    let millis = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis();
+    SPINNER_FRAMES[(millis / 100) as usize % SPINNER_FRAMES.len()]
 }
 
-pub(super) fn failed_host_style() -> ProgressStyle {
-    ProgressStyle::default_bar()
-        .template("      {msg:.red} {elapsed:.dim}")
-        .expect("valid template")
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+
+    fn row(kind: RowKind, hostname: &str, step: &str, detail: &str, secs: Option<u64>) -> Row {
+        Row {
+            kind,
+            hostname: hostname.to_string(),
+            step: step.to_string(),
+            detail: detail.to_string(),
+            elapsed: secs.map(Duration::from_secs),
+        }
+    }
+
+    #[test]
+    fn test_rows_line_up_with_elapsed_at_the_right_edge() {
+        let cerium = row(RowKind::Active, "cerium", "reboot", "", Some(192));
+        let neodymium = row(
+            RowKind::Queued,
+            "neodymium",
+            "queued",
+            "serial group 'k8s' (held by cerium)",
+            Some(160),
+        );
+
+        let cerium = row_text(&cerium, 9, 60, "⠋");
+        let neodymium = row_text(&neodymium, 9, 60, "⠋");
+
+        assert_eq!(
+            cerium,
+            "  ⠋ cerium     reboot                                  3:12"
+        );
+        assert_eq!(
+            neodymium,
+            "  ◷ neodymium  queued      serial group 'k8s' (held b… 2:40"
+        );
+        assert_eq!(cerium.chars().count(), 59);
+        assert_eq!(neodymium.chars().count(), 59);
+    }
+
+    #[test]
+    fn test_failed_row_without_elapsed_is_cut_to_the_terminal() {
+        let lanthanum = row(
+            RowKind::Failed,
+            "lanthanum",
+            "plan",
+            "hook 'wait-storage-healthy': /nix/store/715s-kubernetes-storage-healthy missing",
+            None,
+        );
+
+        let text = row_text(&lanthanum, 9, 50, "⠋");
+
+        assert_eq!(text, "  ✗ lanthanum  plan        hook 'wait-storage-he…");
+        assert_eq!(text.chars().count(), 49);
+    }
+
+    #[test]
+    fn test_slots_follow_the_board_order_and_end_with_the_hosts() {
+        console::set_colors_enabled(false);
+        let t0 = Instant::now();
+        let hosts = vec!["radon".to_string(), "cerium".to_string()];
+        let mut board = HostBoard::new("p3", &hosts, t0);
+        board.apply(
+            "radon",
+            &snowlib::HostEvent::Failed {
+                step: snowlib::PipelineStep::Build,
+                reason: "error: attribute 'wine' missing".to_string(),
+            },
+            t0,
+        );
+
+        let slots: Vec<_> = (0..3)
+            .map(|slot| render_slot(&board, slot, t0, 60, "⠋"))
+            .collect();
+
+        assert_eq!(
+            slots,
+            vec![
+                Some("  ✗ radon   build       error: attribute 'wine' missing".to_string()),
+                Some(format!("  ◷ cerium  queued{}0:00", " ".repeat(37))),
+                None,
+            ]
+        );
+    }
+
+    #[test]
+    fn test_short_rows_are_not_padded_without_elapsed() {
+        let sodium = row(RowKind::Unchanged, "sodium", "unchanged", "", None);
+
+        assert_eq!(row_text(&sodium, 9, 80, "⠋"), "  = sodium     unchanged");
+    }
 }
