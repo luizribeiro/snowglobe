@@ -83,6 +83,13 @@
           };
 
           default = self.packages.${system}.snow;
+        } // nixpkgs.lib.optionalAttrs pkgs.stdenv.isLinux {
+          # NixOS VMs pushing to each other, too slow for every check
+          push-e2e = import ./nix/e2e/push.nix {
+            inherit pkgs;
+            snow = self.packages.${system}.snow;
+            snowglobeModule = self.nixosModules.default;
+          };
         }
       );
 
