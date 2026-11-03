@@ -3,12 +3,6 @@
 use super::*;
 use crate::backends::reboot::{MockRebootBackend, RebootReason};
 
-fn kubernetes_node(name: &str) -> HostMetadata {
-    let mut host = make_host_metadata(name, Some("p1"), RebootPolicy::Auto);
-    host.hooks = kubernetes_node_hooks();
-    host
-}
-
 #[tokio::test]
 async fn test_host_blocked_by_planning_is_never_drained() {
     let mut harness = PushHarness::new();
@@ -55,13 +49,6 @@ async fn test_blocked_host_keeps_the_reason_it_was_blocked() {
         "{message}"
     );
     assert!(message.contains("/nix/store/new-kernel"), "{message}");
-}
-
-fn position(run: &HarnessRun, event: &str) -> usize {
-    run.events
-        .iter()
-        .position(|e| e == event)
-        .unwrap_or_else(|| panic!("missing {}: {:?}", event, run.events))
 }
 
 #[tokio::test]

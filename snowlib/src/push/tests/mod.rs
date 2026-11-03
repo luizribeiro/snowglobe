@@ -377,9 +377,23 @@ impl HarnessRun {
     }
 }
 
+fn position(run: &HarnessRun, event: &str) -> usize {
+    run.events
+        .iter()
+        .position(|e| e == event)
+        .unwrap_or_else(|| panic!("missing {}: {:?}", event, run.events))
+}
+
 /// The store path MockNixBackend builds for `hostname`
 fn mock_built_system(hostname: &str) -> StorePath {
     StorePath::new(format!("/nix/store/mock-{}", hostname))
+}
+
+/// A host with a Kubernetes node's drain/uncordon hooks
+fn kubernetes_node(name: &str) -> HostMetadata {
+    let mut host = make_host_metadata(name, Some("p1"), RebootPolicy::Auto);
+    host.hooks = kubernetes_node_hooks();
+    host
 }
 
 /// One hook per stage, as a Kubernetes node would configure them
