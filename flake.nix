@@ -90,6 +90,10 @@
             snow = self.packages.${system}.snow;
             snowglobeModule = self.nixosModules.default;
           };
+          push-recordings = import ./nix/e2e/recordings.nix {
+            inherit pkgs;
+            pushTest = self.packages.${system}.push-e2e;
+          };
         }
       );
 
