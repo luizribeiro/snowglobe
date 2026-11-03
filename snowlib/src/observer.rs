@@ -25,6 +25,65 @@
 //! ```
 
 use crate::hooks::HookStage;
+use crate::push::PipelineStep;
+
+/// Something that happened to one host during a push
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum HostEvent {
+    Started(PipelineStep),
+    Finished(PipelineStep),
+    /// `reason` is the full error chain
+    Failed {
+        step: PipelineStep,
+        reason: String,
+    },
+    /// Already runs and would boot the built system, so nothing is deployed
+    Unchanged,
+    WaitingForSerialGroup {
+        group: String,
+        holder: Option<String>,
+    },
+}
+
+/// Translates a host event into the per-step callbacks below, for observers
+/// that don't override [`PushObserver::on_host_event`]. Steps without a
+/// callback (check, plan, post-deploy, serial group) are dropped.
+#[doc(hidden)]
+pub fn forward_to_step_callbacks<O: PushObserver + ?Sized>(
+    observer: &O,
+    hostname: &str,
+    event: &HostEvent,
+) {
+    use PipelineStep::*;
+    match event {
+        HostEvent::Started(Build) => observer.on_build_start(hostname),
+        HostEvent::Started(Copy) => observer.on_copy_start(hostname),
+        HostEvent::Started(Activate) => observer.on_activation_start(hostname),
+        HostEvent::Started(Reboot) => observer.on_reboot_start(hostname),
+        HostEvent::Finished(step) => forward_completion(observer, hostname, *step, true),
+        HostEvent::Failed { step, .. } => forward_completion(observer, hostname, *step, false),
+        HostEvent::Unchanged => observer.on_host_unchanged(hostname),
+        HostEvent::WaitingForSerialGroup { group, holder } => {
+            observer.on_serial_group_wait(hostname, group, holder.as_deref())
+        }
+        HostEvent::Started(_) => {}
+    }
+}
+
+fn forward_completion<O: PushObserver + ?Sized>(
+    observer: &O,
+    hostname: &str,
+    step: PipelineStep,
+    success: bool,
+) {
+    match step {
+        PipelineStep::Build => observer.on_build_complete(hostname, success),
+        PipelineStep::Copy => observer.on_copy_complete(hostname, success),
+        PipelineStep::Activate => observer.on_activation_complete(hostname, success),
+        PipelineStep::Reboot => observer.on_reboot_complete(hostname, success),
+        _ => {}
+    }
+}
 
 /// Observer trait for push deployment lifecycle events
 ///
@@ -34,6 +93,15 @@ use crate::hooks::HookStage;
 /// Observers are infallible and should handle errors internally (e.g., by logging).
 /// Observer failures will not abort deployment.
 pub trait PushObserver: Send + Sync {
+    /// Called for every step a host starts, finishes or fails, and when it
+    /// waits or turns out unchanged
+    ///
+    /// Overriding this stops the per-step callbacks from being called, unless
+    /// the override calls [`forward_to_step_callbacks`] itself.
+    fn on_host_event(&self, hostname: &str, event: &HostEvent) {
+        forward_to_step_callbacks(self, hostname, event);
+    }
+
     /// Called when starting the build step for a phase
     ///
     /// This is called once per phase at the start of the build step, before building begins for any host.
@@ -265,6 +333,12 @@ impl CompositeObserver {
 }
 
 impl PushObserver for CompositeObserver {
+    fn on_host_event(&self, hostname: &str, event: &HostEvent) {
+        for observer in &self.observers {
+            observer.on_host_event(hostname, event);
+        }
+    }
+
     fn on_build_step_start(&self, phase: &str, hosts: &[String]) {
         for observer in &self.observers {
             observer.on_build_step_start(phase, hosts);
@@ -425,6 +499,11 @@ mod tests {
             self.events.lock().unwrap().push(event);
         }
 
+        fn log_completion(&self, step: &str, hostname: &str, success: bool) {
+            let outcome = if success { "ok" } else { "failed" };
+            self.log(format!("{step}_complete:{hostname}:{outcome}"));
+        }
+
         fn get_events(&self) -> Vec<String> {
             self.events.lock().unwrap().clone()
         }
@@ -435,17 +514,169 @@ mod tests {
             self.log(format!("phase_start:{}:{}", phase, hosts.len()));
         }
 
+        fn on_build_start(&self, hostname: &str) {
+            self.log(format!("build_start:{}", hostname));
+        }
+
+        fn on_build_complete(&self, hostname: &str, success: bool) {
+            self.log_completion("build", hostname, success);
+        }
+
+        fn on_copy_start(&self, hostname: &str) {
+            self.log(format!("copy_start:{}", hostname));
+        }
+
+        fn on_copy_complete(&self, hostname: &str, success: bool) {
+            self.log_completion("copy", hostname, success);
+        }
+
         fn on_activation_start(&self, hostname: &str) {
             self.log(format!("activation_start:{}", hostname));
         }
 
         fn on_activation_complete(&self, hostname: &str, success: bool) {
-            self.log(format!(
-                "activation_complete:{}:{}",
-                hostname,
-                if success { "ok" } else { "failed" }
-            ));
+            self.log_completion("activation", hostname, success);
         }
+
+        fn on_reboot_start(&self, hostname: &str) {
+            self.log(format!("reboot_start:{}", hostname));
+        }
+
+        fn on_reboot_complete(&self, hostname: &str, success: bool) {
+            self.log_completion("reboot", hostname, success);
+        }
+
+        fn on_host_unchanged(&self, hostname: &str) {
+            self.log(format!("unchanged:{}", hostname));
+        }
+
+        fn on_serial_group_wait(&self, hostname: &str, group: &str, holder: Option<&str>) {
+            self.log(format!("serial_wait:{}:{}:{:?}", hostname, group, holder));
+        }
+    }
+
+    #[derive(Default)]
+    struct HostEventLog {
+        events: Arc<Mutex<Vec<(String, HostEvent)>>>,
+    }
+
+    impl PushObserver for HostEventLog {
+        fn on_host_event(&self, hostname: &str, event: &HostEvent) {
+            self.events
+                .lock()
+                .unwrap()
+                .push((hostname.to_string(), event.clone()));
+        }
+    }
+
+    fn failed(step: PipelineStep) -> HostEvent {
+        HostEvent::Failed {
+            step,
+            reason: "ssh: connect to host cerium port 22: Connection timed out".to_string(),
+        }
+    }
+
+    #[test]
+    fn test_host_events_reach_observers_that_only_have_step_callbacks() {
+        for (step, name) in [
+            (PipelineStep::Build, "build"),
+            (PipelineStep::Copy, "copy"),
+            (PipelineStep::Activate, "activation"),
+            (PipelineStep::Reboot, "reboot"),
+        ] {
+            let log = EventLog::default();
+
+            log.on_host_event("cerium", &HostEvent::Started(step));
+            log.on_host_event("cerium", &failed(step));
+            log.on_host_event("radon", &HostEvent::Finished(step));
+
+            assert_eq!(
+                log.get_events(),
+                vec![
+                    format!("{name}_start:cerium"),
+                    format!("{name}_complete:cerium:failed"),
+                    format!("{name}_complete:radon:ok"),
+                ],
+                "{step}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_unchanged_and_serial_waits_reach_their_callbacks() {
+        let log = EventLog::default();
+
+        log.on_host_event("sodium", &HostEvent::Unchanged);
+        log.on_host_event(
+            "neodymium",
+            &HostEvent::WaitingForSerialGroup {
+                group: "k8s".to_string(),
+                holder: Some("cerium".to_string()),
+            },
+        );
+        log.on_host_event(
+            "samarium",
+            &HostEvent::WaitingForSerialGroup {
+                group: "k8s".to_string(),
+                holder: None,
+            },
+        );
+
+        assert_eq!(
+            log.get_events(),
+            vec![
+                "unchanged:sodium",
+                "serial_wait:neodymium:k8s:Some(\"cerium\")",
+                "serial_wait:samarium:k8s:None",
+            ]
+        );
+    }
+
+    #[test]
+    fn test_steps_without_a_step_callback_are_dropped_when_forwarding() {
+        for step in [
+            PipelineStep::Check,
+            PipelineStep::Plan,
+            PipelineStep::PostDeploy,
+            PipelineStep::SerialGroup,
+        ] {
+            let log = EventLog::default();
+
+            log.on_host_event("lanthanum", &HostEvent::Started(step));
+            log.on_host_event("lanthanum", &HostEvent::Finished(step));
+            log.on_host_event("lanthanum", &failed(step));
+
+            assert!(log.get_events().is_empty(), "{step}");
+        }
+    }
+
+    #[test]
+    fn test_composite_passes_host_events_to_each_observer_unchanged() {
+        let host_events = HostEventLog::default();
+        let step_events = EventLog::default();
+        let composite = CompositeObserver::new(vec![
+            Box::new(HostEventLog {
+                events: host_events.events.clone(),
+            }),
+            Box::new(EventLog {
+                events: step_events.events.clone(),
+            }),
+        ]);
+
+        composite.on_host_event("lanthanum", &failed(PipelineStep::Plan));
+        composite.on_host_event("radon", &HostEvent::Started(PipelineStep::Activate));
+
+        assert_eq!(
+            *host_events.events.lock().unwrap(),
+            vec![
+                ("lanthanum".to_string(), failed(PipelineStep::Plan)),
+                (
+                    "radon".to_string(),
+                    HostEvent::Started(PipelineStep::Activate)
+                ),
+            ]
+        );
+        assert_eq!(step_events.get_events(), vec!["activation_start:radon"]);
     }
 
     #[test]

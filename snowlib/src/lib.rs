@@ -36,7 +36,7 @@ pub use error::{BootstrapError, ProvisionerError, Result};
 pub use hooks::{HookConfig, HookLocation, HookStage};
 pub use host::{get_hostname, Host, HostMetadata};
 pub use nix::{ActivationMode, Flake, StorePath, SystemType};
-pub use observer::PushObserver;
+pub use observer::{HostEvent, PushObserver};
 pub use process::OutputMode;
 pub use push::{
     push, HookExecutor, HostDeploymentResult, PhaseResult, PipelineStep, PushConfiguration,
