@@ -10,6 +10,34 @@ use super::colors::style;
 /// Limited to keep terminal output scannable - full errors are in logs.
 const MAX_ERROR_LINES: usize = 10;
 
+/// Which hosts each phase will push, so a host nobody expected shows up
+/// before anything happens
+pub fn phase_overview(phases: &[(String, Vec<String>)]) -> String {
+    let total: usize = phases.iter().map(|(_, hosts)| hosts.len()).sum();
+    let hosts_word = if total == 1 { "host" } else { "hosts" };
+    match phases {
+        [(phase, hosts)] if phase == "default" || phase == "_all" => {
+            format!("Pushing {total} {hosts_word}: {}", hosts.join(", "))
+        }
+        _ => {
+            let width = phases
+                .iter()
+                .map(|(phase, _)| phase.len())
+                .max()
+                .unwrap_or(0);
+            let phases_word = if phases.len() == 1 { "phase" } else { "phases" };
+            let mut overview = format!(
+                "Pushing {total} {hosts_word} in {} {phases_word}:",
+                phases.len()
+            );
+            for (phase, hosts) in phases {
+                overview.push_str(&format!("\n  {phase:<width$}  {}", hosts.join(", ")));
+            }
+            overview
+        }
+    }
+}
+
 pub fn print_summary(results: &snowlib::PushResults) {
     println!();
     print_phase_results(&results.phases);
@@ -208,9 +236,50 @@ fn truncate_lines<'a>(lines: &'a [&'a str], max: usize) -> (&'a [&'a str], usize
 
 #[cfg(test)]
 mod tests {
+    use super::phase_overview;
     use snowlib::{
         ActivationMode, HostDeploymentResult, PhaseResult, PipelineStep, PushResults, SkippedPhase,
     };
+
+    fn phase(name: &str, hosts: &[&str]) -> (String, Vec<String>) {
+        (
+            name.to_string(),
+            hosts.iter().map(|h| h.to_string()).collect(),
+        )
+    }
+
+    #[test]
+    fn test_overview_lists_each_phase_with_its_hosts() {
+        let overview = phase_overview(&[
+            phase("p2", &["argon", "curium", "ferrum"]),
+            phase("p3-k8s", &["cerium", "lanthanum"]),
+        ]);
+
+        assert_eq!(
+            overview,
+            "Pushing 5 hosts in 2 phases:\n  p2      argon, curium, ferrum\n  p3-k8s  cerium, lanthanum"
+        );
+    }
+
+    #[test]
+    fn test_overview_of_a_push_without_phases_is_one_line() {
+        assert_eq!(
+            phase_overview(&[phase("default", &["boron", "radon"])]),
+            "Pushing 2 hosts: boron, radon"
+        );
+        assert_eq!(
+            phase_overview(&[phase("_all", &["sodium"])]),
+            "Pushing 1 host: sodium"
+        );
+    }
+
+    #[test]
+    fn test_overview_names_a_single_real_phase() {
+        assert_eq!(
+            phase_overview(&[phase("p2", &["ferrum"])]),
+            "Pushing 1 host in 1 phase:\n  p2  ferrum"
+        );
+    }
 
     fn make_successful_host(
         name: &str,
