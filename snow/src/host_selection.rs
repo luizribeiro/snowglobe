@@ -169,6 +169,11 @@ mod tests {
     use clap::Parser;
     use snowlib::{DeploymentFixture, HostFixture, MockNixBackend, OperationFixture};
 
+    /// The mock backends never read it, but a Flake needs a flake.nix
+    fn fixture_flake() -> Flake {
+        Flake::new(Some(crate::test_utils::fixtures_dir().to_str().unwrap())).unwrap()
+    }
+
     fn create_mock_backend_with_hosts(hosts: Vec<&str>) -> MockNixBackend {
         let host_fixtures: Vec<HostFixture> = hosts
             .iter()
@@ -246,7 +251,7 @@ mod tests {
     #[tokio::test]
     async fn test_selection_resolve_without_hosts_returns_all_hosts() {
         let backend = create_mock_backend_with_hosts(vec!["hydrogen", "oxygen"]);
-        let flake = Flake::new(None).unwrap();
+        let flake = fixture_flake();
 
         let result = parse_selection(&[])
             .unwrap()
@@ -260,7 +265,7 @@ mod tests {
     #[tokio::test]
     async fn test_selection_resolve_validates_explicit_hosts() {
         let backend = create_mock_backend_with_hosts(vec!["hydrogen", "oxygen"]);
-        let flake = Flake::new(None).unwrap();
+        let flake = fixture_flake();
         let selection = parse_selection(&["hydrogen", "radon"]).unwrap();
 
         let result = selection.resolve(&flake, &backend).await;
@@ -270,7 +275,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_resolve_hosts_no_filter_no_explicit() {
-        let flake = Flake::new(None).unwrap();
+        let flake = fixture_flake();
         let backend = create_mock_backend_with_hosts(vec!["host1", "host2", "host3"]);
 
         let result = resolve_hosts(&flake, &backend, None, None).await.unwrap();
@@ -282,7 +287,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_resolve_hosts_with_explicit_empty_vec() {
-        let flake = Flake::new(None).unwrap();
+        let flake = fixture_flake();
         let backend = create_mock_backend_with_hosts(vec!["host1", "host2"]);
 
         let result = resolve_hosts(&flake, &backend, None, Some(&[]))
@@ -295,7 +300,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_resolve_hosts_with_explicit_valid() {
-        let flake = Flake::new(None).unwrap();
+        let flake = fixture_flake();
         let backend = create_mock_backend_with_hosts(vec!["host1", "host2", "host3"]);
 
         let explicit = vec!["host1".to_string(), "host3".to_string()];
@@ -310,7 +315,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_resolve_hosts_with_explicit_invalid() {
-        let flake = Flake::new(None).unwrap();
+        let flake = fixture_flake();
         let backend = create_mock_backend_with_hosts(vec!["host1", "host2"]);
 
         let explicit = vec!["host1".to_string(), "nonexistent".to_string()];
@@ -325,7 +330,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_resolve_hosts_intersection_with_filter_and_explicit() {
-        let flake = Flake::new(None).unwrap();
+        let flake = fixture_flake();
         let backend = create_mock_backend_with_hosts(vec!["host1", "host2", "host3"]);
 
         // In a real scenario, the filter would narrow down the hosts
@@ -342,7 +347,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_resolve_hosts_intersection_validates_host_existence() {
-        let flake = Flake::new(None).unwrap();
+        let flake = fixture_flake();
         let backend = create_mock_backend_with_hosts(vec!["host1", "host2"]);
 
         let explicit = vec!["host1".to_string(), "nonexistent".to_string()];

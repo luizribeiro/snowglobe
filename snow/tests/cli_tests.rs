@@ -1,8 +1,15 @@
 use assert_cmd::Command;
 use predicates::prelude::*;
 
+fn fixtures_dir() -> std::path::PathBuf {
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures")
+}
+
+/// snow run on the fixture flake, whatever directory the tests run in
 fn snow_cmd() -> Command {
-    assert_cmd::cargo::cargo_bin_cmd!("snow")
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("snow");
+    cmd.arg("-f").arg(fixtures_dir());
+    cmd
 }
 
 #[test]
@@ -256,13 +263,10 @@ fn test_push_invalid_tag_name() {
 #[cfg(debug_assertions)]
 #[test]
 fn test_push_without_a_terminal_logs_each_step_to_stderr() {
-    let fixtures = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
-
     snow_cmd()
-        .current_dir(&fixtures)
         .env("RUST_LOG", "snowlib=info")
         .args(["push", "--switch", "--quiet", "--mock-fixture"])
-        .arg(fixtures.join("push_scenarios/build_failure.json"))
+        .arg(fixtures_dir().join("push_scenarios/build_failure.json"))
         .assert()
         .failure()
         .stderr(predicate::str::contains("nitrogen: build started"))
