@@ -193,6 +193,19 @@ async fn execute_phase(
     })
 }
 
+/// The phases a push of `hosts` runs, in order, each with its hosts' names
+pub fn phases(hosts: &[HostMetadata], ignore_phases: bool) -> Vec<(String, Vec<String>)> {
+    let by_phase = group_by_phase(hosts.to_vec(), ignore_phases);
+    sorted_phases(&by_phase)
+        .into_iter()
+        .map(|phase| {
+            let mut names: Vec<String> = by_phase[&phase].iter().map(|h| h.name.clone()).collect();
+            names.sort();
+            (phase, names)
+        })
+        .collect()
+}
+
 fn group_by_phase(
     hosts: Vec<HostMetadata>,
     ignore_phases: bool,

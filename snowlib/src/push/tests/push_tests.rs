@@ -304,3 +304,37 @@ async fn test_push_error_message_format_with_activation_failure() {
         error_msg
     );
 }
+
+#[test]
+fn test_phases_lists_each_phase_in_order_with_its_hosts() {
+    let hosts = vec![
+        make_host_metadata("vanadium", Some("p3"), RebootPolicy::Auto),
+        make_host_metadata("ferrum", Some("p2"), RebootPolicy::Auto),
+        make_host_metadata("cerium", Some("p3"), RebootPolicy::Auto),
+        make_host_metadata("sodium", None, RebootPolicy::Auto),
+    ];
+
+    assert_eq!(
+        crate::push::phases(&hosts, false),
+        vec![
+            ("default".to_string(), vec!["sodium".to_string()]),
+            ("p2".to_string(), vec!["ferrum".to_string()]),
+            (
+                "p3".to_string(),
+                vec!["cerium".to_string(), "vanadium".to_string()]
+            ),
+        ]
+    );
+    assert_eq!(
+        crate::push::phases(&hosts, true),
+        vec![(
+            "_all".to_string(),
+            vec![
+                "cerium".to_string(),
+                "ferrum".to_string(),
+                "sodium".to_string(),
+                "vanadium".to_string()
+            ]
+        )]
+    );
+}

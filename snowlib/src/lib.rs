@@ -39,7 +39,7 @@ pub use nix::{ActivationMode, Flake, StorePath, SystemType};
 pub use observer::{HostEvent, LogObserver, PushObserver};
 pub use process::OutputMode;
 pub use push::{
-    push, HookExecutor, HostDeploymentResult, PhaseResult, PipelineStep, PushConfiguration,
+    phases, push, HookExecutor, HostDeploymentResult, PhaseResult, PipelineStep, PushConfiguration,
     PushContext, PushResults, PushStrategy, SkippedPhase,
 };
 pub use reboot::RebootPolicy;
