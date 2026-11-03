@@ -130,7 +130,7 @@ The push operation uses a parallel-per-host execution model where each host runs
 4. **Activate** - Run activation script on host
 5. **Reboot** - Reboot host if required
 
-This is implemented in `execute_phase()` which uses Rayon to run `execute_host_pipeline()` concurrently for each host. Dynamic step spans (managed by the observer) provide visibility into which steps hosts are currently in.
+This is implemented in `execute_phase()`, which runs `execute_host_pipeline()` concurrently for each host with tokio. Each host reports its steps as host events, which the CLI shows as one row per host.
 
 The advantage of this approach is that fast hosts don't wait for slow hosts to complete each step - each host progresses through the pipeline at its own pace.
 
@@ -194,7 +194,7 @@ Recent refactorings established these conventions:
 snowlib/src/
 ├── lib.rs              # Public API exports
 ├── error.rs            # Error types using thiserror
-├── observer.rs         # Observer trait for progress reporting
+├── observer/           # Observer trait, host events and LogObserver
 ├── nix/                # Nix integration
 │   ├── flake.rs        # Flake discovery and operations
 │   ├── types.rs        # Domain types (StorePath, etc.)
@@ -340,12 +340,11 @@ nix build .#nixosConfigurations.hostname.config.system.build.toplevel
 
 When adding new deployment operations or modifying the pipeline:
 
-1. Call observer methods at appropriate points:
-   - `on_phase_start()` / `on_phase_complete()` for phase lifecycle
-   - `on_build_start()` / `on_build_complete()` for build operations
-   - `on_copy_start()` / `on_copy_complete()` for copy operations
-   - `on_deploy_start()` / `on_deploy_complete()` for activation
-   - `on_reboot_start()` / `on_reboot_complete()` for reboot operations
-2. Add tracing events for progress visibility (`tracing::info!`, `tracing::error!`)
-3. Mock observer in tests to verify callbacks
-4. CLI observer manages dynamic step spans automatically
+1. Run each host step through `HostRun::step` in `push/pipeline.rs`. It reports
+   `HostEvent::Started`, then `Finished` or `Failed { step, reason }`, through
+   `PushObserver::on_host_event`. Every host ends with `HostEvent::Done(result)`.
+2. Phases report `on_phase_start()` / `on_phase_complete()`; hooks report
+   `on_hooks_*` / `on_hook_*`.
+3. The CLI's `CliObserver` turns host events into one TUI row per host
+   (`snow/src/commands/push/board.rs`), and `LogObserver` writes them to the log.
+4. Push tests assert on the events `TestObserver` records (`push/tests/mod.rs`).

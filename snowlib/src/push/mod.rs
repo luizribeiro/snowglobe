@@ -11,8 +11,8 @@
 //! 5. **Reboot**: Reboots host if required
 //!
 //! The parallel execution is orchestrated by `execute_phase()` which uses tokio to
-//! run `execute_host_pipeline()` concurrently for each host. Dynamic step spans
-//! (managed by the observer) provide visibility into which steps hosts are currently in.
+//! run `execute_host_pipeline()` concurrently for each host. Each host reports
+//! its steps to the observer as host events.
 
 mod config;
 mod context;
