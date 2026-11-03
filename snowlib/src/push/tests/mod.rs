@@ -27,7 +27,7 @@ use crate::backends::nix::MockNixBackend;
 use crate::hooks::HookStage;
 use crate::host::HostMetadata;
 use crate::nix::{ActivationMode, Flake, StorePath, SystemType};
-use crate::observer::{NoopObserver, PushObserver};
+use crate::observer::PushObserver;
 use crate::reboot::RebootPolicy;
 use std::sync::{Arc, Mutex};
 
@@ -87,74 +87,6 @@ fn make_hook_executor(
         hooks_by_host.insert(host.name.clone(), host.hooks.clone());
     }
     crate::push::hooks::HookExecutor::new(hook_backend, hooks_by_host)
-}
-
-/// Helper function to activate hosts (simplified for tests)
-async fn activate_plans_for_test(
-    deploy_backend: &dyn crate::backends::deploy::DeployBackend,
-    plans: Vec<PushPlan>,
-    _concurrency: usize,
-    observer: &dyn crate::observer::PushObserver,
-) -> Result<PushResults> {
-    use crate::backends::deploy::DeployResult;
-
-    let phase = plans
-        .first()
-        .and_then(|p| p.metadata.phase.as_ref())
-        .cloned()
-        .unwrap_or_else(|| "default".to_string());
-
-    let hostnames: Vec<String> = plans.iter().map(|p| p.metadata.name.clone()).collect();
-
-    observer.on_phase_start(&phase, &hostnames);
-
-    let mut host_results = Vec::new();
-
-    for plan in plans {
-        let hostname = plan.metadata.name.clone();
-
-        observer.on_activation_start(&hostname);
-
-        let result = match deploy_backend
-            .deploy(&plan.target, &plan.store_path, plan.activation_mode)
-            .await
-        {
-            Ok(r) => r,
-            Err(e) => DeployResult::failure(e.to_string()),
-        };
-
-        observer.on_activation_complete(&hostname, result.success);
-
-        host_results.push(HostDeploymentResult {
-            hostname,
-            success: result.success,
-            failed_at_step: if result.success {
-                None
-            } else {
-                Some(PipelineStep::Activate)
-            },
-            activation_mode: Some(plan.activation_mode),
-            rebooted: false,
-            unchanged: false,
-            error_message: if result.success {
-                None
-            } else {
-                Some(result.message)
-            },
-        });
-    }
-
-    let phase_result = PhaseResult {
-        phase: phase.clone(),
-        hosts: host_results,
-    };
-
-    observer.on_phase_complete(&phase, phase_result.all_succeeded());
-
-    Ok(PushResults {
-        phases: vec![phase_result],
-        skipped_phases: vec![],
-    })
 }
 
 #[derive(Clone)]

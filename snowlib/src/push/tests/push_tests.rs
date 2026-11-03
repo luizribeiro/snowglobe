@@ -4,49 +4,19 @@ use super::*;
 
 #[tokio::test]
 async fn test_push_with_single_phase() {
-    let deployer = MockDeployBackend::new();
-    let observer = TestObserver::new();
+    let run = PushHarness::new()
+        .run(vec![
+            make_host_metadata("host1", Some("p1"), RebootPolicy::Auto),
+            make_host_metadata("host2", Some("p1"), RebootPolicy::Auto),
+        ])
+        .await;
 
-    let plans = vec![
-        PushPlan {
-            metadata: make_host_metadata("host1", Some("p1"), RebootPolicy::Auto),
-            target: DeployTarget {
-                user: Some("root".to_string()),
-                hostname: "host1.example.com".to_string(),
-                port: None,
-            },
-            store_path: StorePath::new("/nix/store/fake-host1".to_string()),
-            activation_mode: ActivationMode::Switch,
-            reboot_check: None,
-        },
-        PushPlan {
-            metadata: make_host_metadata("host2", Some("p1"), RebootPolicy::Auto),
-            target: DeployTarget {
-                user: Some("root".to_string()),
-                hostname: "host2.example.com".to_string(),
-                port: None,
-            },
-            store_path: StorePath::new("/nix/store/fake-host2".to_string()),
-            activation_mode: ActivationMode::Switch,
-            reboot_check: None,
-        },
-    ];
-
-    let results = activate_plans_for_test(&deployer, plans, 2, &observer)
-        .await
-        .unwrap();
-
-    assert_eq!(results.success_count(), 2);
-    assert_eq!(results.failure_count(), 0);
-
-    // Check observer events
-    let events = observer.get_events();
-    assert!(events.contains(&"phase_start:p1:2".to_string()));
-    assert!(events.contains(&"activation_start:host1".to_string()));
-    assert!(events.contains(&"activation_start:host2".to_string()));
-    assert!(events.contains(&"activation_complete:host1:ok".to_string()));
-    assert!(events.contains(&"activation_complete:host2:ok".to_string()));
-    assert!(events.contains(&"phase_complete:p1:ok".to_string()));
+    assert_eq!(run.results.success_count(), 2);
+    assert_eq!(run.results.failure_count(), 0);
+    assert!(run.has_event("phase_start:p1:2"));
+    assert!(run.has_event("activation_complete:host1:ok"));
+    assert!(run.has_event("activation_complete:host2:ok"));
+    assert!(run.has_event("phase_complete:p1:ok"));
 }
 
 #[tokio::test]
@@ -157,120 +127,35 @@ async fn test_push_stops_on_phase_failure() {
 }
 
 #[tokio::test]
-async fn test_push_with_noop_observer() {
-    let deployer = MockDeployBackend::new();
-    let observer = NoopObserver;
-
-    let plans = vec![PushPlan {
-        metadata: make_host_metadata("host1", Some("p1"), RebootPolicy::Auto),
-        target: DeployTarget {
-            user: Some("root".to_string()),
-            hostname: "host1.example.com".to_string(),
-            port: None,
-        },
-        store_path: StorePath::new("/nix/store/fake-host1".to_string()),
-        activation_mode: ActivationMode::Switch,
-        reboot_check: None,
-    }];
-
-    let results = activate_plans_for_test(&deployer, plans, 1, &observer)
-        .await
-        .unwrap();
-    assert_eq!(results.success_count(), 1);
-}
-
-#[tokio::test]
 async fn test_push_with_default_phase() {
-    let deployer = MockDeployBackend::new();
-    let observer = TestObserver::new();
+    let run = PushHarness::new()
+        .run(vec![make_host_metadata("host1", None, RebootPolicy::Auto)])
+        .await;
 
-    let plans = vec![PushPlan {
-        metadata: make_host_metadata("host1", None, RebootPolicy::Auto),
-        target: DeployTarget {
-            user: Some("root".to_string()),
-            hostname: "host1.example.com".to_string(),
-            port: None,
-        },
-        store_path: StorePath::new("/nix/store/fake-host1".to_string()),
-        activation_mode: ActivationMode::Switch,
-        reboot_check: None,
-    }];
-
-    let results = activate_plans_for_test(&deployer, plans, 1, &observer)
-        .await
-        .unwrap();
-    assert_eq!(results.success_count(), 1);
-
-    // Should use "default" phase
-    let events = observer.get_events();
-    assert!(events.contains(&"phase_start:default:1".to_string()));
+    assert_eq!(run.results.success_count(), 1);
+    assert!(run.has_event("phase_start:default:1"));
 }
 
 #[tokio::test]
 async fn test_push_with_partial_failure_in_phase() {
-    // Test that when one host fails in a phase, we still get results for all hosts in that phase
-    let deployer = MockDeployBackend::new().with_failures(vec!["host2.example.com".to_string()]);
-    let observer = TestObserver::new();
+    let mut harness = PushHarness::new();
+    harness.deployer =
+        MockDeployBackend::new().with_activate_failures(vec!["host2.example.com".to_string()]);
 
-    let plans = vec![
-        PushPlan {
-            metadata: make_host_metadata("host1", Some("p1"), RebootPolicy::Auto),
-            target: DeployTarget {
-                user: Some("root".to_string()),
-                hostname: "host1.example.com".to_string(),
-                port: None,
-            },
-            store_path: StorePath::new("/nix/store/fake-host1".to_string()),
-            activation_mode: ActivationMode::Switch,
-            reboot_check: None,
-        },
-        PushPlan {
-            metadata: make_host_metadata("host2", Some("p1"), RebootPolicy::Auto),
-            target: DeployTarget {
-                user: Some("root".to_string()),
-                hostname: "host2.example.com".to_string(),
-                port: None,
-            },
-            store_path: StorePath::new("/nix/store/fake-host2".to_string()),
-            activation_mode: ActivationMode::Switch,
-            reboot_check: None,
-        },
-    ];
+    let run = harness
+        .run(vec![
+            make_host_metadata("host1", Some("p1"), RebootPolicy::Auto),
+            make_host_metadata("host2", Some("p1"), RebootPolicy::Auto),
+        ])
+        .await;
 
-    let results = activate_plans_for_test(&deployer, plans, 2, &observer)
-        .await
-        .unwrap();
-
-    // Both hosts should have results
-    assert_eq!(results.phases[0].hosts.len(), 2);
-    assert_eq!(results.success_count(), 1);
-    assert_eq!(results.failure_count(), 1);
-
-    // Check that one succeeded and one failed
-    let hostnames: Vec<&str> = results.phases[0]
-        .hosts
-        .iter()
-        .map(|h| h.hostname.as_str())
-        .collect();
-    assert!(hostnames.contains(&"host1"));
-    assert!(hostnames.contains(&"host2"));
-
-    let host1_result = results.phases[0]
-        .hosts
-        .iter()
-        .find(|h| h.hostname == "host1")
-        .unwrap();
-    let host2_result = results.phases[0]
-        .hosts
-        .iter()
-        .find(|h| h.hostname == "host2")
-        .unwrap();
-    assert!(host1_result.success);
-    assert!(!host2_result.success);
-
-    // Phase should be marked as failed
-    let events = observer.get_events();
-    assert!(events.contains(&"phase_complete:p1:failed".to_string()));
+    assert_eq!(run.results.phases[0].hosts.len(), 2);
+    assert!(run.host("host1").success);
+    assert_eq!(
+        run.host("host2").failed_at_step,
+        Some(PipelineStep::Activate)
+    );
+    assert!(run.has_event("phase_complete:p1:failed"));
 }
 
 #[tokio::test]
