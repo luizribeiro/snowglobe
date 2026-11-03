@@ -251,3 +251,21 @@ fn test_push_invalid_tag_name() {
         .failure()
         .stderr(predicate::str::contains("only ASCII alphanumeric"));
 }
+
+// --mock-fixture only exists in debug builds
+#[cfg(debug_assertions)]
+#[test]
+fn test_push_without_a_terminal_logs_each_step_to_stderr() {
+    let fixtures = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+
+    snow_cmd()
+        .current_dir(&fixtures)
+        .env("RUST_LOG", "snowlib=info")
+        .args(["push", "--switch", "--quiet", "--mock-fixture"])
+        .arg(fixtures.join("push_scenarios/build_failure.json"))
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("nitrogen: build started"))
+        .stderr(predicate::str::contains("nitrogen: build finished in "))
+        .stderr(predicate::str::contains("hydrogen: failed at build: "));
+}

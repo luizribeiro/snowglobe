@@ -162,12 +162,6 @@ impl HostRun<'_, '_> {
         let hostname = self.hostname();
         self.scheduler
             .enter_section(self.metadata, |group, holder| {
-                tracing::info!(
-                    "{}: waiting for serial group '{}' (held by {})",
-                    hostname,
-                    group,
-                    holder.unwrap_or("another host")
-                );
                 self.report(HostEvent::WaitingForSerialGroup {
                     group: group.to_string(),
                     holder: holder.map(str::to_string),
@@ -275,7 +269,6 @@ impl HostRun<'_, '_> {
                 )
                 .await?
         {
-            tracing::info!("{}: already running the built system, skipping", hostname);
             self.report(HostEvent::Unchanged);
             return Ok(HostDeploymentResult::unchanged(hostname));
         }

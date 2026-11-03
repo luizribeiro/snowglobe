@@ -165,7 +165,10 @@ impl PushArgs {
             output_mode,
         )?;
         let reboot_backend = crate::backend_factory::create_reboot_backend(self.user.as_deref())?;
-        let observer = observer::CliObserver::new();
+        let observer = snowlib::observer::CompositeObserver::new(vec![
+            Box::new(snowlib::LogObserver::default()),
+            Box::new(observer::CliObserver::new()),
+        ]);
 
         let hostnames = self.selection.resolve(flake, nix_backend.as_ref()).await?;
         let hosts = nix_backend.load_host_metadata(flake, &hostnames).await?;
