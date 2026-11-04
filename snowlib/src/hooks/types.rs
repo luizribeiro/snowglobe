@@ -37,12 +37,7 @@ impl HookStage {
 
 impl std::fmt::Display for HookStage {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::PreDeploy => write!(f, "PreDeploy"),
-            Self::PostDeploy => write!(f, "PostDeploy"),
-            Self::PostReboot => write!(f, "PostReboot"),
-            Self::OnFailure => write!(f, "OnFailure"),
-        }
+        f.write_str(self.nix_name())
     }
 }
 
@@ -190,6 +185,16 @@ mod tests {
             HookStage::from_str("on-failure").unwrap(),
             HookStage::OnFailure
         ));
+    }
+
+    #[test]
+    fn test_stages_display_in_kebab_case() {
+        let shown = HookStage::ALL.map(|stage| stage.to_string());
+
+        assert_eq!(
+            shown,
+            ["pre-deploy", "post-deploy", "post-reboot", "on-failure"]
+        );
     }
 
     #[test]

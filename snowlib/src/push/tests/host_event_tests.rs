@@ -74,7 +74,7 @@ async fn test_failed_step_reports_its_reason_and_never_finishes() {
         assert!(!run.has_event(&format!("finished:cerium:{step}")), "{step}");
         assert!(
             position(&run, &format!("failed:cerium:{step}:{reason}"))
-                < position(&run, "hooks_start:cerium:OnFailure"),
+                < position(&run, "hooks_start:cerium:on-failure"),
             "{step}: {:?}",
             run.events
         );

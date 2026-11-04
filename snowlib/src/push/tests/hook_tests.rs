@@ -1146,8 +1146,8 @@ async fn test_hook_observer_callbacks_invoked_correctly() {
     assert!(
         events
             .iter()
-            .any(|e| e == "hooks_start:observer-test:PreDeploy"),
-        "hooks_start should be called for PreDeploy stage. Events: {:?}",
+            .any(|e| e == "hooks_start:observer-test:pre-deploy"),
+        "hooks_start should be called for the pre-deploy stage. Events: {:?}",
         events
     );
 
@@ -1155,28 +1155,28 @@ async fn test_hook_observer_callbacks_invoked_correctly() {
     assert!(
         events
             .iter()
-            .any(|e| e == "hook_start:observer-test:PreDeploy:first-hook"),
+            .any(|e| e == "hook_start:observer-test:pre-deploy:first-hook"),
         "hook_start should be called for first-hook. Events: {:?}",
         events
     );
     assert!(
         events
             .iter()
-            .any(|e| e == "hook_complete:observer-test:PreDeploy:first-hook:ok"),
+            .any(|e| e == "hook_complete:observer-test:pre-deploy:first-hook:ok"),
         "hook_complete should be called for first-hook. Events: {:?}",
         events
     );
     assert!(
         events
             .iter()
-            .any(|e| e == "hook_start:observer-test:PreDeploy:second-hook"),
+            .any(|e| e == "hook_start:observer-test:pre-deploy:second-hook"),
         "hook_start should be called for second-hook. Events: {:?}",
         events
     );
     assert!(
         events
             .iter()
-            .any(|e| e == "hook_complete:observer-test:PreDeploy:second-hook:ok"),
+            .any(|e| e == "hook_complete:observer-test:pre-deploy:second-hook:ok"),
         "hook_complete should be called for second-hook. Events: {:?}",
         events
     );
@@ -1185,8 +1185,8 @@ async fn test_hook_observer_callbacks_invoked_correctly() {
     assert!(
         events
             .iter()
-            .any(|e| e == "hooks_complete:observer-test:PreDeploy:ok"),
-        "hooks_complete should be called for PreDeploy stage. Events: {:?}",
+            .any(|e| e == "hooks_complete:observer-test:pre-deploy:ok"),
+        "hooks_complete should be called for the pre-deploy stage. Events: {:?}",
         events
     );
 
@@ -1194,22 +1194,22 @@ async fn test_hook_observer_callbacks_invoked_correctly() {
     assert!(
         events
             .iter()
-            .any(|e| e == "hooks_start:observer-test:PostDeploy"),
-        "hooks_start should be called for PostDeploy stage. Events: {:?}",
+            .any(|e| e == "hooks_start:observer-test:post-deploy"),
+        "hooks_start should be called for the post-deploy stage. Events: {:?}",
         events
     );
     assert!(
         events
             .iter()
-            .any(|e| e == "hook_start:observer-test:PostDeploy:post-hook"),
+            .any(|e| e == "hook_start:observer-test:post-deploy:post-hook"),
         "hook_start should be called for post-hook. Events: {:?}",
         events
     );
     assert!(
         events
             .iter()
-            .any(|e| e == "hooks_complete:observer-test:PostDeploy:ok"),
-        "hooks_complete should be called for PostDeploy stage. Events: {:?}",
+            .any(|e| e == "hooks_complete:observer-test:post-deploy:ok"),
+        "hooks_complete should be called for the post-deploy stage. Events: {:?}",
         events
     );
 }
@@ -1275,7 +1275,7 @@ async fn test_hook_observer_callbacks_on_failure() {
     assert!(
         events
             .iter()
-            .any(|e| e == "hook_start:fail-test:PreDeploy:failing-hook"),
+            .any(|e| e == "hook_start:fail-test:pre-deploy:failing-hook"),
         "hook_start should be called even for failing hooks. Events: {:?}",
         events
     );
@@ -1284,7 +1284,7 @@ async fn test_hook_observer_callbacks_on_failure() {
     assert!(
         events
             .iter()
-            .any(|e| e == "hook_complete:fail-test:PreDeploy:failing-hook:fail"),
+            .any(|e| e == "hook_complete:fail-test:pre-deploy:failing-hook:fail"),
         "hook_complete should be called with fail status. Events: {:?}",
         events
     );
@@ -1293,7 +1293,7 @@ async fn test_hook_observer_callbacks_on_failure() {
     assert!(
         events
             .iter()
-            .any(|e| e == "hooks_complete:fail-test:PreDeploy:fail"),
+            .any(|e| e == "hooks_complete:fail-test:pre-deploy:fail"),
         "hooks_complete should be called with fail status. Events: {:?}",
         events
     );

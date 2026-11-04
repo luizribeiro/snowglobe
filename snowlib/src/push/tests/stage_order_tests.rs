@@ -54,10 +54,10 @@ async fn test_hooks_wrap_activation_in_order() {
         .await;
 
     assert!(run.results.all_succeeded());
-    let pre = position(&run, "hooks_complete:samarium:PreDeploy:ok");
+    let pre = position(&run, "hooks_complete:samarium:pre-deploy:ok");
     let activate = position(&run, "activation_start:samarium");
     let activated = position(&run, "activation_complete:samarium:ok");
-    let post = position(&run, "hooks_start:samarium:PostDeploy");
+    let post = position(&run, "hooks_start:samarium:post-deploy");
     assert!(
         pre < activate && activate < activated && activated < post,
         "{:?}",
@@ -110,7 +110,7 @@ async fn test_post_deploy_runs_last_after_a_reboot() {
         ]
     );
     let rebooted = position(&run, "reboot_complete:lanthanum:ok");
-    let post_deploy = position(&run, "hooks_start:lanthanum:PostDeploy");
+    let post_deploy = position(&run, "hooks_start:lanthanum:post-deploy");
     assert!(rebooted < post_deploy, "{:?}", run.events);
 }
 

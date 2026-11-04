@@ -730,7 +730,7 @@ snow push --hosts node1,node2,node3
 Hooks integrate with snowglobe's logging via `tracing`:
 
 ```
-INFO  hooks: Executing PreDeploy hook for web01: kubectl drain web01
+INFO  hooks: Executing pre-deploy hook for web01: kubectl drain web01
 INFO  hooks: Hook completed successfully for web01 in 12.3s
 ```
 

@@ -43,8 +43,8 @@ fn deploy_span(run: &HarnessRun, hostname: &str) -> std::ops::RangeInclusive<usi
             .position(|e| *e == event)
             .unwrap_or_else(|| panic!("missing {}: {:?}", event, run.events))
     };
-    find(format!("hooks_start:{}:PreDeploy", hostname))
-        ..=find(format!("hooks_complete:{}:PostDeploy:ok", hostname))
+    find(format!("hooks_start:{}:pre-deploy", hostname))
+        ..=find(format!("hooks_complete:{}:post-deploy:ok", hostname))
 }
 
 fn overlap(a: &std::ops::RangeInclusive<usize>, b: &std::ops::RangeInclusive<usize>) -> bool {
@@ -180,7 +180,7 @@ async fn test_failed_deploy_skips_the_rest_of_its_group_only() {
 
     let failed = run.host("praseodymium");
     assert_eq!(failed.failed_at_step, Some(PipelineStep::PreDeploy));
-    assert!(run.has_event("hooks_complete:praseodymium:OnFailure:ok"));
+    assert!(run.has_event("hooks_complete:praseodymium:on-failure:ok"));
     assert_skipped_after(&run, "promethium", "praseodymium");
     assert_skipped_after(&run, "samarium", "praseodymium");
     assert!(run.host("hydrogen").success);
