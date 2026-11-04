@@ -9,8 +9,8 @@ use async_trait::async_trait;
 use std::time::Duration;
 
 use super::{
-    activation_mode_to_string, should_update_profile, store_path_from_resolved, DeployBackend,
-    DeployTarget, HostSystems, CURRENT_SYSTEM_LINK, SYSTEM_PROFILE_LINK,
+    activation_mode_to_string, command_failed, should_update_profile, store_path_from_resolved,
+    DeployBackend, DeployTarget, HostSystems, CURRENT_SYSTEM_LINK, SYSTEM_PROFILE_LINK,
 };
 
 /// Convert command args to a shell-like string representation for error messages
@@ -25,16 +25,6 @@ fn args_to_command_string(program: &str, args: &[&str]) -> String {
         escaped_program.to_string()
     } else {
         format!("{} {}", escaped_program, escaped_args.join(" "))
-    }
-}
-
-fn command_failed(host: &str, command: String, result: &CommandResult) -> DeployError {
-    DeployError::CommandFailed {
-        host: host.to_string(),
-        command,
-        exit_code: result.status.code().unwrap_or(-1),
-        stderr: String::from_utf8_lossy(&result.stderr).trim().to_string(),
-        stdout: String::from_utf8_lossy(&result.stdout).trim().to_string(),
     }
 }
 
@@ -406,16 +396,6 @@ mod tests {
             deployer.get_destination(&target),
             "deploy@hydrogen.example.com"
         );
-    }
-
-    fn command_result(exit_code: i32, stdout: &str, stderr: &str) -> CommandResult {
-        use std::os::unix::process::ExitStatusExt;
-        CommandResult {
-            stdout: stdout.as_bytes().to_vec(),
-            stderr: stderr.as_bytes().to_vec(),
-            status: std::process::ExitStatus::from_raw(exit_code << 8),
-            timed_out: false,
-        }
     }
 
     #[test]
@@ -873,7 +853,9 @@ case "$*" in "command -v"*) exit {helper_status} ;; esac"#
         }
     }
 
-    use super::super::common::test_utils::{create_test_store_path, create_test_target_with_port};
+    use super::super::common::test_utils::{
+        command_result, create_test_store_path, create_test_target_with_port,
+    };
 
     fn create_test_backend() -> SshDeployBackend {
         SshDeployBackend::new().with_quiet()
