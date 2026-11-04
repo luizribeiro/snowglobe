@@ -67,13 +67,7 @@ fn assert_skipped_after(run: &HarnessRun, hostname: &str, failed: &str) {
     );
     assert_eq!(
         host.error_message.as_deref(),
-        Some(
-            format!(
-                "skipped: serial group 'kubernetes' halted after {} failed",
-                failed
-            )
-            .as_str()
-        )
+        Some(format!("serial group 'kubernetes' halted after {} failed", failed).as_str())
     );
     assert!(
         !ran_hooks(run, hostname),

@@ -51,8 +51,8 @@ fn done_line(result: &HostDeploymentResult) -> Option<String> {
     if result.success && !result.unchanged {
         return Some(format!("{hostname}: deployed"));
     }
-    match (result.failed_at_step, &result.error_message) {
-        (Some(PipelineStep::SerialGroup), Some(reason)) => Some(format!("{hostname}: {reason}")),
+    match &result.error_message {
+        Some(reason) if result.is_skipped() => Some(format!("{hostname}: skipped, {reason}")),
         _ => None,
     }
 }
@@ -209,7 +209,7 @@ mod tests {
             vec![
                 Some("radon: deployed".to_string()),
                 Some(
-                    "samarium: skipped: serial group 'k8s' halted after cerium failed".to_string()
+                    "samarium: skipped, serial group 'k8s' halted after cerium failed".to_string()
                 ),
                 None,
                 None,

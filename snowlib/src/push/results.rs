@@ -90,10 +90,14 @@ impl HostDeploymentResult {
             rebooted: false,
             unchanged: false,
             error_message: Some(format!(
-                "skipped: serial group '{}' halted after {} failed",
-                group, failed_host
+                "serial group '{group}' halted after {failed_host} failed"
             )),
         }
+    }
+
+    /// Never started because its serial group halted
+    pub fn is_skipped(&self) -> bool {
+        self.failed_at_step == Some(PipelineStep::SerialGroup)
     }
 
     pub fn unchanged(hostname: impl Into<String>) -> Self {

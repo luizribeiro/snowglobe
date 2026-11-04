@@ -138,6 +138,12 @@ fn host_line(host: &snowlib::HostDeploymentResult) -> String {
             format!(" {}", style(format!("({})", labels.join(", "))).dim())
         };
         format!("  {} {}{status}", marks::success(), host.hostname)
+    } else if host.is_skipped() {
+        let reason = host.error_message.as_deref().unwrap_or_default();
+        format!(
+            "  {}",
+            marks::skipped_line(&format!("{} skipped, {reason}", host.hostname))
+        )
     } else {
         let step = host
             .failed_at_step
@@ -232,7 +238,7 @@ fn collect_failed_hosts(results: &snowlib::PushResults) -> Vec<&snowlib::HostDep
         .phases
         .iter()
         .flat_map(|p| &p.hosts)
-        .filter(|h| !h.success && h.error_message.is_some())
+        .filter(|h| !h.success && !h.is_skipped() && h.error_message.is_some())
         .collect()
 }
 
@@ -466,12 +472,13 @@ mod tests {
                 make_successful_host("boron", ActivationMode::Switch, false),
                 make_failed_host("cerium", PipelineStep::Activate, "activation failed"),
                 make_failed_host("radon", PipelineStep::PreDeploy, "storage degraded"),
+                HostDeploymentResult::skipped_by_serial_group("lanthanum", "k8s", "cerium"),
             ],
         };
 
         assert_eq!(
             super::phase_report(&phase),
-            "✗ Phase p2 (2/3 failed in 0:52)\n  ✓ boron (switch)\n  ✗ cerium at activate\n  ✗ radon at pre-deploy"
+            "✗ Phase p2 (3/4 failed in 0:52)\n  ✓ boron (switch)\n  ✗ cerium at activate\n  ✗ radon at pre-deploy\n  ⊘ lanthanum skipped, serial group 'k8s' halted after cerium failed"
         );
     }
 

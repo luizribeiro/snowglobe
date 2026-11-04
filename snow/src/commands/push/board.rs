@@ -627,7 +627,7 @@ mod tests {
                 RowKind::Failed,
                 "vanadium",
                 "skipped",
-                "skipped: serial group 'k8s' halted after cerium failed"
+                "serial group 'k8s' halted after cerium failed"
             )
         );
     }

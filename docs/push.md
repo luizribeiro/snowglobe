@@ -115,7 +115,7 @@ snowglobe.push.serialGroup = "kubernetes";
   member starts while they run. This covers a failure at any step, including
   build, copy, planning, activation, reboot or a hook.
 - Group members that haven't started are reported as failed with
-  `skipped: serial group 'kubernetes' halted after praseodymium failed`. They
+  `serial group 'kubernetes' halted after praseodymium failed`. They
   run no hooks, not even on-failure hooks, since nothing touched them.
 - Hosts outside the group carry on. The phase fails, later phases are skipped,
   and `snow push` exits non-zero.
