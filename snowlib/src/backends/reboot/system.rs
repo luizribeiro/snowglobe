@@ -306,7 +306,7 @@ impl SystemRebootBackend {
 
         Err(DeployError::RebootNotConfirmed {
             host: target.hostname.clone(),
-            reason: format!("{outcome} within {} seconds{detail}", max_wait.as_secs()),
+            reason: format!("{outcome} within {}s{detail}", max_wait.as_secs()),
         }
         .into())
     }
@@ -609,7 +609,7 @@ esac
         );
         let reason = reboot_not_confirmed_reason(err);
         assert!(
-            reason.starts_with("host did not come back online within 4 seconds (last error: "),
+            reason.starts_with("host did not come back online within 4s (last error: "),
             "{reason}"
         );
         assert!(reason.contains("did not finish within 2s"), "{reason}");
@@ -673,7 +673,7 @@ esac
 
         assert_eq!(
             reboot_not_confirmed_reason(err),
-            "host did not come back online within 1 seconds (last error: the host never answered)"
+            "host did not come back online within 1s (last error: the host never answered)"
         );
     }
 
@@ -689,7 +689,7 @@ esac
             .unwrap_err();
 
         let reason = reboot_not_confirmed_reason(err);
-        assert!(reason.contains("within 2 seconds"), "{reason}");
+        assert!(reason.contains("within 2s"), "{reason}");
     }
 
     #[tokio::test]
@@ -706,7 +706,7 @@ esac
 
         let reason = reboot_not_confirmed_reason(err);
         assert!(
-            reason.starts_with("host did not come back online within 3 seconds (last error: "),
+            reason.starts_with("host did not come back online within 3s (last error: "),
             "{reason}"
         );
         assert!(reason.ends_with("No route to host)"), "{reason}");

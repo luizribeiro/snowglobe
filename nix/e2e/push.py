@@ -208,7 +208,7 @@ try:
         push = Recording("reboot-deadline").run()
         push.failed()
         push.has("radon")
-        push.logged("radon: failed at reboot:", "did not come back online within 20 seconds")
+        push.logged("radon: failed at reboot:", "did not come back online within 20s")
         radon.wait_for_shutdown()
 
     with subtest("snow rebuild asks before switching without a reboot"):
