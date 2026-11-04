@@ -101,7 +101,7 @@ mod tests {
         let result = PhaseResult {
             phase: "p2".to_string(),
             hosts: vec![HostDeploymentResult::unchanged("cerium"), failed],
-            duration: Duration::from_millis(83_450),
+            duration: Duration::from_millis(83_460),
         };
 
         assert_eq!(
