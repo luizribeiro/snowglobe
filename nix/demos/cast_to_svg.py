@@ -2,10 +2,10 @@
 
 Usage: cast-to-svg CAST SVG
 
-Uses the theme in the cast's header, keeps pauses to at most 3s like the
-asciinema player, and prefers the fonts of the terminal look file at
-$TERMINAL_LOOK for viewers who have them. Runs svg-term from $SVG_TERM, or
-from PATH.
+Uses the theme in the cast's header. Like the asciinema player, pads the
+terminal and keeps pauses to at most 3s. Prefers the fonts of the terminal
+look file at $TERMINAL_LOOK for viewers who have them. Runs svg-term from
+$SVG_TERM, or from PATH.
 """
 
 import json
@@ -16,6 +16,8 @@ import tempfile
 from pathlib import Path
 
 MAX_PAUSE = 3.0
+# The asciinema player's 0.75em border, at svg-term's 16.7px font
+PADDING = 12
 
 
 def capped(lines: list[str]) -> list[str]:
@@ -48,7 +50,7 @@ def main() -> None:
         profile.write_text(xresources(theme), encoding="utf-8")
         subprocess.run([os.environ.get("SVG_TERM", "svg-term"),
                         "--in", str(short), "--out", str(rendered),
-                        "--no-cursor", "--term", "xresources",
+                        "--padding", str(PADDING), "--term", "xresources",
                         "--profile", str(profile)], check=True)
         text = rendered.read_text(encoding="utf-8")
     attribute = 'font-family="'
