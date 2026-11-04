@@ -122,11 +122,17 @@ class Demo:
     def logged(self, *texts: str) -> None:
         contains(self.log, texts)
 
-    def cursor_shown_at(self, *prompts: str) -> None:
-        for prompt in prompts:
-            assert prompt in self.raw, (prompt, self.output)
-            toggles = cursor_toggle.findall(self.raw[: self.raw.index(prompt)])
-            assert toggles[-1:] == ["h"], f"snow didn't show the cursor at {prompt!r}"
+    def cursor_shown_at(self, *texts: str) -> None:
+        self.cursor_at(True, texts)
+
+    def cursor_hidden_at(self, *texts: str) -> None:
+        self.cursor_at(False, texts)
+
+    def cursor_at(self, shown: bool, texts: tuple[str, ...]) -> None:
+        for text in texts:
+            assert text in self.raw, (text, self.output)
+            before = self.raw[: self.raw.index(text)]
+            assert cursor_shown(before) == shown, f"cursor {'hidden' if shown else 'shown'} at {text!r}"
 
     def failed(self) -> None:
         assert self.status != 0, self.output

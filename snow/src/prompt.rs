@@ -9,7 +9,7 @@ use snowlib::Result;
 
 /// Asks a yes/no question; anything but an explicit yes is a no
 pub fn confirm(question: &str) -> Result<bool> {
-    ask(|term| {
+    ask(Answer::Typed, |term| {
         Confirm::with_theme(&ColorfulTheme::default())
             .with_prompt(question)
             .default(false)
@@ -19,7 +19,7 @@ pub fn confirm(question: &str) -> Result<bool> {
 
 /// Asks to pick one of `items`, the first one by default
 pub fn select(question: &str, items: &[&str]) -> Result<usize> {
-    ask(|term| {
+    ask(Answer::Picked, |term| {
         Select::with_theme(&ColorfulTheme::default())
             .with_prompt(question)
             .items(items)
@@ -28,9 +28,25 @@ pub fn select(question: &str, items: &[&str]) -> Result<usize> {
     })
 }
 
-fn ask<T>(question: impl FnOnce(&Term) -> dialoguer::Result<T>) -> Result<T> {
-    let term = Term::read_write_pair(std::io::stdin(), KeepsCursor(std::io::stderr()));
-    let answer = Cursor::stderr().shown_while(|| question(&term));
+/// Menus point at the choice themselves, so only typed answers get a cursor
+enum Answer {
+    Typed,
+    Picked,
+}
+
+fn ask<T>(answer: Answer, question: impl FnOnce(&Term) -> dialoguer::Result<T>) -> Result<T> {
+    let answer = match answer {
+        Answer::Typed => {
+            let term = Term::read_write_pair(std::io::stdin(), KeepsCursor(std::io::stderr()));
+            Cursor::stderr().shown_while(|| question(&term))
+        }
+        Answer::Picked => {
+            let picked = question(&Term::stderr());
+            // dialoguer shows the cursor once the menu closes
+            Cursor::stderr().hide();
+            picked
+        }
+    };
     if answer.as_ref().is_err_and(is_interrupted) {
         cursor::exit(signals::INTERRUPTED);
     }

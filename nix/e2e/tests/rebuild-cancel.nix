@@ -20,7 +20,8 @@
   testScript = ''
     rebuild = demo()
     rebuild.succeeded()
-    rebuild.cursor_shown_at("What now?", "Switch anyway?")
+    rebuild.cursor_shown_at("Switch anyway?")
+    rebuild.cursor_hidden_at("Rebuilding", "What now?", "mixes old and new parts")
     rebuild.has("Reboot needed:", "• initrd changed", "mixes old and new parts", "⊘ Cancelled, nothing changed")
     rebuild.logged("boron: reboot required: initrd changed", "boron: chose to cancel")
     boots("boron", base("boron"))
