@@ -23,7 +23,7 @@ class Push:
         client.succeed("rm -f /tmp/snow-*.log")
         started = time.monotonic()
         self.status, output = client.execute(
-            f"cd {flake} && {env} record /tmp/casts/{name}.cast 100 24 {command}"
+            f"cd {flake} && {env} record /tmp/casts/{name}.cast 100 24 -- {command}"
         )
         self.seconds = time.monotonic() - started
         self.output = plain(output)
