@@ -16,6 +16,8 @@ let
     "serial-group"
     "reboot-deadline"
     "rebuild-cancel"
+    "rebuild-boot"
+    "rebuild-reboot"
   ];
 
   files = lib.genAttrs names (name: import ./tests/${name}.nix);
