@@ -289,17 +289,25 @@ mod tests {
         }
     }
 
+    fn row_of(board: &HostBoard, hostname: &str, now: Instant) -> Row {
+        board
+            .rows(now)
+            .into_iter()
+            .find(|row| row.hostname == hostname)
+            .unwrap()
+    }
+
+    fn brief(row: &Row) -> (RowKind, &str, &str, &str) {
+        (
+            row.kind,
+            row.hostname.as_str(),
+            row.step.as_str(),
+            row.detail.as_str(),
+        )
+    }
+
     fn summary(rows: &[Row]) -> Vec<(RowKind, &str, &str, &str)> {
-        rows.iter()
-            .map(|r| {
-                (
-                    r.kind,
-                    r.hostname.as_str(),
-                    r.step.as_str(),
-                    r.detail.as_str(),
-                )
-            })
-            .collect()
+        rows.iter().map(brief).collect()
     }
 
     #[test]
@@ -395,12 +403,12 @@ mod tests {
             t0,
         );
 
-        let rows = board.rows(t0 + secs(9));
+        let cerium = row_of(&board, "cerium", t0 + secs(9));
         assert_eq!(
-            rows[0].detail,
+            cerium.detail,
             "error: attribute 'services.nginx.virtualHosts' already defined"
         );
-        assert_eq!(rows[0].elapsed, None);
+        assert_eq!(cerium.elapsed, None);
     }
 
     #[test]
@@ -415,7 +423,7 @@ mod tests {
             t0 + secs(100),
         );
 
-        let cerium = &board.rows(t0 + secs(130))[0];
+        let cerium = row_of(&board, "cerium", t0 + secs(130));
         assert_eq!(
             (cerium.step.as_str(), cerium.elapsed),
             ("copy", Some(secs(30)))
@@ -459,7 +467,7 @@ mod tests {
         let mut board = board(t0);
 
         board.hook_started("cerium", HookStage::PreDeploy, "drain-node", t0);
-        let while_draining = board.rows(t0);
+        let while_draining = row_of(&board, "cerium", t0);
         board.apply(
             "cerium",
             &HostEvent::Failed {
@@ -472,11 +480,11 @@ mod tests {
         board.apply("cerium", &HostEvent::Started(PipelineStep::Reboot), t0);
 
         assert_eq!(
-            summary(&while_draining)[0],
+            brief(&while_draining),
             (RowKind::Active, "cerium", "pre-deploy", "hook 'drain-node'")
         );
         assert_eq!(
-            summary(&board.rows(t0))[0],
+            brief(&row_of(&board, "cerium", t0)),
             (RowKind::Failed, "cerium", "activate", "activation failed")
         );
     }
@@ -502,7 +510,7 @@ mod tests {
         board.apply("cerium", &HostEvent::Done(result), t0);
 
         assert_eq!(
-            summary(&board.rows(t0))[0],
+            brief(&row_of(&board, "cerium", t0)),
             (
                 RowKind::Failed,
                 "cerium",
@@ -526,7 +534,7 @@ mod tests {
         );
 
         assert_eq!(
-            summary(&board.rows(t0))[0],
+            brief(&row_of(&board, "vanadium", t0)),
             (
                 RowKind::Failed,
                 "vanadium",
@@ -568,7 +576,7 @@ mod tests {
         );
 
         assert_eq!(
-            summary(&board.rows(t0))[0],
+            brief(&row_of(&board, "cerium", t0)),
             (RowKind::Failed, "cerium", "copy", "Copy closure failed")
         );
     }
@@ -590,9 +598,8 @@ mod tests {
         );
         board.apply("cerium", &HostEvent::Done(result), t0);
 
-        let rows = board.rows(t0);
         assert_eq!(
-            summary(&rows)[0],
+            brief(&row_of(&board, "cerium", t0)),
             (RowKind::Failed, "cerium", "copy", "Copy closure failed")
         );
     }
@@ -610,7 +617,7 @@ mod tests {
             },
             t0,
         );
-        let waiting = board.rows(t0)[0].clone();
+        let waiting = row_of(&board, "cerium", t0);
         let waiting = (waiting.kind, waiting.detail);
         board.apply("cerium", &HostEvent::Started(PipelineStep::Activate), t0);
 
@@ -622,7 +629,7 @@ mod tests {
             )
         );
         assert_eq!(
-            summary(&board.rows(t0))[0],
+            brief(&row_of(&board, "cerium", t0)),
             (RowKind::Active, "cerium", "activate", "")
         );
     }
