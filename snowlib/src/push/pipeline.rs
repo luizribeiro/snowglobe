@@ -6,6 +6,7 @@
 //! The pipeline is fully async, using tokio for concurrent execution of hosts.
 
 use crate::backends::deploy::DeployTarget;
+use crate::error::summary::error_summary;
 use crate::error::{error_chain, DeployError, Result, SnowError};
 use crate::hooks::HookStage;
 use crate::host::HostMetadata;
@@ -187,7 +188,11 @@ impl HostRun<'_, '_> {
         self.scheduler.halt_group_of(self.metadata);
 
         if let Err(e) = self.run_hooks(HookStage::OnFailure, context).await {
-            tracing::warn!("On-failure hook execution failed for {}: {}", hostname, e);
+            tracing::warn!(
+                "On-failure hook execution failed for {}: {}",
+                hostname,
+                failure_summary(&e)
+            );
         }
 
         HostDeploymentResult {
@@ -310,6 +315,11 @@ fn failure_reason(error: &SnowError) -> String {
     }
 }
 
+/// `failure_reason` cut to its cause, for a warning that shows on one line
+fn failure_summary(error: &SnowError) -> String {
+    error_summary(&failure_reason(error)).to_string()
+}
+
 fn activated_but_reboot_failed(mut failure: Stopped, plan: &PushPlan) -> Stopped {
     failure.activation_mode = Some(plan.activation_mode);
     failure.error_message = failure
@@ -354,7 +364,7 @@ async fn is_unchanged(
             tracing::warn!(
                 "{}: could not read installed systems, deploying anyway: {}",
                 hostname,
-                failure_reason(&e)
+                failure_summary(&e)
             );
             Ok(false)
         }
@@ -435,6 +445,35 @@ mod tests {
              Exit code: 4\n\n\
              Stderr:\n\
              warning: the following units failed: storage-agent.service"
+        );
+    }
+
+    #[test]
+    fn test_failure_summary_of_an_unreachable_host_is_the_ssh_error() {
+        let error = SnowError::from(DeployError::CommandFailed {
+            host: "cerium".to_string(),
+            command: "readlink -f /run/current-system /nix/var/nix/profiles/system".to_string(),
+            exit_code: 255,
+            stderr: "ssh: connect to host cerium port 22: No route to host\n".to_string(),
+            stdout: String::new(),
+        });
+
+        assert_eq!(
+            failure_summary(&error),
+            "ssh: connect to host cerium port 22: No route to host"
+        );
+    }
+
+    #[test]
+    fn test_failure_summary_of_a_one_line_error_is_its_reason() {
+        let error = SnowError::from(DeployError::SshFailed {
+            destination: "root@cerium".to_string(),
+            source: std::io::Error::other("Connection timed out"),
+        });
+
+        assert_eq!(
+            failure_summary(&error),
+            "SSH connection failed to root@cerium: Connection timed out"
         );
     }
 
