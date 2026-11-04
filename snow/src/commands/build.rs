@@ -1,4 +1,8 @@
+use crate::error_summary::error_summary;
+use crate::marks;
+use crate::plural::plural;
 use clap::Args;
+use console::style;
 use futures::stream::{FuturesUnordered, StreamExt};
 use snowlib::{Flake, NixBackend, OutputMode, Result, StorePath};
 use std::sync::Arc;
@@ -30,37 +34,53 @@ pub struct BuildResult {
     pub result: Result<StorePath>,
 }
 
-impl BuildArgs {
-    fn print_results(&self, results: &[BuildResult]) {
-        println!();
+/// Each host's outcome and the totals, worded like push's report.
+/// A failure shows only its cause: the build's output was already shown
+/// unless `--quiet` asked to hide it.
+fn report(results: &[BuildResult]) -> String {
+    let mut lines: Vec<String> = results.iter().map(host_line).collect();
+    lines.push(String::new());
+    lines.push(totals(results));
+    lines.join("\n")
+}
 
-        let success_count = results.iter().filter(|r| r.result.is_ok()).count();
-        let total = results.len();
-
-        for result in results {
-            match &result.result {
-                Ok(store_path) => {
-                    println!("✓ {}: {}", result.hostname, store_path.as_str());
-                }
-                Err(e) => {
-                    println!("✗ {}: {}", result.hostname, e);
-                }
-            }
-        }
-
-        println!();
-        if success_count == total {
-            println!("Built {}/{} hosts successfully", success_count, total);
-        } else {
-            println!(
-                "Built {}/{} hosts successfully ({} failed)",
-                success_count,
-                total,
-                total - success_count
-            );
-        }
+fn host_line(result: &BuildResult) -> String {
+    match &result.result {
+        Ok(store_path) => format!(
+            "  {} {} {}",
+            marks::success(),
+            result.hostname,
+            style(store_path.as_str()).dim()
+        ),
+        Err(error) => format!(
+            "  {} {}: {}",
+            marks::failure(),
+            result.hostname,
+            error_summary(&error.to_string())
+        ),
     }
+}
 
+fn totals(results: &[BuildResult]) -> String {
+    let total = results.len();
+    let failed = results.iter().filter(|r| r.result.is_err()).count();
+    match (failed, total) {
+        (0, 1) => style("✓ 1 host built").green().bold().to_string(),
+        (0, _) => style(format!("✓ All {total} hosts built"))
+            .green()
+            .bold()
+            .to_string(),
+        _ => style(format!(
+            "✗ {}/{total} built, {failed} failed",
+            total - failed
+        ))
+        .red()
+        .bold()
+        .to_string(),
+    }
+}
+
+impl BuildArgs {
     pub async fn run(self, flake: &Flake) -> Result<()> {
         let nix_backend = crate::backend_factory::create_nix_backend(
             #[cfg(debug_assertions)]
@@ -80,11 +100,7 @@ impl BuildArgs {
         println!(
             "Building {} {} with concurrency {}...",
             host_metadata.len(),
-            if host_metadata.len() == 1 {
-                "host"
-            } else {
-                "hosts"
-            },
+            plural(host_metadata.len(), "host", "hosts"),
             self.concurrency
         );
 
@@ -114,7 +130,9 @@ impl BuildArgs {
             results.push(result);
         }
 
-        self.print_results(&results);
+        if !results.is_empty() {
+            println!("\n{}", report(&results));
+        }
 
         match failure_error(&results) {
             Some(error) => Err(error.into()),
@@ -160,6 +178,37 @@ mod tests {
                 .into())
             },
         }
+    }
+
+    fn plain_report(results: &[BuildResult]) -> String {
+        console::strip_ansi_codes(&report(results)).to_string()
+    }
+
+    #[test]
+    fn test_report_shows_each_failure_by_its_cause() {
+        let results = vec![
+            build_result("boron", true),
+            build_result("radon", false),
+            build_result("sodium", true),
+        ];
+
+        assert_eq!(
+            plain_report(&results),
+            "  ✓ boron /nix/store/3xv9d1x5qzl1-nixos-system-boron-26.05\n\
+             \x20 ✗ radon: builder for wine-wow-staging-10.12 failed\n\
+             \x20 ✓ sodium /nix/store/3xv9d1x5qzl1-nixos-system-sodium-26.05\n\
+             \n\
+             ✗ 2/3 built, 1 failed"
+        );
+    }
+
+    #[test]
+    fn test_report_totals_when_every_build_succeeds() {
+        let one = vec![build_result("boron", true)];
+        let two = vec![build_result("boron", true), build_result("sodium", true)];
+
+        assert!(plain_report(&one).ends_with("\n\n✓ 1 host built"));
+        assert!(plain_report(&two).ends_with("\n\n✓ All 2 hosts built"));
     }
 
     #[test]
@@ -260,7 +309,8 @@ mod tests {
             .arg("helium")
             .assert()
             .success() // 0 hosts to build = success
-            .stdout(predicate::str::contains("Building 0 host"));
+            .stdout(predicate::str::contains("Building 0 host"))
+            .stdout(predicate::str::contains("built").not());
     }
 
     #[test]
