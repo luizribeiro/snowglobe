@@ -11,6 +11,9 @@ let
     "activation-failure"
     "hook-failure"
     "missing-hook"
+    "unreachable"
+    "hung-agent"
+    "serial-group"
     "reboot-deadline"
     "rebuild-cancel"
   ];
