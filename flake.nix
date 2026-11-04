@@ -24,6 +24,9 @@
       # nix-darwin module for snowglobe deployment support
       darwinModules.default = import ./modules/darwin.nix;
 
+      # Demo recording for other projects too; they pass their own pkgs
+      lib = { inherit (import ./nix/demos) terminalLook recorder renderDemos; };
+
       packages = forEachSystem (system:
         let
           pkgs = nixpkgs.legacyPackages.${system};
