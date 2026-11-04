@@ -8,6 +8,7 @@ use tracing_subscriber::util::SubscriberInitExt;
 
 mod backend_factory;
 mod commands;
+mod cursor;
 mod fatal;
 mod filter_helpers;
 mod host_selection;
@@ -95,6 +96,7 @@ async fn main() -> ExitCode {
     }
 
     let cli = Cli::parse();
+    let _cursor = cursor::HiddenCursor::new(cursor::Cursor::stderr());
 
     match run(cli, log_file.as_deref()).await {
         Ok(()) => ExitCode::SUCCESS,

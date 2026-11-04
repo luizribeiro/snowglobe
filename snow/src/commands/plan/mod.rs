@@ -55,7 +55,7 @@ impl PlanArgs {
 
         self.print(&report);
         // Commands only signal success or failure through Result; --fail-on-build needs exit code 2.
-        std::process::exit(self.exit_code(&report));
+        crate::cursor::exit(self.exit_code(&report));
     }
 
     fn print(&self, report: &PlanReport) {

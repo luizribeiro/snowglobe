@@ -36,6 +36,15 @@ fn test_fatal_error_shows_its_help_without_a_std_prefix() {
 }
 
 #[test]
+fn test_cursor_is_left_alone_when_stderr_is_not_a_terminal() {
+    assert_cmd::cargo::cargo_bin_cmd!("snow")
+        .args(["-f", "/srv/no-such-flake", "list"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("\x1b[?25").not());
+}
+
+#[test]
 fn test_push_help() {
     snow_cmd()
         .arg("push")
