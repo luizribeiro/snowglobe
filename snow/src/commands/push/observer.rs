@@ -6,7 +6,7 @@
 use super::board::HostBoard;
 use super::styles::{header_style, line_style, SharedBoard};
 use parking_lot::Mutex;
-use snowlib::{HookStage, HostEvent, PushObserver};
+use snowlib::{HookStage, HostEvent, PhaseResult, PushObserver};
 use std::time::Instant;
 use tracing::info_span;
 use tracing_indicatif::span_ext::IndicatifSpanExt;
@@ -34,9 +34,10 @@ impl CliObserver {
 }
 
 fn phase_label(phase: &str) -> &str {
-    match phase {
-        "default" | "_all" => "Deploying",
-        phase => phase,
+    if super::summary::is_unnamed_phase(phase) {
+        "Deploying"
+    } else {
+        phase
     }
 }
 
@@ -64,9 +65,16 @@ impl PushObserver for CliObserver {
         *self.spans.lock() = spans;
     }
 
-    fn on_phase_complete(&self, _phase: &str, _result: Option<&snowlib::PhaseResult>) {
+    fn on_phase_complete(&self, _phase: &str, result: Option<&PhaseResult>) {
+        // Closing the spans removes the phase's lines, so the report takes their place
         self.spans.lock().clear();
         *self.board.lock() = None;
+        if let Some(result) = result {
+            // Without suspending, indicatif's next redraw would draw over the report
+            tracing_indicatif::suspend_tracing_indicatif(|| {
+                println!("{}\n", super::summary::phase_report(result));
+            });
+        }
     }
 
     fn on_host_event(&self, hostname: &str, event: &HostEvent) {
@@ -140,6 +148,22 @@ mod tests {
                 ("cerium".to_string(), "pre-deploy".to_string()),
             ]
         );
+    }
+
+    #[test]
+    fn test_phase_complete_with_results_clears_the_board_and_spans() {
+        let observer = CliObserver::new();
+        observer.on_phase_start("p3", &hosts());
+        let result = PhaseResult {
+            phase: "p3".to_string(),
+            hosts: vec![snowlib::HostDeploymentResult::unchanged("radon")],
+            duration: std::time::Duration::from_secs(5),
+        };
+
+        observer.on_phase_complete("p3", Some(&result));
+
+        assert!(observer.spans.lock().is_empty());
+        assert!(observer.board.lock().is_none());
     }
 
     #[test]

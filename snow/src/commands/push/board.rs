@@ -319,7 +319,7 @@ fn describe(state: &State) -> (String, String) {
     }
 }
 
-fn plural(n: usize, word: &str) -> String {
+pub(super) fn plural(n: usize, word: &str) -> String {
     if n == 1 {
         word.to_string()
     } else {

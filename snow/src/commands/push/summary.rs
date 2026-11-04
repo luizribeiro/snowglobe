@@ -1,14 +1,20 @@
 //! Terminal output formatting for deployment results
 //!
-//! Handles the final summary printed after deployment completes.
+//! Handles each phase's report and the final summary.
 //! Keeps ANSI terminal formatting out of the library layer
 //! (library should be reusable by TUI, agents, etc.).
 
+use super::board::{format_elapsed, plural};
 use super::colors::style;
 
 /// Maximum error lines to display before truncating.
 /// Limited to keep terminal output scannable - full errors are in logs.
 const MAX_ERROR_LINES: usize = 10;
+
+/// The phase hosts without a push phase share, which has no name to show
+pub(super) fn is_unnamed_phase(phase: &str) -> bool {
+    matches!(phase, "default" | "_all")
+}
 
 /// Which hosts each phase will push, so a host nobody expected shows up
 /// before anything happens
@@ -16,7 +22,7 @@ pub fn phase_overview(phases: &[(String, Vec<String>)]) -> String {
     let total: usize = phases.iter().map(|(_, hosts)| hosts.len()).sum();
     let hosts_word = if total == 1 { "host" } else { "hosts" };
     match phases {
-        [(phase, hosts)] if phase == "default" || phase == "_all" => {
+        [(phase, hosts)] if is_unnamed_phase(phase) => {
             format!("Pushing {total} {hosts_word}: {}", hosts.join(", "))
         }
         _ => {
@@ -38,38 +44,52 @@ pub fn phase_overview(phases: &[(String, Vec<String>)]) -> String {
     }
 }
 
+/// What is left once every phase reported itself: skipped phases, the
+/// totals and the errors in full
 pub fn print_summary(results: &snowlib::PushResults) {
-    println!();
-    print_phase_results(&results.phases);
     print_skipped_phases(&results.skipped_phases);
     print_overall_summary(results);
     print_error_details(results);
     println!();
 }
 
-fn print_phase_results(phases: &[snowlib::PhaseResult]) {
-    for phase_result in phases {
-        print_phase_header(phase_result);
-        print_host_results(&phase_result.hosts);
-        println!();
-    }
+/// How a phase went, shown as soon as it ends:
+///
+/// ```text
+/// ✗ Phase p2 (1/3 failed in 0:52)
+///   ✓ boron (switch)
+///   ✗ cerium at activate
+/// ```
+pub fn phase_report(phase: &snowlib::PhaseResult) -> String {
+    let mut lines = vec![phase_heading(phase)];
+    lines.extend(phase.hosts.iter().map(host_line));
+    lines.join("\n")
 }
 
-fn print_phase_header(phase: &snowlib::PhaseResult) {
+fn phase_heading(phase: &snowlib::PhaseResult) -> String {
+    let title = if is_unnamed_phase(&phase.phase) {
+        "Deploy".to_string()
+    } else {
+        format!("Phase {}", phase.phase)
+    };
+    let took = format_elapsed(phase.duration);
     let total = phase.hosts.len();
     if phase.all_succeeded() {
-        println!(
+        format!(
             "{} {}",
-            style(format!("✓ Phase {}", phase.phase)).green().bold(),
-            style(format!("({} hosts)", total)).dim()
-        );
+            style(format!("✓ {title}")).green().bold(),
+            style(format!("({total} {} in {took})", plural(total, "host"))).dim()
+        )
     } else {
-        let failed = phase.failure_count();
-        println!(
+        format!(
             "{} {}",
-            style(format!("✗ Phase {}", phase.phase)).red().bold(),
-            style(format!("({}/{} failed)", failed, total)).dim()
-        );
+            style(format!("✗ {title}")).red().bold(),
+            style(format!(
+                "({}/{total} failed in {took})",
+                phase.failure_count()
+            ))
+            .dim()
+        )
     }
 }
 
@@ -94,30 +114,26 @@ pub(super) fn success_labels(host: &snowlib::HostDeploymentResult) -> Vec<&'stat
     labels
 }
 
-fn print_host_results(hosts: &[snowlib::HostDeploymentResult]) {
-    for host in hosts {
-        if host.success {
-            let parts = success_labels(host);
-
-            let status = if parts.is_empty() {
-                String::new()
-            } else {
-                format!(" {}", style(format!("({})", parts.join(", "))).dim())
-            };
-
-            println!("  {} {}{}", style("✓").green(), host.hostname, status);
+fn host_line(host: &snowlib::HostDeploymentResult) -> String {
+    if host.success {
+        let labels = success_labels(host);
+        let status = if labels.is_empty() {
+            String::new()
         } else {
-            let step_msg = host
-                .failed_at_step
-                .map(|step| format!(" at {}", step))
-                .unwrap_or_default();
-            println!(
-                "  {} {}{}",
-                style("✗").red(),
-                host.hostname,
-                style(step_msg).red()
-            );
-        }
+            format!(" {}", style(format!("({})", labels.join(", "))).dim())
+        };
+        format!("  {} {}{status}", style("✓").green(), host.hostname)
+    } else {
+        let step = host
+            .failed_at_step
+            .map(|step| format!(" at {step}"))
+            .unwrap_or_default();
+        format!(
+            "  {} {}{}",
+            style("✗").red(),
+            host.hostname,
+            style(step).red()
+        )
     }
 }
 
@@ -408,6 +424,46 @@ mod tests {
 
         assert!(results.all_succeeded());
         assert_eq!(results.success_count(), 4);
+    }
+
+    #[test]
+    fn test_phase_report_says_how_long_the_phase_took() {
+        console::set_colors_enabled(false);
+        let phase = PhaseResult {
+            phase: "p2".to_string(),
+            duration: Duration::from_secs(52),
+            hosts: vec![
+                make_successful_host("boron", ActivationMode::Switch, false),
+                make_failed_host("cerium", PipelineStep::Activate, "activation failed"),
+                make_successful_host("radon", ActivationMode::Boot, true),
+            ],
+        };
+
+        assert_eq!(
+            super::phase_report(&phase),
+            "✗ Phase p2 (1/3 failed in 0:52)\n  ✓ boron (switch)\n  ✗ cerium at activate\n  ✓ radon (boot, rebooted)"
+        );
+    }
+
+    #[test]
+    fn test_phase_report_of_a_push_without_phases() {
+        console::set_colors_enabled(false);
+        for name in ["default", "_all"] {
+            let phase = PhaseResult {
+                phase: name.to_string(),
+                duration: Duration::from_secs(3727),
+                hosts: vec![make_successful_host(
+                    "sodium",
+                    ActivationMode::Switch,
+                    false,
+                )],
+            };
+
+            assert_eq!(
+                super::phase_report(&phase),
+                "✓ Deploy (1 host in 1:02:07)\n  ✓ sodium (switch)"
+            );
+        }
     }
 
     #[test]
