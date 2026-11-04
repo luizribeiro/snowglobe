@@ -1,8 +1,8 @@
 use crate::marks;
-use crate::prompt::prompt_error;
+use crate::prompt::{self, prompt_error};
 use clap::Args;
 use console::style;
-use dialoguer::{theme::ColorfulTheme, Confirm, Select};
+use dialoguer::{theme::ColorfulTheme, Select};
 use snowlib::{
     ActivationMode, DeployBackend, DeployTarget, Flake, LocalDeployBackend, LocalRebootBackend,
     RebootBackend, RebootCheck, Result, SystemType,
@@ -121,11 +121,7 @@ impl RebuildArgs {
         }
 
         println!("\n{}", marks::warning_lines(SWITCH_WARNING));
-        let confirmed = Confirm::with_theme(&ColorfulTheme::default())
-            .with_prompt("Switch anyway?")
-            .default(false)
-            .interact()
-            .map_err(prompt_error)?;
+        let confirmed = prompt::confirm("Switch anyway?")?;
         Ok(if confirmed {
             RebootAction::SwitchRisky
         } else {

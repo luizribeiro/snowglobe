@@ -1,6 +1,17 @@
 //! Questions asked on the terminal, styled the same in every command
 
+use dialoguer::{theme::ColorfulTheme, Confirm};
 use snowlib::error::{IoError, SnowError};
+use snowlib::Result;
+
+/// Asks a yes/no question; anything but an explicit yes is a no
+pub fn confirm(question: &str) -> Result<bool> {
+    Confirm::with_theme(&ColorfulTheme::default())
+        .with_prompt(question)
+        .default(false)
+        .interact()
+        .map_err(prompt_error)
+}
 
 pub fn prompt_error(error: dialoguer::Error) -> SnowError {
     let dialoguer::Error::IO(source) = error;

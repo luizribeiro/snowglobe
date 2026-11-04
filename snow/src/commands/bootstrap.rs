@@ -1,12 +1,12 @@
 use crate::marks;
 use crate::plural::plural;
+use crate::prompt;
 use clap::Args;
 use snowlib::{
     get_provisioner, Flake, InjectionResult, KeyGenBackend, NixBackend, OutputMode,
     ProvisionerConfig, ProvisioningResult, Result, SopsBackend, SystemKeyGenBackend,
     SystemNixBackend, SystemSopsBackend, SystemType, TargetType,
 };
-use std::io::{self, Write};
 use std::path::Path;
 
 /// Bootstrap a new host with full automation
@@ -138,7 +138,7 @@ impl BootstrapArgs {
             let target = TargetType::parse(target_str);
             provisioner.validate_target(&target)?;
 
-            if !self.yes && requires_confirmation(&target) && !confirm_operation(&target) {
+            if !self.yes && requires_confirmation(&target) && !confirm_operation(&target)? {
                 println!(
                     "  {}",
                     marks::skipped_line(&format!("Cancelled, nothing written to {target}"))
@@ -229,31 +229,35 @@ fn requires_confirmation(target: &TargetType) -> bool {
     matches!(target, TargetType::BlockDevice(_))
 }
 
-fn confirm_operation(target: &TargetType) -> bool {
-    let warning = match target {
+fn confirm_operation(target: &TargetType) -> Result<bool> {
+    println!("{}", marks::warning_lines(&deploy_warning(target)));
+    prompt::confirm("Continue?")
+}
+
+fn deploy_warning(target: &TargetType) -> String {
+    match target {
         TargetType::BlockDevice(path) => {
-            format!(
-                "WARNING: This will OVERWRITE all data on {}",
-                path.display()
-            )
+            format!("This will erase everything on {}", path.display())
         }
-        TargetType::ProxmoxHost(t) => {
-            format!("This will create a new VM on {}", t.hostname)
-        }
-    };
-
-    print!("{}\nContinue? [y/N] ", warning);
-    let _ = io::stdout().flush();
-
-    let mut input = String::new();
-    io::stdin().read_line(&mut input).is_ok() && input.trim().eq_ignore_ascii_case("y")
+        TargetType::ProxmoxHost(t) => format!("This will create a new VM on {}", t.hostname),
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::sops_updated;
+    use super::{deploy_warning, sops_updated};
     use crate::test_utils::snow_cmd;
     use predicates::prelude::*;
+
+    #[test]
+    fn test_deploy_warning_names_the_device_it_erases() {
+        let target = snowlib::TargetType::parse("/dev/sdc");
+
+        assert_eq!(
+            deploy_warning(&target),
+            "This will erase everything on /dev/sdc"
+        );
+    }
 
     #[test]
     fn test_sops_updated_counts_re_encrypted_files() {
