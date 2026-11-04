@@ -24,6 +24,8 @@ let
   # Twice the 12pt terminal font they match, so shown at half size on a Retina screen the
   # text is as big as in that terminal, and sharp
   fontSize = 24;
+  # agg can't draw color emoji; this covers the ✨ in snow's output
+  emojiFont = pkgs.noto-fonts-monochrome-emoji;
 in
 pkgs.runCommand "snow-push-recordings"
 {
@@ -37,7 +39,8 @@ pkgs.runCommand "snow-push-recordings"
       agg --quiet \
         --font-dir ${pkgs.nerd-fonts.hack}/share/fonts \
         --font-dir ${pkgs.dejavu_fonts}/share/fonts \
-        --font-family "Hack Nerd Font Mono,DejaVu Sans Mono" \
+        --font-dir ${emojiFont}/share/fonts \
+        --font-family "Hack Nerd Font Mono,DejaVu Sans Mono,Noto Emoji" \
         --theme ${monokai} \
         --font-size ${toString fontSize} \
         --idle-time-limit 3 \
