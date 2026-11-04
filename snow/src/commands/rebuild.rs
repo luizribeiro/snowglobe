@@ -1,4 +1,5 @@
 use crate::marks;
+use crate::prompt::prompt_error;
 use clap::Args;
 use console::style;
 use dialoguer::{theme::ColorfulTheme, Confirm, Select};
@@ -270,14 +271,6 @@ fn reboot_notice(check: &RebootCheck) -> String {
 }
 
 const NEXT_BOOT: &str = "The new system starts at the next boot";
-
-fn prompt_error(error: dialoguer::Error) -> snowlib::error::SnowError {
-    snowlib::error::DeployError::Failed {
-        host: "localhost".to_string(),
-        source: std::io::Error::other(error.to_string()),
-    }
-    .into()
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum RebootAction {

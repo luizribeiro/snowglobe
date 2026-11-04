@@ -13,6 +13,7 @@ mod filter_helpers;
 mod host_selection;
 mod marks;
 mod plural;
+mod prompt;
 
 #[cfg(test)]
 mod test_utils;

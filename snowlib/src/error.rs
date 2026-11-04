@@ -291,6 +291,13 @@ pub enum IoError {
         #[source]
         source: std::io::Error,
     },
+
+    #[error("Failed to read your answer")]
+    #[diagnostic(code(snow::io::prompt))]
+    Prompt {
+        #[source]
+        source: std::io::Error,
+    },
 }
 
 /// Errors related to bootstrap operations (key generation, provisioning)
