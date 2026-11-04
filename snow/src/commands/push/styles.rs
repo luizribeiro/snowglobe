@@ -337,11 +337,11 @@ mod tests {
 
         assert_eq!(
             header_text(&board, "⠋", 100),
-            "⠋ ▶ Phase p2 · 3 hosts · 💥 1 failed · 1 running · 1 queued  ━━━━━━╸───────────── 33%"
+            "⠋ ▶ Phase p2 · 3 hosts · 1 failed · 1 running · 1 queued  ━━━━━━╸───────────── 33%"
         );
         assert_eq!(
             header_text(&board, "⠋", 80),
-            "⠋ ▶ Phase p2 · 3 hosts · 💥 1 failed · 1 running · 1 queued"
+            "⠋ ▶ Phase p2 · 3 hosts · 1 failed · 1 running · 1 queued"
         );
     }
 

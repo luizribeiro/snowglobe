@@ -218,14 +218,14 @@ impl HostBoard {
             self.hosts.len(),
             plural(self.hosts.len(), "host")
         )];
-        for (n, prefix, label) in [
-            (count(&[RowKind::Done, RowKind::Unchanged]), "", "done"),
-            (count(&[RowKind::Failed]), "💥 ", "failed"),
-            (count(&[RowKind::Active]), "", "running"),
-            (count(&[RowKind::Queued]), "", "queued"),
+        for (n, label) in [
+            (count(&[RowKind::Done, RowKind::Unchanged]), "done"),
+            (count(&[RowKind::Failed]), "failed"),
+            (count(&[RowKind::Active]), "running"),
+            (count(&[RowKind::Queued]), "queued"),
         ] {
             if n > 0 {
-                parts.push(format!("{prefix}{n} {label}"));
+                parts.push(format!("{n} {label}"));
             }
         }
         parts.join(" · ")
@@ -468,7 +468,7 @@ mod tests {
         );
         assert_eq!(
             board.counts(),
-            "4 hosts · 1 done · 💥 1 failed · 1 running · 1 queued"
+            "4 hosts · 1 done · 1 failed · 1 running · 1 queued"
         );
     }
 
