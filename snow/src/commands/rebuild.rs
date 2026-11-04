@@ -1,8 +1,7 @@
 use crate::marks;
-use crate::prompt::{self, prompt_error};
+use crate::prompt;
 use clap::Args;
 use console::style;
-use dialoguer::{theme::ColorfulTheme, Select};
 use snowlib::{
     ActivationMode, DeployBackend, DeployTarget, Flake, LocalDeployBackend, LocalRebootBackend,
     RebootBackend, RebootCheck, Result, SystemType,
@@ -90,12 +89,7 @@ impl RebuildArgs {
         }
 
         let labels: Vec<&str> = MENU.iter().map(|(label, _)| *label).collect();
-        let selection = Select::with_theme(&ColorfulTheme::default())
-            .with_prompt("What now?")
-            .items(&labels)
-            .default(0)
-            .interact()
-            .map_err(prompt_error)?;
+        let selection = prompt::select("What now?", &labels)?;
         let action = MENU[selection].1;
         if action != RebootAction::SwitchRisky {
             return Ok(action);
