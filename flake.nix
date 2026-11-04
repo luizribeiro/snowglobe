@@ -30,11 +30,6 @@
       packages = forEachSystem (system:
         let
           pkgs = nixpkgs.legacyPackages.${system};
-          e2e = import ./nix/e2e {
-            inherit pkgs;
-            snow = self.packages.${system}.snow;
-            snowglobeModule = self.nixosModules.default;
-          };
         in
         {
           snow = pkgs.rustPlatform.buildRustPackage {
@@ -91,16 +86,28 @@
           };
 
           default = self.packages.${system}.snow;
-        # NixOS VMs pushing to each other, too slow for every check, so they
-        # are packages instead
-        } // nixpkgs.lib.optionalAttrs pkgs.stdenv.isLinux ({
+        });
+
+      # NixOS VMs pushing to each other: evaluating them all takes many GB,
+      # more than a CI runner has, and nix flake check doesn't evaluate
+      # legacyPackages deeply
+      legacyPackages = forEachSystem (system:
+        let
+          pkgs = nixpkgs.legacyPackages.${system};
+          e2e = import ./nix/e2e {
+            inherit pkgs;
+            snow = self.packages.${system}.snow;
+            snowglobeModule = self.nixosModules.default;
+          };
+        in
+        nixpkgs.lib.optionalAttrs pkgs.stdenv.isLinux ({
           push-recordings = e2e.recordings;
           upload-demos = pkgs.writeShellApplication {
             name = "upload-demos";
             runtimeInputs = [ pkgs.asciinema ];
             text = ''
               ${pkgs.writers.writePython3 "upload-demos" { } (builtins.readFile ./nix/e2e/upload_demos.py)} \
-                ${self.packages.${system}.push-recordings} "$@"
+                ${self.legacyPackages.${system}.push-recordings} "$@"
             '';
           };
         } // nixpkgs.lib.mapAttrs'
