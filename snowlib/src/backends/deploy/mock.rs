@@ -254,7 +254,7 @@ impl DeployBackend for MockDeployBackend {
                 destination: target.hostname.clone(),
                 source: std::io::Error::new(
                     std::io::ErrorKind::TimedOut,
-                    "ssh did not finish within 60s",
+                    "The ssh command did not finish within 60s",
                 ),
             }
             .into());

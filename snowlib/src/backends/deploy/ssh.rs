@@ -46,7 +46,7 @@ fn host_systems_from_output(host: &str, result: &CommandResult) -> Result<HostSy
         return Err(DeployError::Failed {
             host: host.to_string(),
             source: std::io::Error::other(format!(
-                "expected 2 lines from `{}`, got: {:?}",
+                "Expected 2 lines from `{}`, got: {:?}",
                 READ_HOST_SYSTEMS_ARGS.join(" "),
                 stdout
             )),
@@ -200,7 +200,7 @@ impl SshDeployBackend {
             _ => {
                 let stderr = String::from_utf8_lossy(&result.stderr);
                 Err(ssh_failed(std::io::Error::other(format!(
-                    "ssh exited with {}: {}",
+                    "The ssh command exited with {}: {}",
                     result.status,
                     stderr.trim()
                 )))

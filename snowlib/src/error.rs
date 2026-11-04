@@ -425,7 +425,7 @@ pub enum BootstrapError {
     )]
     SopsHostExists { hostname: String },
 
-    #[error("sops updatekeys command failed:\n{stderr}")]
+    #[error("Running `sops updatekeys` failed:\n{stderr}")]
     #[diagnostic(
         code(snow::bootstrap::sops_updatekeys_failed),
         help("Check that sops is configured and every key is valid, then run `sops updatekeys <file>` by hand to see why it failed.")
@@ -450,7 +450,7 @@ pub enum ProvisionerError {
     )]
     UnknownProvisioner { name: String },
 
-    #[error("Invalid target '{target}' for {provisioner} provisioner: {reason}")]
+    #[error("Invalid target '{target}' for provisioner '{provisioner}': {reason}")]
     #[diagnostic(
         code(snow::provisioner::invalid_target),
         help("Verify the target matches the provisioner type:\n  - sd-image, raw: /dev/sdX (block device)\n  - proxmox-vma: hostname\n  - remote: user@host")
@@ -461,7 +461,7 @@ pub enum ProvisionerError {
         reason: String,
     },
 
-    #[error("Missing required tool for {provisioner} provisioner: {tool}")]
+    #[error("Missing required tool for provisioner '{provisioner}': {tool}")]
     #[diagnostic(code(snow::provisioner::missing_dependency), help("{install_hint}"))]
     MissingDependency {
         provisioner: String,
@@ -469,14 +469,14 @@ pub enum ProvisionerError {
         install_hint: String,
     },
 
-    #[error("{provisioner} provisioner failed to inject keys: {reason}")]
+    #[error("Provisioner '{provisioner}' failed to inject keys: {reason}")]
     #[diagnostic(
         code(snow::provisioner::injection_failed),
         help("Common causes:\n  - Image file not found or corrupted\n  - Insufficient permissions to access the image\n  - Partition not found in image")
     )]
     InjectionFailed { provisioner: String, reason: String },
 
-    #[error("{provisioner} provisioner: {command} command failed:\n{stderr}")]
+    #[error("Provisioner '{provisioner}' failed running `{command}`:\n{stderr}")]
     #[diagnostic(
         code(snow::provisioner::injection_command_failed),
         help("The key injection tool encountered an error. Common issues:\n  - Partition not found in image\n  - Filesystem corruption\n  - Insufficient space in image")
@@ -510,21 +510,21 @@ pub enum ProvisionerError {
     )]
     NoImageAttr { host: String },
 
-    #[error("{provisioner} provisioner does not support deployment: {reason}")]
+    #[error("Provisioner '{provisioner}' does not support deployment: {reason}")]
     #[diagnostic(
         code(snow::provisioner::deployment_not_supported),
         help("This provisioner only generates images for manual deployment.\nUse a different provisioner or deploy the image manually.")
     )]
     DeploymentNotSupported { provisioner: String, reason: String },
 
-    #[error("{provisioner} deployment failed: {reason}")]
+    #[error("Provisioner '{provisioner}' failed to deploy: {reason}")]
     #[diagnostic(
         code(snow::provisioner::deployment_failed),
         help("Check the target is accessible and has sufficient permissions.\nFor block devices, ensure you have write access (try with `sudo`).\nFor Proxmox, ensure SSH access is configured.")
     )]
     DeploymentFailed { provisioner: String, reason: String },
 
-    #[error("{provisioner} deployment to {target} was cancelled")]
+    #[error("Provisioner '{provisioner}' deployment to '{target}' was cancelled")]
     #[diagnostic(code(snow::provisioner::deployment_cancelled))]
     DeploymentCancelled { provisioner: String, target: String },
 }
@@ -582,7 +582,7 @@ mod tests {
             destination: "pusher@curium.example.com".to_string(),
             source: std::io::Error::new(
                 std::io::ErrorKind::TimedOut,
-                "ssh did not finish within 60s",
+                "The ssh command did not finish within 60s",
             ),
         });
 
@@ -770,13 +770,55 @@ mod tests {
     }
 
     #[test]
-    fn test_injection_failed_includes_provisioner_and_reason() {
+    fn test_provisioner_errors_start_with_a_capital() {
+        let provisioner = || "sd-image".to_string();
+        let reason = || "permission denied".to_string();
+        let errors = [
+            ProvisionerError::InvalidTarget {
+                provisioner: provisioner(),
+                target: "/dev/sdc".to_string(),
+                reason: reason(),
+            },
+            ProvisionerError::MissingDependency {
+                provisioner: provisioner(),
+                tool: "guestfish".to_string(),
+                install_hint: "nix-shell -p libguestfs".to_string(),
+            },
+            ProvisionerError::InjectionCommandFailed {
+                provisioner: provisioner(),
+                command: "guestfish".to_string(),
+                stderr: "no root device found".to_string(),
+            },
+            ProvisionerError::DeploymentNotSupported {
+                provisioner: provisioner(),
+                reason: reason(),
+            },
+            ProvisionerError::DeploymentFailed {
+                provisioner: provisioner(),
+                reason: reason(),
+            },
+            ProvisionerError::DeploymentCancelled {
+                provisioner: provisioner(),
+                target: "/dev/sdc".to_string(),
+            },
+        ];
+
+        for error in errors {
+            let message = error.to_string();
+            assert!(message.starts_with(char::is_uppercase), "{message}");
+        }
+    }
+
+    #[test]
+    fn test_injection_failed_starts_with_a_capital() {
         let error = ProvisionerError::InjectionFailed {
             provisioner: "sd-image".to_string(),
             reason: "permission denied".to_string(),
         };
-        assert!(error.to_string().contains("sd-image"));
-        assert!(error.to_string().contains("permission denied"));
+        assert_eq!(
+            error.to_string(),
+            "Provisioner 'sd-image' failed to inject keys: permission denied"
+        );
     }
 
     #[test]

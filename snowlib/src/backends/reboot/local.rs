@@ -135,7 +135,7 @@ impl LocalRebootBackend {
             return Err(DeployError::Failed {
                 host: target.hostname.clone(),
                 source: std::io::Error::other(format!(
-                    "dry-activate failed: {}",
+                    "Running dry-activate failed: {}",
                     String::from_utf8_lossy(&result.stderr)
                 )),
             }

@@ -62,7 +62,10 @@ pub(crate) async fn run_bounded(
     if result.timed_out {
         return Err(std::io::Error::new(
             std::io::ErrorKind::TimedOut,
-            format!("{program} did not finish within {}s", timeout.as_secs()),
+            format!(
+                "The {program} command did not finish within {}s",
+                timeout.as_secs()
+            ),
         ));
     }
     Ok(result)
@@ -112,7 +115,10 @@ pub(crate) async fn ssh_agent_status(
         Some(0 | 1) => AgentStatus::Responsive,
         Some(AGENT_UNREACHABLE) => AgentStatus::Unreachable { reason: stderr },
         _ => AgentStatus::Unchecked {
-            reason: format!("ssh-add exited with {}: {stderr}", result.status),
+            reason: format!(
+                "The ssh-add command exited with {}: {stderr}",
+                result.status
+            ),
         },
     })
 }
@@ -154,7 +160,10 @@ mod tests {
             .unwrap_err();
 
         assert_eq!(err.kind(), std::io::ErrorKind::TimedOut);
-        assert_eq!(err.to_string(), "sleep did not finish within 1s");
+        assert_eq!(
+            err.to_string(),
+            "The sleep command did not finish within 1s"
+        );
     }
 
     #[tokio::test]
