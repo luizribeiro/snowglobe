@@ -782,6 +782,7 @@ mod tests {
             (State::Step(PipelineStep::Copy), Lane::Copy),
             (hook(HookStage::PreDeploy), Lane::Activate),
             (State::Step(PipelineStep::Plan), Lane::Activate),
+            (State::Step(PipelineStep::PreDeploy), Lane::Activate),
             (State::Step(PipelineStep::Activate), Lane::Activate),
             (State::Step(PipelineStep::Reboot), Lane::Reboot),
             (hook(HookStage::PostReboot), Lane::Reboot),

@@ -185,7 +185,7 @@ async fn test_failed_deploy_skips_the_rest_of_its_group_only() {
         .await;
 
     let failed = run.host("praseodymium");
-    assert_eq!(failed.failed_at_step, Some(PipelineStep::Activate));
+    assert_eq!(failed.failed_at_step, Some(PipelineStep::PreDeploy));
     assert!(run.has_event("hooks_complete:praseodymium:OnFailure:ok"));
     assert_skipped_after(&run, "promethium", "praseodymium");
     assert_skipped_after(&run, "samarium", "praseodymium");

@@ -114,7 +114,7 @@ async fn test_hook_failures_are_not_reported_as_failed_steps() {
 
     assert_eq!(
         run.host("vanadium").failed_at_step,
-        Some(PipelineStep::Activate)
+        Some(PipelineStep::PreDeploy)
     );
     assert!(failed_events(&run).is_empty(), "{:?}", run.events);
     assert!(!run.has_event_starting_with("activation_complete"));
@@ -253,7 +253,7 @@ async fn test_done_carries_each_hosts_final_result() {
     assert!(run.host("sodium").unchanged);
     assert_eq!(
         run.host("vanadium").failed_at_step,
-        Some(PipelineStep::Activate)
+        Some(PipelineStep::PreDeploy)
     );
     assert_done_with_final_results(&run, &["boron", "cerium", "radon", "sodium", "vanadium"]);
 }

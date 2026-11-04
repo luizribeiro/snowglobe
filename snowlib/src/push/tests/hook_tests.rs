@@ -297,8 +297,8 @@ async fn test_push_pre_deploy_hook_failure_aborts_deployment() {
     let phase_result = &results.phases[0];
     assert_eq!(
         phase_result.hosts[0].failed_at_step,
-        Some(PipelineStep::Activate),
-        "Pre-deploy hook failure should be reported as Activate step failure"
+        Some(PipelineStep::PreDeploy),
+        "Pre-deploy hook failure should be reported at its own step"
     );
 
     let executed_hooks = hook_backend.get_executed_hooks();

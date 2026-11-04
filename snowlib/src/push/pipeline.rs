@@ -295,7 +295,7 @@ impl HostRun<'_, '_> {
         drop(preparation_permit);
         let section = self.enter_serial_section().await?;
 
-        self.hooks(HookStage::PreDeploy, PipelineStep::Activate, deployable)
+        self.hooks(HookStage::PreDeploy, PipelineStep::PreDeploy, deployable)
             .await?;
 
         self.step(

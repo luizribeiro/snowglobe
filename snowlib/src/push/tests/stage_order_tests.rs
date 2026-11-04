@@ -81,7 +81,7 @@ async fn test_failed_drain_does_not_start_activation() {
 
     let host = run.host("vanadium");
     assert!(!host.success);
-    assert_eq!(host.failed_at_step, Some(PipelineStep::Activate));
+    assert_eq!(host.failed_at_step, Some(PipelineStep::PreDeploy));
     assert!(
         !run.has_event_starting_with("activation_start"),
         "{:?}",

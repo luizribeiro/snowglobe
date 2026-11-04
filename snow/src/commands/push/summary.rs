@@ -452,13 +452,13 @@ mod tests {
             hosts: vec![
                 make_successful_host("boron", ActivationMode::Switch, false),
                 make_failed_host("cerium", PipelineStep::Activate, "activation failed"),
-                make_successful_host("radon", ActivationMode::Boot, true),
+                make_failed_host("radon", PipelineStep::PreDeploy, "storage degraded"),
             ],
         };
 
         assert_eq!(
             super::phase_report(&phase),
-            "✗ Phase p2 (1/3 failed in 0:52)\n  ✓ boron (switch)\n  ✗ cerium at activate\n  ✓ radon (boot, rebooted)"
+            "✗ Phase p2 (2/3 failed in 0:52)\n  ✓ boron (switch)\n  ✗ cerium at activate\n  ✗ radon at pre-deploy"
         );
     }
 
