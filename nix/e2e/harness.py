@@ -13,6 +13,7 @@ FLAKE = "/root/ops"
 # record's status when the demo script itself fails
 SCRIPT_FAILED = 125
 ansi = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]|\x1b[()][A-Z0-9]|\r")
+cursor_toggle = re.compile(r"\x1b\[\?25([hl])")
 
 
 def plain(text: str) -> str:
@@ -59,6 +60,11 @@ def boots(host: str, system: str) -> None:
     assert boots_into(host) == system, (host, boots_into(host), system)
 
 
+def cursor_shown(terminal_output: str) -> bool:
+    """A terminal shows its cursor unless something hid it last"""
+    return cursor_toggle.findall(terminal_output)[-1:] != ["l"]
+
+
 def contains(text: str, expected: tuple[str, ...]) -> None:
     for part in expected:
         assert part in text, (part, text)
@@ -98,8 +104,10 @@ class Demo:
         self.machine.wait_until_succeeds("test -e /tmp/demo.status")
         self.seconds = time.monotonic() - self.started
         self.status = int(self.machine.succeed("cat /tmp/demo.status"))
-        self.output = plain(self.machine.succeed("cat /tmp/demo.out"))
+        self.raw = self.machine.succeed("cat /tmp/demo.out")
+        self.output = plain(self.raw)
         assert self.status != SCRIPT_FAILED, self.output
+        assert cursor_shown(self.raw), ("snow left the cursor hidden", self.output)
         return self.collect()
 
     def collect(self) -> "Demo":
@@ -113,6 +121,12 @@ class Demo:
 
     def logged(self, *texts: str) -> None:
         contains(self.log, texts)
+
+    def cursor_shown_at(self, *prompts: str) -> None:
+        for prompt in prompts:
+            assert prompt in self.raw, (prompt, self.output)
+            toggles = cursor_toggle.findall(self.raw[: self.raw.index(prompt)])
+            assert toggles[-1:] == ["h"], f"snow didn't show the cursor at {prompt!r}"
 
     def failed(self) -> None:
         assert self.status != 0, self.output
