@@ -5,6 +5,7 @@
 
 use super::board::{format_elapsed, HostBoard, Lane, Line, Row, RowKind};
 use super::colors::style;
+use crate::error_summary::truncate;
 use console::Color;
 use parking_lot::Mutex;
 use std::sync::Arc;
@@ -195,15 +196,6 @@ pub(super) fn row_text(
         line
     } else {
         format!("{line:<room$} {elapsed}")
-    }
-}
-
-fn truncate(text: &str, max: usize) -> String {
-    if text.chars().count() <= max {
-        text.to_string()
-    } else {
-        let kept: String = text.chars().take(max.saturating_sub(1)).collect();
-        format!("{kept}…")
     }
 }
 

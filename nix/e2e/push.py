@@ -142,7 +142,7 @@ try:
     with subtest("one host fails to activate while the others succeed"):
         push = Recording("activation-failure").run()
         push.failed()
-        push.has("cerium", "1/3 failed")
+        push.has("cerium", "1/3 failed", "✗ cerium at activate: ")
         push.logged("cerium: failed at activate:", "boron: deployed", "radon: deployed")
         # NixOS keeps a system whose services failed to start
         runs("cerium", "broken")
@@ -152,7 +152,7 @@ try:
     with subtest("a failing pre-deploy hook keeps its host from activating"):
         push = Recording("hook-failure").run()
         push.failed()
-        push.has("radon", "wait-storage-healthy")
+        push.has("radon", "wait-storage-healthy", "✗ radon at pre-deploy: storage on radon is degraded")
         push.logged("radon: failed at", "storage on radon is degraded", "cerium: deployed")
         runs("cerium", "v1")
         runs("radon", "v2")

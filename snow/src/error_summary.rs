@@ -17,6 +17,16 @@ pub fn error_summary(error: &str) -> &str {
         .unwrap_or_else(|| lines().next().unwrap_or_default())
 }
 
+/// `text` cut to at most `max` characters, ending in "…" when cut
+pub fn truncate(text: &str, max: usize) -> String {
+    if text.chars().count() <= max {
+        text.to_string()
+    } else {
+        let kept: String = text.chars().take(max.saturating_sub(1)).collect();
+        format!("{kept}…")
+    }
+}
+
 /// The last non-empty line of a failed command's "Stderr:" section
 fn last_stderr_line(error: &str) -> Option<&str> {
     error
@@ -32,6 +42,16 @@ fn last_stderr_line(error: &str) -> Option<&str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_truncate_marks_a_cut_with_an_ellipsis() {
+        let cause = "warning: the following units failed: storage-agent.service";
+
+        assert_eq!(truncate(cause, 80), cause);
+        assert_eq!(truncate(cause, cause.len()), cause);
+        assert_eq!(truncate(cause, 20), "warning: the follow…");
+        assert_eq!(truncate(cause, 0), "…");
+    }
 
     #[test]
     fn test_error_summary_without_error_line_uses_first_line() {

@@ -6,6 +6,7 @@
 
 use super::board::{format_elapsed, plural};
 use super::colors::style;
+use crate::error_summary::{error_summary, truncate};
 use crate::marks;
 
 /// Maximum error lines to display before truncating.
@@ -72,16 +73,17 @@ pub fn print_summary(results: &snowlib::PushResults) {
     println!();
 }
 
-/// How a phase went, shown as soon as it ends:
+/// How a phase went, shown as soon as it ends, with each failure's cause cut
+/// to fit `width` columns:
 ///
 /// ```text
 /// ✗ Phase p2 (1/3 failed in 0:52)
 ///   ✓ boron (switch)
-///   ✗ cerium at activate
+///   ✗ cerium at activate: warning: the following units failed: storage-agent.service
 /// ```
-pub fn phase_report(phase: &snowlib::PhaseResult) -> String {
+pub fn phase_report(phase: &snowlib::PhaseResult, width: usize) -> String {
     let mut lines = vec![phase_heading(phase)];
-    lines.extend(phase.hosts.iter().map(host_line));
+    lines.extend(phase.hosts.iter().map(|host| host_line(host, width)));
     lines.join("\n")
 }
 
@@ -129,7 +131,7 @@ pub(super) fn success_labels(host: &snowlib::HostDeploymentResult) -> Vec<&'stat
     labels
 }
 
-fn host_line(host: &snowlib::HostDeploymentResult) -> String {
+fn host_line(host: &snowlib::HostDeploymentResult, width: usize) -> String {
     if host.success {
         let labels = success_labels(host);
         let status = if labels.is_empty() {
@@ -145,16 +147,28 @@ fn host_line(host: &snowlib::HostDeploymentResult) -> String {
             marks::skipped_line(&format!("{} skipped, {reason}", host.hostname))
         )
     } else {
-        let step = host
-            .failed_at_step
-            .map(|step| format!(" at {step}"))
-            .unwrap_or_default();
-        format!(
-            "  {} {}{}",
-            marks::failure(),
-            host.hostname,
-            style(step).red()
-        )
+        failure_line(host, width)
+    }
+}
+
+fn failure_line(host: &snowlib::HostDeploymentResult, width: usize) -> String {
+    let step = host
+        .failed_at_step
+        .map(|step| format!(" at {step}"))
+        .unwrap_or_default();
+    let line = format!(
+        "  {} {}{}",
+        marks::failure(),
+        host.hostname,
+        style(step).red()
+    );
+    match host.error_message.as_deref().map(error_summary) {
+        Some(cause) if !cause.is_empty() => {
+            // Some terminals wrap a line that reaches the last column
+            let room = width.saturating_sub(console::measure_text_width(&line) + ": ".len() + 1);
+            format!("{line}: {}", truncate(cause, room))
+        }
+        _ => line,
     }
 }
 
@@ -477,9 +491,49 @@ mod tests {
         };
 
         assert_eq!(
-            super::phase_report(&phase),
-            "✗ Phase p2 (3/4 failed in 0:52)\n  ✓ boron (switch)\n  ✗ cerium at activate\n  ✗ radon at pre-deploy\n  ⊘ lanthanum skipped, serial group 'k8s' halted after cerium failed"
+            super::phase_report(&phase, 100),
+            "✗ Phase p2 (3/4 failed in 0:52)\n  ✓ boron (switch)\n  ✗ cerium at activate: activation failed\n  ✗ radon at pre-deploy: storage degraded\n  ⊘ lanthanum skipped, serial group 'k8s' halted after cerium failed"
         );
+    }
+
+    #[test]
+    fn test_phase_report_shows_why_a_host_failed_cut_to_the_terminal() {
+        console::set_colors_enabled(false);
+        let error = "Command failed\n\n\
+                     Command: ssh cerium sudo snowglobe-activate /nix/store/yzxw-cerium switch\n\
+                     Exit code: 4\n\n\
+                     Stderr:\n\
+                     activating the configuration...\n\
+                     warning: the following units failed: storage-agent.service";
+        let phase = PhaseResult {
+            phase: "p2".to_string(),
+            duration: Duration::from_secs(52),
+            hosts: vec![make_failed_host("cerium", PipelineStep::Activate, error)],
+        };
+
+        assert_eq!(
+            super::phase_report(&phase, 100),
+            "✗ Phase p2 (1/1 failed in 0:52)\n  ✗ cerium at activate: warning: the following units failed: storage-agent.service"
+        );
+        assert_eq!(
+            super::phase_report(&phase, 50),
+            "✗ Phase p2 (1/1 failed in 0:52)\n  ✗ cerium at activate: warning: the following u…"
+        );
+    }
+
+    #[test]
+    fn test_failure_without_a_reason_shows_only_where_it_failed() {
+        console::set_colors_enabled(false);
+        let mut cerium = make_failed_host("cerium", PipelineStep::Copy, "");
+        let radon = HostDeploymentResult {
+            error_message: None,
+            ..make_failed_host("radon", PipelineStep::Build, "")
+        };
+
+        assert_eq!(super::failure_line(&cerium, 100), "  ✗ cerium at copy");
+        assert_eq!(super::failure_line(&radon, 100), "  ✗ radon at build");
+        cerium.failed_at_step = None;
+        assert_eq!(super::failure_line(&cerium, 100), "  ✗ cerium");
     }
 
     #[test]
@@ -497,7 +551,7 @@ mod tests {
             };
 
             assert_eq!(
-                super::phase_report(&phase),
+                super::phase_report(&phase, 100),
                 "✓ Push (1 host in 1:02:07)\n  ✓ sodium (switch)"
             );
         }

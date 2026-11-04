@@ -64,7 +64,7 @@ impl PushObserver for CliObserver {
         if let Some(result) = result {
             // Without suspending, indicatif's next redraw would draw over the report
             tracing_indicatif::suspend_tracing_indicatif(|| {
-                println!("{}\n", super::summary::phase_report(result));
+                println!("{}\n", super::summary::phase_report(result, report_width()));
             });
         }
     }
@@ -75,6 +75,16 @@ impl PushObserver for CliObserver {
 
     fn on_hook_start(&self, hostname: &str, stage: HookStage, hook_name: &str) {
         self.update(|board, now| board.hook_started(hostname, stage, hook_name, now));
+    }
+}
+
+/// Output that isn't a terminal is read in a log or a pager, which never wrap
+fn report_width() -> usize {
+    let stdout = console::Term::stdout();
+    if stdout.is_term() {
+        stdout.size().1 as usize
+    } else {
+        usize::MAX
     }
 }
 
