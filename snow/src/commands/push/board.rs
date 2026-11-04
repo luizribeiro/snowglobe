@@ -130,6 +130,12 @@ impl HostBoard {
         rows
     }
 
+    /// Hosts that are done or failed, out of all of them
+    pub fn progress(&self) -> (usize, usize) {
+        let finished = self.hosts.iter().filter(|host| host.is_finished()).count();
+        (finished, self.hosts.len())
+    }
+
     pub fn header(&self) -> String {
         let count = |kinds: &[RowKind]| {
             self.hosts
@@ -141,14 +147,14 @@ impl HostBoard {
             self.phase.clone(),
             format!("{} {}", self.hosts.len(), plural(self.hosts.len(), "host")),
         ];
-        for (n, label) in [
-            (count(&[RowKind::Done, RowKind::Unchanged]), "done"),
-            (count(&[RowKind::Failed]), "failed"),
-            (count(&[RowKind::Active]), "running"),
-            (count(&[RowKind::Queued]), "queued"),
+        for (n, prefix, label) in [
+            (count(&[RowKind::Done, RowKind::Unchanged]), "", "done"),
+            (count(&[RowKind::Failed]), "💥 ", "failed"),
+            (count(&[RowKind::Active]), "", "running"),
+            (count(&[RowKind::Queued]), "", "queued"),
         ] {
             if n > 0 {
-                parts.push(format!("{n} {label}"));
+                parts.push(format!("{prefix}{n} {label}"));
             }
         }
         parts.join(" · ")
@@ -368,7 +374,7 @@ mod tests {
         );
         assert_eq!(
             board.header(),
-            "p3 · 4 hosts · 1 done · 1 failed · 1 running · 1 queued"
+            "p3 · 4 hosts · 1 done · 💥 1 failed · 1 running · 1 queued"
         );
     }
 

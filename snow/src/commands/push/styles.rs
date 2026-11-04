@@ -14,6 +14,7 @@ pub(super) type SharedBoard = Arc<Mutex<Option<HostBoard>>>;
 
 const SPINNER_FRAMES: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 const ROW_INDENT: &str = "  ";
+const BAR_WIDTH: usize = 20;
 
 pub(super) fn header_style(board: SharedBoard) -> ProgressStyle {
     ProgressStyle::with_template("{header} {elapsed_precise:.dim}")
@@ -22,10 +23,41 @@ pub(super) fn header_style(board: SharedBoard) -> ProgressStyle {
             "header",
             move |_: &indicatif::ProgressState, w: &mut dyn std::fmt::Write| {
                 if let Some(board) = board.lock().as_ref() {
-                    let _ = write!(w, "{}", style(format!("▶ {}", board.header())).bold());
+                    let _ = write!(w, "{}", header_text(board, spinner(), terminal_width()));
                 }
             },
         )
+}
+
+/// The template's elapsed time, "00:03:07", and the space before it
+const ELAPSED_WIDTH: usize = 9;
+
+/// "⠋ ▶ p2 · 3 hosts · 1 done  ━━━━━━╸───────────── 33%". The bar is left out
+/// when it would not fit: a header that wraps breaks indicatif's redraws.
+pub(super) fn header_text(board: &HostBoard, spinner: &str, width: usize) -> String {
+    let (finished, total) = board.progress();
+    let title = format!("{spinner} ▶ {}", board.header());
+    let bar = format!(
+        "  {} {}%",
+        progress_bar(finished, total, BAR_WIDTH),
+        finished * 100 / total.max(1)
+    );
+    let fits = title.chars().count() + bar.chars().count() + ELAPSED_WIDTH < width;
+    let title = style(title).bold();
+    if fits {
+        format!("{title}{bar}")
+    } else {
+        title.to_string()
+    }
+}
+
+pub(super) fn progress_bar(finished: usize, total: usize, width: usize) -> String {
+    let full = finished * width / total.max(1);
+    if full >= width {
+        "━".repeat(width)
+    } else {
+        format!("{}╸{}", "━".repeat(full), "─".repeat(width - full - 1))
+    }
 }
 
 /// The style of the `slot`-th row, whichever host is listed there right now
@@ -207,6 +239,44 @@ mod tests {
                 None,
             ]
         );
+    }
+
+    #[test]
+    fn test_header_shows_how_much_of_the_phase_is_finished() {
+        console::set_colors_enabled(false);
+        let t0 = Instant::now();
+        let hosts: Vec<String> = ["boron", "cerium", "radon"].map(String::from).to_vec();
+        let mut board = HostBoard::new("p2", &hosts, t0);
+        board.apply(
+            "cerium",
+            &snowlib::HostEvent::Started(snowlib::PipelineStep::Copy),
+            t0,
+        );
+        board.apply(
+            "radon",
+            &snowlib::HostEvent::Failed {
+                step: snowlib::PipelineStep::Activate,
+                reason: "storage-agent.service failed".to_string(),
+            },
+            t0,
+        );
+
+        assert_eq!(
+            header_text(&board, "⠋", 100),
+            "⠋ ▶ p2 · 3 hosts · 💥 1 failed · 1 running · 1 queued  ━━━━━━╸───────────── 33%"
+        );
+        assert_eq!(
+            header_text(&board, "⠋", 80),
+            "⠋ ▶ p2 · 3 hosts · 💥 1 failed · 1 running · 1 queued"
+        );
+    }
+
+    #[test]
+    fn test_progress_bar_fills_as_hosts_finish() {
+        assert_eq!(progress_bar(0, 3, 10), "╸─────────");
+        assert_eq!(progress_bar(1, 2, 10), "━━━━━╸────");
+        assert_eq!(progress_bar(3, 3, 10), "━━━━━━━━━━");
+        assert_eq!(progress_bar(0, 0, 10), "╸─────────");
     }
 
     #[test]
