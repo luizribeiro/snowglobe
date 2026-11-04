@@ -105,7 +105,13 @@
                 ${self.packages.${system}.push-recordings} "$@"
             '';
           };
-        }
+        } // nixpkgs.lib.optionalAttrs pkgs.stdenv.isLinux (nixpkgs.lib.mapAttrs'
+          (name: test: nixpkgs.lib.nameValuePair "e2e-${name}" test)
+          (import ./nix/e2e {
+            inherit pkgs;
+            snow = self.packages.${system}.snow;
+            snowglobeModule = self.nixosModules.default;
+          }))
       );
 
       checks = nixpkgs.lib.genAttrs checkedSystems (system:

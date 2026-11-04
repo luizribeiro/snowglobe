@@ -1,0 +1,157 @@
+# snowTest: a NixOS VM test of snow pushing to hosts, from a test file in
+# ./tests. The hosts boot a base system shared by every test; the test's
+# `nodes` are what snow pushes to them, from the deployer `sodium`.
+{ pkgs, snow, snowglobeModule }:
+
+let
+  inherit (pkgs) lib;
+
+  deployer = "sodium";
+  demos = import ../demos;
+  sshKeys = import "${pkgs.path}/nixos/tests/ssh-keys.nix" pkgs;
+
+  # snow evaluates and builds the flake purely; the ops flake needs
+  # builtins.storePath to point at the prebuilt systems
+  impureNix = pkgs.writeShellScriptBin "nix" ''
+    case "$1" in
+      eval|build) exec ${pkgs.nix}/bin/nix "$1" --impure "''${@:2}" ;;
+      *) exec ${pkgs.nix}/bin/nix "$@" ;;
+    esac
+  '';
+
+  # Declared by the maintainer's ops flake, which snow reads them from
+  coreOptions = {
+    options.core = {
+      pushPhase = lib.mkOption { type = lib.types.nullOr lib.types.str; default = null; };
+      tags = lib.mkOption { type = lib.types.listOf lib.types.str; default = [ ]; };
+      rebootPolicy = lib.mkOption {
+        type = lib.types.enum [ "auto" "never" "always" ];
+        default = "auto";
+      };
+    };
+  };
+
+  base = { config, ... }: {
+    imports = [ snowglobeModule coreOptions ];
+    virtualisation.memorySize = 1024;
+    # Test VMs leave it out, but snow activates pushed systems with it
+    system.switch.enable = true;
+    # Test VMs boot their kernel directly, so there is no boot loader to
+    # install, and the demos shouldn't warn about it
+    boot.loader.grub.enable = false;
+    system.build.installBootLoader = "${pkgs.coreutils}/bin/true";
+    nix.settings.experimental-features = [ "nix-command" "flakes" ];
+    environment.systemPackages = [
+      (lib.hiPrio impureNix)
+      snow
+      (demos.recorder { inherit pkgs; })
+      pkgs.socat
+    ];
+    services.openssh.enable = true;
+    users.users.root.openssh.authorizedKeys.keys = [ sshKeys.snakeOilPublicKey ];
+    environment.etc."ssh/id_snakeoil" = {
+      source = sshKeys.snakeOilPrivateKey;
+      mode = "0600";
+    };
+    programs.ssh.extraConfig = ''
+      IdentityFile /etc/ssh/id_snakeoil
+      StrictHostKeyChecking no
+      UserKnownHostsFile /dev/null
+      LogLevel ERROR
+    '';
+    # Test VMs boot without a system profile, so snow could not read what
+    # they boot into and would warn on every push. Record the booted system
+    # as its first generation, as installing NixOS does.
+    systemd.services.install-system-profile = {
+      wantedBy = [ "multi-user.target" ];
+      before = [ "sshd.service" ];
+      unitConfig.ConditionPathExists = "!/nix/var/nix/profiles/system";
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+      };
+      script = ''
+        ${config.nix.package}/bin/nix-env --profile /nix/var/nix/profiles/system \
+          --set "$(readlink -f /run/booted-system)"
+      '';
+    };
+  };
+
+  hostsJson = pushed: pkgs.writeText "hosts.json" (builtins.toJSON {
+    inherit (pkgs.stdenv.hostPlatform) system;
+    bash = "${pkgs.bash}";
+    hosts = lib.mapAttrs
+      (_: config: {
+        inherit (config.networking) hostName domain;
+        inherit (config.core) pushPhase tags rebootPolicy;
+        inherit (config.snowglobe.push) serialGroup;
+        hooksFile = "${config.snowglobe.hooksFile}";
+        toplevel = "${config.system.build.toplevel}";
+      })
+      pushed;
+  });
+
+  opsFlake = pushed: pkgs.runCommand "ops" { } ''
+    mkdir $out
+    cp ${./ops-flake.nix} $out/flake.nix
+    cp ${hostsJson pushed} $out/hosts.json
+  '';
+
+  toplevels = lib.mapAttrs (_: config: "${config.system.build.toplevel}");
+in
+test:
+let
+  hosts = builtins.attrNames test.nodes;
+  demo = if test ? demo then { runOn = deployer; } // test.demo else null;
+  runsDemo = name: demo != null && name == demo.runOn;
+
+  # The host's base system with the test's module on top, so it boots in the
+  # same VM; marked, so there's always something to push
+  pushedModule = name: { extendModules, ... }: {
+    system.build.pushed = (extendModules {
+      modules = [
+        test.nodes.${name}
+        { environment.etc.snowglobe-pushed.text = test.name; }
+      ];
+    }).config;
+  };
+in
+assert lib.assertMsg (test ? demo || test ? testScript)
+  "${test.name}: a test needs a demo, a testScript or both";
+assert lib.assertMsg (!(test.nodes ? ${deployer}))
+  "${test.name}: ${deployer} is the deployer, not a host to push to";
+assert lib.assertMsg (demo == null || builtins.elem demo.runOn (hosts ++ [ deployer ]))
+  "${test.name}: the demo runs on ${demo.runOn}, which has no VM";
+pkgs.testers.runNixOSTest ({ config, ... }:
+  let
+    pushed = lib.genAttrs hosts (name: config.nodes.${name}.system.build.pushed);
+    flake = opsFlake pushed;
+    demoScript = pkgs.writeText "${test.name}-demo.py" demo.script;
+
+    node = name: {
+      imports = [ base ] ++ lib.optional (builtins.elem name hosts) (pushedModule name);
+      # Registered in the VM's store without being part of its system, which
+      # stays the base
+      virtualisation.additionalPaths =
+        lib.optional (name == deployer || runsDemo name) flake
+        ++ lib.optional (runsDemo name) demoScript;
+    };
+
+    settings = pkgs.writeText "${test.name}-harness.json" (builtins.toJSON {
+      inherit deployer hosts flake;
+      base = toplevels (lib.getAttrs hosts config.nodes);
+      pushed = toplevels pushed;
+      demo = if demo == null then null else {
+        inherit (test) name;
+        inherit (demo) title runOn;
+        script = demoScript;
+      };
+    });
+  in
+  {
+    inherit (test) name;
+    nodes = lib.genAttrs (hosts ++ [ deployer ]) node;
+    testScript = ''
+      HARNESS = "${settings}"
+    '' + builtins.readFile ./harness.py + (test.testScript or "demo()\n");
+  })
