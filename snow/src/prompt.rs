@@ -1,6 +1,7 @@
 //! Questions asked on the terminal, styled the same in every command
 
-use crate::cursor::{Cursor, KeepsCursor};
+use crate::cursor::{self, Cursor, KeepsCursor};
+use crate::signals;
 use dialoguer::console::Term;
 use dialoguer::{theme::ColorfulTheme, Confirm, Select};
 use snowlib::error::{IoError, SnowError};
@@ -29,9 +30,19 @@ pub fn select(question: &str, items: &[&str]) -> Result<usize> {
 
 fn ask<T>(question: impl FnOnce(&Term) -> dialoguer::Result<T>) -> Result<T> {
     let term = Term::read_write_pair(std::io::stdin(), KeepsCursor(std::io::stderr()));
-    Cursor::stderr()
-        .shown_while(|| question(&term))
-        .map_err(prompt_error)
+    let answer = Cursor::stderr().shown_while(|| question(&term));
+    if answer.as_ref().is_err_and(is_interrupted) {
+        cursor::exit(signals::INTERRUPTED);
+    }
+    answer.map_err(prompt_error)
+}
+
+/// Ctrl-C at a prompt is a key, not a signal, so console raises SIGINT
+/// itself and fails the prompt with this error. Exiting here keeps that
+/// error from racing the signal handler onto the screen.
+fn is_interrupted(error: &dialoguer::Error) -> bool {
+    let dialoguer::Error::IO(source) = error;
+    source.kind() == std::io::ErrorKind::Interrupted
 }
 
 fn prompt_error(error: dialoguer::Error) -> SnowError {
@@ -42,6 +53,15 @@ fn prompt_error(error: dialoguer::Error) -> SnowError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_only_ctrl_c_interrupts_a_prompt() {
+        let ctrl_c = std::io::Error::new(std::io::ErrorKind::Interrupted, "read interrupted");
+        let closed = std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "stdin closed");
+
+        assert!(is_interrupted(&dialoguer::Error::IO(ctrl_c)));
+        assert!(!is_interrupted(&dialoguer::Error::IO(closed)));
+    }
 
     #[test]
     fn test_prompt_error_keeps_the_terminal_failure_as_its_cause() {

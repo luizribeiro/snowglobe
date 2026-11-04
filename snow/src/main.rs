@@ -15,6 +15,7 @@ mod host_selection;
 mod marks;
 mod plural;
 mod prompt;
+mod signals;
 mod terminal_warnings;
 
 #[cfg(test)]
@@ -96,6 +97,11 @@ async fn main() -> ExitCode {
     }
 
     let cli = Cli::parse();
+    if is_interactive {
+        if let Err(error) = signals::exit_on_signals() {
+            tracing::warn!("Ctrl-C may leave the cursor hidden: {error}");
+        }
+    }
     let _cursor = cursor::HiddenCursor::new(cursor::Cursor::stderr());
 
     match run(cli, log_file.as_deref()).await {

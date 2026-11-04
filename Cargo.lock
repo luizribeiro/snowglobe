@@ -1043,6 +1043,7 @@ dependencies = [
  "futures",
  "indicatif",
  "miette",
+ "nix",
  "parking_lot",
  "predicates",
  "serde",
