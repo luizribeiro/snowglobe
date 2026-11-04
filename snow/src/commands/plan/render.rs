@@ -3,6 +3,7 @@ use std::fmt::Write;
 use snowlib::plan::{CacheStatus, HostStatus, PlanReport, PlannedBuild};
 
 use crate::error_summary::error_summary;
+use crate::plural::plural;
 
 pub fn render(report: &PlanReport, show_trivial: bool) -> String {
     let mut out = String::new();
@@ -20,14 +21,6 @@ pub fn render(report: &PlanReport, show_trivial: bool) -> String {
     render_hosts(&mut out, report);
     render_warnings(&mut out, report);
     out
-}
-
-fn plural<'a>(count: usize, one: &'a str, many: &'a str) -> &'a str {
-    if count == 1 {
-        one
-    } else {
-        many
-    }
 }
 
 pub fn format_size(bytes: u64) -> String {

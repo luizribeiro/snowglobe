@@ -12,6 +12,7 @@ mod error_summary;
 mod filter_helpers;
 mod host_selection;
 mod marks;
+mod plural;
 
 #[cfg(test)]
 mod test_utils;
