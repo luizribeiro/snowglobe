@@ -91,13 +91,9 @@
           };
 
           default = self.packages.${system}.snow;
-        } // nixpkgs.lib.optionalAttrs pkgs.stdenv.isLinux {
-          # NixOS VMs pushing to each other, too slow for every check
-          push-e2e = import ./nix/e2e/push.nix {
-            inherit pkgs;
-            snow = self.packages.${system}.snow;
-            snowglobeModule = self.nixosModules.default;
-          };
+        # NixOS VMs pushing to each other, too slow for every check, so they
+        # are packages instead
+        } // nixpkgs.lib.optionalAttrs pkgs.stdenv.isLinux ({
           push-recordings = e2e.recordings;
           upload-demos = pkgs.writeShellApplication {
             name = "upload-demos";
@@ -107,7 +103,7 @@
                 ${self.packages.${system}.push-recordings} "$@"
             '';
           };
-        } // nixpkgs.lib.optionalAttrs pkgs.stdenv.isLinux (nixpkgs.lib.mapAttrs'
+        } // nixpkgs.lib.mapAttrs'
           (name: test: nixpkgs.lib.nameValuePair "e2e-${name}" test)
           e2e.tests)
       );
