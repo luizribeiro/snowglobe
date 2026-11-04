@@ -82,7 +82,9 @@ let
     esac
   '';
 
-  recorder = pkgs.writers.writePython3Bin "record" { } (builtins.readFile ./record.py);
+  recorder = pkgs.writers.writePython3Bin "record"
+    { libraries = [ pkgs.python3Packages.pexpect ]; }
+    (builtins.readFile ./record.py);
 
   snowRunner = {
     nix.settings.experimental-features = [ "nix-command" "flakes" ];

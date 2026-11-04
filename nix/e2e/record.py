@@ -11,18 +11,16 @@ escapes: "\\x1b[B" is the down arrow).
 
 import argparse
 import codecs
-import fcntl
 import json
 import os
 import re
-import select
 import shlex
-import struct
 import sys
-import termios
 import time
 
-ANSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
+import pexpect
+
+ESCAPES = r"(?:\x1b\[[0-9;?]*[A-Za-z])*"
 BOLD_GREEN, BOLD_BLUE, ARG0, RESET = (
     "\x1b[1;32m", "\x1b[1;34m", "\x1b[1;38;5;230m", "\x1b[0m")
 # The maintainer's terminal colors ("Custom Monokai"), so players that honor
@@ -43,23 +41,6 @@ PAUSE_BEFORE_ANSWER = 1.0
 PAUSE_BETWEEN_KEYS = 0.5
 
 
-def spawn(command, cols, rows):
-    leader, follower = os.openpty()
-    fcntl.ioctl(follower, termios.TIOCSWINSZ,
-                struct.pack("HHHH", rows, cols, 0, 0))
-    pid = os.fork()
-    if pid == 0:
-        os.close(leader)
-        os.setsid()
-        fcntl.ioctl(follower, termios.TIOCSCTTY, 0)
-        for fd in range(3):
-            os.dup2(follower, fd)
-        os.close(follower)
-        os.execvp(command[0], command)
-    os.close(follower)
-    return pid, leader
-
-
 def zsh_prompt(spec):
     """The maintainer's zsh prompt: bold green user@host, bold blue dir"""
     who, directory = spec.split(":", 1)
@@ -75,59 +56,58 @@ class Cast:
                   "env": {"TERM": "xterm-256color", "SHELL": "/bin/zsh"}}
         out.write(json.dumps(header) + "\n")
 
-    def record(self, text):
+    def write(self, text):
         event = [round(time.monotonic() - self.started, 6), "o", text]
         self.out.write(json.dumps(event) + "\n")
+        sys.stdout.write(text)
+        self.flush()
+
+    def flush(self):
         # A command that reboots the machine cuts the recording short
         self.out.flush()
-        sys.stdout.write(text)
         sys.stdout.flush()
 
     def type_out(self, text):
         for char in text:
-            self.record(char)
+            self.write(char)
             time.sleep(TYPING_DELAY)
 
     def type_command(self, prompt, command):
-        self.record(prompt)
+        self.write(prompt)
         time.sleep(PAUSE_BEFORE_TYPING)
         program, *rest = map(shlex.quote, command)
-        self.record(ARG0)
+        self.write(ARG0)
         self.type_out(program)
-        self.record(RESET)
+        self.write(RESET)
         self.type_out("".join(" " + word for word in rest))
-        self.record("\r\n")
+        self.write("\r\n")
 
 
-class Answers:
-    """Presses keys once their text is on screen, slow enough to follow"""
+def on_screen(text):
+    """TEXT, with any escape sequences the command draws between its
+    characters"""
+    return re.compile(ESCAPES.join(map(re.escape, text)))
 
-    def __init__(self, answers):
-        self.pending = [(text, [codecs.decode(key, "unicode_escape")
-                                for key in keys.split()])
-                        for text, keys in answers]
-        self.screen = ""
-        self.keys = []
-        self.due = 0.0
 
-    def saw(self, text):
-        self.screen += ANSI.sub("", text)
-        if self.keys or not self.pending:
-            return
-        waiting_for = self.pending[0][0]
-        found = self.screen.find(waiting_for)
-        if found >= 0:
-            self.keys = self.pending.pop(0)[1]
-            self.screen = self.screen[found + len(waiting_for):]
-            self.due = time.monotonic() + PAUSE_BEFORE_ANSWER
+def pause(child, seconds):
+    """Keeps recording meanwhile; False if the command exits first"""
+    return child.expect([pexpect.TIMEOUT, pexpect.EOF], seconds) == 0
 
-    def press(self, leader):
-        if self.keys and time.monotonic() >= self.due:
-            os.write(leader, self.keys.pop(0).encode())
-            self.due = time.monotonic() + PAUSE_BETWEEN_KEYS
 
-    def unanswered(self):
-        return [text for text, _ in self.pending]
+def answer(child, answers):
+    """Presses keys once their text is on screen, slow enough to follow.
+    Returns the texts that never appeared."""
+    texts = [text for text, _ in answers]
+    for index, (text, keys) in enumerate(answers):
+        if child.expect([on_screen(text), pexpect.EOF], None) == 1:
+            return texts[index:]
+        delay = PAUSE_BEFORE_ANSWER
+        for key in keys.split():
+            if not pause(child, delay):
+                return texts[index + 1:]
+            child.send(codecs.decode(key, "unicode_escape"))
+            delay = PAUSE_BETWEEN_KEYS
+    return []
 
 
 def parse():
@@ -146,37 +126,31 @@ def parse():
 
 
 def run(cast, command, cols, rows, answers):
-    pid, leader = spawn(command, cols, rows)
-    decoder = codecs.getincrementaldecoder("utf-8")("replace")
-    while True:
-        readable, _, _ = select.select([leader], [], [], 0.1)
-        if readable:
-            try:
-                chunk = os.read(leader, 65536)
-            except OSError:
-                break
-            if not chunk:
-                break
-            text = decoder.decode(chunk)
-            answers.saw(text)
-            cast.record(text)
-        answers.press(leader)
-    _, status = os.waitpid(pid, 0)
-    return os.waitstatus_to_exitcode(status)
+    child = pexpect.spawn(command[0], command[1:], dimensions=(rows, cols),
+                          encoding="utf-8", codec_errors="replace",
+                          maxread=65536)
+    child.logfile_read = cast
+    child.delaybeforesend = None
+    unanswered = answer(child, answers)
+    child.expect(pexpect.EOF, None)
+    child.wait()
+    if child.signalstatus is not None:
+        return -child.signalstatus, unanswered
+    return child.exitstatus, unanswered
 
 
 def main():
     args = parse()
     os.environ["TERM"] = "xterm-256color"
     prompt = zsh_prompt(args.prompt)
-    answers = Answers(args.answer)
     with open(args.cast, "w") as out:
         cast = Cast(out, args.cols, args.rows)
         cast.type_command(prompt, args.command)
-        status = run(cast, args.command, args.cols, args.rows, answers)
-        cast.record(prompt)
-    if answers.unanswered():
-        print(f"record: never saw {answers.unanswered()}", file=sys.stderr)
+        status, unanswered = run(cast, args.command, args.cols, args.rows,
+                                 args.answer)
+        cast.write(prompt)
+    if unanswered:
+        print(f"record: never saw {unanswered}", file=sys.stderr)
         sys.exit(status or 1)
     sys.exit(status)
 
