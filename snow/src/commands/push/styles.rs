@@ -31,6 +31,18 @@ pub(super) fn header_style(board: SharedBoard) -> ProgressStyle {
         )
 }
 
+/// "⠋ Reading the settings of 12 hosts 00:00:41", for waits before a phase starts
+pub(super) fn waiting_style() -> ProgressStyle {
+    ProgressStyle::with_template("{waiting} {msg} {elapsed_precise:.dim}")
+        .expect("valid template")
+        .with_key(
+            "waiting",
+            |_: &indicatif::ProgressState, w: &mut dyn std::fmt::Write| {
+                let _ = write!(w, "{}", style(spinner()).green().bold());
+            },
+        )
+}
+
 /// The template's elapsed time, "00:03:07", and the space before it
 const ELAPSED_WIDTH: usize = 9;
 

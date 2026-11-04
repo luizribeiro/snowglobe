@@ -6,6 +6,18 @@ mod summary;
 
 use clap::Args;
 use snowlib::{Flake, PushStrategy, Result};
+use std::future::Future;
+use tracing_indicatif::span_ext::IndicatifSpanExt;
+
+/// Shows a spinner with `message` until `work` is done: evaluating a flake
+/// can take minutes and prints nothing on its own
+async fn with_spinner<T>(message: &str, work: impl Future<Output = T>) -> T {
+    let span = tracing::info_span!("waiting");
+    span.pb_set_style(&styles::waiting_style());
+    span.pb_set_message(message);
+    span.pb_start();
+    work.await
+}
 
 /// Deploy configurations to hosts
 #[derive(Debug, Args)]
@@ -183,8 +195,20 @@ impl PushArgs {
             Box::new(observer::CliObserver::new()),
         ]);
 
-        let hostnames = self.selection.resolve(flake, nix_backend.as_ref()).await?;
-        let hosts = nix_backend.load_host_metadata(flake, &hostnames).await?;
+        let hostnames = with_spinner(
+            "Finding the hosts to push",
+            self.selection.resolve(flake, nix_backend.as_ref()),
+        )
+        .await?;
+        let hosts = with_spinner(
+            &format!(
+                "Reading the settings of {} {}",
+                hostnames.len(),
+                board::plural(hostnames.len(), "host")
+            ),
+            nix_backend.load_host_metadata(flake, &hostnames),
+        )
+        .await?;
         println!(
             "{}\n",
             summary::phase_overview(&snowlib::phases(&hosts, self.ignore_phases))
@@ -240,6 +264,11 @@ mod tests {
         ActivationMode, DeployBackend, DeployTarget, DeploymentFixture, HostFixture,
         MockDeployBackend, OperationFixture, PushStrategy, StorePath,
     };
+
+    #[test]
+    fn test_waiting_style_has_a_valid_template() {
+        drop(styles::waiting_style());
+    }
 
     #[tokio::test]
     async fn test_mock_deploy_backend_success() {
