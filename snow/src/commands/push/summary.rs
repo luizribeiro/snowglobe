@@ -29,10 +29,14 @@ pub(super) fn phase_title(phase: &str, unnamed: &str) -> String {
 /// before anything happens
 pub fn phase_overview(phases: &[(String, Vec<String>)]) -> String {
     let total: usize = phases.iter().map(|(_, hosts)| hosts.len()).sum();
-    let hosts_word = if total == 1 { "host" } else { "hosts" };
+    let pushing = format!("Pushing {total} {}", plural(total, "host"));
     match phases {
         [(phase, hosts)] if is_unnamed_phase(phase) => {
-            format!("Pushing {total} {hosts_word}: {}", hosts.join(", "))
+            format!(
+                "{} {}",
+                style(format!("{pushing}:")).bold(),
+                hosts.join(", ")
+            )
         }
         _ => {
             let width = phases
@@ -40,13 +44,18 @@ pub fn phase_overview(phases: &[(String, Vec<String>)]) -> String {
                 .map(|(phase, _)| phase.len())
                 .max()
                 .unwrap_or(0);
-            let phases_word = if phases.len() == 1 { "phase" } else { "phases" };
-            let mut overview = format!(
-                "Pushing {total} {hosts_word} in {} {phases_word}:",
-                phases.len()
+            let heading = format!(
+                "{pushing} in {} {}:",
+                phases.len(),
+                plural(phases.len(), "phase")
             );
+            let mut overview = style(heading).bold().to_string();
             for (phase, hosts) in phases {
-                overview.push_str(&format!("\n  {phase:<width$}  {}", hosts.join(", ")));
+                overview.push_str(&format!(
+                    "\n  {}  {}",
+                    style(format!("{phase:<width$}")).green().bold(),
+                    hosts.join(", ")
+                ));
             }
             overview
         }
@@ -272,6 +281,7 @@ mod tests {
 
     #[test]
     fn test_overview_lists_each_phase_with_its_hosts() {
+        console::set_colors_enabled(false);
         let overview = phase_overview(&[
             phase("p2", &["argon", "curium", "ferrum"]),
             phase("p3-k8s", &["cerium", "lanthanum"]),
@@ -285,6 +295,7 @@ mod tests {
 
     #[test]
     fn test_overview_of_a_push_without_phases_is_one_line() {
+        console::set_colors_enabled(false);
         assert_eq!(
             phase_overview(&[phase("default", &["boron", "radon"])]),
             "Pushing 2 hosts: boron, radon"
@@ -297,6 +308,7 @@ mod tests {
 
     #[test]
     fn test_overview_names_a_single_real_phase() {
+        console::set_colors_enabled(false);
         assert_eq!(
             phase_overview(&[phase("p2", &["ferrum"])]),
             "Pushing 1 host in 1 phase:\n  p2  ferrum"

@@ -186,7 +186,7 @@ impl PushArgs {
         let hostnames = self.selection.resolve(flake, nix_backend.as_ref()).await?;
         let hosts = nix_backend.load_host_metadata(flake, &hostnames).await?;
         println!(
-            "{}",
+            "{}\n",
             summary::phase_overview(&snowlib::phases(&hosts, self.ignore_phases))
         );
 
