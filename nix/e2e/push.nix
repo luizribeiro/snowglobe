@@ -82,7 +82,10 @@ let
     esac
   '';
 
-  recorder = (import ../demos).recorder { inherit pkgs; };
+  recorder = pkgs.writeShellScriptBin "record" ''
+    export TERMINAL_LOOK=${pkgs.writeText "terminal-look.json" (builtins.toJSON (import ../demos).terminalLook)}
+    exec ${pkgs.writers.writePython3 "record" { libraries = [ pkgs.python3Packages.pexpect ]; } (builtins.readFile ./record_answers.py)} "$@"
+  '';
 
   snowRunner = {
     nix.settings.experimental-features = [ "nix-command" "flakes" ];
