@@ -3,10 +3,10 @@
 Usage: record [--prompt USER@HOST:DIR] [--answer TEXT KEYS]...
               CAST COLS ROWS -- COMMAND...
 
-Writes an asciicast v2 file to CAST, which agg turns into a GIF, echoes the
-command's output, and exits with its status. The command is typed after a
-zsh prompt. Each --answer waits for TEXT on screen, then presses KEYS, one at
-a time (written as Python escapes: "\\x1b[B" is the down arrow).
+Writes an asciicast v2 file to CAST, echoes the command's output, and exits
+with its status. The command is typed after a zsh prompt. Each --answer waits
+for TEXT on screen, then presses KEYS, one at a time (written as Python
+escapes: "\\x1b[B" is the down arrow).
 """
 
 import argparse
@@ -25,6 +25,18 @@ import time
 ANSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
 BOLD_GREEN, BOLD_BLUE, ARG0, RESET = (
     "\x1b[1;32m", "\x1b[1;34m", "\x1b[1;38;5;230m", "\x1b[0m")
+# The maintainer's terminal colors ("Custom Monokai"), so players that honor
+# a recording's theme show it as it looked in their terminal
+THEME = {
+    "fg": "#f8f7f2",
+    "bg": "#1c1c1c",
+    "palette": ":".join([
+        "#262621", "#ca4238", "#bbd756", "#ded685",
+        "#85c2d6", "#7b72c2", "#cf5a78", "#fefefe",
+        "#717171", "#df3f67", "#bbd756", "#ded685",
+        "#85c2d6", "#7b72c2", "#cf5a78", "#fefefe",
+    ]),
+}
 TYPING_DELAY = 0.05
 PAUSE_BEFORE_TYPING = 1.0
 PAUSE_BEFORE_ANSWER = 1.0
@@ -59,7 +71,7 @@ class Cast:
         self.out = out
         self.started = time.monotonic()
         header = {"version": 2, "width": cols, "height": rows,
-                  "timestamp": int(time.time()),
+                  "timestamp": int(time.time()), "theme": THEME,
                   "env": {"TERM": "xterm-256color", "SHELL": "/bin/zsh"}}
         out.write(json.dumps(header) + "\n")
 

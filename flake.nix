@@ -94,6 +94,14 @@
             inherit pkgs;
             pushTest = self.packages.${system}.push-e2e;
           };
+          upload-demos = pkgs.writeShellApplication {
+            name = "upload-demos";
+            runtimeInputs = [ pkgs.asciinema ];
+            text = ''
+              ${pkgs.writers.writePython3 "upload-demos" { } (builtins.readFile ./nix/e2e/upload_demos.py)} \
+                ${self.packages.${system}.push-recordings} "$@"
+            '';
+          };
         }
       );
 
