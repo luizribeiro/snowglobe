@@ -354,7 +354,7 @@ async fn is_unchanged(
             tracing::warn!(
                 "{}: could not read installed systems, deploying anyway: {}",
                 hostname,
-                e
+                failure_reason(&e)
             );
             Ok(false)
         }
