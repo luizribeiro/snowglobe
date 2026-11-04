@@ -428,8 +428,7 @@ mod tests {
             "lanthanum",
             &HostEvent::Failed {
                 step: PipelineStep::Plan,
-                reason: "Failed to deploy to host 'lanthanum': hook 'wait-storage-healthy': \
-                         /nix/store/715s-kubernetes-storage-healthy missing"
+                reason: "hook 'wait-storage-healthy': /nix/store/715s-kubernetes-storage-healthy missing"
                     .to_string(),
             },
             t0,
@@ -463,8 +462,7 @@ mod tests {
                     RowKind::Failed,
                     "lanthanum",
                     "plan",
-                    "Failed to deploy to host 'lanthanum': hook 'wait-storage-healthy': \
-                     /nix/store/715s-kubernetes-storage-healthy missing"
+                    "hook 'wait-storage-healthy': /nix/store/715s-kubernetes-storage-healthy missing"
                 ),
             ]
         );

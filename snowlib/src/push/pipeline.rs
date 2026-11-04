@@ -6,7 +6,7 @@
 //! The pipeline is fully async, using tokio for concurrent execution of hosts.
 
 use crate::backends::deploy::DeployTarget;
-use crate::error::Result;
+use crate::error::{error_chain, DeployError, Result, SnowError};
 use crate::hooks::HookStage;
 use crate::host::HostMetadata;
 use crate::nix::{StorePath, SystemType};
@@ -132,7 +132,7 @@ impl HostRun<'_, '_> {
                 Ok(value)
             }
             Err(e) => {
-                let reason = crate::error::error_chain(&e);
+                let reason = failure_reason(&e);
                 self.report(HostEvent::Failed {
                     step,
                     reason: reason.clone(),
@@ -151,9 +151,7 @@ impl HostRun<'_, '_> {
     ) -> std::result::Result<(), Stopped> {
         match self.run_hooks(stage, context).await {
             Ok(()) => Ok(()),
-            Err(e) => Err(self
-                .fail(step, context, crate::error::error_chain(&e))
-                .await),
+            Err(e) => Err(self.fail(step, context, failure_reason(&e)).await),
         }
     }
 
@@ -328,6 +326,18 @@ impl HostRun<'_, '_> {
     }
 }
 
+/// Why a host failed, without naming the host: wherever a reason shows, its
+/// host is already next to it
+fn failure_reason(error: &SnowError) -> String {
+    match error {
+        SnowError::Deploy(DeployError::Failed { source, .. }) => error_chain(source),
+        SnowError::Deploy(failed @ DeployError::CommandFailed { host, .. }) => failed
+            .to_string()
+            .replacen(&format!(" on host '{host}'"), "", 1),
+        _ => error_chain(error),
+    }
+}
+
 fn activated_but_reboot_failed(mut failure: Stopped, plan: &PushPlan) -> Stopped {
     failure.activation_mode = Some(plan.activation_mode);
     failure.error_message = failure
@@ -417,4 +427,55 @@ fn should_reboot(push_ctx: &PushContext<'_>, plan: &PushPlan) -> bool {
         && plan.metadata.system_type == SystemType::NixOS
         && plan.activation_mode == crate::nix::ActivationMode::Boot
         && plan.reboot_check.as_ref().is_none_or(|c| c.is_required())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_failure_reason_leaves_out_the_host_of_a_failed_deploy() {
+        let error = SnowError::from(DeployError::Failed {
+            host: "neodymium".to_string(),
+            source: std::io::Error::other("kernel linux-6.12.58 → linux-6.12.60"),
+        });
+
+        assert_eq!(
+            failure_reason(&error),
+            "kernel linux-6.12.58 → linux-6.12.60"
+        );
+    }
+
+    #[test]
+    fn test_failure_reason_keeps_a_failed_command_without_its_host() {
+        let error = SnowError::from(DeployError::CommandFailed {
+            host: "cerium".to_string(),
+            command: "ssh cerium sudo snowglobe-activate /nix/store/yzxw-cerium switch".to_string(),
+            exit_code: 4,
+            stderr: "warning: the following units failed: storage-agent.service".to_string(),
+            stdout: String::new(),
+        });
+
+        assert_eq!(
+            failure_reason(&error),
+            "Command failed\n\n\
+             Command: ssh cerium sudo snowglobe-activate /nix/store/yzxw-cerium switch\n\
+             Exit code: 4\n\n\
+             Stderr:\n\
+             warning: the following units failed: storage-agent.service"
+        );
+    }
+
+    #[test]
+    fn test_failure_reason_of_other_errors_is_their_chain() {
+        let error = SnowError::from(DeployError::SshFailed {
+            destination: "root@cerium".to_string(),
+            source: std::io::Error::other("Connection timed out"),
+        });
+
+        assert_eq!(
+            failure_reason(&error),
+            "SSH connection failed to root@cerium: Connection timed out"
+        );
+    }
 }

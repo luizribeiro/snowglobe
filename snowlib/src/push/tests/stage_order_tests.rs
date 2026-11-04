@@ -44,10 +44,7 @@ async fn test_blocked_host_keeps_the_reason_it_was_blocked() {
     let run = harness.run(vec![kubernetes_node("neodymium")]).await;
 
     let message = run.host("neodymium").error_message.clone().unwrap();
-    assert_eq!(
-        message,
-        "Failed to deploy to host 'neodymium': kernel linux-6.12.58 → linux-6.12.60"
-    );
+    assert_eq!(message, "kernel linux-6.12.58 → linux-6.12.60");
 }
 
 #[tokio::test]

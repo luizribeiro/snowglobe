@@ -40,7 +40,7 @@ mod tests {
 
     #[test]
     fn test_error_summary_of_a_failed_command_is_its_last_stderr_line() {
-        let error = "Command failed on host 'cerium'\n\n\
+        let error = "Command failed\n\n\
                      Command: ssh sudo snowglobe-activate /nix/store/yzxw-cerium switch\n\
                      Exit code: 4\n\n\
                      Stderr:\n\
@@ -59,17 +59,16 @@ mod tests {
 
     #[test]
     fn test_error_summary_finds_stderr_in_an_indented_error() {
-        let error =
-            "  Command failed on host 'radon'\n  Stderr: \n    storage on radon is degraded\n";
+        let error = "  Command failed\n  Stderr: \n    storage on radon is degraded\n";
 
         assert_eq!(error_summary(error), "storage on radon is degraded");
     }
 
     #[test]
     fn test_error_summary_of_a_command_with_empty_stderr_is_its_first_line() {
-        let error = "Command failed on host 'radon'\n\nCommand: true\nExit code: 1\n\nStderr:\n";
+        let error = "Command failed\n\nCommand: true\nExit code: 1\n\nStderr:\n";
 
-        assert_eq!(error_summary(error), "Command failed on host 'radon'");
+        assert_eq!(error_summary(error), "Command failed");
     }
 
     #[test]

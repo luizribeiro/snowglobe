@@ -90,7 +90,7 @@ mod tests {
     fn failed(step: PipelineStep) -> HostEvent {
         HostEvent::Failed {
             step,
-            reason: "Failed to deploy to host 'cerium': Copy closure failed".to_string(),
+            reason: "Copy closure failed".to_string(),
         }
     }
 
