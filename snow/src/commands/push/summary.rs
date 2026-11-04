@@ -241,27 +241,31 @@ fn print_error_header(host: &snowlib::HostDeploymentResult) {
 }
 
 fn print_error_lines(error_msg: &str) {
-    let lines: Vec<&str> = error_msg.lines().collect();
-    let (lines_to_show, remaining) = truncate_lines(&lines, MAX_ERROR_LINES);
-
-    for line in lines_to_show {
+    for line in error_lines(error_msg, MAX_ERROR_LINES) {
         println!("    {}", style(line).dim());
-    }
-
-    if remaining > 0 {
-        println!(
-            "    {}",
-            style(format!("... ({} more lines, see logs)", remaining)).dim()
-        );
     }
 }
 
-fn truncate_lines<'a>(lines: &'a [&'a str], max: usize) -> (&'a [&'a str], usize) {
-    if lines.len() > max {
-        (&lines[..max], lines.len() - max)
-    } else {
-        (lines, 0)
+/// The first line says what failed and the last ones usually why, so long
+/// errors keep both ends and leave out the middle
+fn error_lines(error_msg: &str, max: usize) -> Vec<String> {
+    let lines: Vec<&str> = error_msg.lines().collect();
+    if lines.len() <= max {
+        return lines.iter().map(|line| line.to_string()).collect();
     }
+    let tail = max.saturating_sub(1);
+    let hidden = lines.len() - 1 - tail;
+    std::iter::once(lines[0].to_string())
+        .chain(std::iter::once(format!(
+            "… {hidden} more {}, see logs",
+            plural(hidden, "line")
+        )))
+        .chain(
+            lines[lines.len() - tail..]
+                .iter()
+                .map(|line| line.to_string()),
+        )
+        .collect()
 }
 
 #[cfg(test)]
@@ -481,6 +485,34 @@ mod tests {
                 "✓ Deploy (1 host in 1:02:07)\n  ✓ sodium (switch)"
             );
         }
+    }
+
+    #[test]
+    fn test_long_errors_keep_their_first_and_last_lines() {
+        let error = (1..=12)
+            .map(|n| format!("line {n}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        assert_eq!(
+            super::error_lines(&error, 5),
+            vec![
+                "line 1",
+                "… 7 more lines, see logs",
+                "line 9",
+                "line 10",
+                "line 11",
+                "line 12"
+            ]
+        );
+        assert_eq!(
+            super::error_lines("line 1\nline 2", 5),
+            vec!["line 1", "line 2"]
+        );
+        assert_eq!(super::error_lines(&error, 12).len(), 12);
+        let one_hidden = super::error_lines(&error, 11);
+        assert_eq!(one_hidden[1], "… 1 more line, see logs");
+        assert_eq!(one_hidden[2], "line 3");
     }
 
     #[test]
