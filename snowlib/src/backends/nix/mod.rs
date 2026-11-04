@@ -7,6 +7,7 @@ pub use mock::MockNixBackend;
 pub use system::SystemNixBackend;
 
 use async_trait::async_trait;
+use futures::stream::{self, StreamExt, TryStreamExt};
 use std::collections::HashSet;
 
 use crate::bootstrap::BootstrapConfig;
@@ -14,6 +15,10 @@ use crate::error::{NixError, Result};
 use crate::host::{Host, HostMetadata};
 use crate::nix::{Flake, StorePath, SystemType};
 use crate::process::OutputMode;
+
+/// Each eval is its own nix process using about half a gigabyte, so this
+/// bounds memory.
+const METADATA_EVALS_AT_ONCE: usize = 8;
 
 /// Parse hostnames from nix JSON output
 pub(crate) fn parse_hostnames(json: &[u8]) -> Result<Vec<Host>> {
@@ -100,16 +105,23 @@ pub trait NixBackend: Send + Sync {
             .map(|host| host.name)
             .collect();
 
-        let mut metadata = Vec::new();
-        for name in hostnames {
-            let system_type = if nixos_hosts.contains(name) {
-                SystemType::NixOS
-            } else {
-                SystemType::Darwin
-            };
-            metadata.push(self.get_host_metadata(flake, name, system_type).await?);
-        }
-        Ok(metadata)
+        // Built eagerly: a closure inside stream::map trips async-trait's
+        // "FnOnce is not general enough" lifetime error.
+        let evals: Vec<_> = hostnames
+            .iter()
+            .map(|name| {
+                let system_type = if nixos_hosts.contains(name) {
+                    SystemType::NixOS
+                } else {
+                    SystemType::Darwin
+                };
+                self.get_host_metadata(flake, name, system_type)
+            })
+            .collect();
+        stream::iter(evals)
+            .buffered(METADATA_EVALS_AT_ONCE)
+            .try_collect()
+            .await
     }
 
     /// Get metadata for a host from its configuration
@@ -157,6 +169,7 @@ pub trait NixBackend: Send + Sync {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     /// A flake with the given NixOS and nix-darwin hosts. Loading a host as
     /// NixOS fails for hosts in `broken_as_nixos`; `listing_fails` makes every
@@ -167,6 +180,10 @@ mod tests {
         darwin: Option<Vec<&'static str>>,
         broken_as_nixos: Vec<&'static str>,
         listing_fails: bool,
+        /// How long each host's eval takes; hosts not listed answer at once
+        eval_delays: Vec<(&'static str, u64)>,
+        evals_running: AtomicUsize,
+        most_evals_at_once: AtomicUsize,
     }
 
     fn missing_attr(system_type: SystemType) -> crate::error::SnowError {
@@ -218,6 +235,12 @@ mod tests {
             host: &str,
             system_type: SystemType,
         ) -> Result<HostMetadata> {
+            let running = self.evals_running.fetch_add(1, Ordering::SeqCst) + 1;
+            self.most_evals_at_once.fetch_max(running, Ordering::SeqCst);
+            if let Some((_, ms)) = self.eval_delays.iter().find(|(name, _)| *name == host) {
+                tokio::time::sleep(std::time::Duration::from_millis(*ms)).await;
+            }
+            self.evals_running.fetch_sub(1, Ordering::SeqCst);
             if system_type == SystemType::NixOS && self.broken_as_nixos.contains(&host) {
                 return Err(NixError::BuildFailed {
                     host: host.to_string(),
@@ -301,6 +324,68 @@ mod tests {
                 ("curium", SystemType::NixOS),
             ]
         );
+    }
+
+    const TWELVE_HOSTS: [&str; 12] = [
+        "argon",
+        "boron",
+        "cerium",
+        "curium",
+        "hydrogen",
+        "krypton",
+        "lanthanum",
+        "mercury",
+        "neodymium",
+        "nitrogen",
+        "oxygen",
+        "radon",
+    ];
+
+    /// Earlier hosts take longer, so they finish last
+    fn slower_first(hosts: &[&'static str]) -> Vec<(&'static str, u64)> {
+        hosts
+            .iter()
+            .enumerate()
+            .map(|(i, host)| (*host, 5 * (hosts.len() - i) as u64))
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn test_load_host_metadata_evaluates_hosts_in_parallel_keeping_their_order() {
+        let flake = FakeFlake {
+            nixos: Some(TWELVE_HOSTS.to_vec()),
+            eval_delays: slower_first(&TWELVE_HOSTS),
+            ..FakeFlake::default()
+        };
+
+        let metadata = flake
+            .load_host_metadata(&Flake::test_context(), &names(&TWELVE_HOSTS))
+            .await
+            .unwrap();
+
+        let loaded: Vec<_> = metadata.iter().map(|m| m.name.as_str()).collect();
+        assert_eq!(loaded, TWELVE_HOSTS);
+        assert_eq!(
+            flake.most_evals_at_once.load(Ordering::SeqCst),
+            METADATA_EVALS_AT_ONCE
+        );
+    }
+
+    #[tokio::test]
+    async fn test_load_host_metadata_fails_when_one_of_many_hosts_fails() {
+        let flake = FakeFlake {
+            nixos: Some(TWELVE_HOSTS.to_vec()),
+            broken_as_nixos: vec!["oxygen"],
+            eval_delays: slower_first(&TWELVE_HOSTS),
+            ..FakeFlake::default()
+        };
+
+        let err = flake
+            .load_host_metadata(&Flake::test_context(), &names(&TWELVE_HOSTS))
+            .await
+            .unwrap_err();
+
+        assert!(err.to_string().contains("oxygen"), "{err}");
     }
 
     #[tokio::test]
