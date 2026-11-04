@@ -144,7 +144,7 @@ impl PushArgs {
     /// - Create backend implementations and observer
     /// - Call snowlib::push()
     /// - Print results table
-    pub async fn run(self, flake: &Flake) -> Result<()> {
+    pub async fn run(self, flake: &Flake, log_file: Option<&std::path::Path>) -> Result<()> {
         self.validate()?;
 
         // When using --mock-fixture, use the mock flake instead of the real one
@@ -247,7 +247,7 @@ impl PushArgs {
         // Execute the push - snowlib handles everything!
         let results = snowlib::push(&push_ctx, hosts).await?;
 
-        summary::print_summary(&results);
+        summary::print_summary(&results, log_file);
 
         if let Some(error) = results.failure_error() {
             return Err(error.into());

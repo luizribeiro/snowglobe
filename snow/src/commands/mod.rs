@@ -28,14 +28,19 @@ pub enum Commands {
 }
 
 impl Commands {
-    pub async fn run(self, flake: &snowlib::Flake) -> snowlib::Result<()> {
+    /// `log_file` is where logs go; without one they go to stderr
+    pub async fn run(
+        self,
+        flake: &snowlib::Flake,
+        log_file: Option<&std::path::Path>,
+    ) -> snowlib::Result<()> {
         match self {
             Commands::Bootstrap(args) => args.run(flake).await,
             Commands::Status(args) => args.run(flake).await,
             Commands::List(args) => args.run(flake).await,
             Commands::Build(args) => args.run(flake).await,
             Commands::Plan(args) => args.run(flake).await,
-            Commands::Push(args) => args.run(flake).await,
+            Commands::Push(args) => args.run(flake, log_file).await,
             Commands::Rebuild(args) => args.run(flake).await,
         }
     }

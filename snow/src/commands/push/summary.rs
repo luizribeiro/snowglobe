@@ -8,6 +8,7 @@ use super::board::{format_elapsed, plural};
 use super::colors::style;
 use crate::error_summary::{error_summary, truncate};
 use crate::marks;
+use std::path::Path;
 
 /// Maximum error lines to display before truncating.
 /// Limited to keep terminal output scannable - full errors are in logs.
@@ -66,10 +67,10 @@ pub fn phase_overview(phases: &[(String, Vec<String>)]) -> String {
 
 /// What is left once every phase reported itself: skipped phases, the
 /// totals and the errors in full
-pub fn print_summary(results: &snowlib::PushResults) {
+pub fn print_summary(results: &snowlib::PushResults, log_file: Option<&Path>) {
     print_skipped_phases(&results.skipped_phases);
     print_overall_summary(results);
-    print_error_details(results);
+    print_error_details(results, log_file);
     println!();
 }
 
@@ -230,7 +231,7 @@ fn overall_summary(results: &snowlib::PushResults) -> String {
     }
 }
 
-fn print_error_details(results: &snowlib::PushResults) {
+fn print_error_details(results: &snowlib::PushResults, log_file: Option<&Path>) {
     let errors = collect_failed_hosts(results);
     if errors.is_empty() {
         return;
@@ -242,7 +243,7 @@ fn print_error_details(results: &snowlib::PushResults) {
     for host in errors {
         if let Some(error_msg) = &host.error_message {
             print_error_header(host);
-            print_error_lines(error_msg);
+            print_error_lines(error_msg, log_file);
         }
     }
 }
@@ -269,15 +270,15 @@ fn print_error_header(host: &snowlib::HostDeploymentResult) {
     );
 }
 
-fn print_error_lines(error_msg: &str) {
-    for line in error_lines(error_msg, MAX_ERROR_LINES) {
+fn print_error_lines(error_msg: &str, log_file: Option<&Path>) {
+    for line in error_lines(error_msg, MAX_ERROR_LINES, log_file) {
         println!("    {}", style(line).dim());
     }
 }
 
 /// The first line says what failed and the last ones usually why, so long
 /// errors keep both ends and leave out the middle
-fn error_lines(error_msg: &str, max: usize) -> Vec<String> {
+fn error_lines(error_msg: &str, max: usize, log_file: Option<&Path>) -> Vec<String> {
     let lines: Vec<&str> = error_msg.lines().collect();
     if lines.len() <= max {
         return lines.iter().map(|line| line.to_string()).collect();
@@ -285,10 +286,7 @@ fn error_lines(error_msg: &str, max: usize) -> Vec<String> {
     let tail = max.saturating_sub(1);
     let hidden = lines.len() - 1 - tail;
     std::iter::once(lines[0].to_string())
-        .chain(std::iter::once(format!(
-            "… {hidden} more {}, see logs",
-            plural(hidden, "line")
-        )))
+        .chain(std::iter::once(more_lines_hint(hidden, log_file)))
         .chain(
             lines[lines.len() - tail..]
                 .iter()
@@ -297,12 +295,23 @@ fn error_lines(error_msg: &str, max: usize) -> Vec<String> {
         .collect()
 }
 
+/// Where to read the lines an error left out. Without a log file, logs go
+/// to stderr, which has every failure in full.
+fn more_lines_hint(hidden: usize, log_file: Option<&Path>) -> String {
+    let lines = format!("… {hidden} more {}", plural(hidden, "line"));
+    match log_file {
+        Some(path) => format!("{lines} in {}", path.display()),
+        None => format!("{lines} in the log on stderr"),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::phase_overview;
     use snowlib::{
         ActivationMode, HostDeploymentResult, PhaseResult, PipelineStep, PushResults, SkippedPhase,
     };
+    use std::path::Path;
     use std::time::Duration;
 
     fn phase(name: &str, hosts: &[&str]) -> (String, Vec<String>) {
@@ -564,11 +573,12 @@ mod tests {
             .collect::<Vec<_>>()
             .join("\n");
 
+        let log = Some(Path::new("/tmp/snow-1762255380.log"));
         assert_eq!(
-            super::error_lines(&error, 5),
+            super::error_lines(&error, 5, log),
             vec![
                 "line 1",
-                "… 7 more lines, see logs",
+                "… 7 more lines in /tmp/snow-1762255380.log",
                 "line 9",
                 "line 10",
                 "line 11",
@@ -576,12 +586,12 @@ mod tests {
             ]
         );
         assert_eq!(
-            super::error_lines("line 1\nline 2", 5),
+            super::error_lines("line 1\nline 2", 5, log),
             vec!["line 1", "line 2"]
         );
-        assert_eq!(super::error_lines(&error, 12).len(), 12);
-        let one_hidden = super::error_lines(&error, 11);
-        assert_eq!(one_hidden[1], "… 1 more line, see logs");
+        assert_eq!(super::error_lines(&error, 12, log).len(), 12);
+        let one_hidden = super::error_lines(&error, 11, None);
+        assert_eq!(one_hidden[1], "… 1 more line in the log on stderr");
         assert_eq!(one_hidden[2], "line 3");
     }
 

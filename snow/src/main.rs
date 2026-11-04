@@ -92,5 +92,8 @@ async fn main() -> Result<()> {
 
     let flake = snowlib::Flake::new(cli.flake_path.as_deref()).into_diagnostic()?;
 
-    cli.command.run(&flake).await.into_diagnostic()
+    cli.command
+        .run(&flake, log_file.as_deref())
+        .await
+        .into_diagnostic()
 }
