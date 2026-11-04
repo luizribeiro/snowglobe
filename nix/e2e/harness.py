@@ -35,6 +35,12 @@ def boot_id(host: str) -> str:
     return hosts[host].succeed("cat /proc/sys/kernel/random/boot_id").strip()
 
 
+def reconnect(host: str) -> None:
+    """After the host rebooted itself, which the driver doesn't notice"""
+    hosts[host].connected = False
+    hosts[host].wait_for_unit("multi-user.target")
+
+
 def base(host: str) -> str:
     """The system the host booted at the start of the test"""
     return str(settings["base"][host])

@@ -7,6 +7,8 @@ let
   # In the order the demos page shows them
   names = [
     "switch"
+    "reboot"
+    "reboot-deadline"
     "rebuild-cancel"
   ];
 
