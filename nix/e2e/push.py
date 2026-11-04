@@ -216,7 +216,7 @@ try:
         rebuild = Recording("rebuild-cancel").run()
         rebuild.succeeded()
         rebuild.has("Reboot required", "What would you like to do?", "Continue?", "Rebuild cancelled")
-        rebuild.logged("boron: reboot required: Initrd changed", "boron: chose to cancel")
+        rebuild.logged("boron: reboot required: initrd changed", "boron: chose to cancel")
         assert boots_into("boron") == before, boots_into("boron")
 
     with subtest("snow rebuild sets the new system for the next boot"):

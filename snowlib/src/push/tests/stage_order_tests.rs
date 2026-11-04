@@ -36,19 +36,18 @@ async fn test_blocked_host_keeps_the_reason_it_was_blocked() {
     harness.reboot_backend = MockRebootBackend::new().with_reboot_required(HashMap::from([(
         "neodymium".to_string(),
         RebootReason::KernelChanged {
-            old: "/nix/store/old-kernel".to_string(),
-            new: "/nix/store/new-kernel".to_string(),
+            old: "/nix/store/0n6kcz8q4lw1-linux-6.12.58/bzImage".to_string(),
+            new: "/nix/store/9s2mf0yh7l3a-linux-6.12.60/bzImage".to_string(),
         },
     )]));
 
     let run = harness.run(vec![kubernetes_node("neodymium")]).await;
 
     let message = run.host("neodymium").error_message.clone().unwrap();
-    assert!(
-        message.starts_with("Failed to deploy to host 'neodymium': Kernel changed:"),
-        "{message}"
+    assert_eq!(
+        message,
+        "Failed to deploy to host 'neodymium': kernel linux-6.12.58 → linux-6.12.60"
     );
-    assert!(message.contains("/nix/store/new-kernel"), "{message}");
 }
 
 #[tokio::test]

@@ -84,25 +84,32 @@ pub enum RebootReason {
     Policy,
 }
 
+/// One short line, e.g. "kernel linux-6.12.58 → linux-6.12.60": the store
+/// paths themselves only differ in their hashes
 impl std::fmt::Display for RebootReason {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             RebootReason::KernelChanged { old, new } => {
-                writeln!(f, "Kernel changed:")?;
-                writeln!(f, "  Current: {}", old)?;
-                write!(f, "  New:     {}", new)
+                let (old, new) = (package_name(old), package_name(new));
+                if old == new {
+                    write!(f, "kernel rebuilt ({new})")
+                } else {
+                    write!(f, "kernel {old} → {new}")
+                }
             }
-            RebootReason::InitrdChanged { old, new } => {
-                writeln!(f, "Initrd changed:")?;
-                writeln!(f, "  Current: {}", old)?;
-                write!(f, "  New:     {}", new)
-            }
-            RebootReason::CriticalService(service) => {
-                write!(f, "Critical service will restart: {}", service)
-            }
-            RebootReason::Policy => write!(f, "Host reboot policy requires reboot"),
+            RebootReason::InitrdChanged { .. } => write!(f, "initrd changed"),
+            RebootReason::CriticalService(service) => write!(f, "{service} would restart"),
+            RebootReason::Policy => write!(f, "the host's reboot policy asks for one"),
         }
     }
+}
+
+/// "linux-6.12.58" from "/nix/store/<hash>-linux-6.12.58/bzImage"
+fn package_name(path: &str) -> &str {
+    path.strip_prefix("/nix/store/")
+        .and_then(|rest| rest.split('/').next())
+        .and_then(|entry| entry.split_once('-'))
+        .map_or(path, |(_, name)| name)
 }
 
 /// dry-activate builds the switch plan for the whole system, which takes
@@ -193,27 +200,51 @@ mod tests {
         ));
     }
 
+    fn kernel(old: &str, new: &str) -> RebootReason {
+        RebootReason::KernelChanged {
+            old: old.to_string(),
+            new: new.to_string(),
+        }
+    }
+
     #[test]
-    fn test_reboot_reason_display() {
-        let kernel_msg = RebootReason::KernelChanged {
-            old: "/nix/store/old-kernel".to_string(),
-            new: "/nix/store/new-kernel".to_string(),
-        }
-        .to_string();
-        assert!(kernel_msg.contains("Kernel changed"));
-        assert!(kernel_msg.contains("/nix/store/old-kernel"));
-        assert!(kernel_msg.contains("/nix/store/new-kernel"));
+    fn test_kernel_reason_names_the_versions() {
+        let upgrade = kernel(
+            "/nix/store/0n6kcz8q4lw1-linux-6.12.58/bzImage",
+            "/nix/store/9s2mf0yh7l3a-linux-6.12.60/bzImage",
+        );
+        let rebuild = kernel(
+            "/nix/store/0n6kcz8q4lw1-linux-6.12.58/bzImage",
+            "/nix/store/4rq81mnd2cxz-linux-6.12.58/bzImage",
+        );
 
-        let initrd_msg = RebootReason::InitrdChanged {
-            old: "/nix/store/old-initrd".to_string(),
-            new: "/nix/store/new-initrd".to_string(),
-        }
-        .to_string();
-        assert!(initrd_msg.contains("Initrd changed"));
+        assert_eq!(upgrade.to_string(), "kernel linux-6.12.58 → linux-6.12.60");
+        assert_eq!(rebuild.to_string(), "kernel rebuilt (linux-6.12.58)");
+    }
 
+    #[test]
+    fn test_kernel_reason_outside_the_store_shows_the_paths() {
+        assert_eq!(
+            kernel("/boot/vmlinuz-old", "/boot/vmlinuz-new").to_string(),
+            "kernel /boot/vmlinuz-old → /boot/vmlinuz-new"
+        );
+    }
+
+    #[test]
+    fn test_other_reasons_are_one_short_line() {
+        let initrd = RebootReason::InitrdChanged {
+            old: "/nix/store/b5h2sjpj-initrd-linux-6.12.58/initrd".to_string(),
+            new: "/nix/store/96wpyhsq-initrd-linux-6.12.58/initrd".to_string(),
+        };
+
+        assert_eq!(initrd.to_string(), "initrd changed");
         assert_eq!(
             RebootReason::CriticalService("audit.service".to_string()).to_string(),
-            "Critical service will restart: audit.service"
+            "audit.service would restart"
+        );
+        assert_eq!(
+            RebootReason::Policy.to_string(),
+            "the host's reboot policy asks for one"
         );
     }
 
