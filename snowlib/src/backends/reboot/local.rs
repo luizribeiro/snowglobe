@@ -311,9 +311,6 @@ mod tests {
 
         let result = backend.check_reboot_required(&target, &store_path).await;
 
-        assert!(result.is_ok());
-        let check = result.unwrap();
-        assert!(!check.required);
-        assert!(check.reason.is_none());
+        assert_eq!(result.unwrap(), RebootCheck::not_required());
     }
 }
