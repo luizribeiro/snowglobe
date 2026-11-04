@@ -37,23 +37,32 @@ pub struct ErrorContext<'a> {
 
 /// At most `max` non-empty lines ending at the cause. They come from a
 /// failed command's stderr when the cause is there: its stdout ends in
-/// service logs that rarely explain the failure.
+/// service logs that rarely explain the failure. The failed command's
+/// `Command:` line then comes first and counts toward `max`, since stderr
+/// alone doesn't say what ran, such as which hook.
 pub fn error_context(error: &str, max: usize) -> ErrorContext<'_> {
     let cause = error_summary(error);
     let all: Vec<&str> = non_empty(error.lines().map(str::trim)).collect();
     let stderr: Vec<&str> = non_empty(stderr_lines(error)).collect();
     // The cause may be its line without Nix's `error:` prefix
     let holds_cause = |line: &&str| line.ends_with(cause);
-    let source = if stderr.iter().any(holds_cause) {
-        &stderr
-    } else {
-        &all
-    };
+    let from_stderr = stderr.iter().any(holds_cause);
+    let source = if from_stderr { &stderr } else { &all };
     let end = source
         .iter()
         .rposition(holds_cause)
         .map_or(source.len(), |at| at + 1);
-    let lines = source[end.saturating_sub(max)..end].to_vec();
+    let command = error
+        .lines()
+        .map(str::trim)
+        .take_while(|line| *line != "Stderr:")
+        .find(|line| line.starts_with("Command:"))
+        .filter(|_| from_stderr && max >= 2);
+    let room = max.saturating_sub(usize::from(command.is_some()));
+    let lines: Vec<&str> = command
+        .into_iter()
+        .chain(source[end.saturating_sub(room)..end].iter().copied())
+        .collect();
     ErrorContext {
         hidden: all.len() - lines.len(),
         lines,
@@ -148,12 +157,13 @@ mod tests {
             error_context(ACTIVATION_FAILURE, 10),
             ErrorContext {
                 lines: vec![
+                    "Command: ssh sudo snowglobe-activate /nix/store/yzxw-cerium switch",
                     "updating GRUB 2 menu...",
                     "activating the configuration...",
                     "setting up /etc...",
                     "warning: the following units failed: storage-agent.service",
                 ],
-                hidden: 7,
+                hidden: 6,
             }
         );
     }
@@ -161,15 +171,43 @@ mod tests {
     #[test]
     fn test_error_context_keeps_the_lines_nearest_the_cause() {
         assert_eq!(
-            error_context(ACTIVATION_FAILURE, 2),
+            error_context(ACTIVATION_FAILURE, 3),
             ErrorContext {
                 lines: vec![
+                    "Command: ssh sudo snowglobe-activate /nix/store/yzxw-cerium switch",
                     "setting up /etc...",
                     "warning: the following units failed: storage-agent.service",
                 ],
-                hidden: 9,
+                hidden: 8,
             }
         );
+    }
+
+    #[test]
+    fn test_error_context_of_a_failed_hook_says_which_hook_ran() {
+        let error = "Command failed\n\n\
+            Command: Hook 'wait-storage-healthy' (pre-deploy): /nix/store/abc-wait-storage-healthy\n\
+            Exit code: 1\n\n\
+            Stderr:\n\
+            storage on radon is degraded";
+
+        assert_eq!(
+            error_context(error, 10),
+            ErrorContext {
+                lines: vec![
+                    "Command: Hook 'wait-storage-healthy' (pre-deploy): /nix/store/abc-wait-storage-healthy",
+                    "storage on radon is degraded",
+                ],
+                hidden: 3,
+            }
+        );
+    }
+
+    #[test]
+    fn test_error_context_too_small_for_the_command_keeps_only_the_cause() {
+        let cause = "warning: the following units failed: storage-agent.service";
+        assert_eq!(error_context(ACTIVATION_FAILURE, 1).lines, vec![cause]);
+        assert!(error_context(ACTIVATION_FAILURE, 0).lines.is_empty());
     }
 
     #[test]

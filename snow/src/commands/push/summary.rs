@@ -527,9 +527,10 @@ mod tests {
             "✗ Phase p2 (3/4 failed in 0:52)\n\
              \x20 ✓ boron (switch)\n\
              \x20 ✗ cerium at activate: warning: the following units failed: storage-agent.service\n\
+             \x20   Command: ssh sudo snowglobe-activate /nix/store/yzxw-cerium switch\n\
              \x20   activating the configuration...\n\
              \x20   warning: the following units failed: storage-agent.service\n\
-             \x20   … 6 more lines in /tmp/snow-1762255380.log\n\
+             \x20   … 5 more lines in /tmp/snow-1762255380.log\n\
              \x20 ✗ radon at pre-deploy: storage degraded\n\
              \x20 ⊘ lanthanum skipped, serial group 'k8s' halted after cerium failed"
         );
@@ -589,9 +590,10 @@ mod tests {
                 .map(|line| console::strip_ansi_codes(line))
                 .collect::<Vec<_>>(),
             vec![
+                "Command: ssh sudo snowglobe-activate /nix/store/yzxw-cerium switch",
                 "activating the configuration...",
                 "warning: the following units failed: storage-agent.service",
-                "… 4 more lines in /tmp/snow-1762255380.log",
+                "… 3 more lines in /tmp/snow-1762255380.log",
             ]
         );
         assert!(super::failure_details("worker crashed", None).is_empty());
