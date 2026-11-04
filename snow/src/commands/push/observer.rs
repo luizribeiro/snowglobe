@@ -64,7 +64,7 @@ impl PushObserver for CliObserver {
         *self.spans.lock() = spans;
     }
 
-    fn on_phase_complete(&self, _phase: &str, _success: bool) {
+    fn on_phase_complete(&self, _phase: &str, _result: Option<&snowlib::PhaseResult>) {
         self.spans.lock().clear();
         *self.board.lock() = None;
     }
@@ -147,7 +147,7 @@ mod tests {
         let observer = CliObserver::new();
         observer.on_phase_start("p3", &hosts());
 
-        observer.on_phase_complete("p3", true);
+        observer.on_phase_complete("p3", None);
         observer.on_host_event("radon", &HostEvent::Started(PipelineStep::Copy));
 
         assert!(observer.spans.lock().is_empty());

@@ -20,6 +20,28 @@ async fn test_push_with_single_phase() {
 }
 
 #[tokio::test]
+async fn test_each_phase_reports_its_hosts_when_it_completes() {
+    let run = PushHarness::new()
+        .run(vec![
+            make_host_metadata("host1", Some("p1"), RebootPolicy::Auto),
+            make_host_metadata("host2", Some("p2"), RebootPolicy::Auto),
+            make_host_metadata("host3", Some("p2"), RebootPolicy::Auto),
+        ])
+        .await;
+
+    let completed: Vec<(&str, usize)> = run
+        .completed
+        .iter()
+        .map(|phase| (phase.phase.as_str(), phase.hosts.len()))
+        .collect();
+    assert_eq!(completed, vec![("p1", 1), ("p2", 2)]);
+    assert!(run
+        .completed
+        .iter()
+        .all(|phase| phase.duration > std::time::Duration::ZERO));
+}
+
+#[tokio::test]
 async fn test_push_with_multiple_phases() {
     // Test that phases execute in lexicographic order (p1 before p2)
     let flake = Flake::test_context();

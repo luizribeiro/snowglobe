@@ -240,6 +240,7 @@ mod tests {
     use snowlib::{
         ActivationMode, HostDeploymentResult, PhaseResult, PipelineStep, PushResults, SkippedPhase,
     };
+    use std::time::Duration;
 
     fn phase(name: &str, hosts: &[&str]) -> (String, Vec<String>) {
         (
@@ -314,6 +315,7 @@ mod tests {
         let results = PushResults {
             phases: vec![PhaseResult {
                 phase: "default".to_string(),
+                duration: Duration::ZERO,
                 hosts: vec![
                     make_successful_host("hydrogen", ActivationMode::Switch, false),
                     make_successful_host("oxygen", ActivationMode::Switch, true),
@@ -332,6 +334,7 @@ mod tests {
         let results = PushResults {
             phases: vec![PhaseResult {
                 phase: "production".to_string(),
+                duration: Duration::ZERO,
                 hosts: vec![
                     make_successful_host("hydrogen", ActivationMode::Switch, false),
                     make_failed_host("nitrogen", PipelineStep::Activate, "activation failed"),
@@ -350,6 +353,7 @@ mod tests {
         let results = PushResults {
             phases: vec![PhaseResult {
                 phase: "staging".to_string(),
+                duration: Duration::ZERO,
                 hosts: vec![make_successful_host("web01", ActivationMode::Switch, false)],
             }],
             skipped_phases: vec![SkippedPhase {
@@ -367,10 +371,12 @@ mod tests {
             phases: vec![
                 PhaseResult {
                     phase: "staging".to_string(),
+                    duration: Duration::ZERO,
                     hosts: vec![make_successful_host("stg01", ActivationMode::Switch, false)],
                 },
                 PhaseResult {
                     phase: "production".to_string(),
+                    duration: Duration::ZERO,
                     hosts: vec![
                         make_successful_host("prod01", ActivationMode::Switch, true),
                         make_successful_host("prod02", ActivationMode::Boot, false),
@@ -389,6 +395,7 @@ mod tests {
         let results = PushResults {
             phases: vec![PhaseResult {
                 phase: "default".to_string(),
+                duration: Duration::ZERO,
                 hosts: vec![
                     make_successful_host("h1", ActivationMode::Switch, false),
                     make_successful_host("h2", ActivationMode::Boot, false),
@@ -420,6 +427,7 @@ mod tests {
         let results = PushResults {
             phases: vec![PhaseResult {
                 phase: "default".to_string(),
+                duration: Duration::ZERO,
                 hosts: vec![
                     make_failed_host("h1", PipelineStep::Build, "build error"),
                     make_failed_host("h2", PipelineStep::Copy, "copy error"),

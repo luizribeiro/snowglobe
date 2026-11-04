@@ -95,6 +95,7 @@ fn make_hook_executor(
 struct TestObserver {
     events: Arc<Mutex<Vec<String>>>,
     done: Arc<Mutex<Vec<HostDeploymentResult>>>,
+    completed: Arc<Mutex<Vec<PhaseResult>>>,
 }
 
 impl TestObserver {
@@ -102,6 +103,7 @@ impl TestObserver {
         Self {
             events: Arc::new(Mutex::new(Vec::new())),
             done: Arc::new(Mutex::new(Vec::new())),
+            completed: Arc::new(Mutex::new(Vec::new())),
         }
     }
 
@@ -174,12 +176,16 @@ impl PushObserver for TestObserver {
         self.record(format!("phase_start:{}:{}", phase, hosts.len()));
     }
 
-    fn on_phase_complete(&self, phase: &str, success: bool) {
-        self.record(format!(
-            "phase_complete:{}:{}",
-            phase,
-            if success { "ok" } else { "failed" }
-        ));
+    fn on_phase_complete(&self, phase: &str, result: Option<&PhaseResult>) {
+        let outcome = match result {
+            Some(result) if result.all_succeeded() => "ok",
+            Some(_) => "failed",
+            None => "stopped",
+        };
+        self.record(format!("phase_complete:{phase}:{outcome}"));
+        if let Some(result) = result {
+            self.completed.lock().unwrap().push(result.clone());
+        }
     }
 
     fn on_hooks_start(&self, hostname: &str, stage: HookStage) {
@@ -216,6 +222,7 @@ struct HarnessRun {
     events: Vec<String>,
     /// Results reported through `HostEvent::Done`, in the order reported
     done: Vec<HostDeploymentResult>,
+    completed: Vec<PhaseResult>,
     executed_hooks: Vec<(String, HookStage, crate::hooks::HookLocation, String)>,
 }
 
@@ -248,10 +255,12 @@ impl PushHarness {
     async fn run(&self, hosts: Vec<HostMetadata>) -> HarnessRun {
         let (results, observer) = self.run_push(hosts).await;
         let done = observer.done.lock().unwrap().clone();
+        let completed = observer.completed.lock().unwrap().clone();
         HarnessRun {
             results: results.unwrap(),
             events: observer.get_events(),
             done,
+            completed,
             executed_hooks: self.hook_backend.get_executed_hooks(),
         }
     }

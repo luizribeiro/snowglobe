@@ -120,7 +120,9 @@ pub async fn push(push_ctx: &PushContext<'_>, hosts: Vec<HostMetadata>) -> Resul
         // Execute phase and notify observer (even on failure)
         let phase_result = execute_phase(push_ctx, phase, phase_hosts).await;
         let phase_success = phase_result.as_ref().is_ok_and(|pr| pr.all_succeeded());
-        push_ctx.observer.on_phase_complete(phase, phase_success);
+        push_ctx
+            .observer
+            .on_phase_complete(phase, phase_result.as_ref().ok());
 
         // Propagate infrastructure errors immediately
         let phase_result = phase_result?;
@@ -151,6 +153,7 @@ async fn execute_phase(
     phase: &str,
     phase_hosts: &[HostMetadata],
 ) -> Result<PhaseResult> {
+    let started = std::time::Instant::now();
     // Sort hosts lexicographically for consistent rendering order
     let mut sorted_hosts = phase_hosts.to_vec();
     sorted_hosts.sort_by(|a, b| a.name.cmp(&b.name));
@@ -190,6 +193,7 @@ async fn execute_phase(
     Ok(PhaseResult {
         phase: phase.to_string(),
         hosts: host_results,
+        duration: started.elapsed(),
     })
 }
 

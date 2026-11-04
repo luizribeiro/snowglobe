@@ -4,6 +4,7 @@ use crate::error::DeployError;
 use crate::host::HostMetadata;
 use crate::nix::{ActivationMode, StorePath};
 use std::fmt;
+use std::time::Duration;
 
 /// A push deployment plan for a single host
 #[derive(Debug, Clone)]
@@ -111,6 +112,8 @@ impl HostDeploymentResult {
 pub struct PhaseResult {
     pub phase: String,
     pub hosts: Vec<HostDeploymentResult>,
+    /// From the phase's start until its last host was done
+    pub duration: Duration,
 }
 
 impl PhaseResult {
@@ -201,6 +204,7 @@ mod tests {
         PushResults {
             phases: vec![PhaseResult {
                 phase: "p3".to_string(),
+                duration: Duration::ZERO,
                 hosts,
             }],
             skipped_phases: skipped,

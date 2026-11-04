@@ -29,7 +29,7 @@ mod log;
 pub use log::LogObserver;
 
 use crate::hooks::HookStage;
-use crate::push::{HostDeploymentResult, PipelineStep};
+use crate::push::{HostDeploymentResult, PhaseResult, PipelineStep};
 
 /// Something that happened to one host during a push
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -66,8 +66,9 @@ pub trait PushObserver: Send + Sync {
     /// Called once per phase, before any of its hosts starts
     fn on_phase_start(&self, _phase: &str, _hosts: &[String]) {}
 
-    /// Called once per phase, after all of its hosts are done
-    fn on_phase_complete(&self, _phase: &str, _success: bool) {}
+    /// Called once per phase, after all of its hosts are done, with how they
+    /// did; `None` when the phase stopped on an error before it could finish
+    fn on_phase_complete(&self, _phase: &str, _result: Option<&PhaseResult>) {}
 
     /// Called before running a host's hooks for a stage
     fn on_hooks_start(&self, _hostname: &str, _stage: HookStage) {}
@@ -133,9 +134,9 @@ impl PushObserver for CompositeObserver {
         }
     }
 
-    fn on_phase_complete(&self, phase: &str, success: bool) {
+    fn on_phase_complete(&self, phase: &str, result: Option<&PhaseResult>) {
         for observer in &self.observers {
-            observer.on_phase_complete(phase, success);
+            observer.on_phase_complete(phase, result);
         }
     }
 
@@ -193,8 +194,11 @@ mod tests {
             self.log(format!("phase_start:{}:{}", phase, hosts.len()));
         }
 
-        fn on_phase_complete(&self, phase: &str, success: bool) {
-            self.log(format!("phase_complete:{phase}:{success}"));
+        fn on_phase_complete(&self, phase: &str, result: Option<&PhaseResult>) {
+            let hosts = result.map_or("stopped".to_string(), |result| {
+                result.hosts.len().to_string()
+            });
+            self.log(format!("phase_complete:{phase}:{hosts}"));
         }
 
         fn on_hooks_start(&self, hostname: &str, stage: HookStage) {
@@ -234,7 +238,7 @@ mod tests {
         let observer = NoopObserver;
         observer.on_phase_start("p1", &[]);
         observer.on_host_event("cerium", &HostEvent::Started(PipelineStep::Build));
-        observer.on_phase_complete("p1", true);
+        observer.on_phase_complete("p1", None);
     }
 
     #[test]
@@ -256,7 +260,14 @@ mod tests {
         composite.on_hook_start("lanthanum", HookStage::OnFailure, "recover-uncordon");
         composite.on_hook_complete("lanthanum", HookStage::OnFailure, "recover-uncordon", true);
         composite.on_hooks_complete("lanthanum", HookStage::OnFailure, true);
-        composite.on_phase_complete("p3", false);
+        composite.on_phase_complete(
+            "p3",
+            Some(&PhaseResult {
+                phase: "p3".to_string(),
+                hosts: vec![HostDeploymentResult::unchanged("lanthanum")],
+                duration: std::time::Duration::from_secs(42),
+            }),
+        );
 
         let expected = vec![
             "phase_start:p3:1".to_string(),
@@ -265,7 +276,7 @@ mod tests {
             "hook_start:lanthanum:on-failure:recover-uncordon".to_string(),
             "hook_complete:lanthanum:on-failure:recover-uncordon:true".to_string(),
             "hooks_complete:lanthanum:on-failure:true".to_string(),
-            "phase_complete:p3:false".to_string(),
+            "phase_complete:p3:1".to_string(),
         ];
         assert_eq!(first.get_events(), expected);
         assert_eq!(second.get_events(), expected);

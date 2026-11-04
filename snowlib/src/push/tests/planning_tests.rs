@@ -4,12 +4,14 @@ use super::*;
 use crate::backends::reboot::{
     RebootCheck, RebootDetectionConfig, RebootReason, SystemRebootBackend,
 };
+use std::time::Duration;
 
 #[test]
 fn test_push_results_counts() {
     let results = PushResults {
         phases: vec![PhaseResult {
             phase: "default".to_string(),
+            duration: Duration::ZERO,
             hosts: vec![
                 HostDeploymentResult {
                     hostname: "host1".to_string(),
@@ -53,6 +55,7 @@ fn test_push_results_all_succeeded() {
     let results = PushResults {
         phases: vec![PhaseResult {
             phase: "default".to_string(),
+            duration: Duration::ZERO,
             hosts: vec![
                 HostDeploymentResult {
                     hostname: "host1".to_string(),
