@@ -113,8 +113,8 @@ for name, machine in targets.items():
     machine.wait_for_unit("sshd.service")
     machine.succeed(f"install -d -m 700 /root/.ssh && echo {shlex.quote(key)} > /root/.ssh/authorized_keys")
     client.wait_until_succeeds(f"ssh -o BatchMode=yes root@{name} true", timeout=60)
-    # Test VMs boot without the system profile an installed host has
-    machine.succeed("mkdir -p /nix/var/nix/profiles && ln -sfn \"$(readlink -f /run/current-system)\" /nix/var/nix/profiles/system")
+    machine.wait_for_unit("install-system-profile.service")
+    machine.succeed('test "$(readlink -f /nix/var/nix/profiles/system)" = "$(readlink -f /run/booted-system)"')
 base = {name: running(name) for name in targets}
 
 # Each push expects the hosts as the one before left them

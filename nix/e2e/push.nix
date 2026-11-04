@@ -96,10 +96,23 @@ pkgs.testers.runNixOSTest {
     virtualisation.memorySize = 1024;
   };
 
-  nodes = lib.genAttrs targets (name: { lib, ... }: {
+  nodes = lib.genAttrs targets (name: { config, lib, ... }: {
     imports = [ snowglobeModule ] ++ lib.optional (name == "boron") snowRunner;
     services.openssh.enable = true;
     specialisation = lib.mapAttrs (_: configuration: { inherit configuration; }) variants;
+    # Test VMs boot without a system profile, so snow could not read what
+    # they boot into and would warn on every push. Record the booted system
+    # as its first generation, as installing NixOS does.
+    systemd.services.install-system-profile = {
+      wantedBy = [ "multi-user.target" ];
+      before = [ "sshd.service" ];
+      unitConfig.ConditionPathExists = "!/nix/var/nix/profiles/system";
+      serviceConfig.Type = "oneshot";
+      script = ''
+        ${config.nix.package}/bin/nix-env --profile /nix/var/nix/profiles/system \
+          --set "$(readlink -f /run/booted-system)"
+      '';
+    };
   }) // {
     # Holds every scenario's flake, even those run on boron: one in boron's own
     # /etc would point at a boron system that contains it
