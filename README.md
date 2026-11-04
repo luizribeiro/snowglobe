@@ -6,7 +6,7 @@ Self-contained cluster orchestration for NixOS.
 
 > **Status**: Early design phase. Not ready for use.
 
-[![snow push: three hosts in two phases](docs/demos/switch.svg)](https://asciinema.org/a/xUtYcB8o7ArSRG7y)
+[![snow push: three hosts in two phases](docs/demos/switch.svg)](https://asciinema.org/a/PkCZeHp10QEiaCpJ)
 
 More in [the demos](docs/demos.md), recorded from real pushes in the VM tests.
 
