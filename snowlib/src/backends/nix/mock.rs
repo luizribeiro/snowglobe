@@ -139,7 +139,6 @@ impl NixBackend for MockNixBackend {
             return Err(crate::error::NixError::BuildFailed {
                 host: host.to_string(),
                 stderr: "Mock build failure".to_string(),
-                source: std::io::Error::other("Build failed (mock)"),
             }
             .into());
         }
@@ -170,7 +169,6 @@ impl NixBackend for MockNixBackend {
                 Err(crate::error::NixError::BuildFailed {
                     host: host.to_string(),
                     stderr: build_fix.stderr.clone(),
-                    source: std::io::Error::other("Build failed (from fixture)"),
                 }
                 .into())
             }
@@ -207,7 +205,6 @@ impl NixBackend for MockNixBackend {
             return Err(crate::error::ProvisionerError::ImageBuildFailed {
                 host: host.to_string(),
                 stderr: "Mock image build failure".to_string(),
-                source: std::io::Error::other("Image build failed (mock)"),
             }
             .into());
         }

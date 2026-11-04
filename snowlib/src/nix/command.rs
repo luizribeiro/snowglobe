@@ -122,15 +122,16 @@ impl NixCommand {
         .map_err(|e| NixError::CommandFailed { source: e })?;
 
         if result.timed_out || !result.status.success() {
-            let mut stderr = String::from_utf8_lossy(&result.stderr).to_string();
+            let mut stderr = String::from_utf8_lossy(&result.stderr)
+                .trim_end()
+                .to_string();
             if result.timed_out {
-                stderr.push_str(&format!("\n{} timed out", self.program));
+                if !stderr.is_empty() {
+                    stderr.push('\n');
+                }
+                stderr.push_str(&format!("{} timed out", self.program));
             }
-            return Err(NixError::EvalFailed {
-                stderr,
-                source: std::io::Error::other("nix command exited with non-zero status"),
-            }
-            .into());
+            return Err(NixError::EvalFailed { stderr }.into());
         }
 
         Ok(result.stdout)
@@ -174,37 +175,42 @@ mod tests {
         assert!(String::from_utf8_lossy(&stdout).starts_with("nix (Nix)"));
     }
 
-    #[tokio::test]
-    async fn test_failure_carries_stderr() {
-        let err = NixCommand::tool("nix", ["derivation", "show", "/nix/store/not-a-drv"])
-            .run()
-            .await
-            .unwrap_err();
-
-        match err {
-            crate::error::SnowError::Nix(NixError::EvalFailed { stderr, .. }) => {
-                assert!(stderr.contains("not-a-drv"), "unexpected stderr: {stderr}")
-            }
+    async fn failed_stderr(command: NixCommand) -> String {
+        match command.run().await.unwrap_err() {
+            crate::error::SnowError::Nix(NixError::EvalFailed { stderr }) => stderr,
             other => panic!("expected EvalFailed, got {other:?}"),
         }
     }
 
     #[tokio::test]
-    async fn test_timeout_is_reported() {
-        let err = NixCommand::tool("sleep", ["5"])
-            .timeout(Duration::from_millis(100))
-            .run()
-            .await
-            .unwrap_err();
+    async fn test_failure_carries_stderr_without_its_trailing_newline() {
+        let stderr = failed_stderr(NixCommand::tool(
+            "nix",
+            ["derivation", "show", "/nix/store/not-a-drv"],
+        ))
+        .await;
 
-        match err {
-            crate::error::SnowError::Nix(NixError::EvalFailed { stderr, .. }) => {
-                assert!(
-                    stderr.ends_with("sleep timed out"),
-                    "unexpected stderr: {stderr}"
-                )
-            }
-            other => panic!("expected EvalFailed, got {other:?}"),
-        }
+        assert!(stderr.contains("not-a-drv"), "unexpected stderr: {stderr}");
+        assert_eq!(stderr, stderr.trim_end());
+    }
+
+    #[tokio::test]
+    async fn test_timeout_is_reported() {
+        let stderr =
+            failed_stderr(NixCommand::tool("sleep", ["5"]).timeout(Duration::from_millis(100)))
+                .await;
+
+        assert_eq!(stderr, "sleep timed out");
+    }
+
+    #[tokio::test]
+    async fn test_timeout_is_reported_after_the_stderr_so_far() {
+        let stderr = failed_stderr(
+            NixCommand::tool("sh", ["-c", "echo 'copying path' >&2; sleep 5"])
+                .timeout(Duration::from_millis(500)),
+        )
+        .await;
+
+        assert_eq!(stderr, "copying path\nsh timed out");
     }
 }

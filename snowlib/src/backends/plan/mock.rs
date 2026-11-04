@@ -40,7 +40,6 @@ impl PlanBackend for MockPlanBackend {
         if self.failing_eval == Some(system_type) {
             return Err(NixError::EvalFailed {
                 stderr: "error: flake 'path:/srv/fleet' does not provide attribute".to_string(),
-                source: std::io::Error::other("mock evaluation failure"),
             }
             .into());
         }

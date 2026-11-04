@@ -192,7 +192,6 @@ mod tests {
                 "error: flake does not provide attribute '{}'",
                 system_type.flake_attr()
             ),
-            source: std::io::Error::other("eval failed"),
         }
         .into()
     }
@@ -208,7 +207,6 @@ mod tests {
             if self.listing_fails {
                 return Err(NixError::EvalFailed {
                     stderr: "error: undefined variable 'pkgz'".to_string(),
-                    source: std::io::Error::other("eval failed"),
                 }
                 .into());
             }
@@ -245,7 +243,6 @@ mod tests {
                 return Err(NixError::BuildFailed {
                     host: host.to_string(),
                     stderr: "hooks file failed to build".to_string(),
-                    source: std::io::Error::other("build failed"),
                 }
                 .into());
             }

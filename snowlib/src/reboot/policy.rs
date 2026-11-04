@@ -25,7 +25,6 @@ impl std::str::FromStr for RebootPolicy {
                     "Invalid reboot policy '{}'. Valid values are: 'auto', 'always', 'never'",
                     s
                 ),
-                source: std::io::Error::other("Invalid reboot policy"),
             }
             .into()),
         }

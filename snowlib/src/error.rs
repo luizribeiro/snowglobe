@@ -41,11 +41,7 @@ pub enum NixError {
         code(snow::nix::eval_failed),
         help("Check your flake.nix syntax and ensure the expression is valid.\nCommon issues:\n  - Missing 'or' defaults for optional attributes\n  - Syntax errors in filter expressions\n  - Undefined attributes")
     )]
-    EvalFailed {
-        stderr: String,
-        #[source]
-        source: std::io::Error,
-    },
+    EvalFailed { stderr: String },
 
     #[error("Failed to parse Nix command output as JSON")]
     #[diagnostic(
@@ -63,12 +59,7 @@ pub enum NixError {
         code(snow::nix::build_failed),
         help("Check that the host exists in your flake's nixosConfigurations and can be built:\n  nix build .#nixosConfigurations.{host}.config.system.build.toplevel")
     )]
-    BuildFailed {
-        host: String,
-        stderr: String,
-        #[source]
-        source: std::io::Error,
-    },
+    BuildFailed { host: String, stderr: String },
 
     #[error("Failed to get metadata for host '{host}'")]
     #[diagnostic(
@@ -494,12 +485,7 @@ pub enum ProvisionerError {
         code(snow::provisioner::image_build_failed),
         help("Check that the image attribute exists and can be built:\n  nix build .#nixosConfigurations.{host}.config.system.build.<imageAttr>")
     )]
-    ImageBuildFailed {
-        host: String,
-        stderr: String,
-        #[source]
-        source: std::io::Error,
-    },
+    ImageBuildFailed { host: String, stderr: String },
 
     #[error("No bootstrap configuration found for host '{host}'")]
     #[diagnostic(
@@ -638,10 +624,22 @@ mod tests {
 
     #[test]
     fn test_error_chain_skips_sources_already_in_the_message() {
+        let error = DeployError::SshFailed {
+            destination: "pusher@curium.example.com".to_string(),
+            source: std::io::Error::other("SSH connection failed"),
+        };
+
+        assert_eq!(
+            error_chain(&error),
+            "SSH connection failed to pusher@curium.example.com"
+        );
+    }
+
+    #[test]
+    fn test_error_chain_of_a_failed_build_ends_with_its_stderr() {
         let error = NixError::BuildFailed {
             host: "radon".to_string(),
             stderr: "error: builder for wine failed".to_string(),
-            source: std::io::Error::other("error: builder for wine failed"),
         };
 
         assert_eq!(
@@ -654,19 +652,12 @@ mod tests {
     fn test_error_causes_skip_a_source_an_earlier_one_quotes() {
         let error = NixError::MetadataFailed {
             host: "ferrum".to_string(),
-            source: Box::new(NixError::BuildFailed {
-                host: "ferrum".to_string(),
-                stderr: "error: builder for wine failed".to_string(),
-                source: std::io::Error::other("error: builder for wine failed"),
+            source: Box::new(NixError::CommandFailed {
+                source: std::io::Error::other("execution failed"),
             }),
         };
 
-        assert_eq!(
-            error_causes(&error),
-            vec![
-                "Failed to build host configuration for 'ferrum':\nerror: builder for wine failed"
-            ]
-        );
+        assert_eq!(error_causes(&error), vec!["Nix command execution failed"]);
     }
 
     #[test]
@@ -815,11 +806,9 @@ mod tests {
 
     #[test]
     fn test_image_build_failed_error() {
-        let io_error = std::io::Error::other("build failed");
         let error = ProvisionerError::ImageBuildFailed {
             host: "carbon".to_string(),
             stderr: "error: attribute not found".to_string(),
-            source: io_error,
         };
         assert!(error.to_string().contains("carbon"));
         assert!(error.to_string().contains("attribute not found"));

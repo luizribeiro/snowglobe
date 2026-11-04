@@ -160,21 +160,18 @@ impl NixBackend for SystemNixBackend {
             .run()
             .await
             .map_err(|e| match e {
-                crate::error::SnowError::Nix(crate::error::NixError::EvalFailed {
-                    stderr,
-                    source,
-                }) => crate::error::SnowError::Nix(crate::error::NixError::BuildFailed {
-                    host: host.to_string(),
-                    stderr,
-                    source,
-                }),
+                crate::error::SnowError::Nix(crate::error::NixError::EvalFailed { stderr }) => {
+                    crate::error::SnowError::Nix(crate::error::NixError::BuildFailed {
+                        host: host.to_string(),
+                        stderr,
+                    })
+                }
                 other => other,
             })?;
 
         let path = String::from_utf8(stdout)
             .map_err(|e| crate::error::NixError::EvalFailed {
                 stderr: format!("Non-UTF8 build path: {:?}", e.as_bytes()),
-                source: std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid UTF-8"),
             })?
             .trim()
             .to_string();
@@ -241,22 +238,19 @@ impl NixBackend for SystemNixBackend {
             .run()
             .await
             .map_err(|e| match e {
-                crate::error::SnowError::Nix(crate::error::NixError::EvalFailed {
-                    stderr,
-                    source,
-                }) => crate::error::ProvisionerError::ImageBuildFailed {
-                    host: host.to_string(),
-                    stderr,
-                    source,
+                crate::error::SnowError::Nix(crate::error::NixError::EvalFailed { stderr }) => {
+                    crate::error::ProvisionerError::ImageBuildFailed {
+                        host: host.to_string(),
+                        stderr,
+                    }
+                    .into()
                 }
-                .into(),
                 other => other,
             })?;
 
         let path = String::from_utf8(stdout)
             .map_err(|e| crate::error::NixError::EvalFailed {
                 stderr: format!("Non-UTF8 build path: {:?}", e.as_bytes()),
-                source: std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid UTF-8"),
             })?
             .trim()
             .to_string();

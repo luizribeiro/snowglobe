@@ -60,7 +60,6 @@ impl std::str::FromStr for HookStage {
                         .map(|stage| format!("'{}'", stage.nix_name()))
                         .join(", ")
                 ),
-                source: std::io::Error::other("Invalid hook stage"),
             }
             .into()),
         }
@@ -89,7 +88,6 @@ impl std::str::FromStr for HookLocation {
                     "Invalid hook location '{}'. Valid values are: 'local', 'remote'",
                     s
                 ),
-                source: std::io::Error::other("Invalid hook location"),
             }
             .into()),
         }

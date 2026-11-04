@@ -173,7 +173,6 @@ mod tests {
                 Err(snowlib::error::NixError::BuildFailed {
                     host: hostname.to_string(),
                     stderr: "error: builder for wine-wow-staging-10.12 failed".to_string(),
-                    source: std::io::Error::other("exit status 1"),
                 }
                 .into())
             },
