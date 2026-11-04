@@ -30,6 +30,11 @@
       packages = forEachSystem (system:
         let
           pkgs = nixpkgs.legacyPackages.${system};
+          e2e = import ./nix/e2e {
+            inherit pkgs;
+            snow = self.packages.${system}.snow;
+            snowglobeModule = self.nixosModules.default;
+          };
         in
         {
           snow = pkgs.rustPlatform.buildRustPackage {
@@ -93,10 +98,7 @@
             snow = self.packages.${system}.snow;
             snowglobeModule = self.nixosModules.default;
           };
-          push-recordings = import ./nix/e2e/recordings.nix {
-            inherit pkgs;
-            pushTest = self.packages.${system}.push-e2e;
-          };
+          push-recordings = e2e.recordings;
           upload-demos = pkgs.writeShellApplication {
             name = "upload-demos";
             runtimeInputs = [ pkgs.asciinema ];
@@ -107,11 +109,7 @@
           };
         } // nixpkgs.lib.optionalAttrs pkgs.stdenv.isLinux (nixpkgs.lib.mapAttrs'
           (name: test: nixpkgs.lib.nameValuePair "e2e-${name}" test)
-          (import ./nix/e2e {
-            inherit pkgs;
-            snow = self.packages.${system}.snow;
-            snowglobeModule = self.nixosModules.default;
-          }))
+          e2e.tests)
       );
 
       checks = nixpkgs.lib.genAttrs checkedSystems (system:
@@ -122,6 +120,7 @@
         {
           snow-package = self.packages.${system}.snow;
           recorder = import ./nix/demos/record.test.nix { inherit pkgs; };
+          render-demos = import ./nix/demos/render.test.nix { inherit pkgs; };
           hooks-module = runNixTests "hooks-module" (import ./modules/hooks.test.nix { inherit pkgs; });
           push-module = runNixTests "push-module" (import ./modules/push.test.nix { inherit pkgs; });
           local-pkgs-module = runNixTests "local-pkgs-module" (import ./modules/local-pkgs.test.nix { inherit pkgs; });

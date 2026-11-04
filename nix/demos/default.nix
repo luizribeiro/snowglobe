@@ -19,9 +19,9 @@ in
     libraries = [ pkgs.python3Packages.pexpect ];
   };
 
-  # scenarios.json carries what the casts can't, such as titles and their
-  # order, to whatever publishes the demos
-  renderDemos = { pkgs, casts, scenarios ? [ ], look ? terminalLook, name ? "demos" }:
+  # Takes directories as `record` writes them. demos.json lists their
+  # demo.json files in the given order, for whatever publishes the demos.
+  renderDemos = { pkgs, demos, look ? terminalLook, name ? "demos" }:
     let
       castToSvg = withLook {
         inherit pkgs look;
@@ -29,12 +29,21 @@ in
         script = ./cast_to_svg.py;
       };
     in
-    pkgs.runCommand name { SVG_TERM = "${pkgs.svg-term}/bin/svg-term"; } ''
+    pkgs.runCommand name {
+      SVG_TERM = "${pkgs.svg-term}/bin/svg-term";
+      nativeBuildInputs = [ pkgs.jq castToSvg ];
+    } ''
       mkdir -p $out
-      cp ${casts}/* $out/
-      cp ${pkgs.writeText "scenarios.json" (builtins.toJSON scenarios)} $out/scenarios.json
-      for cast in $out/*.cast; do
-        ${castToSvg}/bin/cast-to-svg "$cast" "''${cast%.cast}.svg"
-      done
+      for demo in ${pkgs.lib.escapeShellArgs demos}; do
+        demo_name=$(jq -r .name "$demo/demo.json")
+        if [ -e "$out/$demo_name.cast" ]; then
+          echo "renderDemos: two demos are named $demo_name" >&2
+          exit 1
+        fi
+        cp "$demo/demo.cast" "$out/$demo_name.cast"
+        cast-to-svg "$out/$demo_name.cast" "$out/$demo_name.svg"
+        cat "$demo/demo.json"
+      done > demos
+      jq -s . demos > $out/demos.json
     '';
 }

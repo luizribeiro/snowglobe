@@ -3,7 +3,7 @@
 Usage: upload-demos RECORDINGS [PAGE]
 
 RECORDINGS is the push-recordings output; PAGE (docs/demos.md by default) is
-the markdown file to write. Each scenario plays inline as an animated SVG,
+the markdown file to write. Each demo plays inline as an animated SVG,
 copied into a `demos` directory next to PAGE, and links to its player.
 
 Run `asciinema auth` once first: asciinema.org deletes recordings that no
@@ -44,28 +44,28 @@ def upload(cast: Path) -> str:
     return found.group()
 
 
-def section(scenario: dict, svg: str, url: str) -> str:
-    return (f"## {scenario['title']}\n\n`{scenario['command']}`\n\n"
-            f"[![{scenario['name']}]({svg})]({url})\n")
+def section(demo: dict, svg: str, url: str) -> str:
+    return (f"## {demo['title']}\n\n`{demo['command']}`\n\n"
+            f"[![{demo['name']}]({svg})]({url})\n")
 
 
 def main() -> None:
     recordings = Path(sys.argv[1])
     page = Path(sys.argv[2] if len(sys.argv) > 2 else "docs/demos.md")
-    scenarios = json.loads((recordings / "scenarios.json").read_text())
+    demos = json.loads((recordings / "demos.json").read_text())
     svgs = page.parent / "demos"
     svgs.mkdir(exist_ok=True)
     for old in svgs.glob("*.svg"):
         old.unlink()
     sections = []
     with tempfile.TemporaryDirectory() as tmp:
-        for scenario in scenarios:
-            cast = recordings / f"{scenario['name']}.cast"
-            url = upload(titled(cast, scenario["title"], Path(tmp)))
-            print(f"{scenario['name']}: {url}")
-            svg = f"{scenario['name']}.svg"
+        for demo in demos:
+            cast = recordings / f"{demo['name']}.cast"
+            url = upload(titled(cast, demo["title"], Path(tmp)))
+            print(f"{demo['name']}: {url}")
+            svg = f"{demo['name']}.svg"
             shutil.copyfile(recordings / svg, svgs / svg)
-            sections.append(section(scenario, f"demos/{svg}", url))
+            sections.append(section(demo, f"demos/{svg}", url))
     page.write_text("\n".join([HEADER, *sections]))
 
 
