@@ -84,7 +84,7 @@ let
 
   recorder = pkgs.writers.writePython3Bin "record"
     { libraries = [ pkgs.python3Packages.pexpect ]; }
-    (builtins.readFile ./record.py);
+    (builtins.readFile ../demos/record.py);
 
   snowRunner = {
     nix.settings.experimental-features = [ "nix-command" "flakes" ];
