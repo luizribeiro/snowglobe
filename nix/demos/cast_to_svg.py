@@ -3,8 +3,9 @@
 Usage: cast-to-svg CAST SVG
 
 Uses the theme in the cast's header, keeps pauses to at most 3s like the
-asciinema player, and prefers the Hack font for viewers who have it. Runs
-svg-term from $SVG_TERM, or from PATH.
+asciinema player, and prefers the fonts of the terminal look file at
+$TERMINAL_LOOK for viewers who have them. Runs svg-term from $SVG_TERM, or
+from PATH.
 """
 
 import json
@@ -15,8 +16,6 @@ import tempfile
 from pathlib import Path
 
 MAX_PAUSE = 3.0
-# Put before svg-term's own list, so viewers without Hack still get those
-FONT_PREFIX = "'Hack Nerd Font Mono',Hack,"
 
 
 def capped(lines: list[str]) -> list[str]:
@@ -55,7 +54,10 @@ def main() -> None:
     attribute = 'font-family="'
     if attribute not in text:
         sys.exit(f"cast-to-svg: no {attribute} in svg-term's output")
-    svg.write_text(text.replace(attribute, attribute + FONT_PREFIX),
+    look = json.loads(Path(os.environ["TERMINAL_LOOK"]).read_text())
+    # Before svg-term's own list, so viewers without these still get those
+    fonts = "".join(f"'{font}'," for font in look["fonts"])
+    svg.write_text(text.replace(attribute, attribute + fonts),
                    encoding="utf-8")
 
 

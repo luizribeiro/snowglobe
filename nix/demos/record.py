@@ -7,6 +7,8 @@ Writes an asciicast v2 file to CAST, echoes the command's output, and exits
 with its status. The command is typed after a zsh prompt. Each --answer waits
 for TEXT on screen, then presses KEYS, one at a time (written as Python
 escapes: "\\x1b[B" is the down arrow).
+
+Takes the colors from the terminal look file at $TERMINAL_LOOK.
 """
 
 import argparse
@@ -21,20 +23,16 @@ import time
 import pexpect
 
 ESCAPES = r"(?:\x1b\[[0-9;?]*[A-Za-z])*"
-BOLD_GREEN, BOLD_BLUE, ARG0, RESET = (
-    "\x1b[1;32m", "\x1b[1;34m", "\x1b[1;38;5;230m", "\x1b[0m")
-# The maintainer's terminal colors ("Custom Monokai"), so players that honor
-# a recording's theme show it as it looked in their terminal
-THEME = {
-    "fg": "#f8f7f2",
-    "bg": "#1c1c1c",
-    "palette": ":".join([
-        "#262621", "#ca4238", "#bbd756", "#ded685",
-        "#85c2d6", "#7b72c2", "#cf5a78", "#fefefe",
-        "#717171", "#df3f67", "#bbd756", "#ded685",
-        "#85c2d6", "#7b72c2", "#cf5a78", "#fefefe",
-    ]),
-}
+with open(os.environ["TERMINAL_LOOK"]) as file:
+    LOOK = json.load(file)
+# Players that honor a recording's theme show it in the look's colors
+THEME = {"fg": LOOK["fg"], "bg": LOOK["bg"],
+         "palette": ":".join(LOOK["palette"])}
+PROMPT = LOOK["prompt"]
+USER = f"\x1b[{PROMPT['user']}m"
+DIRECTORY = f"\x1b[{PROMPT['directory']}m"
+COMMAND = f"\x1b[{PROMPT['command']}m"
+RESET = "\x1b[0m"
 TYPING_DELAY = 0.05
 PAUSE_BEFORE_TYPING = 1.0
 PAUSE_BEFORE_ANSWER = 1.0
@@ -42,9 +40,9 @@ PAUSE_BETWEEN_KEYS = 0.5
 
 
 def zsh_prompt(spec):
-    """The maintainer's zsh prompt: bold green user@host, bold blue dir"""
+    """A zsh prompt: user@host, then the directory"""
     who, directory = spec.split(":", 1)
-    return f"{BOLD_GREEN}{who} {BOLD_BLUE}{directory} % {RESET}"
+    return f"{USER}{who} {DIRECTORY}{directory} % {RESET}"
 
 
 class Cast:
@@ -76,7 +74,7 @@ class Cast:
         self.write(prompt)
         time.sleep(PAUSE_BEFORE_TYPING)
         program, *rest = map(shlex.quote, command)
-        self.write(ARG0)
+        self.write(COMMAND)
         self.type_out(program)
         self.write(RESET)
         self.type_out("".join(" " + word for word in rest))
