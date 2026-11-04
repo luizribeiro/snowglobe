@@ -96,7 +96,10 @@ impl RebuildArgs {
         println!("\n{}", reboot_notice(check));
 
         if self.force {
-            println!("--force: switching without rebooting\n\n{SWITCH_WARNING}");
+            println!(
+                "--force: switching without rebooting\n\n{}",
+                marks::warning_lines(SWITCH_WARNING)
+            );
             return Ok(RebootAction::SwitchRisky);
         }
         if self.skip_reboot {
@@ -116,7 +119,7 @@ impl RebuildArgs {
             return Ok(action);
         }
 
-        println!("\n{SWITCH_WARNING}");
+        println!("\n{}", marks::warning_lines(SWITCH_WARNING));
         let confirmed = Confirm::with_theme(&ColorfulTheme::default())
             .with_prompt("Switch anyway?")
             .default(false)
@@ -370,9 +373,8 @@ mod tests {
 
     #[test]
     fn test_switch_warning_fits_an_80_column_terminal() {
-        assert!(SWITCH_WARNING
-            .lines()
-            .all(|line| line.chars().count() <= 80));
+        let warning = console::strip_ansi_codes(&marks::warning_lines(SWITCH_WARNING)).into_owned();
+        assert!(warning.lines().all(|line| line.chars().count() <= 80));
     }
 
     #[test]

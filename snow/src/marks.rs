@@ -11,6 +11,23 @@ pub fn failure() -> StyledObject<&'static str> {
     style("✗").red()
 }
 
+pub fn warning() -> StyledObject<&'static str> {
+    style("!").yellow().bold()
+}
+
+/// Later lines sit under the first line's text, past the mark and its space
+pub fn warning_lines(text: &str) -> String {
+    let indented: Vec<String> = text
+        .lines()
+        .enumerate()
+        .map(|(i, line)| match (i, line.is_empty()) {
+            (0, _) | (_, true) => line.to_string(),
+            _ => format!("  {line}"),
+        })
+        .collect();
+    format!("{} {}", warning(), indented.join("\n"))
+}
+
 /// Marks what was skipped or cancelled on purpose
 pub fn skipped() -> StyledObject<&'static str> {
     style("⊘").dim()
@@ -40,9 +57,27 @@ mod tests {
     }
 
     #[test]
-    fn test_success_is_a_green_check_and_failure_a_red_cross() {
+    fn test_marks_render_with_their_colors() {
         assert_eq!(rendered(success()), "\u{1b}[32m✓\u{1b}[0m");
         assert_eq!(rendered(failure()), "\u{1b}[31m✗\u{1b}[0m");
+        assert_eq!(rendered(warning()), "\u{1b}[33m\u{1b}[1m!\u{1b}[0m");
+    }
+
+    #[test]
+    fn test_warning_lines_leaves_blank_lines_empty() {
+        assert_eq!(
+            console::strip_ansi_codes(&warning_lines("First\n\nThird\n")),
+            "! First\n\n  Third"
+        );
+    }
+
+    #[test]
+    fn test_warning_lines_indents_later_lines_under_the_text() {
+        let lines = warning_lines("Until you reboot, the system mixes old and new parts,\nand anything that depends on both may misbehave.");
+        assert_eq!(
+            console::strip_ansi_codes(&lines),
+            "! Until you reboot, the system mixes old and new parts,\n  and anything that depends on both may misbehave."
+        );
     }
 
     #[test]
