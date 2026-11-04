@@ -7,6 +7,7 @@ let
   # In the order the demos page shows them
   names = [
     "switch"
+    "rebuild-cancel"
   ];
 
   files = lib.genAttrs names (name: import ./tests/${name}.nix);
