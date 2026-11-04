@@ -113,6 +113,8 @@ for name, machine in targets.items():
     machine.wait_for_unit("sshd.service")
     machine.succeed(f"install -d -m 700 /root/.ssh && echo {shlex.quote(key)} > /root/.ssh/authorized_keys")
     client.wait_until_succeeds(f"ssh -o BatchMode=yes root@{name} true", timeout=60)
+    # Test VMs boot without the system profile an installed host has
+    machine.succeed("mkdir -p /nix/var/nix/profiles && ln -sfn \"$(readlink -f /run/current-system)\" /nix/var/nix/profiles/system")
 base = {name: running(name) for name in targets}
 
 # Each push expects the hosts as the one before left them
@@ -121,6 +123,7 @@ try:
         push = Recording("switch").run()
         push.succeeded()
         push.has("Pushing 3 hosts in 2 phases:", "p1  boron", "p2  cerium, radon", "✓ Phase p1", "✓ Phase p2")
+        assert "could not read installed systems" not in push.output, push.output
         push.logged("boron: activate started", "boron: deployed", "cerium: deployed", "radon: deployed")
         assert push.log.index("boron: deployed") < push.log.index("cerium: build started"), push.log
         for host in targets:
