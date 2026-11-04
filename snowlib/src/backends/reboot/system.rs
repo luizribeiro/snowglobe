@@ -309,9 +309,11 @@ impl SystemRebootBackend {
                     tracing::debug!("{}: not back yet: {}", target.hostname, e);
                     last_error = Some(crate::error::error_chain(&e));
                 }
+                // The deadline cut this check short; an earlier check's
+                // error says more about why the host is not back
                 Err(_elapsed) => {
                     still_on_previous_boot = false;
-                    last_error = Some("a check was still running".to_string());
+                    last_error.get_or_insert_with(|| "the host never answered".to_string());
                     break;
                 }
             }
@@ -638,8 +640,25 @@ esac
         );
         let reason = reboot_not_confirmed_reason(err);
         assert!(
-            reason.starts_with("host did not come back online within 4 seconds"),
+            reason.starts_with("host did not come back online within 4 seconds (last error: "),
             "{reason}"
+        );
+        assert!(reason.contains("did not finish within 2s"), "{reason}");
+    }
+
+    #[tokio::test]
+    async fn test_reboot_wait_says_when_the_host_never_answered() {
+        let host = FakeHost::new(r#"echo boot_id > "$state/hang_on"; exit 255"#);
+
+        let err = host
+            .backend(1)
+            .reboot_and_wait(&fake_target())
+            .await
+            .unwrap_err();
+
+        assert_eq!(
+            reboot_not_confirmed_reason(err),
+            "host did not come back online within 1 seconds (last error: the host never answered)"
         );
     }
 
