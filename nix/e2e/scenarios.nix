@@ -5,6 +5,17 @@ let
   localHook = command: { location = "local"; inherit command; timeout = 60; };
   slowDrain = { pre-deploy.drain-node = localHook "sleep 6"; };
   missingPath = "/nix/store/vcy97mavll1fwawj02qr7lkkl0kl2q6y-wait-storage-healthy";
+  # Run on boron itself, which gets a new initrd and so has to reboot
+  rebuild = answers: {
+    command = "rebuild";
+    on = "boron";
+    args = "";
+    inherit answers;
+    hosts.boron.variant = "initrd";
+  };
+  menu = "What would you like to do?";
+  down = "\\x1b[B";
+  enter = "\\r";
 in
 [
   {
@@ -89,4 +100,16 @@ in
     args = "--reboot-timeout 20";
     hosts.radon = { variant = "v1"; rebootPolicy = "always"; };
   }
+  (rebuild [ [ menu "${down} ${down} ${enter}" ] [ "Continue?" "n" ] ] // {
+    name = "rebuild-cancel";
+    title = "snow rebuild asks before switching without a reboot, and is cancelled";
+  })
+  (rebuild [ [ menu "${down} ${enter}" ] ] // {
+    name = "rebuild-boot";
+    title = "snow rebuild sets the new system to start on the next boot";
+  })
+  (rebuild [ [ menu enter ] ] // {
+    name = "rebuild-reboot";
+    title = "snow rebuild reboots into the new system";
+  })
 ]

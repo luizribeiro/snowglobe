@@ -1,9 +1,13 @@
 import re
 import shlex
 import time
+from typing import Any, cast
 
 targets = {"boron": boron, "cerium": cerium, "radon": radon}
-by_name = {s["name"]: s for s in scenarios}
+nodes = {"client": client, **targets}
+# The machine the client stands in for in the recorded prompt
+DEPLOYER = "sodium"
+by_name = {s["name"]: s for s in cast(list[dict[str, Any]], scenarios)}
 ansi = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]|\x1b[()][A-Z0-9]|\r")
 
 
@@ -11,24 +15,61 @@ def plain(text: str) -> str:
     return ansi.sub("", text)
 
 
-class Push:
-    def __init__(self, name: str, env: str = ""):
+class Recording:
+    """Runs a scenario's snow command where it runs, recorded under the prompt
+    the maintainer would see there"""
+
+    def __init__(self, name: str):
         self.name = name
-        flake = f"/tmp/scenarios/{name}"
-        client.succeed(
-            f"rm -rf {flake} && cp -rL /etc/scenarios/{name} {flake} && chmod -R u+w {flake}"
-        )
-        command = f"snow push {by_name[name]['args']}".strip()
+        self.scenario = by_name[name]
+        self.on = self.scenario.get("on", "client")
+        self.machine = nodes[self.on]
+        self.flake = f"/tmp/scenarios/{name}"
+        self.stage_flake()
         # snow names its log by the second; one log at a time can't be mistaken
-        client.succeed("rm -f /tmp/snow-*.log")
+        self.machine.succeed("rm -f /tmp/snow-*.log")
+
+    def stage_flake(self) -> None:
+        source = client.succeed(f"readlink -f /etc/scenarios/{self.name}").strip()
+        if self.on != "client":
+            client.succeed(f"nix copy --no-check-sigs --to ssh://root@{self.on} {source}")
+        self.machine.succeed(
+            f"rm -rf {self.flake} && cp -rL {source} {self.flake} && chmod -R u+w {self.flake}"
+        )
+
+    def record_command(self) -> str:
+        host = DEPLOYER if self.on == "client" else self.on
+        answers = "".join(
+            f" --answer {shlex.quote(text)} {shlex.quote(keys)}"
+            for text, keys in self.scenario.get("answers", [])
+        )
+        command = f"snow {self.scenario.get('command', 'push')} {self.scenario['args']}"
+        return (
+            f"record --prompt luiz@{host}:ops{answers} "
+            f"/var/lib/casts/{self.name}.cast 100 24 -- {command.strip()}"
+        )
+
+    def run(self, env: str = "") -> "Recording":
         started = time.monotonic()
-        self.status, output = client.execute(
-            f"cd {flake} && {env} record /tmp/casts/{name}.cast 100 24 -- {command}"
+        self.status, output = self.machine.execute(
+            f"cd {self.flake} && {env} {self.record_command()}"
         )
         self.seconds = time.monotonic() - started
         self.output = plain(output)
-        client.succeed(f"cp /tmp/snow-*.log /tmp/casts/{name}.log")
-        self.log = client.succeed(f"cat /tmp/casts/{name}.log")
+        self.collect()
+        return self
+
+    def start(self) -> None:
+        """Runs in the background, for a command that takes its machine down"""
+        self.machine.succeed(
+            f"systemd-run --unit=record-{self.name} --working-directory={self.flake} "
+            "-E PATH=/run/wrappers/bin:/run/current-system/sw/bin -E HOME=/root "
+            f"/run/current-system/sw/bin/{self.record_command()}"
+        )
+
+    def collect(self) -> None:
+        self.machine.succeed(f"cp /tmp/snow-*.log /var/lib/casts/{self.name}.log")
+        self.log = self.machine.succeed(f"cat /var/lib/casts/{self.name}.log")
 
     def has(self, *texts: str) -> None:
         for text in texts:
@@ -65,7 +106,8 @@ def runs(host: str, variant: str) -> None:
 boron.start(allow_reboot=True)
 start_all()
 client.succeed("ssh-keygen -q -t ed25519 -N '' -f /root/.ssh/id_ed25519")
-client.succeed("mkdir -p /tmp/casts /tmp/scenarios")
+for machine in (client, boron):
+    machine.succeed("mkdir -p /var/lib/casts /tmp/scenarios")
 key = client.succeed("cat /root/.ssh/id_ed25519.pub").strip()
 for name, machine in targets.items():
     machine.wait_for_unit("sshd.service")
@@ -76,7 +118,7 @@ base = {name: running(name) for name in targets}
 # Each push expects the hosts as the one before left them
 try:
     with subtest("three hosts in two phases switch to a new system"):
-        push = Push("switch")
+        push = Recording("switch").run()
         push.succeeded()
         push.has("Pushing 3 hosts in 2 phases:", "p1  boron", "p2  cerium, radon", "✓ Phase p1", "✓ Phase p2")
         push.logged("boron: activate started", "boron: deployed", "cerium: deployed", "radon: deployed")
@@ -86,7 +128,7 @@ try:
 
     with subtest("a host that must reboot boots into the new system"):
         before = boot_id("boron")
-        push = Push("reboot")
+        push = Recording("reboot").run()
         push.succeeded()
         push.logged("boron: reboot started", "boron: reboot finished in", "boron: deployed")
         # A test VM boots the kernel it started with, so it runs its first system
@@ -98,7 +140,7 @@ try:
         assert boots_into("boron") == variants["boron"]["v2"], boots_into("boron")
 
     with subtest("one host fails to activate while the others succeed"):
-        push = Push("activation-failure")
+        push = Recording("activation-failure").run()
         push.failed()
         push.has("cerium", "1/3 failed")
         push.logged("cerium: failed at activate:", "boron: deployed", "radon: deployed")
@@ -108,7 +150,7 @@ try:
         runs("radon", "v2")
 
     with subtest("a failing pre-deploy hook keeps its host from activating"):
-        push = Push("hook-failure")
+        push = Recording("hook-failure").run()
         push.failed()
         push.has("radon", "wait-storage-healthy")
         push.logged("radon: failed at", "storage on radon is degraded", "cerium: deployed")
@@ -116,7 +158,7 @@ try:
         runs("radon", "v2")
 
     with subtest("a local hook whose program is missing stops the push before building"):
-        push = Push("missing-hook")
+        push = Recording("missing-hook").run()
         push.failed()
         # The error wraps the path after /nix/store/
         push.has(by_name["missing-hook"]["missingPath"].removeprefix("/nix/store/"))
@@ -127,7 +169,7 @@ try:
     with subtest("a host off the network fails on its own after ssh times out"):
         cerium.block()
         try:
-            push = Push("unreachable")
+            push = Recording("unreachable").run()
         finally:
             cerium.unblock()
         push.failed()
@@ -142,7 +184,7 @@ try:
         )
         client.wait_for_file("/tmp/hung-agent.sock")
         try:
-            push = Push("hung-agent", env="SSH_AUTH_SOCK=/tmp/hung-agent.sock")
+            push = Recording("hung-agent").run(env="SSH_AUTH_SOCK=/tmp/hung-agent.sock")
         finally:
             client.succeed("systemctl stop hung-agent")
         push.failed()
@@ -151,7 +193,7 @@ try:
         runs("cerium", "v1")
 
     with subtest("two hosts in a serial group take turns"):
-        push = Push("serial-group")
+        push = Recording("serial-group").run()
         push.succeeded()
         waiting = re.search(r"(\w+): waiting for serial group 'storage' \(held by (\w+)\)", push.log)
         assert waiting, push.log
@@ -163,11 +205,44 @@ try:
 
     with subtest("a rebooted host that never comes back fails at the deadline"):
         # radon powers off instead of rebooting, as test VMs do by default
-        push = Push("reboot-deadline")
+        push = Recording("reboot-deadline").run()
         push.failed()
         push.has("radon")
         push.logged("radon: failed at reboot:", "did not come back online within 20 seconds")
         radon.wait_for_shutdown()
+
+    with subtest("snow rebuild asks before switching without a reboot"):
+        before = boots_into("boron")
+        rebuild = Recording("rebuild-cancel").run()
+        rebuild.succeeded()
+        rebuild.has("Reboot required", "What would you like to do?", "Continue?", "Rebuild cancelled")
+        assert boots_into("boron") == before, boots_into("boron")
+
+    with subtest("snow rebuild sets the new system for the next boot"):
+        running_before = running("boron")
+        rebuild = Recording("rebuild-boot").run()
+        rebuild.succeeded()
+        rebuild.has("Configuration will apply on next boot")
+        assert boots_into("boron") == variants["boron"]["initrd"], boots_into("boron")
+        assert running("boron") == running_before, running("boron")
+
+    with subtest("snow rebuild reboots into the new system"):
+        before = boot_id("boron")
+        rebuild = Recording("rebuild-reboot")
+        rebuild.start()
+        # Asked from the client: boron's own shell goes down with it
+        client.wait_until_succeeds(
+            f"ssh -o ConnectTimeout=5 root@boron 'test $(cat /proc/sys/kernel/random/boot_id) != {before}'",
+            timeout=300,
+        )
+        # The driver's shell on boron died with the reboot
+        boron.connected = False
+        boron.wait_for_unit("multi-user.target")
+        rebuild.collect()
+        assert boots_into("boron") == variants["boron"]["initrd"], boots_into("boron")
+        recorded = boron.succeed("cat /var/lib/casts/rebuild-reboot.cast")
+        assert "Rebooting" in recorded, recorded
 finally:
     # Kept even when a scenario fails, to see what it showed
-    client.copy_from_vm("/tmp/casts", "")
+    client.execute("scp -q -o ConnectTimeout=10 'root@boron:/var/lib/casts/*' /var/lib/casts/")
+    client.copy_from_vm("/var/lib/casts", "")

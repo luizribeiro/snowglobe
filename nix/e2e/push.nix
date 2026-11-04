@@ -11,6 +11,10 @@ let
     v1.environment.etc.pushed.text = "v1";
     v2.environment.etc.pushed.text = "v2";
     v3.environment.etc.pushed.text = "v3";
+    initrd = {
+      environment.etc.pushed.text = "initrd";
+      boot.initrd.availableKernelModules = [ "nbd" ];
+    };
     broken = {
       environment.etc.pushed.text = "broken";
       systemd.services.storage-agent = {
@@ -79,6 +83,11 @@ let
   '';
 
   recorder = pkgs.writers.writePython3Bin "record" { } (builtins.readFile ./record.py);
+
+  snowRunner = {
+    nix.settings.experimental-features = [ "nix-command" "flakes" ];
+    environment.systemPackages = [ (lib.hiPrio impureNix) snow recorder ];
+  };
 in
 pkgs.testers.runNixOSTest {
   name = "snow-push";
@@ -87,14 +96,16 @@ pkgs.testers.runNixOSTest {
     virtualisation.memorySize = 1024;
   };
 
-  nodes = lib.genAttrs targets (_: { lib, ... }: {
-    imports = [ snowglobeModule ];
+  nodes = lib.genAttrs targets (name: { lib, ... }: {
+    imports = [ snowglobeModule ] ++ lib.optional (name == "boron") snowRunner;
     services.openssh.enable = true;
     specialisation = lib.mapAttrs (_: configuration: { inherit configuration; }) variants;
   }) // {
+    # Holds every scenario's flake, even those run on boron: one in boron's own
+    # /etc would point at a boron system that contains it
     client = { nodes, ... }: {
-      nix.settings.experimental-features = [ "nix-command" "flakes" ];
-      environment.systemPackages = [ (lib.hiPrio impureNix) snow recorder pkgs.socat ];
+      imports = [ snowRunner ];
+      environment.systemPackages = [ pkgs.socat ];
       environment.etc = lib.mapAttrs'
         (name: scenario: lib.nameValuePair "scenarios/${name}" {
           source = scenarioFlake nodes name scenario;

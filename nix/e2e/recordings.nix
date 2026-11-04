@@ -7,7 +7,7 @@ let
     (s: ''
       ## ${s.title}
 
-      `snow push ${s.args}` · [log](${s.name}.log) · [cast](${s.name}.cast)
+      `snow ${s.command or "push"} ${s.args}` · [log](${s.name}.log) · [cast](${s.name}.cast)
 
       ![${s.name}](${s.name}.gif)
 

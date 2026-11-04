@@ -1,10 +1,12 @@
 """Runs a command in a terminal of a fixed size and records it.
 
-Usage: record [--prompt USER@HOST:DIR] CAST COLS ROWS -- COMMAND...
+Usage: record [--prompt USER@HOST:DIR] [--answer TEXT KEYS]...
+              CAST COLS ROWS -- COMMAND...
 
 Writes an asciicast v2 file to CAST, which agg turns into a GIF, echoes the
 command's output, and exits with its status. The command is typed after a
-zsh prompt.
+zsh prompt. Each --answer waits for TEXT on screen, then presses KEYS, one at
+a time (written as Python escapes: "\\x1b[B" is the down arrow).
 """
 
 import argparse
@@ -25,6 +27,8 @@ BOLD_GREEN, BOLD_BLUE, ARG0, RESET = (
     "\x1b[1;32m", "\x1b[1;34m", "\x1b[1;38;5;230m", "\x1b[0m")
 TYPING_DELAY = 0.05
 PAUSE_BEFORE_TYPING = 1.0
+PAUSE_BEFORE_ANSWER = 1.0
+PAUSE_BETWEEN_KEYS = 0.5
 
 
 def spawn(command, cols, rows):
@@ -83,9 +87,42 @@ class Cast:
         self.record("\r\n")
 
 
+class Answers:
+    """Presses keys once their text is on screen, slow enough to follow"""
+
+    def __init__(self, answers):
+        self.pending = [(text, [codecs.decode(key, "unicode_escape")
+                                for key in keys.split()])
+                        for text, keys in answers]
+        self.screen = ""
+        self.keys = []
+        self.due = 0.0
+
+    def saw(self, text):
+        self.screen += ANSI.sub("", text)
+        if self.keys or not self.pending:
+            return
+        waiting_for = self.pending[0][0]
+        found = self.screen.find(waiting_for)
+        if found >= 0:
+            self.keys = self.pending.pop(0)[1]
+            self.screen = self.screen[found + len(waiting_for):]
+            self.due = time.monotonic() + PAUSE_BEFORE_ANSWER
+
+    def press(self, leader):
+        if self.keys and time.monotonic() >= self.due:
+            os.write(leader, self.keys.pop(0).encode())
+            self.due = time.monotonic() + PAUSE_BETWEEN_KEYS
+
+    def unanswered(self):
+        return [text for text, _ in self.pending]
+
+
 def parse():
     parser = argparse.ArgumentParser(prog="record")
     parser.add_argument("--prompt", default="luiz@sodium:ops")
+    parser.add_argument("--answer", nargs=2, action="append", default=[],
+                        metavar=("TEXT", "KEYS"))
     parser.add_argument("cast")
     parser.add_argument("cols", type=int)
     parser.add_argument("rows", type=int)
@@ -96,7 +133,7 @@ def parse():
     return args
 
 
-def run(cast, command, cols, rows):
+def run(cast, command, cols, rows, answers):
     pid, leader = spawn(command, cols, rows)
     decoder = codecs.getincrementaldecoder("utf-8")("replace")
     while True:
@@ -108,7 +145,10 @@ def run(cast, command, cols, rows):
                 break
             if not chunk:
                 break
-            cast.record(decoder.decode(chunk))
+            text = decoder.decode(chunk)
+            answers.saw(text)
+            cast.record(text)
+        answers.press(leader)
     _, status = os.waitpid(pid, 0)
     return os.waitstatus_to_exitcode(status)
 
@@ -117,11 +157,15 @@ def main():
     args = parse()
     os.environ["TERM"] = "xterm-256color"
     prompt = zsh_prompt(args.prompt)
+    answers = Answers(args.answer)
     with open(args.cast, "w") as out:
         cast = Cast(out, args.cols, args.rows)
         cast.type_command(prompt, args.command)
-        status = run(cast, args.command, args.cols, args.rows)
+        status = run(cast, args.command, args.cols, args.rows, answers)
         cast.record(prompt)
+    if answers.unanswered():
+        print(f"record: never saw {answers.unanswered()}", file=sys.stderr)
+        sys.exit(status or 1)
     sys.exit(status)
 
 
