@@ -167,7 +167,7 @@ mod tests {
             .arg("nonexistent")
             .assert()
             .failure()
-            .stderr(predicate::str::contains("Invalid host(s)"))
+            .stderr(predicate::str::contains("Unknown host: nonexistent"))
             .stderr(predicate::str::contains("nonexistent"));
     }
 

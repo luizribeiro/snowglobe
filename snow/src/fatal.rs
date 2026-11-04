@@ -93,17 +93,17 @@ mod tests {
 
     #[test]
     fn test_render_indents_later_message_and_help_lines() {
-        let error = SnowError::from(FlakeError::InvalidHosts {
-            invalid_hosts: "neon".to_string(),
-            available_hosts: "argon, boron".to_string(),
+        let error = SnowError::from(NixError::BuildFailed {
+            host: "radon".to_string(),
+            stderr: "error: builder for wine failed".to_string(),
         });
 
         assert_eq!(
             styled(&error, false),
-            "✗ Invalid host(s): neon\n    \
-             Available hosts: argon, boron\n  \
-             help: Check your flake's nixosConfigurations for the list of available hosts.\n    \
-             You can run 'snow list' to see all configured hosts."
+            "✗ Failed to build host configuration for 'radon':\n    \
+             error: builder for wine failed\n  \
+             help: Check that the host exists in your flake's nixosConfigurations and can be built:\n    \
+             \x20 nix build .#nixosConfigurations.radon.config.system.build.toplevel"
         );
     }
 }

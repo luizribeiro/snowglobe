@@ -136,17 +136,17 @@ pub async fn resolve_hosts(
 
 fn ensure_hosts_exist(requested: &[String], all_hosts: &[snowlib::Host]) -> Result<()> {
     let available: BTreeSet<&str> = all_hosts.iter().map(|h| h.name.as_str()).collect();
-    let invalid_hosts: Vec<&str> = requested
+    let invalid_hosts: Vec<String> = requested
         .iter()
-        .map(String::as_str)
-        .filter(|h| !available.contains(h))
+        .filter(|h| !available.contains(h.as_str()))
+        .cloned()
         .collect();
 
     if invalid_hosts.is_empty() {
         return Ok(());
     }
     Err(snowlib::error::FlakeError::InvalidHosts {
-        invalid_hosts: invalid_hosts.join(", "),
+        invalid_hosts,
         available_hosts: available.into_iter().collect::<Vec<_>>().join(", "),
     }
     .into())
@@ -310,11 +310,21 @@ mod tests {
         let explicit = vec!["host1".to_string(), "nonexistent".to_string()];
         let result = resolve_hosts(&flake, &backend, None, Some(&explicit)).await;
 
-        assert!(result.is_err());
-        let err_msg = result.unwrap_err().to_string();
-        assert!(err_msg.contains("nonexistent"));
-        assert!(err_msg.contains("host1"));
-        assert!(err_msg.contains("host2"));
+        assert_eq!(result.unwrap_err().to_string(), "Unknown host: nonexistent");
+    }
+
+    #[tokio::test]
+    async fn test_resolve_hosts_names_every_unknown_host() {
+        let flake = fixture_flake();
+        let backend = create_mock_backend_with_hosts(vec!["argon", "boron"]);
+
+        let explicit = vec!["argon".to_string(), "xenon".to_string(), "neon".to_string()];
+        let result = resolve_hosts(&flake, &backend, None, Some(&explicit)).await;
+
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "Unknown hosts: xenon, neon"
+        );
     }
 
     #[tokio::test]
@@ -328,9 +338,10 @@ mod tests {
                 .await
                 .unwrap_err();
 
+            assert_eq!(err.to_string(), "Unknown host: xenon");
             assert_eq!(
-                err.to_string(),
-                "Invalid host(s): xenon\nAvailable hosts: argon, boron, neon, radon"
+                miette::Diagnostic::help(&err).unwrap().to_string(),
+                "The flake's hosts are argon, boron, neon, radon. Run `snow list` to see them."
             );
         }
     }
