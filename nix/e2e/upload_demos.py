@@ -3,13 +3,16 @@
 Usage: upload-demos RECORDINGS [PAGE]
 
 RECORDINGS is the push-recordings output; PAGE (docs/demos.md by default) is
-the markdown file to write, with each scenario's preview image linking to its
-player. Run `asciinema auth` once first: asciinema.org deletes recordings that
-no account has claimed after a few days, which would break the page's links.
+the markdown file to write. Each scenario plays inline as an animated SVG,
+copied into a `demos` directory next to PAGE, and links to its player.
+
+Run `asciinema auth` once first: asciinema.org deletes recordings that no
+account has claimed after a few days, which would break the page's links.
 """
 
 import json
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -19,7 +22,7 @@ URL = re.compile(r"https://asciinema\.org/a/\w+")
 HEADER = """# Demos
 
 Recorded by the NixOS VM tests in `nix/e2e`: real pushes and rebuilds
-between VMs. Click a preview to play it.
+between VMs. Click a demo to open it in the asciinema player.
 """
 
 
@@ -41,22 +44,28 @@ def upload(cast: Path) -> str:
     return found.group()
 
 
-def section(scenario: dict, url: str) -> str:
+def section(scenario: dict, svg: str, url: str) -> str:
     return (f"## {scenario['title']}\n\n`{scenario['command']}`\n\n"
-            f"[![{scenario['name']}]({url}.svg)]({url})\n")
+            f"[![{scenario['name']}]({svg})]({url})\n")
 
 
 def main() -> None:
     recordings = Path(sys.argv[1])
     page = Path(sys.argv[2] if len(sys.argv) > 2 else "docs/demos.md")
     scenarios = json.loads((recordings / "scenarios.json").read_text())
+    svgs = page.parent / "demos"
+    svgs.mkdir(exist_ok=True)
+    for old in svgs.glob("*.svg"):
+        old.unlink()
     sections = []
     with tempfile.TemporaryDirectory() as tmp:
         for scenario in scenarios:
             cast = recordings / f"{scenario['name']}.cast"
             url = upload(titled(cast, scenario["title"], Path(tmp)))
             print(f"{scenario['name']}: {url}")
-            sections.append(section(scenario, url))
+            svg = f"{scenario['name']}.svg"
+            shutil.copyfile(recordings / svg, svgs / svg)
+            sections.append(section(scenario, f"demos/{svg}", url))
     page.write_text("\n".join([HEADER, *sections]))
 
 
