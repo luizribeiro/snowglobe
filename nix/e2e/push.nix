@@ -107,7 +107,10 @@ pkgs.testers.runNixOSTest {
       wantedBy = [ "multi-user.target" ];
       before = [ "sshd.service" ];
       unitConfig.ConditionPathExists = "!/nix/var/nix/profiles/system";
-      serviceConfig.Type = "oneshot";
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+      };
       script = ''
         ${config.nix.package}/bin/nix-env --profile /nix/var/nix/profiles/system \
           --set "$(readlink -f /run/booted-system)"
