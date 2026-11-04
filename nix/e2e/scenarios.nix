@@ -13,7 +13,7 @@ let
     inherit answers;
     hosts.boron.variant = "initrd";
   };
-  menu = "What would you like to do?";
+  menu = "What now?";
   down = "\\x1b[B";
   enter = "\\r";
 in
@@ -100,9 +100,9 @@ in
     args = "--reboot-timeout 20";
     hosts.radon = { variant = "v1"; rebootPolicy = "always"; };
   }
-  (rebuild [ [ menu "${down} ${down} ${enter}" ] [ "Continue?" "n" ] ] // {
+  (rebuild [ [ menu "${down} ${down} ${enter}" ] [ "Switch anyway?" "n" ] ] // {
     name = "rebuild-cancel";
-    title = "snow rebuild asks before switching without a reboot, and is cancelled";
+    title = "snow rebuild warns before switching without a reboot, and is cancelled";
   })
   (rebuild [ [ menu "${down} ${enter}" ] ] // {
     name = "rebuild-boot";

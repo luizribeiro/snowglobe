@@ -215,7 +215,7 @@ try:
         before = boots_into("boron")
         rebuild = Recording("rebuild-cancel").run()
         rebuild.succeeded()
-        rebuild.has("Reboot required", "What would you like to do?", "Continue?", "Rebuild cancelled")
+        rebuild.has("Reboot needed:", "• initrd changed", "What now?", "mixes old and new parts", "Switch anyway?", "Cancelled, nothing changed")
         rebuild.logged("boron: reboot required: initrd changed", "boron: chose to cancel")
         assert boots_into("boron") == before, boots_into("boron")
 
@@ -223,7 +223,7 @@ try:
         running_before = running("boron")
         rebuild = Recording("rebuild-boot").run()
         rebuild.succeeded()
-        rebuild.has("Configuration will apply on next boot")
+        rebuild.has("The new system starts at the next boot")
         rebuild.logged("boron: built", "boron: chose to activate on the next boot", "boron: activated (Boot mode)")
         assert boots_into("boron") == variants["boron"]["initrd"], boots_into("boron")
         assert running("boron") == running_before, running("boron")
