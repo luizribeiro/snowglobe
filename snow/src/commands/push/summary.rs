@@ -98,13 +98,13 @@ fn phase_heading(phase: &snowlib::PhaseResult) -> String {
     if phase.all_succeeded() {
         format!(
             "{} {}",
-            style(format!("✓ {title}")).green().bold(),
+            success_headline(&title),
             style(format!("({total} {} in {took})", plural(total, "host"))).dim()
         )
     } else {
         format!(
             "{} {}",
-            style(format!("✗ {title}")).red().bold(),
+            failure_headline(&title),
             style(format!(
                 "({}/{total} failed in {took})",
                 phase.failure_count()
@@ -112,6 +112,14 @@ fn phase_heading(phase: &snowlib::PhaseResult) -> String {
             .dim()
         )
     }
+}
+
+fn success_headline(text: &str) -> String {
+    format!("{} {}", marks::success().bold(), style(text).green().bold())
+}
+
+fn failure_headline(text: &str) -> String {
+    format!("{} {}", marks::failure().bold(), style(text).red().bold())
 }
 
 pub(super) fn success_labels(host: &snowlib::HostDeploymentResult) -> Vec<&'static str> {
@@ -220,16 +228,10 @@ fn overall_summary(results: &snowlib::PushResults) -> String {
     let failed = results.failure_count();
     let skipped = results.skipped_count();
     if failed == 0 && skipped == 0 {
-        return format!(
-            "{} {}",
-            marks::success().bold(),
-            style(format!(
-                "{succeeded} {} deployed",
-                plural(succeeded, "host")
-            ))
-            .green()
-            .bold()
-        );
+        return success_headline(&format!(
+            "{succeeded} {} deployed",
+            plural(succeeded, "host")
+        ));
     }
 
     let mut text = format!("{succeeded}/{} deployed", results.total_count());
@@ -239,7 +241,7 @@ fn overall_summary(results: &snowlib::PushResults) -> String {
         }
     }
     if failed > 0 {
-        format!("{} {}", marks::failure().bold(), style(text).red().bold())
+        failure_headline(&text)
     } else {
         format!("{} {}", marks::warning(), style(text).yellow().bold())
     }
