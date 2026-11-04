@@ -24,6 +24,18 @@ fn test_help_command() {
 }
 
 #[test]
+fn test_fatal_error_shows_its_help_without_a_std_prefix() {
+    assert_cmd::cargo::cargo_bin_cmd!("snow")
+        .args(["-f", "/srv/no-such-flake", "list"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::starts_with(
+            "✗ Flake path does not exist: /srv/no-such-flake\n  help: Provide a valid path",
+        ))
+        .stderr(predicate::str::contains("Error:").not());
+}
+
+#[test]
 fn test_push_help() {
     snow_cmd()
         .arg("push")

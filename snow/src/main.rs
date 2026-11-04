@@ -1,7 +1,7 @@
 use clap::Parser;
-use miette::{IntoDiagnostic, Result};
 use std::fs::File;
 use std::io::IsTerminal;
+use std::process::ExitCode;
 use std::sync::Arc;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -9,6 +9,7 @@ use tracing_subscriber::util::SubscriberInitExt;
 mod backend_factory;
 mod commands;
 mod error_summary;
+mod fatal;
 mod filter_helpers;
 mod host_selection;
 mod marks;
@@ -78,22 +79,30 @@ fn setup_logging(is_interactive: bool) -> Option<std::path::PathBuf> {
 }
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> ExitCode {
     miette::set_panic_hook();
 
     let is_interactive = std::io::stderr().is_terminal();
     let log_file = setup_logging(is_interactive);
 
+    // Every block ends with one blank line, this one too, so whatever comes
+    // next (even a fatal error) starts after a blank line
     if let Some(ref path) = log_file {
-        eprintln!("Logs: {}", path.display());
+        eprintln!("Logs: {}\n", path.display());
     }
 
     let cli = Cli::parse();
 
-    let flake = snowlib::Flake::new(cli.flake_path.as_deref()).into_diagnostic()?;
+    match run(cli, log_file.as_deref()).await {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("{}", fatal::render(&error));
+            ExitCode::FAILURE
+        }
+    }
+}
 
-    cli.command
-        .run(&flake, log_file.as_deref())
-        .await
-        .into_diagnostic()
+async fn run(cli: Cli, log_file: Option<&std::path::Path>) -> snowlib::Result<()> {
+    let flake = snowlib::Flake::new(cli.flake_path.as_deref())?;
+    cli.command.run(&flake, log_file).await
 }

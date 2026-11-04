@@ -520,22 +520,32 @@ pub enum ProvisionerError {
     DeploymentCancelled { provisioner: String, target: String },
 }
 
-/// The error's message followed by each source's, joined with ": ".
-///
-/// Sources whose text the message already quotes are skipped, since many
-/// variants embed their stderr in the message too.
+/// The error's message followed by each of its `error_causes`, joined with ": "
 pub fn error_chain(error: &(dyn std::error::Error + 'static)) -> String {
-    let mut chain = error.to_string();
+    std::iter::once(error.to_string())
+        .chain(error_causes(error))
+        .collect::<Vec<_>>()
+        .join(": ")
+}
+
+/// The message of each source behind `error`.
+///
+/// Sources whose text the message or an earlier source already quotes are
+/// skipped, since many variants embed their stderr in the message too.
+pub fn error_causes(error: &(dyn std::error::Error + 'static)) -> Vec<String> {
+    let mut quoted = error.to_string();
+    let mut causes = Vec::new();
     let mut source = error.source();
     while let Some(cause) = source {
         let text = cause.to_string();
-        if !chain.contains(&text) {
-            chain.push_str(": ");
-            chain.push_str(&text);
+        if !quoted.contains(&text) {
+            quoted.push('\n');
+            quoted.push_str(&text);
+            causes.push(text);
         }
         source = cause.source();
     }
-    chain
+    causes
 }
 
 /// Whether `error` or any of its sources is an I/O timeout
@@ -621,6 +631,25 @@ mod tests {
         assert_eq!(
             error_chain(&error),
             "Failed to build host configuration for 'radon':\nerror: builder for wine failed"
+        );
+    }
+
+    #[test]
+    fn test_error_causes_skip_a_source_an_earlier_one_quotes() {
+        let error = NixError::MetadataFailed {
+            host: "ferrum".to_string(),
+            source: Box::new(NixError::BuildFailed {
+                host: "ferrum".to_string(),
+                stderr: "error: builder for wine failed".to_string(),
+                source: std::io::Error::other("error: builder for wine failed"),
+            }),
+        };
+
+        assert_eq!(
+            error_causes(&error),
+            vec![
+                "Failed to build host configuration for 'ferrum':\nerror: builder for wine failed"
+            ]
         );
     }
 

@@ -17,15 +17,21 @@ pub fn warning() -> StyledObject<&'static str> {
 
 /// Later lines sit under the first line's text, past the mark and its space
 pub fn warning_lines(text: &str) -> String {
-    let indented: Vec<String> = text
-        .lines()
-        .enumerate()
-        .map(|(i, line)| match (i, line.is_empty()) {
-            (0, _) | (_, true) => line.to_string(),
-            _ => format!("  {line}"),
-        })
+    let (first, rest) = text.split_once('\n').unwrap_or((text, ""));
+    let lines: Vec<String> = std::iter::once(first.to_string())
+        .chain(indented(rest, "  "))
         .collect();
-    format!("{} {}", warning(), indented.join("\n"))
+    format!("{} {}", warning(), lines.join("\n"))
+}
+
+/// Each line of `text` behind `indent`, leaving blank lines empty
+pub fn indented(text: &str, indent: &str) -> Vec<String> {
+    text.lines()
+        .map(|line| match line.is_empty() {
+            true => String::new(),
+            false => format!("{indent}{line}"),
+        })
+        .collect()
 }
 
 /// Marks what was skipped or cancelled on purpose

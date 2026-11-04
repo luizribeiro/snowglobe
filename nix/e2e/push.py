@@ -188,7 +188,7 @@ try:
         finally:
             client.succeed("systemctl stop hung-agent")
         push.failed()
-        push.has("ssh-agent did not answer within 10s")
+        push.has("✗ The ssh-agent did not answer within 10s", "help: Every ssh connection would hang on it.")
         assert push.seconds < 60, push.seconds
         runs("cerium", "v1")
 

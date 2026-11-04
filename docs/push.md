@@ -663,7 +663,7 @@ $ snow push hydrogen --switch
 → Building configurations...
 ✓ Built 1 configuration(s)
 
-Error: Cannot use --switch when reboot is required
+✗ Cannot use --switch when reboot is required
 
 Reboot required because: kernel changed
 
