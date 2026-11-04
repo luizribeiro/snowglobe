@@ -25,6 +25,11 @@ pkgs.runCommand "render-demos-tests" { nativeBuildInputs = [ pkgs.jq ]; } ''
   grep -q '<svg' ${rendered}/alpha.svg
   grep -q '<svg[^>]* x="12"[^>]* y="12"' ${rendered}/zulu.svg || { echo "zulu.svg isn't padded" >&2; exit 1; }
   grep -q '<path class="[^"]*" d="M0 0h[0-9.]*v[0-9.]*H0z"/>' ${rendered}/zulu.svg || { echo "zulu.svg has no cursor" >&2; exit 1; }
+  # zulu has no pause long enough to be cut, so its cast's end is the SVG's
+  hold=5
+  duration=$(grep -oE 'animation-duration:[0-9.]+' ${rendered}/zulu.svg | head -n1 | cut -d: -f2)
+  end=$(tail -n1 ${rendered}/zulu.cast | jq '.[0]')
+  jq -en "($duration - $end - $hold) | fabs < 0.001" >/dev/null || { echo "zulu.svg doesn't hold its last frame for ''${hold}s" >&2; exit 1; }
   grep -q "two demos are named alpha" ${duplicated}/testBuildFailure.log
   touch $out
 ''

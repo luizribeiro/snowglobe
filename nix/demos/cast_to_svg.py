@@ -3,9 +3,9 @@
 Usage: cast-to-svg CAST SVG
 
 Uses the theme in the cast's header. Like the asciinema player, pads the
-terminal and keeps pauses to at most 3s. Prefers the fonts of the terminal
-look file at $TERMINAL_LOOK for viewers who have them. Runs svg-term from
-$SVG_TERM, or from PATH.
+terminal and keeps pauses to at most 3s. Holds the last frame for 5s before
+looping. Prefers the fonts of the terminal look file at $TERMINAL_LOOK for
+viewers who have them. Runs svg-term from $SVG_TERM, or from PATH.
 """
 
 import json
@@ -16,6 +16,8 @@ import tempfile
 from pathlib import Path
 
 MAX_PAUSE = 3.0
+# The SVGs loop, so the result needs time on screen before the next run
+END_HOLD = 5.0
 # The asciinema player's 0.75em border, at svg-term's 16.7px font
 PADDING = 12
 
@@ -30,6 +32,11 @@ def capped(lines: list[str]) -> list[str]:
     return out
 
 
+def held(lines: list[str]) -> list[str]:
+    end = json.loads(lines[-1])[0]
+    return lines + [json.dumps([round(end + END_HOLD, 6), "o", ""])]
+
+
 def xresources(theme: dict) -> str:
     colors = {"foreground": theme["fg"], "background": theme["bg"],
               "colorBD": theme["fg"], "colorUL": theme["fg"],
@@ -42,11 +49,14 @@ def xresources(theme: dict) -> str:
 def main() -> None:
     cast, svg = Path(sys.argv[1]), Path(sys.argv[2])
     lines = cast.read_text(encoding="utf-8").splitlines()
+    if len(lines) < 2:
+        sys.exit(f"cast-to-svg: {cast} has no events")
     theme = json.loads(lines[0])["theme"]
     with tempfile.TemporaryDirectory() as tmp:
         short, profile = Path(tmp) / "cast", Path(tmp) / "theme"
         rendered = Path(tmp) / "svg"
-        short.write_text("\n".join(capped(lines)) + "\n", encoding="utf-8")
+        short.write_text("\n".join(held(capped(lines))) + "\n",
+                         encoding="utf-8")
         profile.write_text(xresources(theme), encoding="utf-8")
         subprocess.run([os.environ.get("SVG_TERM", "svg-term"),
                         "--in", str(short), "--out", str(rendered),
