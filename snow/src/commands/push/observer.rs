@@ -33,17 +33,9 @@ impl CliObserver {
     }
 }
 
-fn phase_label(phase: &str) -> &str {
-    if super::summary::is_unnamed_phase(phase) {
-        "Deploying"
-    } else {
-        phase
-    }
-}
-
 impl PushObserver for CliObserver {
     fn on_phase_start(&self, phase: &str, hosts: &[String]) {
-        let board = HostBoard::new(phase_label(phase), hosts, Instant::now());
+        let board = HostBoard::new(phase, hosts, Instant::now());
         let lines = board.line_count();
         *self.board.lock() = Some(board);
 
@@ -115,10 +107,7 @@ mod tests {
         observer.on_phase_start("p3", &hosts());
 
         assert_eq!(observer.spans.lock().len(), 1 + Lane::ALL.len() + 2);
-        assert_eq!(
-            observer.board.lock().as_ref().unwrap().header(),
-            "p3 · 2 hosts · 2 queued"
-        );
+        assert_eq!(observer.board.lock().as_ref().unwrap().title(), "Phase p3");
     }
 
     #[test]
@@ -127,10 +116,7 @@ mod tests {
 
         observer.on_phase_start("default", &hosts());
 
-        assert_eq!(
-            observer.board.lock().as_ref().unwrap().header(),
-            "Deploying · 2 hosts · 2 queued"
-        );
+        assert_eq!(observer.board.lock().as_ref().unwrap().title(), "Deploying");
     }
 
     #[test]

@@ -5,6 +5,7 @@
 
 use super::board::{format_elapsed, HostBoard, Lane, Line, Row, RowKind};
 use super::colors::style;
+use console::Color;
 use parking_lot::Mutex;
 use std::sync::Arc;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
@@ -33,31 +34,52 @@ pub(super) fn header_style(board: SharedBoard) -> ProgressStyle {
 /// The template's elapsed time, "00:03:07", and the space before it
 const ELAPSED_WIDTH: usize = 9;
 
-/// "⠋ ▶ p2 · 3 hosts · 1 done  ━━━━━━╸───────────── 33%". The bar is left out
-/// when it would not fit: a header that wraps breaks indicatif's redraws.
+/// "⠋ ▶ Phase p2 · 3 hosts · 1 done  ━━━━━━╸───────────── 33%", green until a
+/// host fails, then red. The bar is left out when it would not fit: a header
+/// that wraps breaks indicatif's redraws.
 pub(super) fn header_text(board: &HostBoard, spinner: &str, width: usize) -> String {
     let (finished, total) = board.progress();
-    let title = format!("{spinner} ▶ {}", board.header());
-    let bar = format!(
-        "  {} {}%",
-        progress_bar(finished, total, BAR_WIDTH),
-        finished * 100 / total.max(1)
-    );
-    let fits = title.chars().count() + bar.chars().count() + ELAPSED_WIDTH < width;
-    let title = style(title).bold();
+    let color = header_color(board);
+    let title = format!("{spinner} ▶ {}", board.title());
+    let counts = format!(" · {}", board.counts());
+    let (filled, empty) = progress_bar(finished, total, BAR_WIDTH);
+    let percent = format!(" {}%", finished * 100 / total.max(1));
+    let fits = [&title, &counts, "  ", &filled, &empty, &percent]
+        .iter()
+        .map(|part| part.chars().count())
+        .sum::<usize>()
+        + ELAPSED_WIDTH
+        < width;
+    let heading = format!("{}{}", style(title).fg(color).bold(), style(counts).dim());
     if fits {
-        format!("{title}{bar}")
+        format!(
+            "{heading}  {}{}{percent}",
+            style(filled).fg(color),
+            style(empty).dim()
+        )
     } else {
-        title.to_string()
+        heading
     }
 }
 
-pub(super) fn progress_bar(finished: usize, total: usize, width: usize) -> String {
+fn header_color(board: &HostBoard) -> Color {
+    if board.any_failed() {
+        Color::Red
+    } else {
+        Color::Green
+    }
+}
+
+/// The bar's filled part, with its head, and the part still to go
+pub(super) fn progress_bar(finished: usize, total: usize, width: usize) -> (String, String) {
     let full = finished * width / total.max(1);
     if full >= width {
-        "━".repeat(width)
+        ("━".repeat(width), String::new())
     } else {
-        format!("{}╸{}", "━".repeat(full), "─".repeat(width - full - 1))
+        (
+            format!("{}╸", "━".repeat(full)),
+            "─".repeat(width - full - 1),
+        )
     }
 }
 
@@ -90,9 +112,21 @@ pub(super) fn render_slot(
         Line::Lane { lane, hosts } => lane_heading(lane, hosts),
         Line::Host(row) => {
             let text = row_text(&row, board.hostname_width(), width, spinner);
-            styled(row.kind, text)
+            styled(&row, text)
         }
     })
+}
+
+fn lane_color(lane: Lane) -> Color {
+    match lane {
+        Lane::Queued => Color::White,
+        Lane::Build => Color::Yellow,
+        Lane::Copy => Color::Blue,
+        Lane::Activate => Color::Cyan,
+        Lane::Reboot => Color::Magenta,
+        Lane::Done => Color::Green,
+        Lane::Failed => Color::Red,
+    }
 }
 
 fn lane_title(lane: Lane) -> &'static str {
@@ -110,11 +144,10 @@ fn lane_title(lane: Lane) -> &'static str {
 /// Empty lanes are dimmed, so the eye goes to where the hosts are
 fn lane_heading(lane: Lane, hosts: usize) -> String {
     let text = style(format!("{LANE_INDENT}{}", lane_title(lane)));
-    match (lane, hosts) {
-        (_, 0) => text.dim().to_string(),
-        (Lane::Failed, _) => text.red().bold().to_string(),
-        (Lane::Done, _) => text.green().bold().to_string(),
-        _ => text.bold().to_string(),
+    if hosts == 0 {
+        text.dim().to_string()
+    } else {
+        text.fg(lane_color(lane)).bold().to_string()
     }
 }
 
@@ -162,10 +195,11 @@ fn truncate(text: &str, max: usize) -> String {
     }
 }
 
-fn styled(kind: RowKind, text: String) -> String {
-    match kind {
+/// A host at work takes its lane's colour
+fn styled(row: &Row, text: String) -> String {
+    match row.kind {
         RowKind::Failed => style(text).red().to_string(),
-        RowKind::Active => style(text).cyan().to_string(),
+        RowKind::Active => style(text).fg(lane_color(row.lane)).to_string(),
         RowKind::Queued | RowKind::Unchanged => style(text).dim().to_string(),
         RowKind::Done => style(text).green().to_string(),
     }
@@ -299,20 +333,61 @@ mod tests {
 
         assert_eq!(
             header_text(&board, "⠋", 100),
-            "⠋ ▶ p2 · 3 hosts · 💥 1 failed · 1 running · 1 queued  ━━━━━━╸───────────── 33%"
+            "⠋ ▶ Phase p2 · 3 hosts · 💥 1 failed · 1 running · 1 queued  ━━━━━━╸───────────── 33%"
         );
         assert_eq!(
             header_text(&board, "⠋", 80),
-            "⠋ ▶ p2 · 3 hosts · 💥 1 failed · 1 running · 1 queued"
+            "⠋ ▶ Phase p2 · 3 hosts · 💥 1 failed · 1 running · 1 queued"
         );
     }
 
     #[test]
+    fn test_each_lane_has_a_fixed_colour() {
+        let colors: Vec<_> = Lane::ALL.iter().map(|&lane| lane_color(lane)).collect();
+
+        assert_eq!(
+            colors,
+            vec![
+                Color::White,
+                Color::Yellow,
+                Color::Blue,
+                Color::Cyan,
+                Color::Magenta,
+                Color::Green,
+                Color::Red,
+            ]
+        );
+    }
+
+    #[test]
+    fn test_header_turns_red_once_a_host_fails() {
+        let t0 = Instant::now();
+        let hosts: Vec<String> = ["boron", "cerium"].map(String::from).to_vec();
+        let mut board = HostBoard::new("p2", &hosts, t0);
+        let before = header_color(&board);
+
+        board.apply(
+            "cerium",
+            &snowlib::HostEvent::Failed {
+                step: snowlib::PipelineStep::Copy,
+                reason: "Copy closure failed".to_string(),
+            },
+            t0,
+        );
+
+        assert_eq!((before, header_color(&board)), (Color::Green, Color::Red));
+    }
+
+    #[test]
     fn test_progress_bar_fills_as_hosts_finish() {
-        assert_eq!(progress_bar(0, 3, 10), "╸─────────");
-        assert_eq!(progress_bar(1, 2, 10), "━━━━━╸────");
-        assert_eq!(progress_bar(3, 3, 10), "━━━━━━━━━━");
-        assert_eq!(progress_bar(0, 0, 10), "╸─────────");
+        let bar = |finished, total| {
+            let (filled, empty) = progress_bar(finished, total, 10);
+            format!("{filled}|{empty}")
+        };
+        assert_eq!(bar(0, 3), "╸|─────────");
+        assert_eq!(bar(1, 2), "━━━━━╸|────");
+        assert_eq!(bar(3, 3), "━━━━━━━━━━|");
+        assert_eq!(bar(0, 0), "╸|─────────");
     }
 
     #[test]

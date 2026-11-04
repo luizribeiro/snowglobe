@@ -16,6 +16,15 @@ pub(super) fn is_unnamed_phase(phase: &str) -> bool {
     matches!(phase, "default" | "_all")
 }
 
+/// "Phase p2", or `unnamed` for the phase without a name
+pub(super) fn phase_title(phase: &str, unnamed: &str) -> String {
+    if is_unnamed_phase(phase) {
+        unnamed.to_string()
+    } else {
+        format!("Phase {phase}")
+    }
+}
+
 /// Which hosts each phase will push, so a host nobody expected shows up
 /// before anything happens
 pub fn phase_overview(phases: &[(String, Vec<String>)]) -> String {
@@ -67,11 +76,7 @@ pub fn phase_report(phase: &snowlib::PhaseResult) -> String {
 }
 
 fn phase_heading(phase: &snowlib::PhaseResult) -> String {
-    let title = if is_unnamed_phase(&phase.phase) {
-        "Deploy".to_string()
-    } else {
-        format!("Phase {}", phase.phase)
-    };
+    let title = phase_title(&phase.phase, "Deploy");
     let took = format_elapsed(phase.duration);
     let total = phase.hosts.len();
     if phase.all_succeeded() {

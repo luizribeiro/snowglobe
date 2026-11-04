@@ -196,17 +196,28 @@ impl HostBoard {
         (finished, self.hosts.len())
     }
 
-    pub fn header(&self) -> String {
+    pub fn title(&self) -> String {
+        super::summary::phase_title(&self.phase, "Deploying")
+    }
+
+    pub fn any_failed(&self) -> bool {
+        self.hosts
+            .iter()
+            .any(|host| kind_of(&host.state) == RowKind::Failed)
+    }
+
+    pub fn counts(&self) -> String {
         let count = |kinds: &[RowKind]| {
             self.hosts
                 .iter()
                 .filter(|host| kinds.contains(&kind_of(&host.state)))
                 .count()
         };
-        let mut parts = vec![
-            self.phase.clone(),
-            format!("{} {}", self.hosts.len(), plural(self.hosts.len(), "host")),
-        ];
+        let mut parts = vec![format!(
+            "{} {}",
+            self.hosts.len(),
+            plural(self.hosts.len(), "host")
+        )];
         for (n, prefix, label) in [
             (count(&[RowKind::Done, RowKind::Unchanged]), "", "done"),
             (count(&[RowKind::Failed]), "💥 ", "failed"),
@@ -404,7 +415,7 @@ mod tests {
             ]
         );
         assert_eq!(rows[0].elapsed, Some(secs(5)));
-        assert_eq!(board.header(), "p3 · 4 hosts · 4 queued");
+        assert_eq!(board.counts(), "4 hosts · 4 queued");
     }
 
     #[test]
@@ -458,8 +469,8 @@ mod tests {
             ]
         );
         assert_eq!(
-            board.header(),
-            "p3 · 4 hosts · 1 done · 💥 1 failed · 1 running · 1 queued"
+            board.counts(),
+            "4 hosts · 1 done · 💥 1 failed · 1 running · 1 queued"
         );
     }
 
@@ -797,9 +808,10 @@ mod tests {
     #[test]
     fn test_header_and_width_for_a_single_host() {
         let t0 = Instant::now();
-        let board = HostBoard::new("Deploying", &["praseodymium".to_string()], t0);
+        let board = HostBoard::new("default", &["praseodymium".to_string()], t0);
 
-        assert_eq!(board.header(), "Deploying · 1 host · 1 queued");
+        assert_eq!(board.title(), "Deploying");
+        assert_eq!(board.counts(), "1 host · 1 queued");
         assert_eq!(board.hostname_width(), 12);
     }
 
