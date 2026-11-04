@@ -1,8 +1,8 @@
 # direnv
 .direnv
 
-# Cargo workspace
-/target
+# Cargo build output, wherever cargo ran
+target/
 Cargo.lock
 
 # Environment variables
@@ -22,3 +22,10 @@ docs/wip/
 
 # Claude settings
 .claude/settings.local.json
+
+# nix build output links
+result
+result-*
+
+# Agent worktrees
+.claude/worktrees/
