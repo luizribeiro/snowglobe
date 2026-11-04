@@ -1,3 +1,4 @@
+use crate::plural::plural;
 use clap::Args;
 use snowlib::{
     get_provisioner, Flake, InjectionResult, KeyGenBackend, NixBackend, OutputMode,
@@ -81,14 +82,7 @@ impl BootstrapArgs {
                 &self.hostname,
                 &keys.age_public_key,
             )?;
-            if result.files_updated > 0 {
-                println!(
-                    "  ✓ Updated .sops.yaml and re-encrypted {} secret file(s)",
-                    result.files_updated
-                );
-            } else {
-                println!("  ✓ Updated .sops.yaml");
-            }
+            println!("  ✓ {}", sops_updated(result.files_updated));
         }
 
         // Build image
@@ -217,6 +211,16 @@ fn create_backends(
     )
 }
 
+fn sops_updated(files_updated: usize) -> String {
+    match files_updated {
+        0 => "Updated .sops.yaml".to_string(),
+        n => format!(
+            "Updated .sops.yaml and re-encrypted {n} secret {}",
+            plural(n, "file", "files")
+        ),
+    }
+}
+
 fn requires_confirmation(target: &TargetType) -> bool {
     matches!(target, TargetType::BlockDevice(_))
 }
@@ -243,8 +247,22 @@ fn confirm_operation(target: &TargetType) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use super::sops_updated;
     use crate::test_utils::snow_cmd;
     use predicates::prelude::*;
+
+    #[test]
+    fn test_sops_updated_counts_re_encrypted_files() {
+        assert_eq!(sops_updated(0), "Updated .sops.yaml");
+        assert_eq!(
+            sops_updated(1),
+            "Updated .sops.yaml and re-encrypted 1 secret file"
+        );
+        assert_eq!(
+            sops_updated(3),
+            "Updated .sops.yaml and re-encrypted 3 secret files"
+        );
+    }
 
     #[test]
     fn test_bootstrap_help() {
