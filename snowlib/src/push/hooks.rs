@@ -116,7 +116,7 @@ impl HookExecutor {
 
             let result = loop {
                 tracing::info!(
-                    "Executing {:?} hook '{}' for {} (attempt {}/{}): {}",
+                    "Executing {} hook '{}' for {} (attempt {}/{}): {}",
                     stage,
                     hook.name,
                     hostname,
@@ -157,13 +157,10 @@ impl HookExecutor {
                 }
 
                 tracing::warn!(
-                    "Hook '{}' failed for {} (attempt {}/{}), retrying in {}s: {}",
-                    hook.name,
-                    hostname,
-                    attempt,
-                    max_attempts,
+                    "{}, retrying in {}s: {}",
+                    hook_failure(hostname, hook, &result, attempt),
                     hook.retry_delay,
-                    result.stderr
+                    last_stderr_line(&result.stderr)
                 );
 
                 tokio::time::sleep(Duration::from_secs(hook.retry_delay)).await;
@@ -181,13 +178,9 @@ impl HookExecutor {
 
             if !result.success && !hook.continue_on_failure {
                 tracing::error!(
-                    "Hook '{}' ({:?} stage) failed for {} after {} attempt(s) (exit code: {:?}): {}",
-                    hook.name,
-                    stage,
-                    hostname,
-                    attempt,
-                    result.exit_code,
-                    result.stderr
+                    "{}: {}",
+                    hook_failure(hostname, hook, &result, attempt),
+                    result.stderr.trim()
                 );
 
                 // Notify observer that hooks stage failed
@@ -198,10 +191,7 @@ impl HookExecutor {
                 return Err(crate::error::SnowError::Deploy(
                     crate::error::DeployError::CommandFailed {
                         host: hostname.to_string(),
-                        command: format!(
-                            "Hook '{}' ({:?} stage): {}",
-                            hook.name, stage, hook.command
-                        ),
+                        command: format!("Hook '{}' ({stage}): {}", hook.name, hook.command),
                         exit_code: result.exit_code.unwrap_or(-1),
                         stderr: result.stderr.clone(),
                         stdout: result.stdout.clone(),
@@ -209,12 +199,9 @@ impl HookExecutor {
                 ));
             } else if !result.success {
                 tracing::warn!(
-                    "Hook '{}' ({:?} stage) failed for {} after {} attempt(s) but continuing (continueOnFailure=true): {}",
-                    hook.name,
-                    stage,
-                    hostname,
-                    attempt,
-                    result.stderr
+                    "{}, continuing as it may fail: {}",
+                    hook_failure(hostname, hook, &result, attempt),
+                    last_stderr_line(&result.stderr)
                 );
             }
 
@@ -268,12 +255,96 @@ impl HookExecutor {
     }
 }
 
+/// As in "radon: hook 'drain' (pre-deploy) failed with exit code 1 after 3 attempts"
+fn hook_failure(hostname: &str, hook: &HookConfig, result: &HookResult, attempts: u32) -> String {
+    let exit = match result.exit_code {
+        Some(code) => format!("with exit code {code}"),
+        None => "without an exit code".to_string(),
+    };
+    let tries = match attempts {
+        1 => String::new(),
+        _ => format!(" after {attempts} attempts"),
+    };
+    format!(
+        "{hostname}: hook '{}' ({}) failed {exit}{tries}",
+        hook.name, hook.stage
+    )
+}
+
+/// A failed command's last words on stderr usually say why it failed
+fn last_stderr_line(stderr: &str) -> &str {
+    stderr
+        .lines()
+        .map(str::trim)
+        .rfind(|line| !line.is_empty())
+        .unwrap_or("no output")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::backends::hook::MockHookBackend;
     use crate::backends::hook::SystemHookBackend;
     use crate::process::OutputMode;
+
+    fn failed_hook(exit_code: Option<i32>) -> HookResult {
+        HookResult {
+            success: false,
+            exit_code,
+            stdout: String::new(),
+            stderr: "storage on radon is degraded\n".to_string(),
+            duration: Duration::from_secs(2),
+        }
+    }
+
+    fn drain_hook() -> HookConfig {
+        HookConfig::test_fixture(
+            "drain",
+            HookStage::PreDeploy,
+            HookLocation::Local,
+            "kubectl drain radon",
+        )
+    }
+
+    #[test]
+    fn test_hook_failure_gives_the_stage_and_plain_exit_code() {
+        assert_eq!(
+            hook_failure("radon", &drain_hook(), &failed_hook(Some(1)), 1),
+            "radon: hook 'drain' (pre-deploy) failed with exit code 1"
+        );
+    }
+
+    #[test]
+    fn test_hook_failure_counts_the_attempts() {
+        assert_eq!(
+            hook_failure("radon", &drain_hook(), &failed_hook(Some(3)), 4),
+            "radon: hook 'drain' (pre-deploy) failed with exit code 3 after 4 attempts"
+        );
+    }
+
+    #[test]
+    fn test_hook_failure_of_a_killed_hook() {
+        assert_eq!(
+            hook_failure("radon", &drain_hook(), &failed_hook(None), 1),
+            "radon: hook 'drain' (pre-deploy) failed without an exit code"
+        );
+    }
+
+    #[test]
+    fn test_last_stderr_line_skips_trailing_blank_lines() {
+        let stderr = "node/radon cordoned\nerror: cannot evict pod storage-0\n\n  \n";
+
+        assert_eq!(
+            last_stderr_line(stderr),
+            "error: cannot evict pod storage-0"
+        );
+    }
+
+    #[test]
+    fn test_last_stderr_line_of_a_silent_hook() {
+        assert_eq!(last_stderr_line(""), "no output");
+        assert_eq!(last_stderr_line("\n \n"), "no output");
+    }
 
     #[tokio::test]
     async fn test_executor_with_no_hooks() {

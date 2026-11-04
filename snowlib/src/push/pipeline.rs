@@ -55,37 +55,9 @@ async fn execute_hooks(
             );
         }
 
-        let results = executor
+        executor
             .execute_hooks_for_stage(hostname, stage, target, &env, Some(push_ctx.observer))
             .await?;
-
-        // Check for any failed hooks (even with continue_on_failure=true)
-        let failed_hooks: Vec<_> = results
-            .iter()
-            .enumerate()
-            .filter(|(_, r)| !r.success)
-            .collect();
-
-        if !failed_hooks.is_empty() {
-            tracing::warn!(
-                "⚠️  {} hook(s) failed for {} during {:?} stage (continued due to continueOnFailure=true):",
-                failed_hooks.len(),
-                hostname,
-                stage
-            );
-            for (idx, result) in failed_hooks {
-                tracing::warn!(
-                    "   - Hook #{} failed with exit code {:?}: {}",
-                    idx + 1,
-                    result.exit_code,
-                    if !result.stderr.is_empty() {
-                        result.stderr.lines().next().unwrap_or("(no error message)")
-                    } else {
-                        "(no error message)"
-                    }
-                );
-            }
-        }
     }
     Ok(())
 }
