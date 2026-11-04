@@ -223,7 +223,7 @@ impl RebuildArgs {
             .await?;
 
         // If no reboot needed, activate immediately and exit
-        if !reboot_check.required {
+        if !reboot_check.is_required() {
             tracing::info!("{hostname}: no reboot required, switching");
             println!("✅ No reboot required");
             println!("Activating configuration...");
@@ -232,16 +232,8 @@ impl RebuildArgs {
             return Ok(());
         }
 
-        // Reboot is required
-        let reason = reboot_check
-            .reason
-            .map(|r| r.to_string())
-            .unwrap_or_else(|| "unknown".to_string());
-
-        tracing::info!(
-            "{hostname}: reboot required: {}",
-            reason.lines().next().unwrap_or_default()
-        );
+        let reason = reboot_check.summary();
+        tracing::info!("{hostname}: reboot required: {reason}");
         let action = self.prompt_reboot_action(&reason)?;
         tracing::info!("{hostname}: chose to {}", action.describe());
 

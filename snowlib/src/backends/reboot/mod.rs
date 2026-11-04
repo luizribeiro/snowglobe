@@ -47,27 +47,86 @@ pub const DEFAULT_CRITICAL_SERVICES: &[&str] = &[
 /// Result of a reboot detection check
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RebootCheck {
-    /// Whether a reboot is required
-    pub required: bool,
-    /// Reason for reboot (if required)
-    pub reason: Option<RebootReason>,
+    /// Every reason found; a kernel upgrade usually brings a new initrd too
+    pub reasons: Vec<RebootReason>,
 }
 
 impl RebootCheck {
-    /// Create a check indicating no reboot is required
     pub fn not_required() -> Self {
-        Self {
-            required: false,
-            reason: None,
+        Self::from_reasons(Vec::new())
+    }
+
+    pub fn required(reason: RebootReason) -> Self {
+        Self::from_reasons(vec![reason])
+    }
+
+    pub fn from_reasons(reasons: Vec<RebootReason>) -> Self {
+        Self { reasons }
+    }
+
+    pub fn is_required(&self) -> bool {
+        !self.reasons.is_empty()
+    }
+
+    /// "kernel linux-6.12.58 → linux-6.12.60, initrd changed"
+    pub fn summary(&self) -> String {
+        self.reasons
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join(", ")
+    }
+}
+
+/// Which of `critical` services a dry-activate restart list would restart
+pub(crate) fn critical_restarts(restart_list: &str, critical: &[String]) -> Vec<RebootReason> {
+    let mut services: Vec<&str> = Vec::new();
+    for service in restart_list.lines().map(str::trim) {
+        if critical.iter().any(|c| c == service) && !services.contains(&service) {
+            services.push(service);
+        }
+    }
+    services
+        .into_iter()
+        .map(|service| RebootReason::CriticalService(service.to_string()))
+        .collect()
+}
+
+/// A part of the booted system that only takes effect at boot
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum BootComponent {
+    Kernel,
+    Initrd,
+}
+
+impl BootComponent {
+    pub(crate) fn checked(config: &RebootDetectionConfig) -> Vec<BootComponent> {
+        [
+            (config.check_kernel, BootComponent::Kernel),
+            (config.check_initrd, BootComponent::Initrd),
+        ]
+        .into_iter()
+        .filter_map(|(enabled, component)| enabled.then_some(component))
+        .collect()
+    }
+
+    /// Its name under a system, e.g. /run/booted-system/kernel
+    pub(crate) fn link(self) -> &'static str {
+        match self {
+            BootComponent::Kernel => "kernel",
+            BootComponent::Initrd => "initrd",
         }
     }
 
-    /// Create a check indicating a reboot is required
-    pub fn required(reason: RebootReason) -> Self {
-        Self {
-            required: true,
-            reason: Some(reason),
+    /// `old` and `new` are where the booted and new systems' links resolve
+    pub(crate) fn reason(self, old: String, new: String) -> Option<RebootReason> {
+        if old == new {
+            return None;
         }
+        Some(match self {
+            BootComponent::Kernel => RebootReason::KernelChanged { old, new },
+            BootComponent::Initrd => RebootReason::InitrdChanged { old, new },
+        })
     }
 }
 
@@ -162,42 +221,78 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_reboot_check_equality() {
-        let check1 = RebootCheck {
-            required: true,
-            reason: Some(RebootReason::KernelChanged {
-                old: "/nix/store/old-kernel".to_string(),
-                new: "/nix/store/new-kernel".to_string(),
-            }),
-        };
-        let check2 = RebootCheck {
-            required: true,
-            reason: Some(RebootReason::KernelChanged {
-                old: "/nix/store/old-kernel".to_string(),
-                new: "/nix/store/new-kernel".to_string(),
-            }),
-        };
-        assert_eq!(check1, check2);
-    }
-
-    #[test]
-    fn test_reboot_check_not_required() {
+    fn test_no_reasons_means_no_reboot() {
         let check = RebootCheck::not_required();
-        assert!(!check.required);
-        assert!(check.reason.is_none());
+
+        assert!(!check.is_required());
+        assert_eq!(check.summary(), "");
     }
 
     #[test]
-    fn test_reboot_check_required() {
-        let check = RebootCheck::required(RebootReason::KernelChanged {
-            old: "/nix/store/old-kernel".to_string(),
-            new: "/nix/store/new-kernel".to_string(),
-        });
-        assert!(check.required);
-        assert!(matches!(
-            check.reason,
-            Some(RebootReason::KernelChanged { .. })
-        ));
+    fn test_every_reason_is_listed_in_the_summary() {
+        let check = RebootCheck::from_reasons(vec![
+            kernel(
+                "/nix/store/0n6kcz8q4lw1-linux-6.12.58/bzImage",
+                "/nix/store/9s2mf0yh7l3a-linux-6.12.60/bzImage",
+            ),
+            RebootReason::InitrdChanged {
+                old: "/nix/store/b5h2sjpj-initrd-linux-6.12.58/initrd".to_string(),
+                new: "/nix/store/96wpyhsq-initrd-linux-6.12.60/initrd".to_string(),
+            },
+        ]);
+
+        assert!(check.is_required());
+        assert_eq!(
+            check.summary(),
+            "kernel linux-6.12.58 → linux-6.12.60, initrd changed"
+        );
+    }
+
+    #[test]
+    fn test_a_boot_component_is_a_reason_only_when_it_changed() {
+        let same = "/nix/store/b5h2sjpj-initrd-linux-6.12.58/initrd".to_string();
+        let other = "/nix/store/96wpyhsq-initrd-linux-6.12.58/initrd".to_string();
+
+        assert_eq!(
+            BootComponent::Initrd.reason(same.clone(), same.clone()),
+            None
+        );
+        assert_eq!(
+            BootComponent::Initrd.reason(same.clone(), other.clone()),
+            Some(RebootReason::InitrdChanged {
+                old: same,
+                new: other
+            })
+        );
+    }
+
+    #[test]
+    fn test_only_enabled_boot_components_are_checked() {
+        let config = RebootDetectionConfig {
+            check_kernel: false,
+            ..Default::default()
+        };
+
+        assert_eq!(BootComponent::checked(&config), vec![BootComponent::Initrd]);
+    }
+
+    #[test]
+    fn test_critical_restarts_lists_every_critical_service_in_order() {
+        let critical = vec![
+            "network-setup.service".to_string(),
+            "systemd-udevd-kernel.socket".to_string(),
+        ];
+        let restart_list =
+            "nginx.service\nsystemd-udevd-kernel.socket\n\n  network-setup.service  \nnetwork-setup.service\n";
+
+        assert_eq!(
+            critical_restarts(restart_list, &critical),
+            vec![
+                RebootReason::CriticalService("systemd-udevd-kernel.socket".to_string()),
+                RebootReason::CriticalService("network-setup.service".to_string()),
+            ]
+        );
+        assert!(critical_restarts("nginx.service\n", &critical).is_empty());
     }
 
     fn kernel(old: &str, new: &str) -> RebootReason {

@@ -88,14 +88,9 @@ async fn handle_switch_mode(
         .check_reboot_required(target, store_path)
         .await?;
 
-    if check.required && !force {
+    if check.is_required() && !force {
         // Reboot required but --force not set - block this host
-        let reason = check
-            .reason
-            .as_ref()
-            .map(|r| r.to_string())
-            .unwrap_or_else(|| "unknown".to_string());
-        Ok(ActivationStrategy::Block(reason))
+        Ok(ActivationStrategy::Block(check.summary()))
     } else {
         Ok(ActivationStrategy::Deploy(
             ActivationMode::Switch,
@@ -136,7 +131,7 @@ async fn handle_auto_mode(
         .check_reboot_required(target, store_path)
         .await?;
 
-    let activation = if check.required {
+    let activation = if check.is_required() {
         ActivationMode::Boot
     } else {
         ActivationMode::Switch

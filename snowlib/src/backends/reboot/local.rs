@@ -1,4 +1,4 @@
-use super::{RebootBackend, RebootCheck, RebootDetectionConfig, RebootReason};
+use super::{BootComponent, RebootBackend, RebootCheck, RebootDetectionConfig, RebootReason};
 use crate::backends::deploy::DeployTarget;
 use crate::error::{DeployError, Result};
 use crate::nix::{StorePath, SystemType};
@@ -32,41 +32,20 @@ impl LocalRebootBackend {
         &self,
         target: &DeployTarget,
         new_system: &StorePath,
-    ) -> Result<Option<RebootReason>> {
-        let checks = [
-            (self.config.check_kernel, "kernel"),
-            (self.config.check_initrd, "initrd"),
-        ];
-
-        for (enabled, component) in checks {
-            if enabled {
-                let booted_path = format!("/run/booted-system/{}", component);
-                let new_path = format!("{}/{}", new_system.as_str(), component);
-
-                if !self.compare_symlinks(target, &booted_path, &new_path)? {
-                    let old_target = self.read_symlink_target(target, &booted_path)?;
-                    let new_target = self.read_symlink_target(target, &new_path)?;
-
-                    if old_target != new_target {
-                        let reason = match component {
-                            "kernel" => RebootReason::KernelChanged {
-                                old: old_target,
-                                new: new_target,
-                            },
-                            "initrd" => RebootReason::InitrdChanged {
-                                old: old_target,
-                                new: new_target,
-                            },
-                            _ => unreachable!(),
-                        };
-
-                        return Ok(Some(reason));
-                    }
-                }
+    ) -> Result<Vec<RebootReason>> {
+        let mut reasons = Vec::new();
+        for component in BootComponent::checked(&self.config) {
+            let booted_path = format!("/run/booted-system/{}", component.link());
+            let new_path = format!("{}/{}", new_system.as_str(), component.link());
+            if self.compare_symlinks(target, &booted_path, &new_path)? {
+                continue;
             }
+            let old_target = self.read_symlink_target(target, &booted_path)?;
+            let new_target = self.read_symlink_target(target, &new_path)?;
+            reasons.extend(component.reason(old_target, new_target));
         }
 
-        Ok(None)
+        Ok(reasons)
     }
 
     /// Read the target of a symlink on the local filesystem
@@ -135,7 +114,7 @@ impl LocalRebootBackend {
         &self,
         target: &DeployTarget,
         new_system: &StorePath,
-    ) -> Result<Option<RebootReason>> {
+    ) -> Result<Vec<RebootReason>> {
         let dry_activate_path = format!("{}/bin/switch-to-configuration", new_system.as_str());
 
         let result = run_command(
@@ -165,7 +144,7 @@ impl LocalRebootBackend {
 
         let restart_list_path = Path::new("/run/nixos/dry-activation-restart-list");
         if !restart_list_path.exists() {
-            return Ok(None);
+            return Ok(Vec::new());
         }
 
         let restart_list =
@@ -177,14 +156,10 @@ impl LocalRebootBackend {
                 ),
             })?;
 
-        for line in restart_list.lines() {
-            let service = line.trim();
-            if !service.is_empty() && self.config.critical_services.contains(&service.to_string()) {
-                return Ok(Some(RebootReason::CriticalService(service.to_string())));
-            }
-        }
-
-        Ok(None)
+        Ok(super::critical_restarts(
+            &restart_list,
+            &self.config.critical_services,
+        ))
     }
 }
 
@@ -205,19 +180,12 @@ impl RebootBackend for LocalRebootBackend {
 
         match system_type {
             SystemType::NixOS => {
-                if self.config.check_kernel || self.config.check_initrd {
-                    if let Some(reason) = self.check_hard_requirements(target, new_system)? {
-                        return Ok(RebootCheck::required(reason));
-                    }
+                let mut reasons = self.check_hard_requirements(target, new_system)?;
+                // dry-activate is slow; skip it when a reboot is needed anyway
+                if reasons.is_empty() && !self.config.critical_services.is_empty() {
+                    reasons = self.check_critical_services(target, new_system).await?;
                 }
-
-                if !self.config.critical_services.is_empty() {
-                    if let Some(reason) = self.check_critical_services(target, new_system).await? {
-                        return Ok(RebootCheck::required(reason));
-                    }
-                }
-
-                Ok(RebootCheck::not_required())
+                Ok(RebootCheck::from_reasons(reasons))
             }
             SystemType::Darwin => {
                 tracing::info!(

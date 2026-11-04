@@ -1,4 +1,4 @@
-use super::{RebootBackend, RebootCheck, RebootDetectionConfig, RebootReason};
+use super::{BootComponent, RebootBackend, RebootCheck, RebootDetectionConfig, RebootReason};
 use crate::backends::deploy::DeployTarget;
 use crate::error::{DeployError, Result};
 use crate::nix::StorePath;
@@ -66,44 +66,23 @@ impl SystemRebootBackend {
         &self,
         target: &DeployTarget,
         new_system: &StorePath,
-    ) -> Result<Option<RebootReason>> {
-        let checks = [
-            (self.config.check_kernel, "kernel"),
-            (self.config.check_initrd, "initrd"),
-        ];
-
-        for (enabled, component) in checks {
-            if enabled {
-                let booted_path = format!("/run/booted-system/{}", component);
-                let new_path = format!("{}/{}", new_system.as_str(), component);
-
-                if !self
-                    .compare_symlinks(target, &booted_path, &new_path)
-                    .await?
-                {
-                    let old_target = self.read_symlink_target(target, &booted_path).await?;
-                    let new_target = self.read_symlink_target(target, &new_path).await?;
-
-                    if old_target != new_target {
-                        let reason = match component {
-                            "kernel" => RebootReason::KernelChanged {
-                                old: old_target,
-                                new: new_target,
-                            },
-                            "initrd" => RebootReason::InitrdChanged {
-                                old: old_target,
-                                new: new_target,
-                            },
-                            _ => unreachable!(),
-                        };
-
-                        return Ok(Some(reason));
-                    }
-                }
+    ) -> Result<Vec<RebootReason>> {
+        let mut reasons = Vec::new();
+        for component in BootComponent::checked(&self.config) {
+            let booted_path = format!("/run/booted-system/{}", component.link());
+            let new_path = format!("{}/{}", new_system.as_str(), component.link());
+            if self
+                .compare_symlinks(target, &booted_path, &new_path)
+                .await?
+            {
+                continue;
             }
+            let old_target = self.read_symlink_target(target, &booted_path).await?;
+            let new_target = self.read_symlink_target(target, &new_path).await?;
+            reasons.extend(component.reason(old_target, new_target));
         }
 
-        Ok(None)
+        Ok(reasons)
     }
 
     /// Read the target of a symlink on the remote host
@@ -152,7 +131,7 @@ impl SystemRebootBackend {
         &self,
         target: &DeployTarget,
         new_system: &StorePath,
-    ) -> Result<Option<RebootReason>> {
+    ) -> Result<Vec<RebootReason>> {
         let dry_activate_cmd = format!(
             "sudo {}/bin/switch-to-configuration dry-activate",
             shell_escape(new_system.as_str())
@@ -166,21 +145,17 @@ impl SystemRebootBackend {
         let file_exists = self.ssh_exec(target, check_file_cmd).await?.success();
 
         if !file_exists {
-            return Ok(None);
+            return Ok(Vec::new());
         }
 
         let restart_list = self
             .ssh_read_file(target, "/run/nixos/dry-activation-restart-list")
             .await?;
 
-        for line in restart_list.lines() {
-            let service = line.trim();
-            if !service.is_empty() && self.config.critical_services.contains(&service.to_string()) {
-                return Ok(Some(RebootReason::CriticalService(service.to_string())));
-            }
-        }
-
-        Ok(None)
+        Ok(super::critical_restarts(
+            &restart_list,
+            &self.config.critical_services,
+        ))
     }
 
     /// Build SSH command arguments
@@ -350,21 +325,12 @@ impl RebootBackend for SystemRebootBackend {
         target: &DeployTarget,
         new_system: &StorePath,
     ) -> Result<RebootCheck> {
-        // Phase 1: Check hard requirements (fast)
-        if self.config.check_kernel || self.config.check_initrd {
-            if let Some(reason) = self.check_hard_requirements(target, new_system).await? {
-                return Ok(RebootCheck::required(reason));
-            }
+        let mut reasons = self.check_hard_requirements(target, new_system).await?;
+        // dry-activate is slow; skip it when a reboot is needed anyway
+        if reasons.is_empty() && !self.config.critical_services.is_empty() {
+            reasons = self.check_critical_services(target, new_system).await?;
         }
-
-        // Phase 2: Check critical services (detailed)
-        if !self.config.critical_services.is_empty() {
-            if let Some(reason) = self.check_critical_services(target, new_system).await? {
-                return Ok(RebootCheck::required(reason));
-            }
-        }
-
-        Ok(RebootCheck::not_required())
+        Ok(RebootCheck::from_reasons(reasons))
     }
 
     async fn reboot_and_wait(&self, target: &DeployTarget) -> Result<()> {
@@ -408,6 +374,9 @@ if [ -e "$state/hang_on" ]; then
   case "$cmd" in *"$(cat "$state/hang_on")"*) exec sleep 30 ;; esac
 fi
 case "$cmd" in
+  *readlink*)
+    eval "${{cmd//\/run\/booted-system/$state/booted}}"
+    ;;
   *boot_id*)
     if [ -e "$state/unreachable" ]; then cat "$state/unreachable" >&2; exit 255; fi
     stale=$(cat "$state/stale_polls" 2>/dev/null || echo 0)
@@ -644,6 +613,52 @@ esac
             "{reason}"
         );
         assert!(reason.contains("did not finish within 2s"), "{reason}");
+    }
+
+    /// Boots `host` from `booted` kernel and initrd and returns a system that
+    /// has `new` ones; the four files are made up under the host's state
+    fn systems(host: &FakeHost, booted: [&str; 2], new: [&str; 2]) -> StorePath {
+        let state = host.state.path();
+        for (dir, [kernel, initrd]) in [("booted", booted), ("new", new)] {
+            std::fs::create_dir_all(state.join(dir)).unwrap();
+            for (link, file) in [("kernel", kernel), ("initrd", initrd)] {
+                std::fs::write(state.join(file), "").unwrap();
+                std::os::unix::fs::symlink(state.join(file), state.join(dir).join(link)).unwrap();
+            }
+        }
+        StorePath::new(state.join("new").display().to_string())
+    }
+
+    #[tokio::test]
+    async fn test_reboot_check_lists_both_a_new_kernel_and_a_new_initrd() {
+        let host = FakeHost::new("exit 0");
+        let new_system = systems(&host, ["k1", "i1"], ["k2", "i2"]);
+
+        let check = host
+            .backend(5)
+            .check_reboot_required(&fake_target(), &new_system)
+            .await
+            .unwrap();
+
+        let file = |name: &str| host.state.path().join(name).display().to_string();
+        assert_eq!(
+            check.reasons,
+            vec![
+                RebootReason::KernelChanged {
+                    old: file("k1"),
+                    new: file("k2")
+                },
+                RebootReason::InitrdChanged {
+                    old: file("i1"),
+                    new: file("i2")
+                },
+            ]
+        );
+        assert!(
+            !host.commands().iter().any(|c| c.contains("dry-activate")),
+            "{:?}",
+            host.commands()
+        );
     }
 
     #[tokio::test]

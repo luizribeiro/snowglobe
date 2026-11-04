@@ -416,5 +416,5 @@ fn should_reboot(push_ctx: &PushContext<'_>, plan: &PushPlan) -> bool {
     push_ctx.config.allow_reboot
         && plan.metadata.system_type == SystemType::NixOS
         && plan.activation_mode == crate::nix::ActivationMode::Boot
-        && plan.reboot_check.as_ref().is_none_or(|c| c.required)
+        && plan.reboot_check.as_ref().is_none_or(|c| c.is_required())
 }

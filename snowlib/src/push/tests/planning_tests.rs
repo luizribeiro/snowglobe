@@ -105,7 +105,7 @@ async fn test_create_deployment_plans_auto_mode_no_reboot() {
     assert_eq!(blocked.len(), 0);
     assert_eq!(plans[0].activation_mode, ActivationMode::Switch);
     assert!(plans[0].reboot_check.is_some());
-    assert!(!plans[0].reboot_check.as_ref().unwrap().required);
+    assert!(!plans[0].reboot_check.as_ref().unwrap().is_required());
 }
 
 #[tokio::test]
@@ -220,7 +220,7 @@ async fn test_reboot_policy_never_uses_boot_mode() {
     assert_eq!(blocked.len(), 0);
     assert_eq!(plans[0].activation_mode, ActivationMode::Boot);
     assert!(plans[0].reboot_check.is_some());
-    assert!(!plans[0].reboot_check.as_ref().unwrap().required);
+    assert!(!plans[0].reboot_check.as_ref().unwrap().is_required());
 }
 
 #[tokio::test]
@@ -243,7 +243,7 @@ async fn test_reboot_policy_always_uses_boot_mode_with_reboot() {
     assert_eq!(blocked.len(), 0);
     assert_eq!(plans[0].activation_mode, ActivationMode::Boot);
     assert!(plans[0].reboot_check.is_some());
-    assert!(plans[0].reboot_check.as_ref().unwrap().required);
+    assert!(plans[0].reboot_check.as_ref().unwrap().is_required());
 }
 
 #[tokio::test]
@@ -266,7 +266,7 @@ async fn test_reboot_policy_auto_uses_detection() {
     assert_eq!(blocked.len(), 0);
     assert_eq!(plans[0].activation_mode, ActivationMode::Switch);
     assert!(plans[0].reboot_check.is_some());
-    assert!(!plans[0].reboot_check.as_ref().unwrap().required);
+    assert!(!plans[0].reboot_check.as_ref().unwrap().is_required());
 }
 
 #[tokio::test]
@@ -288,7 +288,7 @@ async fn test_reboot_policy_never_overrides_switch_mode() {
     assert_eq!(plans.len(), 1);
     assert_eq!(blocked.len(), 0);
     assert_eq!(plans[0].activation_mode, ActivationMode::Boot);
-    assert!(!plans[0].reboot_check.as_ref().unwrap().required);
+    assert!(!plans[0].reboot_check.as_ref().unwrap().is_required());
 }
 
 #[tokio::test]
@@ -310,7 +310,7 @@ async fn test_reboot_policy_always_overrides_switch_mode() {
     assert_eq!(plans.len(), 1);
     assert_eq!(blocked.len(), 0);
     assert_eq!(plans[0].activation_mode, ActivationMode::Boot);
-    assert!(plans[0].reboot_check.as_ref().unwrap().required);
+    assert!(plans[0].reboot_check.as_ref().unwrap().is_required());
 }
 
 #[tokio::test]
