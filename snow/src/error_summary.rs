@@ -42,14 +42,16 @@ pub fn error_context(error: &str, max: usize) -> ErrorContext<'_> {
     let cause = error_summary(error);
     let all: Vec<&str> = non_empty(error.lines().map(str::trim)).collect();
     let stderr: Vec<&str> = non_empty(stderr_lines(error)).collect();
-    let source = if stderr.contains(&cause) {
+    // The cause may be its line without Nix's `error:` prefix
+    let holds_cause = |line: &&str| line.ends_with(cause);
+    let source = if stderr.iter().any(holds_cause) {
         &stderr
     } else {
         &all
     };
     let end = source
         .iter()
-        .rposition(|line| *line == cause)
+        .rposition(holds_cause)
         .map_or(source.len(), |at| at + 1);
     let lines = source[end.saturating_sub(max)..end].to_vec();
     ErrorContext {
