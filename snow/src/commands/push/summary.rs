@@ -6,6 +6,7 @@
 
 use super::board::{format_elapsed, plural};
 use super::colors::style;
+use crate::marks;
 
 /// Maximum error lines to display before truncating.
 /// Limited to keep terminal output scannable - full errors are in logs.
@@ -136,7 +137,7 @@ fn host_line(host: &snowlib::HostDeploymentResult) -> String {
         } else {
             format!(" {}", style(format!("({})", labels.join(", "))).dim())
         };
-        format!("  {} {}{status}", style("✓").green(), host.hostname)
+        format!("  {} {}{status}", marks::success(), host.hostname)
     } else {
         let step = host
             .failed_at_step
@@ -144,7 +145,7 @@ fn host_line(host: &snowlib::HostDeploymentResult) -> String {
             .unwrap_or_default();
         format!(
             "  {} {}{}",
-            style("✗").red(),
+            marks::failure(),
             host.hostname,
             style(step).red()
         )

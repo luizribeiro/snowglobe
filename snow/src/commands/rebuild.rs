@@ -1,3 +1,4 @@
+use crate::marks;
 use clap::Args;
 use console::style;
 use dialoguer::{theme::ColorfulTheme, Confirm, Select};
@@ -187,10 +188,10 @@ impl RebuildArgs {
             println!("Activating configuration...");
             activate(mode).await?;
             match mode {
-                ActivationMode::DryActivate => println!("{} Dry run complete", done()),
-                ActivationMode::Test => println!("{} Test activation complete", done()),
+                ActivationMode::DryActivate => println!("{} Dry run complete", marks::success()),
+                ActivationMode::Test => println!("{} Test activation complete", marks::success()),
                 ActivationMode::Boot => {
-                    println!("{} {NEXT_BOOT}", done())
+                    println!("{} {NEXT_BOOT}", marks::success())
                 }
                 ActivationMode::Switch => unreachable!(),
             }
@@ -206,10 +207,10 @@ impl RebuildArgs {
         // If no reboot needed, activate immediately and exit
         if !reboot_check.is_required() {
             tracing::info!("{hostname}: no reboot required, switching");
-            println!("{} No reboot needed", done());
+            println!("{} No reboot needed", marks::success());
             println!("Activating configuration...");
             activate(mode).await?;
-            println!("{} Switched to the new system", done());
+            println!("{} Switched to the new system", marks::success());
             return Ok(());
         }
 
@@ -220,21 +221,24 @@ impl RebuildArgs {
         match action {
             RebootAction::BootAndReboot => {
                 activate(ActivationMode::Boot).await?;
-                println!("\n{} {NEXT_BOOT}", done());
+                println!("\n{} {NEXT_BOOT}", marks::success());
                 println!("Rebooting...");
                 tracing::info!("{hostname}: rebooting");
                 reboot_backend.reboot_and_wait(&target).await?;
             }
             RebootAction::BootOnly => {
                 activate(ActivationMode::Boot).await?;
-                println!("\n{} {NEXT_BOOT}", done());
+                println!("\n{} {NEXT_BOOT}", marks::success());
             }
             RebootAction::SwitchRisky => {
                 activate(mode).await?;
-                println!("\n{} Switched; reboot when you can to finish", done());
+                println!(
+                    "\n{} Switched; reboot when you can to finish",
+                    marks::success()
+                );
             }
             RebootAction::Cancel => {
-                println!("\n{} Cancelled, nothing changed", not_done());
+                println!("\n{} Cancelled, nothing changed", marks::failure());
                 return Ok(());
             }
         }
@@ -263,14 +267,6 @@ fn reboot_notice(check: &RebootCheck) -> String {
 }
 
 const NEXT_BOOT: &str = "The new system starts at the next boot";
-
-fn done() -> console::StyledObject<&'static str> {
-    style("✓").green()
-}
-
-fn not_done() -> console::StyledObject<&'static str> {
-    style("✗").red()
-}
 
 fn prompt_error(error: dialoguer::Error) -> snowlib::error::SnowError {
     snowlib::error::DeployError::Failed {

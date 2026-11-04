@@ -11,6 +11,7 @@ mod commands;
 mod error_summary;
 mod filter_helpers;
 mod host_selection;
+mod marks;
 
 #[cfg(test)]
 mod test_utils;
