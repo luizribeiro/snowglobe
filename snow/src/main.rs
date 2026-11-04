@@ -15,6 +15,7 @@ mod host_selection;
 mod marks;
 mod plural;
 mod prompt;
+mod terminal_warnings;
 
 #[cfg(test)]
 mod test_utils;
@@ -60,6 +61,9 @@ fn setup_logging(is_interactive: bool) -> Option<std::path::PathBuf> {
                     .with_ansi(false)
                     .with_writer(move || Arc::clone(&file_writer)),
             )
+            .with(terminal_warnings::layer(
+                indicatif_layer.get_stderr_writer(),
+            ))
             .with(indicatif_layer)
             .init();
 
