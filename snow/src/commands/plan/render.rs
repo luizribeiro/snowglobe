@@ -1,8 +1,11 @@
 use std::fmt::Write;
 
+use console::style;
+
 use snowlib::plan::{CacheStatus, HostStatus, PlanReport, PlannedBuild};
 
 use crate::error_summary::error_summary;
+use crate::marks;
 use crate::plural::plural;
 
 pub fn render(report: &PlanReport, show_trivial: bool) -> String {
@@ -151,7 +154,13 @@ fn render_hosts(out: &mut String, report: &PlanReport) {
 
 fn host_summary(status: &HostStatus) -> String {
     match status {
-        HostStatus::Failed { error } => format!("✗ evaluation failed: {}", error_summary(error)),
+        HostStatus::Failed { error } => {
+            format!(
+                "{} evaluation failed: {}",
+                marks::failure(),
+                error_summary(error)
+            )
+        }
         HostStatus::Evaluated {
             cache_status: CacheStatus::Local,
             ..
@@ -174,7 +183,13 @@ fn render_warnings(out: &mut String, report: &PlanReport) {
     if unreachable.is_empty() {
         return;
     }
-    writeln!(out, "\nWarnings").unwrap();
+    writeln!(
+        out,
+        "\n{} {}",
+        marks::warning(),
+        style("Warnings").yellow().bold()
+    )
+    .unwrap();
     for substituter in unreachable {
         writeln!(
             out,
@@ -248,7 +263,7 @@ mod tests {
 
     #[test]
     fn test_render_ops_plan() {
-        let rendered = render(&ops_report(true), false);
+        let rendered = console::strip_ansi_codes(&render(&ops_report(true), false)).to_string();
 
         assert!(rendered.starts_with(
             "Plan for 4 hosts\n\nWill build: 1 derivation (+11 trivial local builds, --all to list)\n"
@@ -276,10 +291,10 @@ mod tests {
 
     #[test]
     fn test_render_warns_about_unreachable_substituter() {
-        let rendered = render(&ops_report(false), false);
+        let rendered = console::strip_ansi_codes(&render(&ops_report(false), false)).to_string();
 
         assert!(rendered.contains(
-            "Warnings\n  s3://nix-store-cache was unreachable; paths it would serve are counted as builds or not found\n"
+            "! Warnings\n  s3://nix-store-cache was unreachable; paths it would serve are counted as builds or not found\n"
         ));
         assert!(rendered.contains("not found in any reachable substituter"));
     }
