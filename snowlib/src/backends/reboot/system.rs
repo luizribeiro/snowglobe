@@ -307,7 +307,7 @@ impl SystemRebootBackend {
                 Ok(Err(e)) => {
                     still_on_previous_boot = false;
                     tracing::debug!("{}: not back yet: {}", target.hostname, e);
-                    last_error = Some(crate::error::error_chain(&e));
+                    last_error = Some(crate::error::error_chain(&e).trim_end().to_string());
                 }
                 // The deadline cut this check short; an earlier check's
                 // error says more about why the host is not back
@@ -694,7 +694,7 @@ esac
             reason.starts_with("host did not come back online within 3 seconds (last error: "),
             "{reason}"
         );
-        assert!(reason.contains("No route to host"), "{reason}");
+        assert!(reason.ends_with("No route to host)"), "{reason}");
     }
 
     #[tokio::test]
