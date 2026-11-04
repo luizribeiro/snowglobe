@@ -1,9 +1,9 @@
-use crate::error_summary::error_summary;
 use crate::marks;
 use crate::plural::plural;
 use clap::Args;
 use console::style;
 use futures::stream::{FuturesUnordered, StreamExt};
+use snowlib::error::summary::error_summary;
 use snowlib::{Flake, NixBackend, OutputMode, Result, StorePath};
 use std::sync::Arc;
 use tokio::sync::Semaphore;

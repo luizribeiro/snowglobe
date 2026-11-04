@@ -5,9 +5,9 @@
 
 use super::board::{format_elapsed, HostBoard, Lane, Line, Row, RowKind};
 use super::colors::style;
-use crate::error_summary::truncate;
 use console::Color;
 use parking_lot::Mutex;
+use snowlib::error::summary::truncate;
 use std::sync::Arc;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use tracing_indicatif::style::ProgressStyle;

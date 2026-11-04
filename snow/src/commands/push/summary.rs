@@ -6,8 +6,8 @@
 
 use super::board::{format_elapsed, plural};
 use super::colors::style;
-use crate::error_summary::{error_context, error_summary, truncate};
 use crate::marks;
+use snowlib::error::summary::{error_context, error_summary, truncate};
 use std::path::Path;
 
 /// Keeps the terminal output scannable; the log has every error in full

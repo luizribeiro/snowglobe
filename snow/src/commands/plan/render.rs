@@ -2,9 +2,9 @@ use std::fmt::Write;
 
 use console::style;
 
+use snowlib::error::summary::error_summary;
 use snowlib::plan::{CacheStatus, HostStatus, PlanReport, PlannedBuild};
 
-use crate::error_summary::error_summary;
 use crate::marks;
 use crate::plural::plural;
 

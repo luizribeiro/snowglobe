@@ -2,7 +2,7 @@
 //! each host listed under the lane it is in, kept up to date from host events
 
 use super::summary::success_labels;
-use crate::error_summary::error_summary;
+use snowlib::error::summary::error_summary;
 use snowlib::{HookStage, HostDeploymentResult, HostEvent, PipelineStep};
 use std::time::{Duration, Instant};
 

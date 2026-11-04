@@ -2,6 +2,8 @@ use miette::Diagnostic;
 use std::path::PathBuf;
 use thiserror::Error;
 
+pub mod summary;
+
 /// Result type alias for snow operations
 pub type Result<T> = std::result::Result<T, SnowError>;
 

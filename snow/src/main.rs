@@ -8,7 +8,6 @@ use tracing_subscriber::util::SubscriberInitExt;
 
 mod backend_factory;
 mod commands;
-mod error_summary;
 mod fatal;
 mod filter_helpers;
 mod host_selection;
