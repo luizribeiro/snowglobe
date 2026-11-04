@@ -266,6 +266,16 @@ pub enum IoError {
         #[source]
         source: std::io::Error,
     },
+
+    #[error("Could not tell this machine's hostname")]
+    #[diagnostic(
+        code(snow::io::hostname),
+        help("Name the host to rebuild with `--host`.")
+    )]
+    Hostname {
+        #[source]
+        source: std::io::Error,
+    },
 }
 
 /// Errors related to bootstrap operations (key generation, provisioning)

@@ -1,4 +1,4 @@
-use crate::error::{DeployError, Result};
+use crate::error::{IoError, Result};
 use crate::nix::SystemType;
 use std::fs;
 use std::process::Command;
@@ -11,61 +11,73 @@ use std::process::Command;
 /// This is used by the rebuild command to auto-detect which configuration
 /// to build when no explicit host is specified.
 pub fn get_hostname() -> Result<String> {
-    let system_type = SystemType::detect_current();
+    hostname_from(match SystemType::detect_current() {
+        SystemType::NixOS => fs::read_to_string("/etc/hostname").map_err(|e| {
+            std::io::Error::new(e.kind(), format!("Failed to read /etc/hostname: {e}"))
+        }),
+        SystemType::Darwin => hostname_command_output(),
+    })
+}
 
-    let hostname = match system_type {
-        SystemType::NixOS => {
-            let content = fs::read_to_string("/etc/hostname").map_err(|e| DeployError::Failed {
-                host: "localhost".to_string(),
-                source: std::io::Error::new(
-                    e.kind(),
-                    format!("Failed to read /etc/hostname: {}", e),
-                ),
-            })?;
-            content.trim().to_string()
-        }
-        SystemType::Darwin => {
-            let output =
-                Command::new("hostname")
-                    .arg("-s")
-                    .output()
-                    .map_err(|e| DeployError::Failed {
-                        host: "localhost".to_string(),
-                        source: std::io::Error::new(
-                            e.kind(),
-                            format!("Failed to run hostname command: {}", e),
-                        ),
-                    })?;
+fn hostname_from(output: std::io::Result<String>) -> Result<String> {
+    let hostname = output.and_then(|output| match output.trim() {
+        "" => Err(std::io::Error::other("The hostname is empty")),
+        hostname => Ok(hostname.to_string()),
+    });
+    hostname.map_err(|source| IoError::Hostname { source }.into())
+}
 
-            if !output.status.success() {
-                return Err(DeployError::Failed {
-                    host: "localhost".to_string(),
-                    source: std::io::Error::other(format!(
-                        "hostname command failed: {}",
-                        String::from_utf8_lossy(&output.stderr)
-                    )),
-                }
-                .into());
-            }
-
-            String::from_utf8_lossy(&output.stdout).trim().to_string()
-        }
-    };
-
-    if hostname.is_empty() {
-        return Err(DeployError::Failed {
-            host: "localhost".to_string(),
-            source: std::io::Error::other("Hostname is empty"),
-        }
-        .into());
+fn hostname_command_output() -> std::io::Result<String> {
+    let output = Command::new("hostname")
+        .arg("-s")
+        .output()
+        .map_err(|e| std::io::Error::new(e.kind(), format!("Failed to run `hostname -s`: {e}")))?;
+    if !output.status.success() {
+        return Err(std::io::Error::other(format!(
+            "`hostname -s` failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        )));
     }
-
-    Ok(hostname)
+    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::error::SnowError;
+
+    fn cause(error: &SnowError) -> String {
+        std::error::Error::source(error).unwrap().to_string()
+    }
+
+    #[test]
+    fn test_hostname_from_trims_the_output() {
+        assert_eq!(hostname_from(Ok("radon\n".to_string())).unwrap(), "radon");
+    }
+
+    #[test]
+    fn test_empty_hostname_is_a_hostname_error() {
+        let error = hostname_from(Ok("  \n".to_string())).unwrap_err();
+
+        assert_eq!(error.to_string(), "Could not tell this machine's hostname");
+        assert_eq!(cause(&error), "The hostname is empty");
+    }
+
+    #[test]
+    fn test_unreadable_hostname_keeps_the_cause() {
+        let unreadable = std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "Failed to read /etc/hostname: No such file or directory",
+        );
+
+        let error = hostname_from(Err(unreadable)).unwrap_err();
+
+        assert!(matches!(error, SnowError::Io(IoError::Hostname { .. })));
+        assert_eq!(
+            cause(&error),
+            "Failed to read /etc/hostname: No such file or directory"
+        );
+    }
 
     #[test]
     fn test_get_hostname() {
