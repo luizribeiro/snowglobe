@@ -8,6 +8,9 @@ let
   names = [
     "switch"
     "reboot"
+    "activation-failure"
+    "hook-failure"
+    "missing-hook"
     "reboot-deadline"
     "rebuild-cancel"
   ];
