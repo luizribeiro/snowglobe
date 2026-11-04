@@ -274,6 +274,27 @@ fn test_push_invalid_tag_name() {
 // --mock-fixture only exists in debug builds
 #[cfg(debug_assertions)]
 #[test]
+fn test_mock_push_keeps_stdout_for_the_report() {
+    snow_cmd()
+        .args(["push", "--switch", "--mock-fixture"])
+        .arg(fixtures_dir().join("push_scenarios/build_failure.json"))
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("Using the mock deployer from"))
+        .stderr(predicate::str::contains(
+            "building '/nix/store/...-nitrogen.drv'",
+        ))
+        .stderr(predicate::str::contains("copying "))
+        .stdout(predicate::str::contains("Pushing 4 hosts"))
+        .stdout(predicate::str::contains("copying ").not())
+        .stdout(predicate::str::contains("activation").not())
+        .stdout(predicate::str::contains("mock deployer").not())
+        .stdout(predicate::str::contains("building '/nix/store").not())
+        .stdout(predicate::str::contains("Building ").not());
+}
+
+#[cfg(debug_assertions)]
+#[test]
 fn test_push_without_a_terminal_logs_each_step_to_stderr() {
     snow_cmd()
         .env("RUST_LOG", "snowlib=info")

@@ -144,20 +144,15 @@ impl NixBackend for MockNixBackend {
         }
 
         if let Some(build_fix) = self.get_build_fixture(host) {
-            print!("Building {}... ", host);
             if !cfg!(debug_assertions) {
                 tokio::time::sleep(Duration::from_millis(build_fix.duration_ms)).await;
             }
 
-            if !build_fix.stdout.is_empty() {
-                print!("{}", build_fix.stdout);
-            }
-            if !build_fix.stderr.is_empty() {
-                eprint!("{}", build_fix.stderr);
-            }
+            // nix build prints only the built path on stdout; what it says
+            // along the way goes to stderr
+            eprint!("{}{}", build_fix.stdout, build_fix.stderr);
 
             if build_fix.success {
-                println!("✓");
                 // Use store path from fixture or generate fake one
                 let store_path = build_fix
                     .store_path
@@ -165,7 +160,6 @@ impl NixBackend for MockNixBackend {
                     .unwrap_or_else(|| format!("/nix/store/mock-{}", host));
                 Ok(StorePath::new(store_path))
             } else {
-                println!("✗ Build failed");
                 Err(crate::error::NixError::BuildFailed {
                     host: host.to_string(),
                     stderr: build_fix.stderr.clone(),

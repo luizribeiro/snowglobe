@@ -44,7 +44,7 @@ fn nix_backend_or_mock(
     #[cfg(debug_assertions)]
     {
         if let Some(fixture_path) = mock_fixture {
-            println!("⚠ Using mock deployer");
+            tracing::warn!("Using the mock deployer from {fixture_path}");
             let path = std::path::Path::new(fixture_path);
             let fixture = snowlib::DeploymentFixture::from_file(path)?;
             return Ok(Box::new(snowlib::MockNixBackend::from_fixture(fixture)));

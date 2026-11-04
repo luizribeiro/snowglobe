@@ -212,7 +212,7 @@ impl DeployBackend for MockDeployBackend {
             tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
         }
 
-        print!("{}", self.generate_copy_closure_output(&target.hostname));
+        eprint!("{}", self.generate_copy_closure_output(&target.hostname));
         self.copies.lock().unwrap().push(target.hostname.clone());
 
         let (should_fail, error_msg) = self.should_fail_at(&target.hostname, "copy_closure");
@@ -298,7 +298,7 @@ impl DeployBackend for MockDeployBackend {
             tokio::time::sleep(std::time::Duration::from_millis(500)).await;
         }
 
-        print!("{}", self.generate_activate_output(!should_fail));
+        eprint!("{}", self.generate_activate_output(!should_fail));
 
         if should_fail {
             let error_text = if let Some(error) = error_msg.as_ref() {
