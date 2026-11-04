@@ -17,10 +17,10 @@ pub(super) fn is_unnamed_phase(phase: &str) -> bool {
     matches!(phase, "default" | "_all")
 }
 
-/// "Phase p2", or `unnamed` for the phase without a name
-pub(super) fn phase_title(phase: &str, unnamed: &str) -> String {
+/// "Phase p2", or "Push" for the phase without a name
+pub(super) fn phase_title(phase: &str) -> String {
     if is_unnamed_phase(phase) {
-        unnamed.to_string()
+        "Push".to_string()
     } else {
         format!("Phase {phase}")
     }
@@ -86,7 +86,7 @@ pub fn phase_report(phase: &snowlib::PhaseResult) -> String {
 }
 
 fn phase_heading(phase: &snowlib::PhaseResult) -> String {
-    let title = phase_title(&phase.phase, "Deploy");
+    let title = phase_title(&phase.phase);
     let took = format_elapsed(phase.duration);
     let total = phase.hosts.len();
     if phase.all_succeeded() {
@@ -162,7 +162,7 @@ fn skipped_phase_report(skipped: &snowlib::SkippedPhase) -> String {
     let count = skipped.hostnames.len();
     let heading = marks::skipped_line(&format!(
         "{} ({count} {} skipped)",
-        phase_title(&skipped.phase, "Deploy"),
+        phase_title(&skipped.phase),
         plural(count, "host")
     ));
     std::iter::once(heading)
@@ -491,7 +491,7 @@ mod tests {
 
             assert_eq!(
                 super::phase_report(&phase),
-                "✓ Deploy (1 host in 1:02:07)\n  ✓ sodium (switch)"
+                "✓ Push (1 host in 1:02:07)\n  ✓ sodium (switch)"
             );
         }
     }

@@ -111,12 +111,12 @@ mod tests {
     }
 
     #[test]
-    fn test_default_phase_is_shown_as_deploying() {
+    fn test_default_phase_is_shown_as_push() {
         let observer = CliObserver::new();
 
         observer.on_phase_start("default", &hosts());
 
-        assert_eq!(observer.board.lock().as_ref().unwrap().title(), "Deploying");
+        assert_eq!(observer.board.lock().as_ref().unwrap().title(), "Push");
     }
 
     #[test]
