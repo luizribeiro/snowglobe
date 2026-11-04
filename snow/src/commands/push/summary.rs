@@ -181,13 +181,11 @@ fn print_overall_summary(results: &snowlib::PushResults) {
 }
 
 fn overall_summary(results: &snowlib::PushResults) -> String {
-    let total = results.total_count();
     let succeeded = results.success_count();
     let failed = results.failure_count();
     let skipped = results.skipped_count();
-
     if failed == 0 && skipped == 0 {
-        format!(
+        return format!(
             "{} {}",
             marks::success().bold(),
             style(format!(
@@ -196,23 +194,19 @@ fn overall_summary(results: &snowlib::PushResults) -> String {
             ))
             .green()
             .bold()
-        )
-    } else if skipped > 0 {
-        style(format!(
-            "⚠ {}/{} deployed, {} skipped",
-            succeeded, total, skipped
-        ))
-        .yellow()
-        .bold()
-        .to_string()
+        );
+    }
+
+    let mut text = format!("{succeeded}/{} deployed", results.total_count());
+    for (count, label) in [(failed, "failed"), (skipped, "skipped")] {
+        if count > 0 {
+            text.push_str(&format!(", {count} {label}"));
+        }
+    }
+    if failed > 0 {
+        format!("{} {}", marks::failure().bold(), style(text).red().bold())
     } else {
-        style(format!(
-            "✗ {}/{} deployed, {} failed",
-            succeeded, total, failed
-        ))
-        .red()
-        .bold()
-        .to_string()
+        format!("{} {}", marks::warning(), style(text).yellow().bold())
     }
 }
 
@@ -555,6 +549,46 @@ mod tests {
 
         assert_eq!(super::overall_summary(&one), "✓ 1 host deployed");
         assert_eq!(super::overall_summary(&three), "✓ 3 hosts deployed");
+    }
+
+    #[test]
+    fn test_overall_summary_shows_failures_next_to_skipped_hosts() {
+        console::set_colors_enabled(false);
+        let mut p2 = deployed_phase(&["boron", "radon"]);
+        p2.hosts.push(make_failed_host(
+            "cerium",
+            PipelineStep::Activate,
+            "activation failed",
+        ));
+        let skipped_phases = vec![SkippedPhase {
+            phase: "p3".to_string(),
+            hostnames: vec!["lanthanum".to_string(), "sodium".to_string()],
+        }];
+        let failed_and_skipped = PushResults {
+            phases: vec![p2.clone()],
+            skipped_phases: skipped_phases.clone(),
+        };
+        let failed_only = PushResults {
+            phases: vec![p2],
+            skipped_phases: vec![],
+        };
+        let skipped_only = PushResults {
+            phases: vec![deployed_phase(&["boron"])],
+            skipped_phases,
+        };
+
+        assert_eq!(
+            super::overall_summary(&failed_and_skipped),
+            "✗ 2/5 deployed, 1 failed, 2 skipped"
+        );
+        assert_eq!(
+            super::overall_summary(&failed_only),
+            "✗ 2/3 deployed, 1 failed"
+        );
+        assert_eq!(
+            super::overall_summary(&skipped_only),
+            "! 1/3 deployed, 2 skipped"
+        );
     }
 
     #[test]
