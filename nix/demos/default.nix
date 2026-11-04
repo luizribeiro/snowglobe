@@ -19,9 +19,22 @@ in
     libraries = [ pkgs.python3Packages.pexpect ];
   };
 
-  castToSvg = { pkgs, look ? terminalLook }: withLook {
-    inherit pkgs look;
-    name = "cast-to-svg";
-    script = ./cast_to_svg.py;
-  };
+  # scenarios.json carries what the casts can't, such as titles and their
+  # order, to whatever publishes the demos
+  renderDemos = { pkgs, casts, scenarios ? [ ], look ? terminalLook, name ? "demos" }:
+    let
+      castToSvg = withLook {
+        inherit pkgs look;
+        name = "cast-to-svg";
+        script = ./cast_to_svg.py;
+      };
+    in
+    pkgs.runCommand name { SVG_TERM = "${pkgs.svg-term}/bin/svg-term"; } ''
+      mkdir -p $out
+      cp ${casts}/* $out/
+      cp ${pkgs.writeText "scenarios.json" (builtins.toJSON scenarios)} $out/scenarios.json
+      for cast in $out/*.cast; do
+        ${castToSvg}/bin/cast-to-svg "$cast" "''${cast%.cast}.svg"
+      done
+    '';
 }
