@@ -1,5 +1,5 @@
-//! What the push TUI shows for a phase: one row per host, kept up to date
-//! from host events
+//! What the push TUI shows for a phase: the steps of a push as lanes, with
+//! each host listed under the lane it is in, kept up to date from host events
 
 use super::summary::success_labels;
 use crate::error_summary::error_summary;
@@ -16,8 +16,40 @@ pub(super) enum RowKind {
     Unchanged,
 }
 
+/// The parts of a push a host moves through, in the order they are listed
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub(super) enum Lane {
+    Queued,
+    Build,
+    Copy,
+    Activate,
+    Reboot,
+    Done,
+    Failed,
+}
+
+impl Lane {
+    pub const ALL: [Lane; 7] = [
+        Lane::Queued,
+        Lane::Build,
+        Lane::Copy,
+        Lane::Activate,
+        Lane::Reboot,
+        Lane::Done,
+        Lane::Failed,
+    ];
+}
+
+/// A line of the board: a lane's heading, or a host listed under it
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) enum Line {
+    Lane { lane: Lane, hosts: usize },
+    Host(Row),
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct Row {
+    pub lane: Lane,
     pub kind: RowKind,
     pub hostname: String,
     pub step: String,
@@ -124,10 +156,38 @@ impl HostBoard {
         }
     }
 
+    /// Within a lane, hosts keep the name order `new` sorted them into
     pub fn rows(&self, now: Instant) -> Vec<Row> {
         let mut rows: Vec<Row> = self.hosts.iter().map(|host| self.row(host, now)).collect();
-        rows.sort_by_key(|row| row.kind);
+        rows.sort_by_key(|row| row.lane);
         rows
+    }
+
+    /// Every lane's heading, each followed by the hosts in it
+    pub fn lines(&self, now: Instant) -> Vec<Line> {
+        let rows = self.rows(now);
+        Lane::ALL
+            .iter()
+            .flat_map(|&lane| {
+                let hosts: Vec<Line> = rows
+                    .iter()
+                    .filter(|row| row.lane == lane)
+                    .cloned()
+                    .map(Line::Host)
+                    .collect();
+                std::iter::once(Line::Lane {
+                    lane,
+                    hosts: hosts.len(),
+                })
+                .chain(hosts)
+            })
+            .collect()
+    }
+
+    /// Fixed for the whole phase, since the TUI makes its lines once at the
+    /// start: hosts only move between lanes
+    pub fn line_count(&self) -> usize {
+        Lane::ALL.len() + self.hosts.len()
     }
 
     /// Hosts that are done or failed, out of all of them
@@ -180,6 +240,7 @@ impl HostBoard {
             _ => Some(now.saturating_duration_since(host.since)),
         };
         Row {
+            lane: lane_of(&host.state),
             kind: kind_of(&host.state),
             hostname: host.hostname.clone(),
             step,
@@ -203,6 +264,22 @@ fn final_failure(previous: &State, result: &HostDeploymentResult) -> State {
             .clone()
             .filter(|reason| !reason.is_empty())
             .unwrap_or_else(|| previous_reason.to_string()),
+    }
+}
+
+fn lane_of(state: &State) -> Lane {
+    match state {
+        State::Queued | State::WaitingForSerialGroup { .. } => Lane::Queued,
+        State::Step(PipelineStep::Build | PipelineStep::Check) => Lane::Build,
+        State::Step(PipelineStep::Copy) => Lane::Copy,
+        State::Step(PipelineStep::Reboot)
+        | State::Hook {
+            stage: HookStage::PostReboot,
+            ..
+        } => Lane::Reboot,
+        State::Step(_) | State::Hook { .. } => Lane::Activate,
+        State::Done(_) => Lane::Done,
+        State::Failed { .. } => Lane::Failed,
     }
 }
 
@@ -331,7 +408,7 @@ mod tests {
     }
 
     #[test]
-    fn test_rows_list_failures_first_then_running_queued_and_done() {
+    fn test_rows_list_hosts_by_lane() {
         let t0 = Instant::now();
         let mut board = board(t0);
 
@@ -364,20 +441,20 @@ mod tests {
             summary(&board.rows(t0)),
             vec![
                 (
+                    RowKind::Queued,
+                    "cerium",
+                    "queued",
+                    "serial group 'k8s' (held by vanadium)"
+                ),
+                (RowKind::Active, "vanadium", "copy", ""),
+                (RowKind::Unchanged, "sodium", "unchanged", ""),
+                (
                     RowKind::Failed,
                     "lanthanum",
                     "plan",
                     "Failed to deploy to host 'lanthanum': hook 'wait-storage-healthy': \
                      /nix/store/715s-kubernetes-storage-healthy missing"
                 ),
-                (RowKind::Active, "vanadium", "copy", ""),
-                (
-                    RowKind::Queued,
-                    "cerium",
-                    "queued",
-                    "serial group 'k8s' (held by vanadium)"
-                ),
-                (RowKind::Unchanged, "sodium", "unchanged", ""),
             ]
         );
         assert_eq!(
@@ -632,6 +709,89 @@ mod tests {
             brief(&row_of(&board, "cerium", t0)),
             (RowKind::Active, "cerium", "activate", "")
         );
+    }
+
+    #[test]
+    fn test_lines_list_every_lane_with_its_hosts_under_it() {
+        let t0 = Instant::now();
+        let mut board = board(t0);
+
+        board.apply("vanadium", &HostEvent::Started(PipelineStep::Activate), t0);
+        board.apply("sodium", &HostEvent::Started(PipelineStep::Activate), t0);
+        board.apply(
+            "lanthanum",
+            &HostEvent::Done(deployed("lanthanum", ActivationMode::Switch, false)),
+            t0,
+        );
+
+        let lines: Vec<String> = board
+            .lines(t0)
+            .iter()
+            .map(|line| match line {
+                Line::Lane { lane, hosts } => format!("{lane:?} ({hosts})"),
+                Line::Host(row) => format!("  {}", row.hostname),
+            })
+            .collect();
+        assert_eq!(
+            lines,
+            vec![
+                "Queued (1)",
+                "  cerium",
+                "Build (0)",
+                "Copy (0)",
+                "Activate (2)",
+                "  sodium",
+                "  vanadium",
+                "Reboot (0)",
+                "Done (1)",
+                "  lanthanum",
+                "Failed (0)",
+            ]
+        );
+        assert_eq!(lines.len(), board.line_count());
+    }
+
+    #[test]
+    fn test_each_state_is_listed_in_its_lane() {
+        let hook = |stage| State::Hook {
+            stage,
+            name: "drain-node".to_string(),
+        };
+        let cases = [
+            (State::Queued, Lane::Queued),
+            (
+                State::WaitingForSerialGroup {
+                    group: "k8s".to_string(),
+                    holder: None,
+                },
+                Lane::Queued,
+            ),
+            (State::Step(PipelineStep::Build), Lane::Build),
+            (State::Step(PipelineStep::Check), Lane::Build),
+            (State::Step(PipelineStep::Copy), Lane::Copy),
+            (hook(HookStage::PreDeploy), Lane::Activate),
+            (State::Step(PipelineStep::Plan), Lane::Activate),
+            (State::Step(PipelineStep::Activate), Lane::Activate),
+            (State::Step(PipelineStep::Reboot), Lane::Reboot),
+            (hook(HookStage::PostReboot), Lane::Reboot),
+            (State::Step(PipelineStep::PostDeploy), Lane::Activate),
+            (hook(HookStage::PostDeploy), Lane::Activate),
+            (
+                State::Done(deployed("cerium", ActivationMode::Switch, false)),
+                Lane::Done,
+            ),
+            (
+                State::Failed {
+                    step: Some(PipelineStep::Copy),
+                    reason: "Copy closure failed".to_string(),
+                },
+                Lane::Failed,
+            ),
+        ];
+
+        for (state, lane) in cases {
+            assert_eq!(lane_of(&state), lane, "{state:?}");
+        }
     }
 
     #[test]

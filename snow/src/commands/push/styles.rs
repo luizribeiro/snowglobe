@@ -1,9 +1,9 @@
-//! How the push TUI draws a phase header and its host rows
+//! How the push TUI draws a phase header and its lanes of hosts
 //!
 //! Each line is redrawn from the shared board on every tick, so elapsed
 //! times keep moving between events.
 
-use super::board::{format_elapsed, HostBoard, Row, RowKind};
+use super::board::{format_elapsed, HostBoard, Lane, Line, Row, RowKind};
 use super::colors::style;
 use parking_lot::Mutex;
 use std::sync::Arc;
@@ -13,7 +13,8 @@ use tracing_indicatif::style::ProgressStyle;
 pub(super) type SharedBoard = Arc<Mutex<Option<HostBoard>>>;
 
 const SPINNER_FRAMES: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
-const ROW_INDENT: &str = "  ";
+const LANE_INDENT: &str = "  ";
+const ROW_INDENT: &str = "    ";
 const BAR_WIDTH: usize = 20;
 
 pub(super) fn header_style(board: SharedBoard) -> ProgressStyle {
@@ -60,8 +61,8 @@ pub(super) fn progress_bar(finished: usize, total: usize, width: usize) -> Strin
     }
 }
 
-/// The style of the `slot`-th row, whichever host is listed there right now
-pub(super) fn row_style(board: SharedBoard, slot: usize) -> ProgressStyle {
+/// The style of the `slot`-th line, whatever is listed there right now
+pub(super) fn line_style(board: SharedBoard, slot: usize) -> ProgressStyle {
     ProgressStyle::with_template("{row}")
         .expect("valid template")
         .with_key(
@@ -77,7 +78,7 @@ pub(super) fn row_style(board: SharedBoard, slot: usize) -> ProgressStyle {
         )
 }
 
-/// The `slot`-th row, coloured, or None past the last host
+/// The `slot`-th line, coloured, or None past the last one
 pub(super) fn render_slot(
     board: &HostBoard,
     slot: usize,
@@ -85,9 +86,36 @@ pub(super) fn render_slot(
     width: usize,
     spinner: &str,
 ) -> Option<String> {
-    let row = board.rows(now).into_iter().nth(slot)?;
-    let text = row_text(&row, board.hostname_width(), width, spinner);
-    Some(styled(row.kind, text))
+    Some(match board.lines(now).into_iter().nth(slot)? {
+        Line::Lane { lane, hosts } => lane_heading(lane, hosts),
+        Line::Host(row) => {
+            let text = row_text(&row, board.hostname_width(), width, spinner);
+            styled(row.kind, text)
+        }
+    })
+}
+
+fn lane_title(lane: Lane) -> &'static str {
+    match lane {
+        Lane::Queued => "◷ Queued",
+        Lane::Build => "⚙ Build",
+        Lane::Copy => "⇢ Copy",
+        Lane::Activate => "★ Activate",
+        Lane::Reboot => "⟳ Reboot",
+        Lane::Done => "✓ Done",
+        Lane::Failed => "✗ Failed",
+    }
+}
+
+/// Empty lanes are dimmed, so the eye goes to where the hosts are
+fn lane_heading(lane: Lane, hosts: usize) -> String {
+    let text = style(format!("{LANE_INDENT}{}", lane_title(lane)));
+    match (lane, hosts) {
+        (_, 0) => text.dim().to_string(),
+        (Lane::Failed, _) => text.red().bold().to_string(),
+        (Lane::Done, _) => text.green().bold().to_string(),
+        _ => text.bold().to_string(),
+    }
 }
 
 /// One row as plain text, cut to fit `width` columns
@@ -162,6 +190,7 @@ mod tests {
 
     fn row(kind: RowKind, hostname: &str, step: &str, detail: &str, secs: Option<u64>) -> Row {
         Row {
+            lane: Lane::Activate,
             kind,
             hostname: hostname.to_string(),
             step: step.to_string(),
@@ -186,11 +215,11 @@ mod tests {
 
         assert_eq!(
             cerium,
-            "  ⠋ cerium     reboot                                  3:12"
+            "    ⠋ cerium     reboot                                3:12"
         );
         assert_eq!(
             neodymium,
-            "  ◷ neodymium  queued      serial group 'k8s' (held b… 2:40"
+            "    ◷ neodymium  queued      serial group 'k8s' (held… 2:40"
         );
         assert_eq!(cerium.chars().count(), 59);
         assert_eq!(neodymium.chars().count(), 59);
@@ -208,12 +237,12 @@ mod tests {
 
         let text = row_text(&lanthanum, 9, 50, "⠋");
 
-        assert_eq!(text, "  ✗ lanthanum  plan        hook 'wait-storage-he…");
+        assert_eq!(text, "    ✗ lanthanum  plan        hook 'wait-storage-…");
         assert_eq!(text.chars().count(), 49);
     }
 
     #[test]
-    fn test_slots_follow_the_board_order_and_end_with_the_hosts() {
+    fn test_slots_list_each_lane_then_its_hosts_and_end_with_the_last() {
         console::set_colors_enabled(false);
         let t0 = Instant::now();
         let hosts = vec!["radon".to_string(), "cerium".to_string()];
@@ -227,15 +256,22 @@ mod tests {
             t0,
         );
 
-        let slots: Vec<_> = (0..3)
+        let slots: Vec<_> = (0..=board.line_count())
             .map(|slot| render_slot(&board, slot, t0, 60, "⠋"))
             .collect();
 
         assert_eq!(
             slots,
             vec![
-                Some("  ✗ radon   build       error: attribute 'wine' missing".to_string()),
-                Some(format!("  ◷ cerium  queued{}0:00", " ".repeat(37))),
+                Some("  ◷ Queued".to_string()),
+                Some(format!("    ◷ cerium  queued{}0:00", " ".repeat(35))),
+                Some("  ⚙ Build".to_string()),
+                Some("  ⇢ Copy".to_string()),
+                Some("  ★ Activate".to_string()),
+                Some("  ⟳ Reboot".to_string()),
+                Some("  ✓ Done".to_string()),
+                Some("  ✗ Failed".to_string()),
+                Some("    ✗ radon   build       error: attribute 'wine' missing".to_string()),
                 None,
             ]
         );
@@ -283,6 +319,6 @@ mod tests {
     fn test_short_rows_are_not_padded_without_elapsed() {
         let sodium = row(RowKind::Unchanged, "sodium", "unchanged", "", None);
 
-        assert_eq!(row_text(&sodium, 9, 80, "⠋"), "  = sodium     unchanged");
+        assert_eq!(row_text(&sodium, 9, 80, "⠋"), "    = sodium     unchanged");
     }
 }

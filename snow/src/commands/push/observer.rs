@@ -1,10 +1,10 @@
-//! CLI observer: a header per phase with one row per host underneath
+//! CLI observer: a header per phase with its lanes of hosts underneath
 //!
 //! Events update a shared HostBoard; the tracing-indicatif spans only hold
 //! styles that read the board whenever the terminal is redrawn.
 
 use super::board::HostBoard;
-use super::styles::{header_style, row_style, SharedBoard};
+use super::styles::{header_style, line_style, SharedBoard};
 use parking_lot::Mutex;
 use snowlib::{HookStage, HostEvent, PushObserver};
 use std::time::Instant;
@@ -42,18 +42,20 @@ fn phase_label(phase: &str) -> &str {
 
 impl PushObserver for CliObserver {
     fn on_phase_start(&self, phase: &str, hosts: &[String]) {
-        *self.board.lock() = Some(HostBoard::new(phase_label(phase), hosts, Instant::now()));
+        let board = HostBoard::new(phase_label(phase), hosts, Instant::now());
+        let lines = board.line_count();
+        *self.board.lock() = Some(board);
 
         let header = info_span!("phase");
         header.pb_set_style(&header_style(self.board.clone()));
         header.pb_start();
 
         // indicatif lists the most recently started line first
-        let mut spans: Vec<tracing::Span> = (0..hosts.len())
+        let mut spans: Vec<tracing::Span> = (0..lines)
             .rev()
             .map(|slot| {
-                let row = info_span!(parent: &header, "host");
-                row.pb_set_style(&row_style(self.board.clone(), slot));
+                let row = info_span!(parent: &header, "line");
+                row.pb_set_style(&line_style(self.board.clone(), slot));
                 row.pb_start();
                 row
             })
@@ -79,6 +81,7 @@ impl PushObserver for CliObserver {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::commands::push::board::Lane;
     use snowlib::PipelineStep;
 
     fn hosts() -> Vec<String> {
@@ -98,12 +101,12 @@ mod tests {
     }
 
     #[test]
-    fn test_phase_start_draws_a_header_and_a_row_per_host() {
+    fn test_phase_start_draws_a_header_and_a_line_per_lane_and_host() {
         let observer = CliObserver::new();
 
         observer.on_phase_start("p3", &hosts());
 
-        assert_eq!(observer.spans.lock().len(), 3);
+        assert_eq!(observer.spans.lock().len(), 1 + Lane::ALL.len() + 2);
         assert_eq!(
             observer.board.lock().as_ref().unwrap().header(),
             "p3 · 2 hosts · 2 queued"
@@ -133,8 +136,8 @@ mod tests {
         assert_eq!(
             rows(&observer),
             vec![
-                ("cerium".to_string(), "pre-deploy".to_string()),
                 ("radon".to_string(), "copy".to_string()),
+                ("cerium".to_string(), "pre-deploy".to_string()),
             ]
         );
     }
