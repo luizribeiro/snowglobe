@@ -16,6 +16,11 @@ pub use push::PushArgs;
 pub use rebuild::RebuildArgs;
 pub use status::StatusArgs;
 
+/// The `dry_run`, `switch`, `boot` and `test` flags, of which a command takes one at most
+fn activation_modes() -> clap::ArgGroup {
+    clap::ArgGroup::new("activation_mode").args(["dry_run", "switch", "boot", "test"])
+}
+
 #[derive(Debug, Subcommand)]
 pub enum Commands {
     Bootstrap(BootstrapArgs),

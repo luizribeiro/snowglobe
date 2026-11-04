@@ -16,3 +16,14 @@ pub fn snow_cmd() -> Command {
     cmd.arg("-f").arg(fixtures_dir());
     cmd
 }
+
+/// Parses `flags` as a command's arguments would be
+pub fn try_parse_args<A: clap::Args>(flags: &[&str]) -> Result<A, clap::Error> {
+    #[derive(clap::Parser)]
+    struct Cli<A: clap::Args> {
+        #[command(flatten)]
+        args: A,
+    }
+    <Cli<A> as clap::Parser>::try_parse_from(std::iter::once("snow").chain(flags.iter().copied()))
+        .map(|cli| cli.args)
+}

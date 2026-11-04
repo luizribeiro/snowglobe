@@ -10,6 +10,7 @@ use snowlib::{
 
 /// Rebuild the current host
 #[derive(Debug, Args)]
+#[command(group = super::activation_modes())]
 pub struct RebuildArgs {
     /// Host to rebuild (defaults to auto-detected hostname from /etc/hostname)
     #[arg(long)]
@@ -50,26 +51,6 @@ pub struct RebuildArgs {
 }
 
 impl RebuildArgs {
-    /// Validate flag combinations
-    fn validate(&self) -> Result<()> {
-        let mode_count = [self.dry_run, self.switch, self.boot, self.test]
-            .iter()
-            .filter(|&&x| x)
-            .count();
-
-        if mode_count > 1 {
-            return Err(snowlib::error::DeployError::Failed {
-                host: "validation".to_string(),
-                source: std::io::Error::other(
-                    "Cannot use multiple activation modes (--dry-run, --switch, --boot, --test)",
-                ),
-            }
-            .into());
-        }
-
-        Ok(())
-    }
-
     /// Determine the hostname to rebuild
     fn resolve_hostname(&self) -> Result<String> {
         if let Some(ref host) = self.host {
@@ -139,8 +120,6 @@ impl RebuildArgs {
     }
 
     async fn rebuild(self, flake: &Flake) -> Result<()> {
-        self.validate()?;
-
         let hostname = self.resolve_hostname()?;
         println!("Rebuilding configuration for {}", hostname);
         tracing::info!("{hostname}: rebuilding");
@@ -367,39 +346,22 @@ mod tests {
     }
 
     #[test]
-    fn test_validate_mutually_exclusive_modes() {
-        let args = RebuildArgs {
-            host: None,
-            dry_run: true,
-            switch: true,
-            boot: false,
-            test: false,
-            skip_reboot: false,
-            force: false,
-            quiet: false,
-            #[cfg(debug_assertions)]
-            mock_fixture: None,
-        };
+    fn test_activation_modes_are_mutually_exclusive() {
+        let error = crate::test_utils::try_parse_args::<RebuildArgs>(&["--dry-run", "--switch"])
+            .unwrap_err();
 
-        assert!(args.validate().is_err());
+        assert!(error
+            .to_string()
+            .contains("the argument '--dry-run' cannot be used with '--switch'"));
     }
 
     #[test]
-    fn test_validate_valid_combination() {
-        let args = RebuildArgs {
-            host: None,
-            dry_run: false,
-            switch: true,
-            boot: false,
-            test: false,
-            skip_reboot: false,
-            force: false,
-            quiet: false,
-            #[cfg(debug_assertions)]
-            mock_fixture: None,
-        };
+    fn test_force_goes_with_any_activation_mode() {
+        for mode in ["--dry-run", "--switch", "--boot", "--test"] {
+            let args = crate::test_utils::try_parse_args::<RebuildArgs>(&[mode, "--force"]);
 
-        assert!(args.validate().is_ok());
+            assert!(args.unwrap().force, "{mode} --force");
+        }
     }
 
     #[test]

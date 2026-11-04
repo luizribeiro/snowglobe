@@ -21,6 +21,7 @@ async fn with_spinner<T>(message: &str, work: impl Future<Output = T>) -> T {
 
 /// Deploy configurations to hosts
 #[derive(Debug, Args)]
+#[command(group = super::activation_modes())]
 pub struct PushArgs {
     #[command(flatten)]
     pub selection: crate::host_selection::HostSelectionArgs,
@@ -53,7 +54,9 @@ pub struct PushArgs {
     pub redeploy: bool,
 
     /// Override policies and safety checks (use with --switch to ignore reboot policies and detection)
-    #[arg(long)]
+    // clap waives `requires` once another mode is given, so those modes are
+    // excluded explicitly
+    #[arg(long, requires = "switch", conflicts_with_all = ["dry_run", "boot", "test"])]
     pub force: bool,
 
     /// Quiet mode - suppress subprocess output, only show summary
@@ -91,36 +94,6 @@ pub struct PushArgs {
 }
 
 impl PushArgs {
-    /// Validate flag combinations
-    fn validate(&self) -> Result<()> {
-        // Check for mutually exclusive activation modes
-        let mode_count = [self.dry_run, self.switch, self.boot, self.test]
-            .iter()
-            .filter(|&&x| x)
-            .count();
-
-        if mode_count > 1 {
-            return Err(snowlib::error::DeployError::Failed {
-                host: "validation".to_string(),
-                source: std::io::Error::other(
-                    "Cannot use multiple activation modes (--dry-run, --switch, --boot, --test)",
-                ),
-            }
-            .into());
-        }
-
-        // --force only makes sense with --switch
-        if self.force && !self.switch {
-            return Err(snowlib::error::DeployError::Failed {
-                host: "validation".to_string(),
-                source: std::io::Error::other("--force can only be used with --switch"),
-            }
-            .into());
-        }
-
-        Ok(())
-    }
-
     /// Determine the push strategy from flags
     fn push_strategy(&self) -> PushStrategy {
         if self.dry_run {
@@ -145,8 +118,6 @@ impl PushArgs {
     /// - Call snowlib::push()
     /// - Print results table
     pub async fn run(self, flake: &Flake, log_file: Option<&std::path::Path>) -> Result<()> {
-        self.validate()?;
-
         // When using --mock-fixture, use the mock flake instead of the real one
         #[cfg(debug_assertions)]
         let mock_flake;
@@ -409,33 +380,42 @@ mod tests {
     }
 
     fn try_push_args(flags: &[&str]) -> std::result::Result<PushArgs, clap::Error> {
-        #[derive(clap::Parser)]
-        struct Cli {
-            #[command(flatten)]
-            args: PushArgs,
-        }
-        <Cli as clap::Parser>::try_parse_from(std::iter::once("push").chain(flags.iter().copied()))
-            .map(|cli| cli.args)
+        crate::test_utils::try_parse_args(flags)
     }
 
     fn push_args(flags: &[&str]) -> PushArgs {
         try_push_args(flags).unwrap()
     }
 
-    #[test]
-    fn test_validate_mutually_exclusive_modes() {
-        assert!(push_args(&["--dry-run", "--switch"]).validate().is_err());
+    fn rejection(flags: &[&str]) -> clap::error::ErrorKind {
+        try_push_args(flags).unwrap_err().kind()
     }
 
     #[test]
-    fn test_validate_force_without_switch() {
-        assert!(push_args(&["--force"]).validate().is_err());
+    fn test_activation_modes_are_mutually_exclusive() {
+        use clap::error::ErrorKind::ArgumentConflict;
+        assert_eq!(rejection(&["--dry-run", "--switch"]), ArgumentConflict);
+        assert_eq!(rejection(&["--boot", "--test"]), ArgumentConflict);
     }
 
     #[test]
-    fn test_validate_valid_combination() {
-        assert!(push_args(&["--switch", "--force"]).validate().is_ok());
-        assert!(push_args(&[]).validate().is_ok());
+    fn test_force_requires_switch() {
+        assert_eq!(
+            rejection(&["--force"]),
+            clap::error::ErrorKind::MissingRequiredArgument
+        );
+        for mode in ["--dry-run", "--boot", "--test"] {
+            assert_eq!(
+                rejection(&[mode, "--force"]),
+                clap::error::ErrorKind::ArgumentConflict
+            );
+        }
+    }
+
+    #[test]
+    fn test_force_with_switch_is_accepted() {
+        assert!(push_args(&["--switch", "--force"]).force);
+        assert!(!push_args(&[]).force);
     }
 
     #[test]
