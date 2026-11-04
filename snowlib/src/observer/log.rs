@@ -1,7 +1,7 @@
 //! Writes each host's progress to the log
 
 use super::{HostEvent, PushObserver};
-use crate::push::{HostDeploymentResult, PipelineStep};
+use crate::push::{HostDeploymentResult, PhaseResult, PipelineStep};
 use parking_lot::Mutex;
 use std::collections::HashMap;
 use std::time::Instant;
@@ -57,11 +57,27 @@ fn done_line(result: &HostDeploymentResult) -> Option<String> {
     }
 }
 
+fn phase_line(phase: &str, result: Option<&PhaseResult>) -> String {
+    match result {
+        Some(result) => format!(
+            "phase {phase} finished in {:.1?}: {} succeeded, {} failed",
+            result.duration,
+            result.success_count(),
+            result.failure_count()
+        ),
+        None => format!("phase {phase} stopped on an error"),
+    }
+}
+
 impl PushObserver for LogObserver {
     fn on_host_event(&self, hostname: &str, event: &HostEvent) {
         if let Some(line) = self.line(hostname, event, Instant::now()) {
             tracing::info!("{line}");
         }
+    }
+
+    fn on_phase_complete(&self, phase: &str, result: Option<&PhaseResult>) {
+        tracing::info!("{}", phase_line(phase, result));
     }
 }
 
@@ -76,6 +92,23 @@ mod tests {
             step,
             reason: "Failed to deploy to host 'cerium': Copy closure failed".to_string(),
         }
+    }
+
+    #[test]
+    fn test_finished_phase_logs_how_long_it_took_and_how_it_went() {
+        let mut failed = HostDeploymentResult::unchanged("radon");
+        failed.success = false;
+        let result = PhaseResult {
+            phase: "p2".to_string(),
+            hosts: vec![HostDeploymentResult::unchanged("cerium"), failed],
+            duration: Duration::from_millis(83_450),
+        };
+
+        assert_eq!(
+            phase_line("p2", Some(&result)),
+            "phase p2 finished in 83.5s: 1 succeeded, 1 failed"
+        );
+        assert_eq!(phase_line("p3", None), "phase p3 stopped on an error");
     }
 
     #[test]
