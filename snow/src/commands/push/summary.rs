@@ -6,13 +6,12 @@
 
 use super::board::{format_elapsed, plural};
 use super::colors::style;
-use crate::error_summary::{error_summary, truncate};
+use crate::error_summary::{error_context, error_summary, truncate};
 use crate::marks;
 use std::path::Path;
 
-/// Maximum error lines to display before truncating.
-/// Limited to keep terminal output scannable - full errors are in logs.
-const MAX_ERROR_LINES: usize = 10;
+/// Keeps the terminal output scannable; the log has every error in full
+const MAX_CONTEXT_LINES: usize = 10;
 
 /// The phase hosts without a push phase share, which has no name to show
 pub(super) fn is_unnamed_phase(phase: &str) -> bool {
@@ -271,28 +270,28 @@ fn print_error_header(host: &snowlib::HostDeploymentResult) {
 }
 
 fn print_error_lines(error_msg: &str, log_file: Option<&Path>) {
-    for line in error_lines(error_msg, MAX_ERROR_LINES, log_file) {
-        println!("    {}", style(line).dim());
+    for line in failure_details(error_msg, log_file) {
+        println!("    {line}");
     }
 }
 
-/// The first line says what failed and the last ones usually why, so long
-/// errors keep both ends and leave out the middle
-fn error_lines(error_msg: &str, max: usize, log_file: Option<&Path>) -> Vec<String> {
-    let lines: Vec<&str> = error_msg.lines().collect();
-    if lines.len() <= max {
-        return lines.iter().map(|line| line.to_string()).collect();
+/// The lines leading up to the cause, dim but for the cause itself, then
+/// where to read the rest
+fn failure_details(error: &str, log_file: Option<&Path>) -> Vec<String> {
+    let context = error_context(error, MAX_CONTEXT_LINES);
+    let mut details = Vec::new();
+    if let [leading @ .., cause] = context.lines.as_slice() {
+        details.extend(leading.iter().map(|line| style(line).dim().to_string()));
+        details.push(cause.to_string());
     }
-    let tail = max.saturating_sub(1);
-    let hidden = lines.len() - 1 - tail;
-    std::iter::once(lines[0].to_string())
-        .chain(std::iter::once(more_lines_hint(hidden, log_file)))
-        .chain(
-            lines[lines.len() - tail..]
-                .iter()
-                .map(|line| line.to_string()),
-        )
-        .collect()
+    if context.hidden > 0 {
+        details.push(
+            style(more_lines_hint(context.hidden, log_file))
+                .dim()
+                .to_string(),
+        );
+    }
+    details
 }
 
 /// Where to read the lines an error left out. Without a log file, logs go
@@ -567,32 +566,44 @@ mod tests {
     }
 
     #[test]
-    fn test_long_errors_keep_their_first_and_last_lines() {
-        let error = (1..=12)
-            .map(|n| format!("line {n}"))
-            .collect::<Vec<_>>()
-            .join("\n");
-
+    fn test_failure_details_lead_up_to_the_cause_then_point_at_the_log() {
+        let error = "Command failed\n\n\
+                     Command: ssh sudo snowglobe-activate /nix/store/yzxw-cerium switch\n\
+                     Exit code: 4\n\n\
+                     Stderr:\n\
+                     activating the configuration...\n\
+                     warning: the following units failed: storage-agent.service";
         let log = Some(Path::new("/tmp/snow-1762255380.log"));
+
+        let details = super::failure_details(error, log);
+
         assert_eq!(
-            super::error_lines(&error, 5, log),
+            details
+                .iter()
+                .map(|line| console::strip_ansi_codes(line))
+                .collect::<Vec<_>>(),
             vec![
-                "line 1",
-                "… 7 more lines in /tmp/snow-1762255380.log",
-                "line 9",
-                "line 10",
-                "line 11",
-                "line 12"
+                "activating the configuration...",
+                "warning: the following units failed: storage-agent.service",
+                "… 4 more lines in /tmp/snow-1762255380.log",
             ]
         );
         assert_eq!(
-            super::error_lines("line 1\nline 2", 5, log),
-            vec!["line 1", "line 2"]
+            super::failure_details("worker crashed", None),
+            vec!["worker crashed"]
         );
-        assert_eq!(super::error_lines(&error, 12, log).len(), 12);
-        let one_hidden = super::error_lines(&error, 11, None);
-        assert_eq!(one_hidden[1], "… 1 more line in the log on stderr");
-        assert_eq!(one_hidden[2], "line 3");
+    }
+
+    #[test]
+    fn test_hint_without_a_log_file_points_at_stderr() {
+        assert_eq!(
+            super::more_lines_hint(1, None),
+            "… 1 more line in the log on stderr"
+        );
+        assert_eq!(
+            super::more_lines_hint(3, Some(Path::new("/tmp/snow-1762255380.log"))),
+            "… 3 more lines in /tmp/snow-1762255380.log"
+        );
     }
 
     fn deployed_phase(hosts: &[&str]) -> PhaseResult {

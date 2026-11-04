@@ -27,16 +27,53 @@ pub fn truncate(text: &str, max: usize) -> String {
     }
 }
 
-/// The last non-empty line of a failed command's "Stderr:" section
-fn last_stderr_line(error: &str) -> Option<&str> {
+/// The lines of an error that lead up to its cause, ending at it
+#[derive(Debug, PartialEq, Eq)]
+pub struct ErrorContext<'a> {
+    pub lines: Vec<&'a str>,
+    /// The error's lines left out of `lines`
+    pub hidden: usize,
+}
+
+/// At most `max` non-empty lines ending at the cause. They come from a
+/// failed command's stderr when the cause is there: its stdout ends in
+/// service logs that rarely explain the failure.
+pub fn error_context(error: &str, max: usize) -> ErrorContext<'_> {
+    let cause = error_summary(error);
+    let all: Vec<&str> = non_empty(error.lines().map(str::trim)).collect();
+    let stderr: Vec<&str> = non_empty(stderr_lines(error)).collect();
+    let source = if stderr.contains(&cause) {
+        &stderr
+    } else {
+        &all
+    };
+    let end = source
+        .iter()
+        .rposition(|line| *line == cause)
+        .map_or(source.len(), |at| at + 1);
+    let lines = source[end.saturating_sub(max)..end].to_vec();
+    ErrorContext {
+        hidden: all.len() - lines.len(),
+        lines,
+    }
+}
+
+fn non_empty<'a>(lines: impl Iterator<Item = &'a str>) -> impl Iterator<Item = &'a str> {
+    lines.filter(|line| !line.is_empty())
+}
+
+/// The trimmed lines of a failed command's "Stderr:" section
+fn stderr_lines(error: &str) -> impl Iterator<Item = &str> {
     error
         .lines()
         .map(str::trim)
         .skip_while(|line| *line != "Stderr:")
         .skip(1)
         .take_while(|line| *line != "Stdout:")
-        .filter(|line| !line.is_empty())
-        .last()
+}
+
+fn last_stderr_line(error: &str) -> Option<&str> {
+    non_empty(stderr_lines(error)).last()
 }
 
 #[cfg(test)]
@@ -89,6 +126,77 @@ mod tests {
         let error = "Command failed\n\nCommand: true\nExit code: 1\n\nStderr:\n";
 
         assert_eq!(error_summary(error), "Command failed");
+    }
+
+    const ACTIVATION_FAILURE: &str = "Command failed\n\n\
+        Command: ssh sudo snowglobe-activate /nix/store/yzxw-cerium switch\n\
+        Exit code: 4\n\n\
+        Stderr:\n\
+        updating GRUB 2 menu...\n\
+        activating the configuration...\n\
+        setting up /etc...\n\
+        warning: the following units failed: storage-agent.service\n\n\
+        Stdout:\n\
+        Nov 04 10:12:03 cerium systemd[1]: Starting storage-agent.service...\n\
+        Nov 04 10:12:04 cerium storage-agent[812]: disk sdb missing";
+
+    #[test]
+    fn test_error_context_of_a_failed_command_is_its_stderr_up_to_the_cause() {
+        assert_eq!(
+            error_context(ACTIVATION_FAILURE, 10),
+            ErrorContext {
+                lines: vec![
+                    "updating GRUB 2 menu...",
+                    "activating the configuration...",
+                    "setting up /etc...",
+                    "warning: the following units failed: storage-agent.service",
+                ],
+                hidden: 7,
+            }
+        );
+    }
+
+    #[test]
+    fn test_error_context_keeps_the_lines_nearest_the_cause() {
+        assert_eq!(
+            error_context(ACTIVATION_FAILURE, 2),
+            ErrorContext {
+                lines: vec![
+                    "setting up /etc...",
+                    "warning: the following units failed: storage-agent.service",
+                ],
+                hidden: 9,
+            }
+        );
+    }
+
+    #[test]
+    fn test_error_context_of_a_nix_error_ends_at_its_last_error_line() {
+        let error = "error:\n       … while evaluating 'toplevel'\n\n       \
+                     error: attribute 'wine' missing\n       at /nix/store/abc-source/hosts/cerium.nix:12:5";
+
+        assert_eq!(
+            error_context(error, 10),
+            ErrorContext {
+                lines: vec![
+                    "error:",
+                    "… while evaluating 'toplevel'",
+                    "error: attribute 'wine' missing",
+                ],
+                hidden: 1,
+            }
+        );
+    }
+
+    #[test]
+    fn test_error_context_of_a_one_line_error_is_that_line() {
+        assert_eq!(
+            error_context("kernel linux-6.12.58 → linux-6.12.60", 10),
+            ErrorContext {
+                lines: vec!["kernel linux-6.12.58 → linux-6.12.60"],
+                hidden: 0,
+            }
+        );
     }
 
     #[test]
