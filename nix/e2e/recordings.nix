@@ -1,8 +1,9 @@
 { pkgs, pushTest }:
 
 let
+  inherit (pkgs) lib;
   scenarios = import ./scenarios.nix;
-  index = pkgs.writeText "index.md" (pkgs.lib.concatMapStrings
+  index = pkgs.writeText "index.md" (lib.concatMapStrings
     (s: ''
       ## ${s.title}
 
@@ -12,6 +13,14 @@ let
 
     '')
     scenarios);
+
+  # The maintainer's terminal colors ("Custom Monokai"), so the GIFs look like
+  # a push in a real session: background, foreground, then 8 normal and 8 bright
+  monokai = lib.concatStringsSep "," [
+    "1c1c1c" "f8f7f2"
+    "262621" "ca4238" "bbd756" "ded685" "85c2d6" "7b72c2" "cf5a78" "fefefe"
+    "717171" "df3f67" "bbd756" "ded685" "85c2d6" "7b72c2" "cf5a78" "fefefe"
+  ];
 in
 pkgs.runCommand "snow-push-recordings"
 {
@@ -23,10 +32,10 @@ pkgs.runCommand "snow-push-recordings"
     cp ${index} $out/index.md
     for cast in $out/*.cast; do
       agg --quiet \
-        --font-dir ${pkgs.jetbrains-mono}/share/fonts \
+        --font-dir ${pkgs.nerd-fonts.hack}/share/fonts \
         --font-dir ${pkgs.dejavu_fonts}/share/fonts \
-        --font-family "JetBrains Mono,DejaVu Sans Mono" \
-        --theme github-dark \
+        --font-family "Hack Nerd Font Mono,DejaVu Sans Mono" \
+        --theme ${monokai} \
         --idle-time-limit 3 \
         --last-frame-duration 6 \
         "$cast" "''${cast%.cast}.gif"
