@@ -6,8 +6,8 @@ use async_trait::async_trait;
 use std::path::Path;
 
 use super::{
-    activation_mode_to_string, should_update_profile, store_path_from_resolved, DeployBackend,
-    DeployTarget, HostSystems, CURRENT_SYSTEM_LINK, SYSTEM_PROFILE_LINK,
+    activation_mode_to_string, command_failed, should_update_profile, store_path_from_resolved,
+    DeployBackend, DeployTarget, HostSystems, CURRENT_SYSTEM_LINK, SYSTEM_PROFILE_LINK,
 };
 
 /// Local deployment backend for rebuilding the current host
@@ -109,16 +109,7 @@ impl DeployBackend for LocalDeployBackend {
                     "sudo nix-env --profile /nix/var/nix/profiles/system --set {}",
                     store_path.as_str()
                 );
-                let stderr = String::from_utf8_lossy(&result.stderr).trim().to_string();
-                let stdout = String::from_utf8_lossy(&result.stdout).trim().to_string();
-                return Err(DeployError::CommandFailed {
-                    host: target.hostname.clone(),
-                    command: command_display,
-                    exit_code: result.status.code().unwrap_or(-1),
-                    stderr,
-                    stdout,
-                }
-                .into());
+                return Err(command_failed(&target.hostname, command_display, &result).into());
             }
         }
 
@@ -151,24 +142,8 @@ impl DeployBackend for LocalDeployBackend {
             })?;
 
         if !result.status.success() {
-            let stderr = String::from_utf8_lossy(&result.stderr);
-            let stderr_trimmed = stderr.trim();
-            let error_msg = if stderr_trimmed.is_empty() {
-                "Activation failed".to_string()
-            } else {
-                let lines: Vec<&str> = stderr_trimmed.lines().collect();
-                let relevant_lines = if lines.len() <= 3 {
-                    lines.join("\n")
-                } else {
-                    lines[lines.len() - 3..].join("\n")
-                };
-                format!("Activation failed:\n{}", relevant_lines)
-            };
-            return Err(DeployError::Failed {
-                host: target.hostname.clone(),
-                source: std::io::Error::other(error_msg),
-            }
-            .into());
+            let command = format!("sudo {}", owned_args.join(" "));
+            return Err(command_failed(&target.hostname, command, &result).into());
         }
 
         Ok(())
