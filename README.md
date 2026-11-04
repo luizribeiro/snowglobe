@@ -6,6 +6,10 @@ Self-contained cluster orchestration for NixOS.
 
 > **Status**: Early design phase. Not ready for use.
 
+[![snow push: three hosts in two phases](https://asciinema.org/a/Z9UPbDMklRqdVFws.svg)](https://asciinema.org/a/Z9UPbDMklRqdVFws)
+
+More in [the demos](docs/demos.md), recorded from real pushes in the VM tests.
+
 ## Vision
 
 snowglobe is a NixOS-native cluster orchestration tool that provides:
