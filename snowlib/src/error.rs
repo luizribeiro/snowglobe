@@ -136,6 +136,22 @@ pub enum FlakeError {
         invalid_hosts: String,
         available_hosts: String,
     },
+
+    #[error("Invalid phase or tag name '{name}'")]
+    #[diagnostic(
+        code(snow::flake::invalid_filter_name),
+        help(
+            "Use only ASCII alphanumeric characters, dashes and underscores: try '{suggestion}'."
+        )
+    )]
+    InvalidFilterName { name: String, suggestion: String },
+
+    #[error("Invalid phase or tag name '{name}'")]
+    #[diagnostic(
+        code(snow::flake::unusable_filter_name),
+        help("A phase or tag name must contain at least one ASCII alphanumeric character, dash or underscore, as in 'production' or 'web_servers'.")
+    )]
+    UnusableFilterName { name: String },
 }
 
 /// Errors related to deployment operations

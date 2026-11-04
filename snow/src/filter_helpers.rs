@@ -1,3 +1,4 @@
+use snowlib::error::FlakeError;
 use snowlib::Result;
 
 /// Builds a Nix filter expression from convenience flags.
@@ -96,47 +97,27 @@ pub fn build_filter_expression(
 /// - Valid: "production", "staging-1", "web_servers", "dev"
 /// - Invalid: "prod.env" (contains period), "test env" (contains space), "日本" (non-ASCII)
 fn validate_nix_identifier(s: &str) -> Result<String> {
-    if s.is_empty() {
-        return Err(snowlib::error::NixError::EvalFailed {
-            stderr: "Phase/tag name cannot be empty. Examples: 'production', 'staging', 'web'"
-                .to_string(),
-            source: std::io::Error::other("Invalid filter expression"),
+    let sanitized: String = s.chars().filter(|c| is_filter_name_char(*c)).collect();
+
+    if sanitized.is_empty() {
+        return Err(FlakeError::UnusableFilterName {
+            name: s.to_string(),
         }
         .into());
     }
-
-    // Check if all characters are valid (ASCII alphanumeric, dash, or underscore)
-    if !s
-        .chars()
-        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
-    {
-        let sanitized: String = s
-            .chars()
-            .filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_')
-            .collect();
-
-        if sanitized.is_empty() {
-            return Err(snowlib::error::NixError::EvalFailed {
-                stderr: format!(
-                    "Invalid phase/tag name '{}': must contain at least one ASCII alphanumeric character, dash, or underscore. Examples: 'production', 'staging-1', 'web_servers'",
-                    s
-                ),
-                source: std::io::Error::other("Invalid filter expression"),
-            }
-            .into());
-        }
-
-        return Err(snowlib::error::NixError::EvalFailed {
-            stderr: format!(
-                "Invalid phase/tag name '{}': only ASCII alphanumeric characters, dashes, and underscores are allowed. Did you mean '{}'?",
-                s, sanitized
-            ),
-            source: std::io::Error::other("Invalid filter expression"),
+    if sanitized != s {
+        return Err(FlakeError::InvalidFilterName {
+            name: s.to_string(),
+            suggestion: sanitized,
         }
         .into());
     }
 
     Ok(s.to_string())
+}
+
+fn is_filter_name_char(c: char) -> bool {
+    c.is_ascii_alphanumeric() || c == '-' || c == '_'
 }
 
 #[cfg(test)]
@@ -249,35 +230,72 @@ mod tests {
         assert_eq!(validate_nix_identifier("123").unwrap(), "123");
     }
 
-    #[test]
-    fn test_validate_nix_identifier_invalid_chars() {
-        assert!(validate_nix_identifier("test env").is_err());
-        assert!(validate_nix_identifier("test@env").is_err());
-        assert!(validate_nix_identifier("test!env").is_err());
-        assert!(validate_nix_identifier("test.env").is_err());
+    fn suggestion_for(name: &str) -> String {
+        match validate_nix_identifier(name) {
+            Err(snowlib::error::SnowError::Flake(FlakeError::InvalidFilterName {
+                suggestion,
+                ..
+            })) => suggestion,
+            other => panic!("expected InvalidFilterName for {name:?}, got {other:?}"),
+        }
+    }
+
+    fn assert_unusable(name: &str) {
+        assert!(
+            matches!(
+                validate_nix_identifier(name),
+                Err(snowlib::error::SnowError::Flake(
+                    FlakeError::UnusableFilterName { .. }
+                ))
+            ),
+            "expected UnusableFilterName for {name:?}"
+        );
     }
 
     #[test]
-    fn test_validate_nix_identifier_empty() {
-        assert!(validate_nix_identifier("").is_err());
+    fn test_validate_nix_identifier_invalid_chars_suggests_the_allowed_ones() {
+        assert_eq!(suggestion_for("test env"), "testenv");
+        assert_eq!(suggestion_for("test@env"), "testenv");
+        assert_eq!(suggestion_for("web.server"), "webserver");
+        assert_eq!(suggestion_for("prod-日本"), "prod-");
     }
 
     #[test]
-    fn test_validate_nix_identifier_only_special_chars() {
-        assert!(validate_nix_identifier("!@#$").is_err());
-        assert!(validate_nix_identifier("...").is_err());
+    fn test_validate_nix_identifier_without_allowed_chars_is_unusable() {
+        assert_unusable("");
+        assert_unusable("!@#$");
+        assert_unusable("...");
+        assert_unusable("日本語");
+    }
+
+    fn message_and_help(name: &str) -> (String, String) {
+        let error = validate_nix_identifier(name).unwrap_err();
+        let help = miette::Diagnostic::help(&error).unwrap().to_string();
+        (error.to_string(), help)
     }
 
     #[test]
-    fn test_validate_nix_identifier_unicode() {
-        // Unicode characters cause an error because the sanitized version differs from input
-        assert!(validate_nix_identifier("prod-日本").is_err());
+    fn test_invalid_filter_name_message_and_help() {
+        assert_eq!(
+            message_and_help("prod!uction"),
+            (
+                "Invalid phase or tag name 'prod!uction'".to_string(),
+                "Use only ASCII alphanumeric characters, dashes and underscores: try 'production'."
+                    .to_string()
+            )
+        );
     }
 
     #[test]
-    fn test_validate_nix_identifier_only_unicode() {
-        // Only Unicode characters results in validation error
-        assert!(validate_nix_identifier("日本語").is_err());
+    fn test_unusable_filter_name_message_and_help() {
+        assert_eq!(
+            message_and_help("!@#$"),
+            (
+                "Invalid phase or tag name '!@#$'".to_string(),
+                "A phase or tag name must contain at least one ASCII alphanumeric character, dash or underscore, as in 'production' or 'web_servers'."
+                    .to_string()
+            )
+        );
     }
 
     #[test]
