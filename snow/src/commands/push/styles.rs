@@ -317,7 +317,7 @@ mod tests {
                 Some("  ⟳ Reboot".to_string()),
                 Some("  ✓ Done".to_string()),
                 Some("  ✗ Failed".to_string()),
-                Some("    ✗ radon   build       error: attribute 'wine' missing".to_string()),
+                Some("    ✗ radon   build       attribute 'wine' missing".to_string()),
                 None,
             ]
         );

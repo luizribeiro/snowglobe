@@ -259,8 +259,9 @@ mod tests {
         assert!(rendered.contains("  https://cache.nixos.org       1 path   3.0 MiB / 12.0 MiB\n"));
         assert!(rendered.contains("  boron    0 builds, 0 trivial, 1 fetch\n"));
         assert!(rendered.contains("  radon    1 build, 5 trivial, 4 fetches\n"));
-        assert!(rendered
-            .contains("  krypton  ✗ evaluation failed: error: attribute 'doesNotExist' missing\n"));
+        assert!(
+            rendered.contains("  krypton  ✗ evaluation failed: attribute 'doesNotExist' missing\n")
+        );
         assert!(!rendered.contains("Warnings"));
     }
 

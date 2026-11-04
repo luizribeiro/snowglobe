@@ -494,7 +494,7 @@ mod tests {
         let cerium = row_of(&board, "cerium", t0 + secs(9));
         assert_eq!(
             cerium.detail,
-            "error: attribute 'services.nginx.virtualHosts' already defined"
+            "attribute 'services.nginx.virtualHosts' already defined"
         );
         assert_eq!(cerium.elapsed, None);
     }

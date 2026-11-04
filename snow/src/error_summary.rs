@@ -4,11 +4,14 @@
 ///
 /// Nix errors carry a long trace; the final `error:` line names the cause.
 /// A failed command's own last words on stderr usually say what went wrong,
-/// where its first line only says that it failed.
+/// where its first line only says that it failed. The line is shown as the
+/// cause, so it drops Nix's `error:` prefix; a bare `error:` only heads a trace.
 pub fn error_summary(error: &str) -> &str {
     let lines = || error.lines().map(str::trim);
     lines()
-        .filter(|line| line.starts_with("error:"))
+        .filter_map(|line| line.strip_prefix("error:"))
+        .map(str::trim_start)
+        .filter(|cause| !cause.is_empty())
         .next_back()
         .or_else(|| last_stderr_line(error))
         .unwrap_or_else(|| lines().next().unwrap_or_default())
@@ -73,6 +76,14 @@ mod tests {
     fn test_error_summary_uses_last_error_line() {
         let error = "error:\n       … while evaluating 'toplevel'\n\n       error: attribute 'wine' missing";
 
-        assert_eq!(error_summary(error), "error: attribute 'wine' missing");
+        assert_eq!(error_summary(error), "attribute 'wine' missing");
+    }
+
+    #[test]
+    fn test_error_summary_skips_a_bare_error_header() {
+        let error =
+            "Failed to evaluate Nix expression:\nerror:\n       … while evaluating 'toplevel'";
+
+        assert_eq!(error_summary(error), "Failed to evaluate Nix expression:");
     }
 }
