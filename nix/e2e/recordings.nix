@@ -21,6 +21,9 @@ let
     "262621" "ca4238" "bbd756" "ded685" "85c2d6" "7b72c2" "cf5a78" "fefefe"
     "717171" "df3f67" "bbd756" "ded685" "85c2d6" "7b72c2" "cf5a78" "fefefe"
   ];
+  # Twice the 12pt terminal font they match, so shown at half size on a Retina screen the
+  # text is as big as in that terminal, and sharp
+  fontSize = 24;
 in
 pkgs.runCommand "snow-push-recordings"
 {
@@ -36,6 +39,7 @@ pkgs.runCommand "snow-push-recordings"
         --font-dir ${pkgs.dejavu_fonts}/share/fonts \
         --font-family "Hack Nerd Font Mono,DejaVu Sans Mono" \
         --theme ${monokai} \
+        --font-size ${toString fontSize} \
         --idle-time-limit 3 \
         --last-frame-duration 6 \
         "$cast" "''${cast%.cast}.gif"
