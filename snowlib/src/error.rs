@@ -292,7 +292,10 @@ pub enum IoError {
     },
 
     #[error("Failed to read hook environment file {path}")]
-    #[diagnostic(code(snow::io::hook_env_file))]
+    #[diagnostic(
+        code(snow::io::hook_env_file),
+        help("Check that the file exists and that the user running snow can read it. If it holds agenix or sops-nix secrets, check that they were decrypted.")
+    )]
     HookEnvFile {
         path: PathBuf,
         #[source]

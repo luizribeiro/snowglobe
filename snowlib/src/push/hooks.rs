@@ -82,21 +82,7 @@ impl HookExecutor {
                             e
                         );
                         if !hook.continue_on_failure {
-                            let error_msg = format!(
-                                "Hook '{}' failed to load environment file {:?}: {}\n\n\
-                                 Troubleshooting:\n\
-                                 - Verify the file exists and is readable\n\
-                                 - Check file permissions (should be readable by deploy user)\n\
-                                 - If using agenix or sops-nix, ensure secrets are properly decrypted\n\
-                                 - Verify the file path is absolute or relative to the deployment context",
-                                hook.name, env_file, e
-                            );
-                            return Err(crate::error::SnowError::Deploy(
-                                crate::error::DeployError::Failed {
-                                    host: hostname.to_string(),
-                                    source: std::io::Error::other(error_msg),
-                                },
-                            ));
+                            return Err(e);
                         }
                     }
                 }
@@ -1033,10 +1019,15 @@ mod tests {
             )
             .await;
 
-        assert!(result.is_err());
-        // Error should indicate deployment failed for test-host
-        let err = result.unwrap_err();
-        assert!(err.to_string().contains("test-host"));
+        let error = result.unwrap_err();
+        assert!(matches!(
+            &error,
+            crate::error::SnowError::Io(crate::error::IoError::HookEnvFile { .. })
+        ));
+        assert!(miette::Diagnostic::help(&error)
+            .unwrap()
+            .to_string()
+            .contains("agenix or sops-nix"));
     }
 
     #[tokio::test]
