@@ -1,6 +1,6 @@
 use clap::Args;
 use snowlib::{Flake, NixBackend, Result};
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashSet};
 
 /// Host selection flags shared by every command that operates on a set of hosts.
 #[derive(Debug, Default, Args)]
@@ -106,22 +106,7 @@ pub async fn resolve_hosts(
         // Explicit hosts only: validate they exist, return them
         (None, Some(requested)) => {
             let all_hosts = nix_backend.list_all_hosts(flake, None).await?;
-            let valid_set: HashSet<String> = all_hosts.iter().map(|h| h.name.clone()).collect();
-
-            let invalid_hosts: Vec<String> = requested
-                .iter()
-                .filter(|h| !valid_set.contains(*h))
-                .cloned()
-                .collect();
-
-            if !invalid_hosts.is_empty() {
-                return Err(snowlib::error::FlakeError::InvalidHosts {
-                    invalid_hosts: invalid_hosts.join(", "),
-                    available_hosts: valid_set.iter().cloned().collect::<Vec<_>>().join(", "),
-                }
-                .into());
-            }
-
+            ensure_hosts_exist(requested, &all_hosts)?;
             Ok(requested.to_vec())
         }
 
@@ -134,24 +119,10 @@ pub async fn resolve_hosts(
             let filtered_hosts = nix_backend.list_all_hosts(flake, Some(filter)).await?;
             let all_hosts = nix_backend.list_all_hosts(flake, None).await?;
 
+            ensure_hosts_exist(requested, &all_hosts)?;
+
             let filtered_set: HashSet<String> =
                 filtered_hosts.iter().map(|h| h.name.clone()).collect();
-            let all_hosts_set: HashSet<String> = all_hosts.iter().map(|h| h.name.clone()).collect();
-
-            // First check that all explicit hosts exist (regardless of filter)
-            let invalid_hosts: Vec<String> = requested
-                .iter()
-                .filter(|h| !all_hosts_set.contains(*h))
-                .cloned()
-                .collect();
-
-            if !invalid_hosts.is_empty() {
-                return Err(snowlib::error::FlakeError::InvalidHosts {
-                    invalid_hosts: invalid_hosts.join(", "),
-                    available_hosts: all_hosts_set.iter().cloned().collect::<Vec<_>>().join(", "),
-                }
-                .into());
-            }
 
             // Return intersection: explicit hosts that also match the filter
             Ok(requested
@@ -161,6 +132,24 @@ pub async fn resolve_hosts(
                 .collect())
         }
     }
+}
+
+fn ensure_hosts_exist(requested: &[String], all_hosts: &[snowlib::Host]) -> Result<()> {
+    let available: BTreeSet<&str> = all_hosts.iter().map(|h| h.name.as_str()).collect();
+    let invalid_hosts: Vec<&str> = requested
+        .iter()
+        .map(String::as_str)
+        .filter(|h| !available.contains(h))
+        .collect();
+
+    if invalid_hosts.is_empty() {
+        return Ok(());
+    }
+    Err(snowlib::error::FlakeError::InvalidHosts {
+        invalid_hosts: invalid_hosts.join(", "),
+        available_hosts: available.into_iter().collect::<Vec<_>>().join(", "),
+    }
+    .into())
 }
 
 #[cfg(test)]
@@ -326,6 +315,24 @@ mod tests {
         assert!(err_msg.contains("nonexistent"));
         assert!(err_msg.contains("host1"));
         assert!(err_msg.contains("host2"));
+    }
+
+    #[tokio::test]
+    async fn test_resolve_hosts_lists_the_available_hosts_in_order() {
+        let flake = fixture_flake();
+        let backend = create_mock_backend_with_hosts(vec!["radon", "argon", "neon", "boron"]);
+
+        let explicit = vec!["xenon".to_string(), "argon".to_string()];
+        for filter in [None, Some("c: true")] {
+            let err = resolve_hosts(&flake, &backend, filter, Some(&explicit))
+                .await
+                .unwrap_err();
+
+            assert_eq!(
+                err.to_string(),
+                "Invalid host(s): xenon\nAvailable hosts: argon, boron, neon, radon"
+            );
+        }
     }
 
     #[tokio::test]
