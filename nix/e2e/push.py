@@ -216,6 +216,7 @@ try:
         rebuild = Recording("rebuild-cancel").run()
         rebuild.succeeded()
         rebuild.has("Reboot required", "What would you like to do?", "Continue?", "Rebuild cancelled")
+        rebuild.logged("boron: reboot required: Initrd changed", "boron: chose to cancel")
         assert boots_into("boron") == before, boots_into("boron")
 
     with subtest("snow rebuild sets the new system for the next boot"):
@@ -223,6 +224,7 @@ try:
         rebuild = Recording("rebuild-boot").run()
         rebuild.succeeded()
         rebuild.has("Configuration will apply on next boot")
+        rebuild.logged("boron: built", "boron: chose to activate on the next boot", "boron: activated (Boot mode)")
         assert boots_into("boron") == variants["boron"]["initrd"], boots_into("boron")
         assert running("boron") == running_before, running("boron")
 
@@ -239,6 +241,7 @@ try:
         boron.connected = False
         boron.wait_for_unit("multi-user.target")
         rebuild.collect()
+        rebuild.logged("boron: chose to reboot now", "boron: activated (Boot mode)", "boron: rebooting")
         assert boots_into("boron") == variants["boron"]["initrd"], boots_into("boron")
         recorded = boron.succeed("cat /var/lib/casts/rebuild-reboot.cast")
         assert "Rebooting" in recorded, recorded

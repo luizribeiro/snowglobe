@@ -149,11 +149,21 @@ impl RebuildArgs {
         }
     }
 
+    /// The error is printed by `main` too, but only the log keeps it
     pub async fn run(self, flake: &Flake) -> Result<()> {
+        let result = self.rebuild(flake).await;
+        if let Err(error) = &result {
+            tracing::error!("rebuild failed: {}", snowlib::error::error_chain(error));
+        }
+        result
+    }
+
+    async fn rebuild(self, flake: &Flake) -> Result<()> {
         self.validate()?;
 
         let hostname = self.resolve_hostname()?;
         println!("Rebuilding configuration for {}", hostname);
+        tracing::info!("{hostname}: rebuilding");
 
         let nix_backend = crate::backend_factory::create_nix_backend(
             #[cfg(debug_assertions)]
@@ -173,6 +183,7 @@ impl RebuildArgs {
             .build_host(flake, &hostname, system_type, output_mode)
             .await?;
         println!("Built {}", store_path.as_str());
+        tracing::info!("{hostname}: built {}", store_path.as_str());
 
         let target = DeployTarget {
             user: None,
@@ -185,10 +196,17 @@ impl RebuildArgs {
 
         let mode = self.activation_mode();
 
+        let (deployer, host, system, name) = (&deploy_backend, &target, &store_path, &hostname);
+        let activate = |mode| async move {
+            deployer.activate(host, system, mode).await?;
+            tracing::info!("{name}: activated ({mode:?} mode)");
+            Result::Ok(())
+        };
+
         // Handle non-switch modes early (dry-run, test, boot)
         if mode != ActivationMode::Switch {
             println!("Activating configuration...");
-            deploy_backend.activate(&target, &store_path, mode).await?;
+            activate(mode).await?;
             match mode {
                 ActivationMode::DryActivate => println!("✅ Dry run complete"),
                 ActivationMode::Test => println!("✅ Test activation complete"),
@@ -206,9 +224,10 @@ impl RebuildArgs {
 
         // If no reboot needed, activate immediately and exit
         if !reboot_check.required {
+            tracing::info!("{hostname}: no reboot required, switching");
             println!("✅ No reboot required");
             println!("Activating configuration...");
-            deploy_backend.activate(&target, &store_path, mode).await?;
+            activate(mode).await?;
             println!("✅ Configuration activated successfully");
             return Ok(());
         }
@@ -219,30 +238,31 @@ impl RebuildArgs {
             .map(|r| r.to_string())
             .unwrap_or_else(|| "unknown".to_string());
 
-        // Prompt user for action when reboot is required
+        tracing::info!(
+            "{hostname}: reboot required: {}",
+            reason.lines().next().unwrap_or_default()
+        );
         let action = self.prompt_reboot_action(&reason)?;
+        tracing::info!("{hostname}: chose to {}", action.describe());
 
         match action {
             RebootAction::BootAndReboot => {
                 println!("\nActivating in boot mode...");
-                deploy_backend
-                    .activate(&target, &store_path, ActivationMode::Boot)
-                    .await?;
+                activate(ActivationMode::Boot).await?;
                 println!("✅ Configuration activated for next boot");
                 println!("Rebooting...");
+                tracing::info!("{hostname}: rebooting");
                 reboot_backend.reboot_and_wait(&target).await?;
             }
             RebootAction::BootOnly => {
                 println!("\nActivating in boot mode...");
-                deploy_backend
-                    .activate(&target, &store_path, ActivationMode::Boot)
-                    .await?;
+                activate(ActivationMode::Boot).await?;
                 println!("✅ Configuration will apply on next boot");
                 println!("Remember to reboot when convenient");
             }
             RebootAction::SwitchRisky => {
                 println!("\n⚠️  Switching without reboot (risky)");
-                deploy_backend.activate(&target, &store_path, mode).await?;
+                activate(mode).await?;
                 println!("Configuration activated (may be unstable)");
             }
             RebootAction::Cancel => {
@@ -261,6 +281,17 @@ enum RebootAction {
     BootOnly,
     SwitchRisky,
     Cancel,
+}
+
+impl RebootAction {
+    fn describe(&self) -> &'static str {
+        match self {
+            RebootAction::BootAndReboot => "reboot now",
+            RebootAction::BootOnly => "activate on the next boot",
+            RebootAction::SwitchRisky => "activate without rebooting",
+            RebootAction::Cancel => "cancel",
+        }
+    }
 }
 
 #[cfg(test)]
