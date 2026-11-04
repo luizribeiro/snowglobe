@@ -215,7 +215,7 @@ try:
         before = boots_into("boron")
         rebuild = Recording("rebuild-cancel").run()
         rebuild.succeeded()
-        rebuild.has("Reboot needed:", "• initrd changed", "What now?", "mixes old and new parts", "Switch anyway?", "Cancelled, nothing changed")
+        rebuild.has("Reboot needed:", "• initrd changed", "What now?", "mixes old and new parts", "Switch anyway?", "⊘ Cancelled, nothing changed")
         rebuild.logged("boron: reboot required: initrd changed", "boron: chose to cancel")
         assert boots_into("boron") == before, boots_into("boron")
 

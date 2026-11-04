@@ -238,7 +238,7 @@ impl RebuildArgs {
                 );
             }
             RebootAction::Cancel => {
-                println!("\n{} Cancelled, nothing changed", marks::failure());
+                println!("\n{}", marks::skipped_line("Cancelled, nothing changed"));
                 return Ok(());
             }
         }
