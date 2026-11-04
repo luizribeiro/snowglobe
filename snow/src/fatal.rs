@@ -44,7 +44,7 @@ mod tests {
         assert_eq!(
             styled(&error, false),
             "✗ The ssh-agent did not answer within 10s\n  \
-             help: Every ssh connection would hang on it. Check it with `ssh-add -l`, then restart the agent or unset SSH_AUTH_SOCK."
+             help: Every ssh connection would hang on it. Check it with `ssh-add -l`, then restart the agent or unset `SSH_AUTH_SOCK`."
         );
     }
 
@@ -87,7 +87,7 @@ mod tests {
              Nix command execution failed\n    \
              nix: command not found\n\n    \
              is nix installed?\n  \
-             help: Ensure the host has the required configuration attributes"
+             help: Ensure the host has the required configuration attributes."
         );
     }
 

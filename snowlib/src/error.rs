@@ -64,7 +64,7 @@ pub enum NixError {
     #[error("Failed to get metadata for host '{host}'")]
     #[diagnostic(
         code(snow::nix::metadata_failed),
-        help("Ensure the host has the required configuration attributes")
+        help("Ensure the host has the required configuration attributes.")
     )]
     MetadataFailed {
         host: String,
@@ -94,21 +94,23 @@ pub enum FlakeError {
     #[error("Could not find flake.nix in {start_dir} or any parent directory")]
     #[diagnostic(
         code(snow::flake::not_found),
-        help("snowglobe requires a flake.nix with nixosConfigurations to operate.\nRun this command from within a NixOS flake directory, or use --flake-path to specify the location.")
+        help("snowglobe requires a flake.nix with nixosConfigurations to operate.\nRun this command from within a NixOS flake directory, or use `--flake-path` to specify the location.")
     )]
     NotFound { start_dir: PathBuf },
 
     #[error("Flake path does not exist: {path}")]
     #[diagnostic(
         code(snow::flake::path_not_found),
-        help("Provide a valid path to a directory containing flake.nix or to a flake.nix file")
+        help("Provide a valid path to a directory containing flake.nix or to a flake.nix file.")
     )]
     PathNotFound { path: PathBuf },
 
     #[error("No flake.nix found in specified directory: {path}")]
     #[diagnostic(
         code(snow::flake::missing_in_dir),
-        help("The directory exists but doesn't contain a flake.nix file.\nProvide a path to a directory containing flake.nix or the flake.nix file itself")
+        help(
+            "Provide a path to a directory containing flake.nix, or to the flake.nix file itself."
+        )
     )]
     MissingInDir { path: PathBuf },
 
@@ -164,7 +166,7 @@ pub enum DeployError {
     )]
     #[diagnostic(
         code(snow::deploy::hosts_failed),
-        help("See the per-host errors above")
+        help("See the per-host errors above.")
     )]
     HostsFailed {
         total: usize,
@@ -198,21 +200,21 @@ pub enum DeployError {
     #[error("The ssh-agent did not answer within {seconds}s")]
     #[diagnostic(
         code(snow::deploy::ssh_agent_not_responding),
-        help("Every ssh connection would hang on it. Check it with `ssh-add -l`, then restart the agent or unset SSH_AUTH_SOCK.")
+        help("Every ssh connection would hang on it. Check it with `ssh-add -l`, then restart the agent or unset `SSH_AUTH_SOCK`.")
     )]
     SshAgentNotResponding { seconds: u64 },
 
     #[error("Reboot of host '{host}' was not confirmed: {reason}")]
     #[diagnostic(
         code(snow::deploy::reboot_not_confirmed),
-        help("Check that the deploy user can run `sudo snowglobe-activate reboot` on the host")
+        help("Check that the deploy user can run `sudo snowglobe-activate reboot` on the host.")
     )]
     RebootNotConfirmed { host: String, reason: String },
 
     #[error("SSH connection failed to {destination}")]
     #[diagnostic(
         code(snow::deploy::ssh_failed),
-        help("Ensure the host is reachable and SSH is configured correctly")
+        help("Ensure the host is reachable and SSH is configured correctly.")
     )]
     SshFailed {
         destination: String,
@@ -259,7 +261,7 @@ pub enum IoError {
     #[error("Failed to create a temporary directory")]
     #[diagnostic(
         code(snow::io::temp_dir_failed),
-        help("Check that $TMPDIR (or /tmp) is writable")
+        help("Check that `$TMPDIR` (or `/tmp`) is writable.")
     )]
     TempDir {
         #[source]
@@ -316,14 +318,14 @@ pub enum BootstrapError {
     #[error("Required tool '{tool}' not found")]
     #[diagnostic(
         code(snow::bootstrap::missing_dependency),
-        help("Install the missing tool using nix-shell -p <tool_name>\n\nOr enter the bootstrap environment:\n  nix develop .#bootstrap")
+        help("Install the package that provides it, or enter the bootstrap environment with `nix develop .#bootstrap`.")
     )]
     MissingDependency { tool: String },
 
     #[error("Failed to generate SSH host key")]
     #[diagnostic(
         code(snow::bootstrap::keygen_failed),
-        help("Ensure ssh-keygen is available and the output directory is writable")
+        help("Ensure ssh-keygen is available and the output directory is writable.")
     )]
     KeyGenFailed {
         #[source]
@@ -357,7 +359,9 @@ pub enum BootstrapError {
     #[error("Failed to create secure temporary directory")]
     #[diagnostic(
         code(snow::bootstrap::temp_dir_failed),
-        help("Ensure /tmp is writable and has sufficient space.\nCheck permissions with: ls -ld /tmp")
+        help(
+            "Ensure /tmp is writable and has space left; check its permissions with `ls -ld /tmp`."
+        )
     )]
     TempDirFailed {
         #[source]
@@ -367,28 +371,28 @@ pub enum BootstrapError {
     #[error("Path contains invalid UTF-8: {path}")]
     #[diagnostic(
         code(snow::bootstrap::invalid_path),
-        help("Ensure directory paths contain only valid UTF-8 characters")
+        help("Ensure directory paths contain only valid UTF-8 characters.")
     )]
     InvalidPath { path: String },
 
     #[error("Required tool 'sops' not found")]
     #[diagnostic(
         code(snow::bootstrap::sops_missing),
-        help("Install sops using nix-shell -p sops\n\nOr enter the bootstrap environment:\n  nix develop .#bootstrap")
+        help("Install it with `nix-shell -p sops`, or enter the bootstrap environment with `nix develop .#bootstrap`.")
     )]
     SopsMissing,
 
     #[error("No .sops.yaml found in flake directory: {path}")]
     #[diagnostic(
         code(snow::bootstrap::sops_yaml_not_found),
-        help("Create a .sops.yaml file in your flake directory.\nSee https://github.com/getsops/sops for configuration format.")
+        help("Create a `.sops.yaml` file in your flake directory; see https://github.com/getsops/sops for its format.")
     )]
     SopsYamlNotFound { path: String },
 
     #[error("Failed to read .sops.yaml: {path}")]
     #[diagnostic(
         code(snow::bootstrap::sops_yaml_read_failed),
-        help("Ensure the file is readable and contains valid YAML")
+        help("Ensure the file is readable and contains valid YAML.")
     )]
     SopsYamlReadFailed {
         path: String,
@@ -399,7 +403,7 @@ pub enum BootstrapError {
     #[error("Failed to write .sops.yaml: {path}")]
     #[diagnostic(
         code(snow::bootstrap::sops_yaml_write_failed),
-        help("Ensure the file is writable")
+        help("Ensure the file is writable.")
     )]
     SopsYamlWriteFailed {
         path: String,
@@ -410,21 +414,21 @@ pub enum BootstrapError {
     #[error("Invalid .sops.yaml format: {reason}")]
     #[diagnostic(
         code(snow::bootstrap::sops_yaml_invalid),
-        help("Ensure .sops.yaml has a valid 'keys:' section.\nSee https://github.com/getsops/sops for format details.")
+        help("Ensure `.sops.yaml` has a valid `keys:` section; see https://github.com/getsops/sops for its format.")
     )]
     SopsYamlInvalid { reason: String },
 
     #[error("Host '{hostname}' already exists in .sops.yaml")]
     #[diagnostic(
         code(snow::bootstrap::sops_host_exists),
-        help("Remove the existing entry for this host if you want to regenerate its key.\nOr use a different hostname.")
+        help("Remove the host's entry to regenerate its key, or use a different hostname.")
     )]
     SopsHostExists { hostname: String },
 
     #[error("sops updatekeys command failed:\n{stderr}")]
     #[diagnostic(
         code(snow::bootstrap::sops_updatekeys_failed),
-        help("Check that sops is correctly configured and all keys are valid.\nRun manually: sops updatekeys <file>")
+        help("Check that sops is configured and every key is valid, then run `sops updatekeys <file>` by hand to see why it failed.")
     )]
     SopsUpdateKeysFailed { stderr: String },
 }
@@ -435,14 +439,14 @@ pub enum ProvisionerError {
     #[error("Provisioner '{provisioner}' requires manual key injection")]
     #[diagnostic(
         code(snow::provisioner::manual_required),
-        help("Copy the SSH keys to the target's /etc/ssh/ directory manually")
+        help("Copy the SSH keys to the target's /etc/ssh/ directory by hand.")
     )]
     ManualRequired { provisioner: String },
 
     #[error("Unknown provisioner type: {name}")]
     #[diagnostic(
         code(snow::provisioner::unknown),
-        help("Available provisioners: manual, sd-image")
+        help("Available provisioners: manual, sd-image.")
     )]
     UnknownProvisioner { name: String },
 
@@ -516,7 +520,7 @@ pub enum ProvisionerError {
     #[error("{provisioner} deployment failed: {reason}")]
     #[diagnostic(
         code(snow::provisioner::deployment_failed),
-        help("Check the target is accessible and has sufficient permissions.\nFor block devices, ensure you have write access (try with sudo).\nFor Proxmox, ensure SSH access is configured.")
+        help("Check the target is accessible and has sufficient permissions.\nFor block devices, ensure you have write access (try with `sudo`).\nFor Proxmox, ensure SSH access is configured.")
     )]
     DeploymentFailed { provisioner: String, reason: String },
 
