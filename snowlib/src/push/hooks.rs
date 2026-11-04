@@ -1197,7 +1197,7 @@ mod tests {
         ));
         assert_eq!(
             error.to_string(),
-            "Failed to read hook environment file /nonexistent/file.env"
+            "Failed to read hook environment file '/nonexistent/file.env'"
         );
     }
 

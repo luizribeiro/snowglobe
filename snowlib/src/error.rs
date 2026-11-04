@@ -72,7 +72,7 @@ pub enum NixError {
         source: Box<NixError>,
     },
 
-    #[error("Failed to read hooks file {path}")]
+    #[error("Failed to read hooks file '{path}'")]
     #[diagnostic(code(snow::nix::hooks_file_read_failed))]
     HooksFileReadFailed {
         path: String,
@@ -91,21 +91,21 @@ pub enum NixError {
 /// Errors related to flake detection and validation
 #[derive(Debug, Error, Diagnostic)]
 pub enum FlakeError {
-    #[error("Could not find flake.nix in {start_dir} or any parent directory")]
+    #[error("Could not find flake.nix in '{start_dir}' or any parent directory")]
     #[diagnostic(
         code(snow::flake::not_found),
         help("snowglobe requires a flake.nix with nixosConfigurations to operate.\nRun this command from within a NixOS flake directory, or use `--flake-path` to specify the location.")
     )]
     NotFound { start_dir: PathBuf },
 
-    #[error("Flake path does not exist: {path}")]
+    #[error("Flake path '{path}' does not exist")]
     #[diagnostic(
         code(snow::flake::path_not_found),
         help("Provide a valid path to a directory containing flake.nix or to a flake.nix file.")
     )]
     PathNotFound { path: PathBuf },
 
-    #[error("No flake.nix found in specified directory: {path}")]
+    #[error("No flake.nix found in '{path}'")]
     #[diagnostic(
         code(snow::flake::missing_in_dir),
         help(
@@ -114,9 +114,7 @@ pub enum FlakeError {
     )]
     MissingInDir { path: PathBuf },
 
-    #[error(
-        "Path must be either a directory containing flake.nix or the flake.nix file itself: {path}"
-    )]
+    #[error("Path '{path}' is neither a directory containing flake.nix nor a flake.nix file")]
     #[diagnostic(code(snow::flake::invalid_path))]
     InvalidPath { path: PathBuf },
 
@@ -185,7 +183,7 @@ pub enum DeployError {
     },
 
     #[error(
-        "Hook '{hook}' of host '{host}' references {path}, which is not present on this machine"
+        "Hook '{hook}' of host '{host}' references '{path}', which is not present on this machine"
     )]
     #[diagnostic(
         code(snow::deploy::hook_path_missing),
@@ -240,14 +238,14 @@ pub enum IoError {
         source: serde_json::Error,
     },
 
-    #[error("No saved plan at {path}")]
+    #[error("No saved plan at '{path}'")]
     #[diagnostic(
         code(snow::io::no_saved_plan),
         help("Run `snow plan` first; each run saves its report for `snow plan --last`.")
     )]
     NoSavedPlan { path: PathBuf },
 
-    #[error("Saved plan at {path} is unreadable")]
+    #[error("Saved plan at '{path}' is unreadable")]
     #[diagnostic(
         code(snow::io::invalid_saved_plan),
         help("It may be from an older snow version. Run `snow plan` again to replace it.")
@@ -268,7 +266,7 @@ pub enum IoError {
         source: std::io::Error,
     },
 
-    #[error("Failed to access state file {path}")]
+    #[error("Failed to access state file '{path}'")]
     #[diagnostic(code(snow::io::state_file))]
     StateFile {
         path: PathBuf,
@@ -293,7 +291,7 @@ pub enum IoError {
         source: std::io::Error,
     },
 
-    #[error("Failed to read hook environment file {path}")]
+    #[error("Failed to read hook environment file '{path}'")]
     #[diagnostic(
         code(snow::io::hook_env_file),
         help("Check that the file exists and that the user running snow can read it. If it holds agenix or sops-nix secrets, check that they were decrypted.")
@@ -368,7 +366,7 @@ pub enum BootstrapError {
         source: std::io::Error,
     },
 
-    #[error("Path contains invalid UTF-8: {path}")]
+    #[error("Path '{path}' contains invalid UTF-8")]
     #[diagnostic(
         code(snow::bootstrap::invalid_path),
         help("Ensure directory paths contain only valid UTF-8 characters.")
@@ -382,14 +380,14 @@ pub enum BootstrapError {
     )]
     SopsMissing,
 
-    #[error("No .sops.yaml found in flake directory: {path}")]
+    #[error("No .sops.yaml found in flake directory '{path}'")]
     #[diagnostic(
         code(snow::bootstrap::sops_yaml_not_found),
         help("Create a `.sops.yaml` file in your flake directory; see https://github.com/getsops/sops for its format.")
     )]
     SopsYamlNotFound { path: String },
 
-    #[error("Failed to read .sops.yaml: {path}")]
+    #[error("Failed to read '{path}'")]
     #[diagnostic(
         code(snow::bootstrap::sops_yaml_read_failed),
         help("Ensure the file is readable and contains valid YAML.")
@@ -400,7 +398,7 @@ pub enum BootstrapError {
         source: std::io::Error,
     },
 
-    #[error("Failed to write .sops.yaml: {path}")]
+    #[error("Failed to write '{path}'")]
     #[diagnostic(
         code(snow::bootstrap::sops_yaml_write_failed),
         help("Ensure the file is writable.")

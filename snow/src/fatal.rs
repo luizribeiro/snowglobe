@@ -68,7 +68,7 @@ mod tests {
 
         assert_eq!(
             styled(&error, false),
-            "✗ Path must be either a directory containing flake.nix or the flake.nix file itself: /srv/ops/flake.lock"
+            "✗ Path '/srv/ops/flake.lock' is neither a directory containing flake.nix nor a flake.nix file"
         );
     }
 

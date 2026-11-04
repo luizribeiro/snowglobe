@@ -30,7 +30,7 @@ fn test_fatal_error_shows_its_help_without_a_std_prefix() {
         .assert()
         .failure()
         .stderr(predicate::str::starts_with(
-            "✗ Flake path does not exist: /srv/no-such-flake\n  help: Provide a valid path",
+            "✗ Flake path '/srv/no-such-flake' does not exist\n  help: Provide a valid path",
         ))
         .stderr(predicate::str::contains("Error:").not());
 }
