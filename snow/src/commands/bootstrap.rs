@@ -1,3 +1,4 @@
+use crate::marks;
 use crate::plural::plural;
 use clap::Args;
 use snowlib::{
@@ -138,7 +139,10 @@ impl BootstrapArgs {
             provisioner.validate_target(&target)?;
 
             if !self.yes && requires_confirmation(&target) && !confirm_operation(&target) {
-                println!("  ✗ Deployment cancelled");
+                println!(
+                    "  {}",
+                    marks::skipped_line(&format!("Cancelled, nothing written to {target}"))
+                );
                 return Ok(());
             }
 
