@@ -276,6 +276,21 @@ pub enum IoError {
         #[source]
         source: std::io::Error,
     },
+
+    #[error("Failed to start a hook")]
+    #[diagnostic(code(snow::io::hook_start))]
+    HookStart {
+        #[source]
+        source: std::io::Error,
+    },
+
+    #[error("Failed to read hook environment file {path}")]
+    #[diagnostic(code(snow::io::hook_env_file))]
+    HookEnvFile {
+        path: PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
 }
 
 /// Errors related to bootstrap operations (key generation, provisioning)

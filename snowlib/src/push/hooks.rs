@@ -238,15 +238,11 @@ impl HookExecutor {
     }
 
     fn load_env_file(path: &std::path::Path) -> Result<HashMap<String, String>> {
-        let contents = std::fs::read_to_string(path).map_err(|e| {
-            crate::error::SnowError::Deploy(crate::error::DeployError::Failed {
-                host: "local".to_string(),
-                source: std::io::Error::new(
-                    e.kind(),
-                    format!("Failed to read environment file {:?}: {}", path, e),
-                ),
-            })
-        })?;
+        let contents =
+            std::fs::read_to_string(path).map_err(|source| crate::error::IoError::HookEnvFile {
+                path: path.to_path_buf(),
+                source,
+            })?;
 
         let mut env_vars = HashMap::new();
         for (line_num, line) in contents.lines().enumerate() {
@@ -1130,7 +1126,17 @@ mod tests {
     #[test]
     fn test_load_env_file_not_found() {
         let result = HookExecutor::load_env_file(std::path::Path::new("/nonexistent/file.env"));
-        assert!(result.is_err());
+
+        let error = result.unwrap_err();
+        assert!(matches!(
+            &error,
+            crate::error::SnowError::Io(crate::error::IoError::HookEnvFile { path, .. })
+                if path == std::path::Path::new("/nonexistent/file.env")
+        ));
+        assert_eq!(
+            error.to_string(),
+            "Failed to read hook environment file /nonexistent/file.env"
+        );
     }
 
     #[test]

@@ -47,12 +47,7 @@ impl SystemHookBackend {
             &env_pairs,
         )
         .await
-        .map_err(|e| {
-            crate::error::SnowError::Deploy(crate::error::DeployError::Failed {
-                host: "local".to_string(),
-                source: std::io::Error::new(e.kind(), format!("Failed to execute hook: {}", e)),
-            })
-        })?;
+        .map_err(|source| crate::error::IoError::HookStart { source })?;
 
         let duration = start.elapsed();
         let stdout = String::from_utf8_lossy(&result.stdout).to_string();
