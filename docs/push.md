@@ -713,95 +713,39 @@ Push Results
 
 ## Error Reporting
 
-Snowglobe provides detailed error messages to help diagnose deployment failures quickly, especially for copy and activation failures.
-
-### Error Message Format
-
-When a deployment step fails, the error includes:
-
-- **Which host failed** - The hostname where the failure occurred
-- **Which step failed** - Build, copy, activate, or reboot
-- **The command that failed** - The exact command that was executed
-- **Exit code** - The exit code returned by the failed command
-- **Full stderr output** - Complete error output from the command
-- **Full stdout output** - Standard output (if relevant)
-
-### Example: SSH Connection Failure
-
-```bash
-$ snow push krypton
-
-Phase p1 (1 hosts): ✗ 1/1 failed
-  ✗ krypton - failed at copy: Command failed on host 'krypton'
-
-Errors:
-  krypton (copy):
-    Command failed on host 'krypton'
-
-    Command: nix copy --to ssh://krypton.i.thepromisedlan.club /nix/store/...
-    Exit code: 1
-
-    Stderr:
-    building SSH tunnel...
-    error: failed to connect to 'krypton.i.thepromisedlan.club': Host key verification failed.
-    ssh: Could not resolve hostname krypton.i.thepromisedlan.club: Name or service not known
-```
-
-This makes it immediately clear that the issue is an SSH host key verification failure, allowing you to quickly add the host key to your known_hosts or `secrets/pubkeys/hosts/` directory.
+When a phase ends, its report lists every host. A failed host's line names
+the step it failed at and the cause: the one line of the error that says what
+went wrong, cut to the terminal width. Under it come up to ten lines leading up
+to the cause, taken from the failed command's stderr, and where to read the
+rest.
 
 ### Example: Activation Failure
 
-```bash
-$ snow push hydrogen
-
-Phase p1 (1 hosts): ✗ 1/1 failed
-  ✗ hydrogen - failed at activate: Command failed on host 'hydrogen'
-
-Errors:
-  hydrogen (activate):
-    Command failed on host 'hydrogen'
-
-    Command: ssh root@hydrogen.example.com sudo /nix/store/.../bin/switch-to-configuration switch
-    Exit code: 1
-
-    Stderr:
+```
+✗ Phase p1 (1/1 failed in 0:41)
+  ✗ hydrogen at activate: Job for postgresql.service failed because the control process exited with error code.
     activating the configuration...
     setting up /etc...
     reloading the following units: dbus.service
     restarting the following units: postgresql.service
-
     Job for postgresql.service failed because the control process exited with error code.
-    See "systemctl status postgresql.service" and "journalctl -xe" for details.
+    … 7 more lines in /tmp/snow-1762255380.log
 ```
 
-### Verbose Mode
+The context ends at the cause again, at full contrast, with the lines before
+it dim. A command's stdout is left out: for an activation it is mostly service
+logs.
 
-Use the `RUST_LOG` environment variable to enable debug-level logging for even more detailed output:
+### Where the full error is
 
-```bash
-$ RUST_LOG=debug snow push hydrogen
+Run in a terminal, snow writes its log to `/tmp/snow-<timestamp>.log` and
+prints the path when it starts. The log has every failure in full: the
+command, its exit code, its stderr and its stdout. When snow's stderr isn't a
+terminal, the log goes to stderr instead.
 
-# Shows:
-# - Full command execution details
-# - Nix evaluation traces
-# - SSH connection details
-# - Timing information
-# - All tracing events at debug level
-```
-
-You can also set `RUST_LOG=trace` for maximum verbosity, or target specific modules like `RUST_LOG=snowlib::push=debug`.
-
-### Error Truncation
-
-For very long error messages (>30 lines), the error output is truncated with an indicator:
-
-```
-Stderr:
-[first 30 lines of error output]
-... (15 more lines omitted)
-```
-
-You can use `RUST_LOG=debug` to see full tracing output during execution.
+Use the `RUST_LOG` environment variable for more detail, for example
+`RUST_LOG=debug snow push hydrogen`, `RUST_LOG=trace`, or a single module with
+`RUST_LOG=snowlib::push=debug`.
 
 ---
 

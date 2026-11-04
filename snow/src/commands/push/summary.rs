@@ -64,26 +64,30 @@ pub fn phase_overview(phases: &[(String, Vec<String>)]) -> String {
     }
 }
 
-/// What is left once every phase reported itself: skipped phases, the
-/// totals and the errors in full
-pub fn print_summary(results: &snowlib::PushResults, log_file: Option<&Path>) {
+/// What is left once every phase reported itself: skipped phases and the
+/// totals
+pub fn print_summary(results: &snowlib::PushResults) {
     print_skipped_phases(&results.skipped_phases);
     print_overall_summary(results);
-    print_error_details(results, log_file);
     println!();
 }
 
-/// How a phase went, shown as soon as it ends, with each failure's cause cut
-/// to fit `width` columns:
+/// How a phase went, shown as soon as it ends. Each failure's cause is cut
+/// to fit `width` columns, and the lines leading up to it follow:
 ///
 /// ```text
 /// ✗ Phase p2 (1/3 failed in 0:52)
 ///   ✓ boron (switch)
 ///   ✗ cerium at activate: warning: the following units failed: storage-agent.service
+///     activating the configuration...
+///     warning: the following units failed: storage-agent.service
+///     … 9 more lines in /tmp/snow-1762255380.log
 /// ```
-pub fn phase_report(phase: &snowlib::PhaseResult, width: usize) -> String {
+pub fn phase_report(phase: &snowlib::PhaseResult, width: usize, log_file: Option<&Path>) -> String {
     let mut lines = vec![phase_heading(phase)];
-    lines.extend(phase.hosts.iter().map(|host| host_line(host, width)));
+    for host in &phase.hosts {
+        lines.extend(host_lines(host, width, log_file));
+    }
     lines.join("\n")
 }
 
@@ -131,7 +135,11 @@ pub(super) fn success_labels(host: &snowlib::HostDeploymentResult) -> Vec<&'stat
     labels
 }
 
-fn host_line(host: &snowlib::HostDeploymentResult, width: usize) -> String {
+fn host_lines(
+    host: &snowlib::HostDeploymentResult,
+    width: usize,
+    log_file: Option<&Path>,
+) -> Vec<String> {
     if host.success {
         let labels = success_labels(host);
         let status = if labels.is_empty() {
@@ -139,15 +147,22 @@ fn host_line(host: &snowlib::HostDeploymentResult, width: usize) -> String {
         } else {
             format!(" {}", style(format!("({})", labels.join(", "))).dim())
         };
-        format!("  {} {}{status}", marks::success(), host.hostname)
+        vec![format!("  {} {}{status}", marks::success(), host.hostname)]
     } else if host.is_skipped() {
         let reason = host.error_message.as_deref().unwrap_or_default();
-        format!(
+        vec![format!(
             "  {}",
             marks::skipped_line(&format!("{} skipped, {reason}", host.hostname))
-        )
+        )]
     } else {
-        failure_line(host, width)
+        let details = host
+            .error_message
+            .as_deref()
+            .map(|error| failure_details(error, log_file))
+            .unwrap_or_default();
+        std::iter::once(failure_line(host, width))
+            .chain(details.into_iter().map(|line| format!("    {line}")))
+            .collect()
     }
 }
 
@@ -230,59 +245,17 @@ fn overall_summary(results: &snowlib::PushResults) -> String {
     }
 }
 
-fn print_error_details(results: &snowlib::PushResults, log_file: Option<&Path>) {
-    let errors = collect_failed_hosts(results);
-    if errors.is_empty() {
-        return;
-    }
-
-    println!();
-    println!("{}", style("Errors:").red().bold());
-
-    for host in errors {
-        if let Some(error_msg) = &host.error_message {
-            print_error_header(host);
-            print_error_lines(error_msg, log_file);
-        }
-    }
-}
-
-fn collect_failed_hosts(results: &snowlib::PushResults) -> Vec<&snowlib::HostDeploymentResult> {
-    results
-        .phases
-        .iter()
-        .flat_map(|p| &p.hosts)
-        .filter(|h| !h.success && !h.is_skipped() && h.error_message.is_some())
-        .collect()
-}
-
-fn print_error_header(host: &snowlib::HostDeploymentResult) {
-    let step_label = host
-        .failed_at_step
-        .map(|s| format!(" ({})", s))
-        .unwrap_or_default();
-    println!(
-        "  {} {}{}",
-        style("▸").red(),
-        host.hostname,
-        style(step_label).bold()
-    );
-}
-
-fn print_error_lines(error_msg: &str, log_file: Option<&Path>) {
-    for line in failure_details(error_msg, log_file) {
-        println!("    {line}");
-    }
-}
-
 /// The lines leading up to the cause, dim but for the cause itself, then
-/// where to read the rest
+/// where to read the rest. A cause on its own is left out, since the line
+/// above already ends with it.
 fn failure_details(error: &str, log_file: Option<&Path>) -> Vec<String> {
     let context = error_context(error, MAX_CONTEXT_LINES);
     let mut details = Vec::new();
     if let [leading @ .., cause] = context.lines.as_slice() {
-        details.extend(leading.iter().map(|line| style(line).dim().to_string()));
-        details.push(cause.to_string());
+        if !leading.is_empty() {
+            details.extend(leading.iter().map(|line| style(line).dim().to_string()));
+            details.push(cause.to_string());
+        }
     }
     if context.hidden > 0 {
         details.push(
@@ -499,13 +472,13 @@ mod tests {
         };
 
         assert_eq!(
-            super::phase_report(&phase, 100),
+            super::phase_report(&phase, 100, None),
             "✗ Phase p2 (3/4 failed in 0:52)\n  ✓ boron (switch)\n  ✗ cerium at activate: activation failed\n  ✗ radon at pre-deploy: storage degraded\n  ⊘ lanthanum skipped, serial group 'k8s' halted after cerium failed"
         );
     }
 
     #[test]
-    fn test_phase_report_shows_why_a_host_failed_cut_to_the_terminal() {
+    fn test_failure_line_cuts_the_cause_to_the_terminal() {
         console::set_colors_enabled(false);
         let error = "Command failed\n\n\
                      Command: ssh cerium sudo snowglobe-activate /nix/store/yzxw-cerium switch\n\
@@ -513,19 +486,50 @@ mod tests {
                      Stderr:\n\
                      activating the configuration...\n\
                      warning: the following units failed: storage-agent.service";
+        let cerium = make_failed_host("cerium", PipelineStep::Activate, error);
+
+        assert_eq!(
+            super::failure_line(&cerium, 100),
+            "  ✗ cerium at activate: warning: the following units failed: storage-agent.service"
+        );
+        assert_eq!(
+            super::failure_line(&cerium, 50),
+            "  ✗ cerium at activate: warning: the following u…"
+        );
+    }
+
+    #[test]
+    fn test_phase_report_shows_what_led_to_a_failure_under_its_host() {
+        console::set_colors_enabled(false);
+        let error = "Command failed\n\n\
+                     Command: ssh sudo snowglobe-activate /nix/store/yzxw-cerium switch\n\
+                     Exit code: 4\n\n\
+                     Stderr:\n\
+                     activating the configuration...\n\
+                     warning: the following units failed: storage-agent.service\n\n\
+                     Stdout:\n\
+                     Nov 04 10:12:04 cerium storage-agent[812]: disk sdb missing";
         let phase = PhaseResult {
             phase: "p2".to_string(),
             duration: Duration::from_secs(52),
-            hosts: vec![make_failed_host("cerium", PipelineStep::Activate, error)],
+            hosts: vec![
+                make_successful_host("boron", ActivationMode::Switch, false),
+                make_failed_host("cerium", PipelineStep::Activate, error),
+                make_failed_host("radon", PipelineStep::PreDeploy, "storage degraded"),
+                HostDeploymentResult::skipped_by_serial_group("lanthanum", "k8s", "cerium"),
+            ],
         };
 
         assert_eq!(
-            super::phase_report(&phase, 100),
-            "✗ Phase p2 (1/1 failed in 0:52)\n  ✗ cerium at activate: warning: the following units failed: storage-agent.service"
-        );
-        assert_eq!(
-            super::phase_report(&phase, 50),
-            "✗ Phase p2 (1/1 failed in 0:52)\n  ✗ cerium at activate: warning: the following u…"
+            super::phase_report(&phase, 100, Some(Path::new("/tmp/snow-1762255380.log"))),
+            "✗ Phase p2 (3/4 failed in 0:52)\n\
+             \x20 ✓ boron (switch)\n\
+             \x20 ✗ cerium at activate: warning: the following units failed: storage-agent.service\n\
+             \x20   activating the configuration...\n\
+             \x20   warning: the following units failed: storage-agent.service\n\
+             \x20   … 6 more lines in /tmp/snow-1762255380.log\n\
+             \x20 ✗ radon at pre-deploy: storage degraded\n\
+             \x20 ⊘ lanthanum skipped, serial group 'k8s' halted after cerium failed"
         );
     }
 
@@ -559,7 +563,7 @@ mod tests {
             };
 
             assert_eq!(
-                super::phase_report(&phase, 100),
+                super::phase_report(&phase, 100, None),
                 "✓ Push (1 host in 1:02:07)\n  ✓ sodium (switch)"
             );
         }
@@ -588,9 +592,16 @@ mod tests {
                 "… 4 more lines in /tmp/snow-1762255380.log",
             ]
         );
+        assert!(super::failure_details("worker crashed", None).is_empty());
         assert_eq!(
-            super::failure_details("worker crashed", None),
-            vec!["worker crashed"]
+            super::failure_details(
+                "Command failed\n\nCommand: true\nExit code: 1\n\nStderr:\n",
+                None
+            )
+            .iter()
+            .map(|line| console::strip_ansi_codes(line))
+            .collect::<Vec<_>>(),
+            vec!["… 3 more lines in the log on stderr"]
         );
     }
 

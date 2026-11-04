@@ -192,7 +192,7 @@ impl PushArgs {
         )?;
         let observer = snowlib::observer::CompositeObserver::new(vec![
             Box::new(snowlib::LogObserver::default()),
-            Box::new(observer::CliObserver::new()),
+            Box::new(observer::CliObserver::new(log_file.map(Into::into))),
         ]);
 
         let hostnames = with_spinner(
@@ -247,7 +247,7 @@ impl PushArgs {
         // Execute the push - snowlib handles everything!
         let results = snowlib::push(&push_ctx, hosts).await?;
 
-        summary::print_summary(&results, log_file);
+        summary::print_summary(&results);
 
         if let Some(error) = results.failure_error() {
             return Err(error.into());

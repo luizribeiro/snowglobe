@@ -142,7 +142,7 @@ try:
     with subtest("one host fails to activate while the others succeed"):
         push = Recording("activation-failure").run()
         push.failed()
-        push.has("cerium", "1/3 failed", "✗ cerium at activate: ")
+        push.has("cerium", "1/3 failed", "✗ cerium at activate: ", "more lines in /tmp/snow-")
         push.logged("cerium: failed at activate:", "boron: deployed", "radon: deployed")
         # NixOS keeps a system whose services failed to start
         runs("cerium", "broken")
