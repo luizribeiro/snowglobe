@@ -85,7 +85,7 @@
             meta = {
               description = "NixOS-native cluster orchestration tool";
               homepage = "https://github.com/luizribeiro/snowglobe";
-              license = pkgs.lib.licenses.mit;
+              license = with pkgs.lib.licenses; [ mit asl20 ];
               mainProgram = "snow";
             };
           };

@@ -2,6 +2,8 @@
 name = "snowlib"
 version = "0.1.0"
 edition = "2021"
+license.workspace = true
+repository.workspace = true
 
 [features]
 # Mock backends and fixtures for other crates' tests; debug builds always have them
