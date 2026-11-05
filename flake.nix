@@ -16,6 +16,11 @@
       );
       # Platforms we can build on: the CI runner and ferrum
       checkedSystems = [ "x86_64-linux" "aarch64-darwin" ];
+      e2eFor = system: import ./nix/e2e {
+        pkgs = nixpkgs.legacyPackages.${system};
+        snow = self.packages.${system}.snow;
+        snowglobeModule = self.nixosModules.default;
+      };
     in
     {
       # NixOS module for snowglobe deployment support
@@ -88,20 +93,15 @@
           default = self.packages.${system}.snow;
         });
 
-      # NixOS VMs pushing to each other: evaluating them all takes many GB,
-      # more than a CI runner has, and nix flake check doesn't evaluate
-      # legacyPackages deeply
+      # Kept out of packages: rendering the demos evaluates every VM test that
+      # records one, more than the CI runner that evaluates all packages at
+      # once has memory for
       legacyPackages = forEachSystem (system:
         let
           pkgs = nixpkgs.legacyPackages.${system};
-          e2e = import ./nix/e2e {
-            inherit pkgs;
-            snow = self.packages.${system}.snow;
-            snowglobeModule = self.nixosModules.default;
-          };
         in
-        nixpkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux ({
-          push-recordings = e2e.recordings;
+        nixpkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
+          push-recordings = (e2eFor system).recordings;
           upload-demos = pkgs.writeShellApplication {
             name = "upload-demos";
             runtimeInputs = [ pkgs.asciinema ];
@@ -110,11 +110,11 @@
                 ${self.legacyPackages.${system}.push-recordings} "$@"
             '';
           };
-        } // nixpkgs.lib.mapAttrs'
-          (name: test: nixpkgs.lib.nameValuePair "e2e-${name}" test)
-          e2e.tests)
+        }
       );
 
+      # The e2e VM tests take about 11 GB to evaluate together, so CI
+      # evaluates and builds each check in a job of its own
       checks = nixpkgs.lib.genAttrs checkedSystems (system:
         let
           pkgs = nixpkgs.legacyPackages.${system};
@@ -128,9 +128,11 @@
           push-module = runNixTests "push-module" (import ./modules/push.test.nix { inherit pkgs; });
           local-pkgs-module = runNixTests "local-pkgs-module" (import ./modules/local-pkgs.test.nix { inherit pkgs; });
           darwin-activate = import ./modules/darwin-activate.test.nix { inherit pkgs; };
-        } // nixpkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
+        } // nixpkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux ({
           nixos-activate = import ./modules/nixos-activate.test.nix { inherit pkgs; };
-        });
+        } // nixpkgs.lib.mapAttrs'
+          (name: test: nixpkgs.lib.nameValuePair "e2e-${name}" test)
+          (e2eFor system).tests));
 
       devShells = forEachSystem (system:
         let
