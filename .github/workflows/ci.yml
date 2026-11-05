@@ -27,7 +27,7 @@ jobs:
       checks: ${{ steps.list.outputs.checks }}
       deps: ${{ steps.list.outputs.deps }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/nix
       # Lists only the checks whose results no cache has. A worker can
       # take 4.2 GB evaluating a VM test, so two fit in the 16 GB. A check
@@ -52,7 +52,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/nix
         with:
           cachix-auth-token: ${{ secrets.CACHIX_AUTH_TOKEN }}
@@ -65,7 +65,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/nix
         with:
           cachix-auth-token: ${{ secrets.CACHIX_AUTH_TOKEN }}
@@ -89,7 +89,7 @@ jobs:
         check: ${{ fromJSON(needs.list.outputs.checks) }}
     name: ${{ matrix.check }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/nix
         with:
           cachix-auth-token: ${{ secrets.CACHIX_AUTH_TOKEN }}
@@ -100,7 +100,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/nix
         with:
           cachix-auth-token: ${{ secrets.CACHIX_AUTH_TOKEN }}
@@ -121,7 +121,7 @@ jobs:
       - name: Build release
         run: nix develop --command cargo build --workspace --release
       - name: Upload release binary
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: snow-binary
           path: target/release/snow
@@ -135,7 +135,7 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/nix
         with:
           cachix-auth-token: ${{ secrets.CACHIX_AUTH_TOKEN }}
