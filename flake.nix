@@ -100,7 +100,7 @@
             snowglobeModule = self.nixosModules.default;
           };
         in
-        nixpkgs.lib.optionalAttrs pkgs.stdenv.isLinux ({
+        nixpkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux ({
           push-recordings = e2e.recordings;
           upload-demos = pkgs.writeShellApplication {
             name = "upload-demos";
@@ -128,7 +128,7 @@
           push-module = runNixTests "push-module" (import ./modules/push.test.nix { inherit pkgs; });
           local-pkgs-module = runNixTests "local-pkgs-module" (import ./modules/local-pkgs.test.nix { inherit pkgs; });
           darwin-activate = import ./modules/darwin-activate.test.nix { inherit pkgs; };
-        } // nixpkgs.lib.optionalAttrs pkgs.stdenv.isLinux {
+        } // nixpkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
           nixos-activate = import ./modules/nixos-activate.test.nix { inherit pkgs; };
         });
 
@@ -152,7 +152,7 @@
               openssh                    # ssh-keygen
               ssh-to-age                 # age key derivation
               zstd                       # VMA compression
-            ] ++ lib.optionals stdenv.isLinux [
+            ] ++ lib.optionals stdenv.hostPlatform.isLinux [
               libguestfs-with-appliance  # guestfish for image provisioning
               (callPackage ./pkgs/vma { })  # Proxmox VMA tool
             ];
