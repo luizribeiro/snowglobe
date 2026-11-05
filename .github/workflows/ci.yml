@@ -1,56 +1,125 @@
+---
 name: CI
 
-on:
+"on":
   push:
     branches: [main]
   pull_request:
-    branches: [main]
 
-# Cancel in-progress runs for the same workflow + branch/PR
+permissions:
+  contents: read
+
+# A PR's new commits supersede its running check; every push to main gets
+# its own group, so none is cancelled or dropped from the queue.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: >-
+    ${{ github.workflow }}-${{ github.event_name == 'pull_request'
+    && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+# Evaluating every check in one process, as `nix flake check` does,
+# outgrows the runner's 16 GB, so each check gets a job of its own.
 jobs:
-  ci:
-    name: CI Pipeline
+  list:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      checks: ${{ steps.list.outputs.checks }}
+      deps: ${{ steps.list.outputs.deps }}
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/nix
+      # Lists only the checks whose results no cache has. A worker can
+      # take 4.2 GB evaluating a VM test, so two fit in the 16 GB. A check
+      # that fails to evaluate has no isCached and gets a job to show why.
+      - id: list
+        run: |
+          nix run --inputs-from . nixpkgs#nix-eval-jobs -- \
+            --flake .#checks.x86_64-linux --check-cache-status \
+            --workers 2 --max-memory-size 3072 > jobs.jsonl
+          [ -s jobs.jsonl ]
+          jq -sr 'map(select(.isCached | not) | .attr)
+            | "deps=\(index("snow-package") != null)",
+              "checks=\(. - ["snow-package"] | tojson)"' jobs.jsonl \
+            >> "$GITHUB_OUTPUT"
 
-      - name: Install Nix
-        uses: ./.github/actions/nix
+  # Builds snow, which every VM test runs, once, into Cachix for the
+  # other jobs. It is the snow-package check, so it runs when that isn't
+  # cached.
+  deps:
+    needs: list
+    if: needs.list.outputs.deps == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/nix
         with:
           cachix-auth-token: ${{ secrets.CACHIX_AUTH_TOKEN }}
+      - run: nix build -L --no-link .#checks.x86_64-linux.snow-package
 
+  # What `nix flake check` evaluates besides the checks.
+  outputs:
+    needs: [list, deps]
+    if: ${{ !cancelled() && needs.list.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/nix
+        with:
+          cachix-auth-token: ${{ secrets.CACHIX_AUTH_TOKEN }}
+      - name: Evaluate packages
+        run: |
+          nix eval --json .#packages.x86_64-linux \
+            --apply 'builtins.mapAttrs (_: p: p.drvPath)'
+      - name: Build the dev shell
+        run: nix build -L --no-link .#devShells.x86_64-linux.default
+
+  build:
+    needs: [list, deps]
+    if: >-
+      ${{ !cancelled() && needs.list.result == 'success'
+      && needs.list.outputs.checks != '[]' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        check: ${{ fromJSON(needs.list.outputs.checks) }}
+    name: ${{ matrix.check }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/nix
+        with:
+          cachix-auth-token: ${{ secrets.CACHIX_AUTH_TOKEN }}
+      - run: nix build -L --no-link .#checks.x86_64-linux.${{ matrix.check }}
+
+  rust:
+    name: Rust
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/nix
+        with:
+          cachix-auth-token: ${{ secrets.CACHIX_AUTH_TOKEN }}
       - name: Build dev shell
         run: nix develop --command echo "dev shell ready"
-
       - name: Check formatting
         run: nix develop --command cargo fmt --check
-
       - name: Run clippy
         run: nix develop --command cargo clippy --workspace --all-targets -- -D warnings
-
+      # Some tests run the real nix CLI, which the snow-package check's
+      # sandbox can't
       - name: Run tests
-        run: nix develop --command cargo test --workspace --verbose
-
-      - name: Run Nix checks
-        run: nix flake check
-
-      - name: Build debug
-        run: nix develop --command cargo build --workspace --verbose
-
-      - name: Build release
-        run: nix develop --command cargo build --workspace --release --verbose
-
+        run: nix develop --command cargo test --workspace
       - name: Build documentation
         run: nix develop --command cargo doc --workspace --no-deps
-
       - name: Run security audit
         run: nix develop --command cargo audit
-
+      - name: Build release
+        run: nix develop --command cargo build --workspace --release
       - name: Upload release binary
         uses: actions/upload-artifact@v4
         with:
@@ -58,19 +127,40 @@ jobs:
           path: target/release/snow
           retention-days: 7
 
+  # The Linux jobs never compile #[cfg(target_os = "macos")] code. On
+  # macOS, `nix flake check` checks only the aarch64-darwin outputs, which
+  # have no VM tests.
   darwin:
-    name: macOS checks
-    # The Linux job never compiles #[cfg(target_os = "macos")] code
+    name: macOS
     runs-on: macos-latest
     timeout-minutes: 60
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install Nix
-        uses: ./.github/actions/nix
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/nix
         with:
           cachix-auth-token: ${{ secrets.CACHIX_AUTH_TOKEN }}
+      - run: nix flake check -L
 
-      - name: Run Nix checks
-        run: nix flake check
+  # The one status to require: it passes only if every job above did, or
+  # was skipped because its checks were all cached.
+  check:
+    needs: [list, deps, outputs, build, rust, darwin]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - env:
+          RESULTS: >-
+            ${{ needs.list.result }}
+            ${{ needs.list.outputs.deps == 'false' && 'success'
+            || needs.deps.result }}
+            ${{ needs.outputs.result }}
+            ${{ needs.list.outputs.checks == '[]' && 'success'
+            || needs.build.result }}
+            ${{ needs.rust.result }}
+            ${{ needs.darwin.result }}
+        run: |
+          echo "$RESULTS"
+          for result in $RESULTS; do
+            [ "$result" = success ] || exit 1
+          done
