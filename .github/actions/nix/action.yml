@@ -1,0 +1,60 @@
+---
+name: nix
+description: >-
+  Install Nix, with KVM on Linux, substituting from the snowglobe Cachix
+  cache and pushing what it builds there when given a token
+
+inputs:
+  free-disk:
+    description: Remove the Linux runner image's unused toolchains first
+    default: "false"
+  # Each VM test boots two or more VMs; more than two tests at once
+  # outgrow the runner's 16 GB, and it gets shut down mid-check.
+  max-jobs:
+    description: How many builds Nix runs at once
+    default: "2"
+  cachix-auth-token:
+    description: Token to push to Cachix with; pull only if empty
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    # The VM tests need /dev/kvm, which the runner's user can't open.
+    - name: Enable KVM
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        echo 'KERNEL=="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+          | sudo tee /etc/udev/rules.d/99-kvm.rules
+        sudo udevadm control --reload-rules
+        sudo udevadm trigger --name-match=kvm
+
+    - name: Free disk space
+      if: runner.os == 'Linux' && inputs.free-disk == 'true'
+      shell: bash
+      run: |
+        df -h /
+        sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc \
+          /usr/local/.ghcup /opt/hostedtoolcache/CodeQL
+        df -h /
+
+    - uses: cachix/install-nix-action@v31
+      with:
+        extra_nix_config: |
+          max-jobs = ${{ inputs.max-jobs }}
+          ${{ runner.os == 'Linux' && 'system-features = nixos-test benchmark big-parallel kvm' || '' }}
+
+    # Lets CI run before the cache exists, or while Cachix is down.
+    - id: cachix
+      shell: bash
+      run: |
+        if curl -sfo /dev/null https://snowglobe.cachix.org/nix-cache-info; then
+          echo "available=true" >> "$GITHUB_OUTPUT"
+        fi
+
+    - if: steps.cachix.outputs.available == 'true'
+      uses: cachix/cachix-action@v17
+      with:
+        name: snowglobe
+        authToken: ${{ inputs.cachix-auth-token }}
