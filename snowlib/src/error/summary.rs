@@ -11,8 +11,7 @@ pub fn error_summary(error: &str) -> &str {
     lines()
         .filter_map(|line| line.strip_prefix("error:"))
         .map(str::trim_start)
-        .filter(|cause| !cause.is_empty())
-        .next_back()
+        .rfind(|cause| !cause.is_empty())
         .or_else(|| last_stderr_line(error))
         .unwrap_or_else(|| lines().next().unwrap_or_default())
 }
