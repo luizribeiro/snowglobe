@@ -6,7 +6,15 @@ from pathlib import Path
 from typing import Any, Optional
 
 settings: dict[str, Any] = json.loads(Path(HARNESS).read_text())
-by_name = {machine.name: machine for machine in machines}
+
+
+def qemu(machine: BaseMachine) -> QemuMachine:
+    """Reconnecting and starting with reboots allowed exist only on VMs"""
+    assert isinstance(machine, QemuMachine), machine
+    return machine
+
+
+by_name = {machine.name: qemu(machine) for machine in machines}
 hosts = {name: by_name[name] for name in settings["hosts"]}
 deployer = by_name[settings["deployer"]]
 FLAKE = "/root/ops"
@@ -111,7 +119,7 @@ class Demo:
         return self.collect()
 
     def collect(self) -> "Demo":
-        self.machine.copy_from_vm("/var/lib/demo")
+        self.machine.copy_from_machine("/var/lib/demo")
         status, self.log = self.machine.execute("cat /tmp/snow-*.log")
         assert status == 0, "snow wrote no log"
         return self
@@ -147,7 +155,7 @@ def demo(wait: bool = True, env: Optional[dict[str, str]] = None) -> Demo:
     return started.wait() if wait else started
 
 
-def stage_flake(machine: Machine) -> None:
+def stage_flake(machine: BaseMachine) -> None:
     machine.succeed(f"cp -rL {settings['flake']} {FLAKE} && chmod -R u+w {FLAKE}")
 
 
