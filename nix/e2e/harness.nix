@@ -18,9 +18,11 @@ let
   # they build at once, so a demo that needs a long build sets
   # SNOW_E2E_BUILD_SECONDS.
   impureNix = pkgs.writeShellScriptBin "nix" ''
-    if [ "$1" = build ]; then sleep "''${SNOW_E2E_BUILD_SECONDS:-0}"; fi
     case "$1" in
-      eval|build) exec ${pkgs.nix}/bin/nix "$1" --impure "''${@:2}" ;;
+      build)
+        sleep "''${SNOW_E2E_BUILD_SECONDS:-0}"
+        exec ${pkgs.nix}/bin/nix build --impure "''${@:2}" ;;
+      eval) exec ${pkgs.nix}/bin/nix eval --impure "''${@:2}" ;;
       *) exec ${pkgs.nix}/bin/nix "$@" ;;
     esac
   '';
