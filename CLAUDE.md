@@ -54,8 +54,8 @@ snow push
 # Deploy with options
 snow push --dry-run           # Preview changes
 snow push --switch            # Force immediate activation
-snow push --boot              # Set for next boot only
-snow push --no-reboot         # Don't auto-reboot
+snow push --boot              # Set for next boot, then reboot
+snow push --skip-reboot       # Never reboot
 snow push --quiet             # Suppress subprocess output
 snow push --concurrency 5     # Control parallelism
 ```
