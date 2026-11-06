@@ -20,6 +20,7 @@ let
     "rebuild-boot"
     "rebuild-reboot"
     "ssh-port"
+    "deploy-user"
   ];
 
   files = lib.genAttrs names (name: import ./tests/${name}.nix);
