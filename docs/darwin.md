@@ -4,20 +4,16 @@ This guide covers deploying to macOS hosts managed by nix-darwin.
 
 ## Prerequisites
 
-### Passwordless Sudo
+### The snowglobe module
 
-nix-darwin requires `sudo` to activate system configurations. Since snowglobe uses non-interactive SSH, you must configure passwordless sudo for the activation command.
-
-**Recommended: Use the snowglobe module**
-
-Snowglobe provides a nix-darwin module that handles passwordless deployment configuration automatically:
+nix-darwin needs `sudo` to activate a system. snowglobe connects over
+non-interactive SSH, so the deploy user needs passwordless sudo for the
+activation command. The snowglobe nix-darwin module sets this up:
 
 ```nix
 {
-  # Import snowglobe's Darwin module
   imports = [ inputs.snowglobe.darwinModules.default ];
 
-  # Configure passwordless deployment users
   snowglobe.push.allowedUsers = [ "deploy" ];
 }
 ```
@@ -25,36 +21,23 @@ Snowglobe provides a nix-darwin module that handles passwordless deployment conf
 This module:
 - Installs the `snowglobe-activate` command system-wide
 - Configures passwordless sudo for that one command, for the listed users only
-- Works with both local and remote deployments
 
-Snowglobe automatically detects and uses `snowglobe-activate` when available, falling back to direct activation for compatibility.
+The module is required for remote pushes to Darwin hosts. Without
+`snowglobe-activate`, snow falls back to running
+`<system>/bin/switch-to-configuration`, which nix-darwin systems don't have,
+so activation fails.
 
-**Alternative: Manual sudoers configuration**
+Deploy the module once by hand (you'll need to enter your password):
 
-If you prefer not to use the module, you can configure sudoers manually:
-
-```nix
-{
-  security.sudo.extraConfig = ''
-    # Allow admin users to run system activation without password
-    %admin ALL=(root) NOPASSWD: /nix/store/*/activate
-  '';
-}
+```bash
+sudo darwin-rebuild switch --flake .#your-darwin-host
 ```
 
-⚠️ **Note**: The wildcard pattern (`/nix/store/*/activate`) may not work reliably on macOS due to sudo's path validation. The snowglobe module is strongly recommended.
+After that, snowglobe deploys without password prompts:
 
-After adding your chosen configuration:
-
-1. Deploy it manually once (you'll need to enter your password):
-   ```bash
-   darwin-rebuild switch
-   ```
-
-2. Future snowglobe deployments will work without password prompts:
-   ```bash
-   snow push your-darwin-host
-   ```
+```bash
+snow push your-darwin-host
+```
 
 ### Why Passwordless Sudo?
 
@@ -67,14 +50,9 @@ Since batch mode SSH cannot prompt for passwords, the target host must allow pas
 
 ## Security Considerations
 
-Any user who can activate systems without a password is root-equivalent, whichever sudoers setup you use, as with any push deployment tool. Use a dedicated deploy user and treat its SSH key like a root key.
+Any user who can activate systems without a password is root-equivalent, as with any push deployment tool. Use a dedicated deploy user and treat its SSH key like a root key.
 
-The **snowglobe module** (recommended) puts one fixed command in sudoers, with an exact path that sudo matches reliably.
-
-With **manual sudoers configuration**:
-
-1. **Wildcard limitations**: The pattern `/nix/store/*/activate` may not work reliably on macOS
-2. **Group-wide access**: `%admin` makes every admin user root-equivalent without a password
+The snowglobe module puts one fixed command in sudoers, with an exact path that sudo matches reliably.
 
 See [activation-helper.md](activation-helper.md#security) for details.
 
@@ -89,45 +67,31 @@ sudo: a terminal is required to read the password; either use the -S option to r
 sudo: a password is required
 ```
 
-**Solution**: Add the passwordless sudo configuration above to your nix-darwin config and rebuild.
+**Solution**: Import the snowglobe module, add the SSH user to `snowglobe.push.allowedUsers`, and rebuild.
 
 ### Testing Sudo Configuration
 
-After configuring passwordless sudo, test it manually:
+Check that the deploy user may run the helper without a password:
 
 ```bash
-# SSH to the host and try running the activation command
-ssh your-darwin-host sudo /nix/store/*/bin/switch-to-configuration test
-
-# Should not prompt for password
+ssh your-darwin-host sudo -n -l /run/current-system/sw/bin/snowglobe-activate
 ```
 
-If it still prompts for a password:
-1. Verify the `security.sudo.extraConfig` is in your active configuration
-2. Check `/etc/sudoers` includes the rule (or `/etc/sudoers.d/` files)
-3. Ensure your SSH user is in the `admin` group: `groups`
+This prints the command's path if the rule applies, and fails without
+prompting if it doesn't.
 
-### Alternative: Specific User
-
-If you want to limit this to a specific deployment user instead of all admin users:
-
-```nix
-{
-  security.sudo.extraConfig = ''
-    # Replace 'deployuser' with your SSH username
-    deployuser ALL=(root) NOPASSWD: /nix/store/*/bin/switch-to-configuration
-  '';
-}
-```
+If it fails:
+1. Check that the SSH user is in `snowglobe.push.allowedUsers`
+2. Check that the active configuration includes the module: `command -v snowglobe-activate`
+3. Check the rule in `/etc/sudoers.d/10-nix-darwin-extra-config`, where nix-darwin writes `security.sudo.extraConfig`
 
 ## Differences from NixOS
 
 | Aspect | NixOS | nix-darwin |
 |--------|-------|------------|
-| Activation | Requires root/sudo | Requires sudo |
-| System updates | Can run as root directly | Always runs as user with sudo |
-| Reboot detection | Full support | Limited (no kernel/initrd on macOS) |
-| Activation modes | switch, boot, test | switch, activate (boot=activate) |
+| Activation modes | switch, boot, test, dry-activate | switch only; `--boot`, `--test` and `--dry-run` fail |
+| Reboot | Detected, and done when needed | Never; detection and `rebootPolicy` are ignored |
+| Without the snowglobe module | Falls back to `switch-to-configuration` | Activation fails |
 
 See [push.md](push.md) for full documentation on activation modes and reboot detection.
 
@@ -137,30 +101,21 @@ Here's a complete minimal nix-darwin host configuration for snowglobe:
 
 ```nix
 {
-  # Import snowglobe's Darwin module
-  imports = [ inputs.snowglobe.darwinModules.default ];
-
-  # Configure passwordless deployment users
   snowglobe.push.allowedUsers = [ "deploy" ];
 
-  # Configure SSH for remote deployment
   services.openssh = {
     enable = true;
-    settings = {
-      PermitRootLogin = "no";
-      PasswordAuthentication = false;
-    };
+    extraConfig = ''
+      PermitRootLogin no
+      PasswordAuthentication no
+    '';
   };
-
-  # Optional: Set reboot policy for this host
-  # (Darwin rarely needs reboots, so 'never' is often appropriate)
-  config.core.rebootPolicy = "never";  # or "auto"
 
   # Your other configuration...
 }
 ```
 
-Add snowglobe to your flake inputs:
+Add snowglobe to your flake inputs and import its module once, here:
 
 ```nix
 {
@@ -188,7 +143,6 @@ For automated deployments (GitHub Actions, etc.):
 1. Add the snowglobe module with a CI user in `allowedUsers`
 2. Set up SSH key authentication for the CI runner
 3. Add the target host's SSH key to known_hosts
-4. Use `snow push --skip-reboot` to avoid interactive reboot prompts
 
 Example GitHub Actions workflow:
 
@@ -199,9 +153,7 @@ Example GitHub Actions workflow:
   run: |
     ssh-agent -a $SSH_AUTH_SOCK > /dev/null
     ssh-add - <<< "${{ secrets.DEPLOY_SSH_KEY }}"
-    snow push --skip-reboot darwin-host-1 darwin-host-2
+    snow push darwin-host-1 darwin-host-2
 ```
-
-Snowglobe will automatically detect if `snowglobe-activate` is available and use it for deployments. If not found (e.g., first deployment), it falls back to direct activation with a warning.
 
 See [activation-helper.md](activation-helper.md) for complete documentation on the activation system.
