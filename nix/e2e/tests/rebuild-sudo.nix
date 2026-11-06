@@ -1,33 +1,27 @@
+let
+  user = import ../sudo-user.nix;
+in
 {
   name = "rebuild-sudo";
 
-  # Booted with them too, so the user is there to run snow
-  base.boron = {
-    users.users.luiz = {
-      isNormalUser = true;
-      extraGroups = [ "wheel" ];
-      password = "snowglobe";
-    };
-    # The first sudo's lecture would crowd the demo
-    security.sudo.extraConfig = "Defaults lecture = never";
-  };
+  base.boron = user.module;
 
   nodes.boron = { };
 
   demo = {
     title = "snow rebuild asks for the sudo password once, before it starts";
     runOn = "boron";
-    user = "luiz";
+    user = user.name;
     script = ''
       run("snow rebuild")
-      expect("password for luiz:")
-      press("snowglobe", ENTER)
+      expect("${user.prompt}")
+      press("${user.password}", ENTER)
       expect("boron (switch)")
     '';
   };
 
   testScript = ''
-    prompt = "[sudo] password for luiz: "
+    prompt = "${user.prompt}"
     rebuild = demo()
     rebuild.succeeded()
     assert rebuild.output.count(prompt) == 1, rebuild.output
