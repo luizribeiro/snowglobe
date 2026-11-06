@@ -1,5 +1,5 @@
 # Shell helpers shared by the activation helper tests. sideEffect is a file
-# the helper's faked privileged command creates, so a rejected call must not
+# the helper's faked privileged commands create, so a rejected call must not
 # leave it behind.
 { helper, sideEffect, sideEffectName }:
 

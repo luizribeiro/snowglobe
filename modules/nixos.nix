@@ -8,6 +8,7 @@ let
   activationHelper = import ./nixos-activate.nix {
     inherit pkgs;
     systemctl = "${config.systemd.package}/bin/systemctl";
+    nixEnv = "${pkgs.nix}/bin/nix-env";
   };
 in
 {

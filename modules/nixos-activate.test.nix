@@ -1,26 +1,27 @@
 { pkgs }:
 
 let
-  fakeSystemctl = pkgs.writeShellScript "fake-systemctl" ''
-    echo "$*" > "$TMPDIR/systemctl-called"
+  fakePrivileged = name: pkgs.writeShellScript "fake-${name}" ''
+    echo "${name} $*" >> "$TMPDIR/privileged-called"
   '';
   helper = import ./nixos-activate.nix {
     inherit pkgs;
-    systemctl = fakeSystemctl;
+    systemctl = fakePrivileged "systemctl";
+    nixEnv = fakePrivileged "nix-env";
   };
 in
 pkgs.runCommand "nixos-activate-test" { } ''
-  marker="$TMPDIR/systemctl-called"
+  marker="$TMPDIR/privileged-called"
   ${import ./activate-test-lib.nix {
     inherit helper;
     sideEffect = "$marker";
-    sideEffectName = "call systemctl";
+    sideEffectName = "call systemctl or nix-env";
   }}
 
   expect_failure() { expect_error "" "$@"; }
 
   "$activate" reboot
-  [ "$(cat "$marker")" = "reboot" ] || fail "reboot ran systemctl $(cat "$marker")"
+  [ "$(cat "$marker")" = "systemctl reboot" ] || fail "reboot ran $(cat "$marker")"
   rm "$marker"
 
   expect_failure reboot now

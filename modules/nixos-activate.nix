@@ -1,4 +1,4 @@
-{ pkgs, systemctl }:
+{ pkgs, systemctl, nixEnv }:
 
 pkgs.writeScriptBin "snowglobe-activate" ''
   #!${pkgs.bash}/bin/bash
@@ -42,7 +42,7 @@ pkgs.writeScriptBin "snowglobe-activate" ''
   # Ephemeral modes (test/dry-activate) skip this to avoid polluting generation history
   case "$MODE" in
     switch|boot)
-      ${pkgs.nix}/bin/nix-env --profile /nix/var/nix/profiles/system --set "$STORE_PATH"
+      ${nixEnv} --profile /nix/var/nix/profiles/system --set "$STORE_PATH"
       ;;
   esac
 
