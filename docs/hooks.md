@@ -161,9 +161,9 @@ commands that need credentials the host doesn't have.
 
 ### Remote (`location = "remote"`)
 
-Runs on the host over SSH, as the `--user` given to `snow push`, or `root` by
-default. Use it for host-specific checks. The command must be on the remote
-`PATH`, or referenced by store path.
+Runs on the host over SSH, as the same user `snow push` connects as
+(`--user`, or else your SSH config). Use it for host-specific checks. The
+command must be on the remote `PATH`, or referenced by store path.
 
 ## Packages in Hook Commands
 

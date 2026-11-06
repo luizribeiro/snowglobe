@@ -71,6 +71,18 @@ impl SystemHookBackend {
             ))
         }
     }
+
+    /// Connects as push does, so hooks need no SSH key of their own. Hooks may
+    /// restart the host's network and are already bounded by their timeout.
+    fn ssh_shell_command(&self, target: &DeployTarget, remote_command: &str) -> String {
+        let destination = target.ssh_destination_as(self.ssh_user.as_deref());
+        format!(
+            "ssh {} {} {}",
+            ssh_options(CONNECT_TIMEOUT_SECS, Keepalive::Never, target.port).join(" "),
+            shell_escape::escape(destination.into()),
+            shell_escape::escape(remote_command.into())
+        )
+    }
 }
 
 #[async_trait]
@@ -89,31 +101,12 @@ impl HookBackend for SystemHookBackend {
         hook: &HookConfig,
         env: &HashMap<String, String>,
     ) -> Result<HookResult> {
-        let user = self
-            .ssh_user
-            .as_ref()
-            .or(target.user.as_ref())
-            .map(|s| s.as_str())
-            .unwrap_or("root");
-
-        let destination = format!("{}@{}", user, target.hostname);
         let remote_command = build_remote_command(&hook.command, env);
-
-        let ssh_command = ssh_shell_command(&destination, target.port, &remote_command);
+        let ssh_command = self.ssh_shell_command(target, &remote_command);
 
         self.execute_command(&ssh_command, &HashMap::new(), hook.timeout)
             .await
     }
-}
-
-// Hooks may restart the host's network and are already bounded by their timeout
-fn ssh_shell_command(destination: &str, port: Option<u16>, remote_command: &str) -> String {
-    format!(
-        "ssh {} {} {}",
-        ssh_options(CONNECT_TIMEOUT_SECS, Keepalive::Never, port).join(" "),
-        shell_escape::escape(destination.into()),
-        shell_escape::escape(remote_command.into())
-    )
 }
 
 /// Build a command string with escaped environment variables for remote execution.
@@ -483,24 +476,55 @@ mod tests {
 
     #[test]
     fn test_ssh_shell_command_never_prompts_and_bounds_the_connection() {
-        let command = ssh_shell_command("root@curium.example.com", None, "kubectl uncordon curium");
+        let backend = SystemHookBackend::new(Some("deploy".to_string()), OutputMode::Capture);
+        let command = backend.ssh_shell_command(
+            &DeployTarget::new("curium.example.com"),
+            "kubectl uncordon curium",
+        );
 
         assert_eq!(
             command,
-            "ssh -o BatchMode=yes -o ConnectTimeout=10 -o ForwardAgent=no 'root@curium.example.com' 'kubectl uncordon curium'"
+            "ssh -o BatchMode=yes -o ConnectTimeout=10 -o ForwardAgent=no 'deploy@curium.example.com' 'kubectl uncordon curium'"
+        );
+    }
+
+    #[test]
+    fn test_ssh_shell_command_connects_as_the_targets_own_user() {
+        let backend = SystemHookBackend::new(None, OutputMode::Capture);
+        let command = backend.ssh_shell_command(
+            &DeployTarget::with_user("pusher", "curium.example.com"),
+            "kubectl uncordon curium",
+        );
+
+        assert!(
+            command.ends_with(" 'pusher@curium.example.com' 'kubectl uncordon curium'"),
+            "{command}"
         );
     }
 
     #[test]
     fn test_ssh_shell_command_connects_to_the_hosts_port() {
-        let command = ssh_shell_command(
-            "root@curium.example.com",
-            Some(2222),
+        let backend = SystemHookBackend::new(None, OutputMode::Capture);
+        let mut target = DeployTarget::with_user("pusher", "curium.example.com");
+        target.port = Some(2222);
+        let command = backend.ssh_shell_command(&target, "kubectl uncordon curium");
+
+        assert!(
+            command.contains("-o ForwardAgent=no -p 2222 'pusher@curium.example.com'"),
+            "{command}"
+        );
+    }
+
+    #[test]
+    fn test_ssh_shell_command_without_a_user_leaves_it_to_ssh_as_push_does() {
+        let backend = SystemHookBackend::new(None, OutputMode::Capture);
+        let command = backend.ssh_shell_command(
+            &DeployTarget::new("curium.example.com"),
             "kubectl uncordon curium",
         );
 
         assert!(
-            command.contains("-o ForwardAgent=no -p 2222 'root@curium.example.com'"),
+            command.ends_with(" curium.example.com 'kubectl uncordon curium'"),
             "{command}"
         );
     }
