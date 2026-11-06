@@ -21,4 +21,15 @@
     '';
     example = "kubernetes";
   };
+
+  options.snowglobe.push.sshPort = lib.mkOption {
+    type = lib.types.nullOr lib.types.port;
+    default = null;
+    description = ''
+      The port snow connects to over ssh to push to this host: for
+      `nix copy`, activation, reboots and remote hooks. When null, ssh
+      picks the port, from the deployer's ssh config or the default 22.
+    '';
+    example = 2222;
+  };
 }

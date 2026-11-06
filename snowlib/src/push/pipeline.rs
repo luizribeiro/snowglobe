@@ -21,15 +21,6 @@ use super::planning::create_deployment_plans;
 use super::results::{HostDeploymentResult, PipelineStep, PushPlan};
 use super::serial::{PhaseScheduler, Section};
 
-/// Create a deploy target from host metadata and push context
-fn create_target(push_ctx: &PushContext<'_>, metadata: &HostMetadata) -> DeployTarget {
-    DeployTarget {
-        user: push_ctx.config.ssh_user.clone(),
-        hostname: metadata.fqdn.clone(),
-        port: None,
-    }
-}
-
 /// Execute hooks for a specific stage
 async fn execute_hooks(
     push_ctx: &PushContext<'_>,
@@ -216,7 +207,9 @@ impl HostRun<'_, '_> {
         let hostname = self.hostname();
 
         let preparation_permit = self.scheduler.permit().await;
-        let target = create_target(push_ctx, self.metadata);
+        let target = self
+            .metadata
+            .deploy_target(push_ctx.config.ssh_user.clone());
 
         let store_path = self
             .step(

@@ -303,6 +303,7 @@ fn metadata_apply_expr(local_system: &str) -> String {
           tags = config.core.tags or [];
           rebootPolicy = config.core.rebootPolicy or "auto";
           serialGroup = config.snowglobe.push.serialGroup or null;
+          sshPort = config.snowglobe.push.sshPort or null;
           hooksFile = if config ? snowglobe && config.snowglobe ? hooksFile
             then config.snowglobe.hooksFile.drvPath
             else null;
@@ -340,6 +341,8 @@ fn parse_host_metadata(
         reboot_policy: String,
         #[serde(default, rename = "serialGroup")]
         serial_group: Option<String>,
+        #[serde(default, rename = "sshPort")]
+        ssh_port: Option<u16>,
         #[serde(default, rename = "hooksFile")]
         hooks_file: Option<String>,
     }
@@ -363,6 +366,7 @@ fn parse_host_metadata(
         reboot_policy: RebootPolicy::from_str(&meta.reboot_policy)?,
         system_type,
         serial_group: meta.serial_group,
+        ssh_port: meta.ssh_port,
         hooks: Vec::new(),
     };
     Ok((metadata, meta.hooks_file))
@@ -519,6 +523,60 @@ mod tests {
         );
 
         assert_eq!(meta.serial_group.as_deref(), Some("kubernetes"));
+    }
+
+    #[test]
+    fn test_parse_metadata_with_ssh_port() {
+        let meta = parse(
+            r#"{
+            "hostName": "praseodymium",
+            "domain": "example.com",
+            "phase": "p2",
+            "tags": [],
+            "rebootPolicy": "auto",
+            "sshPort": 2222
+        }"#,
+        );
+
+        assert_eq!(meta.ssh_port, Some(2222));
+    }
+
+    #[test]
+    fn test_parse_metadata_without_ssh_port_leaves_it_to_ssh_config() {
+        let meta = parse(
+            r#"{
+            "hostName": "praseodymium",
+            "domain": "example.com",
+            "phase": "p2",
+            "tags": [],
+            "rebootPolicy": "auto",
+            "sshPort": null
+        }"#,
+        );
+
+        assert_eq!(meta.ssh_port, None);
+    }
+
+    #[test]
+    fn test_parse_metadata_rejects_an_out_of_range_ssh_port() {
+        let result = try_parse(
+            r#"{
+            "hostName": "praseodymium",
+            "domain": "example.com",
+            "phase": "p2",
+            "tags": [],
+            "rebootPolicy": "auto",
+            "sshPort": 70000
+        }"#,
+        );
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_metadata_apply_expr_reads_ssh_port() {
+        assert!(metadata_apply_expr("x86_64-linux")
+            .contains("sshPort = config.snowglobe.push.sshPort or null;"));
     }
 
     #[test]

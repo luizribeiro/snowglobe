@@ -181,6 +181,7 @@ mod tests {
             system_type: SystemType::NixOS,
             hooks: vec![],
             serial_group: group.map(str::to_string),
+            ssh_port: None,
         }
     }
 

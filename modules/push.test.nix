@@ -25,4 +25,19 @@ in
     expr = (builtins.tryEval (evalPush { snowglobe.push.serialGroup = ""; }).serialGroup).success;
     expected = false;
   };
+
+  testSshPortDefaultsToNull = {
+    expr = (evalPush { }).sshPort;
+    expected = null;
+  };
+
+  testSshPortAcceptsPort = {
+    expr = (evalPush { snowglobe.push.sshPort = 2222; }).sshPort;
+    expected = 2222;
+  };
+
+  testSshPortRejectsOutOfRange = {
+    expr = (builtins.tryEval (evalPush { snowglobe.push.sshPort = 70000; }).sshPort).success;
+    expected = false;
+  };
 }

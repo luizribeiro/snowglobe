@@ -72,6 +72,7 @@ mod tests {
             system_type: SystemType::NixOS,
             hooks,
             serial_group: None,
+            ssh_port: None,
         }
     }
 

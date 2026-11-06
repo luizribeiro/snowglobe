@@ -107,6 +107,7 @@ impl NixBackend for MockNixBackend {
                 reboot_policy: RebootPolicy::Auto,
                 system_type,
                 serial_group: None,
+                ssh_port: None,
                 hooks: Vec::new(),
             })
         } else {
@@ -118,6 +119,7 @@ impl NixBackend for MockNixBackend {
                 reboot_policy: RebootPolicy::Auto,
                 system_type,
                 serial_group: None,
+                ssh_port: None,
                 hooks: Vec::new(),
             })
         }

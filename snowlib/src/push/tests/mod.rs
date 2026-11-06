@@ -56,6 +56,7 @@ fn make_host_metadata(
         reboot_policy,
         system_type: SystemType::NixOS,
         serial_group: None,
+        ssh_port: None,
         hooks: Vec::new(),
     }
 }

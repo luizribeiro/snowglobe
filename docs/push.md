@@ -5,6 +5,7 @@ The `push` command is the primary deployment mechanism in Snowglobe. It builds N
 ## Table of Contents
 
 - [Basic Usage](#basic-usage)
+  - [SSH connections](#ssh-connections)
 - [Phases](#phases)
 - [Host Pipeline](#host-pipeline)
 - [Serial Groups](#serial-groups)
@@ -46,6 +47,20 @@ the `FLAKE_PATH` environment variable points it elsewhere.
 nix-darwin hosts always switch. Reboot policies and reboot detection don't
 apply to them, they are never rebooted, and `--boot`, `--test` and
 `--dry-run` fail on them. See [darwin.md](darwin.md).
+
+### SSH connections
+
+snow reaches each host at its FQDN (`networking.hostName` and
+`networking.domain`) through your ssh config, so `Host` entries there apply.
+A host whose sshd listens on another port can say so in its own config, and
+snow uses that port for every connection, `nix copy` included:
+
+```nix
+snowglobe.push.sshPort = 2222;
+```
+
+snow never forwards your ssh agent to a host (`-o ForwardAgent=no`), so a
+compromised host can't use it to reach the others.
 
 ---
 
