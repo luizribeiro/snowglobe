@@ -123,23 +123,31 @@ impl RebuildArgs {
         let started = Instant::now();
         let line = Arc::new(HostLine::new(&hostname));
 
-        let ending = self.rebuild_with(flake, &hostname, &line).await;
+        let report = |ending: Ending| {
+            line.hide();
+            println!("{}", ending.line(&hostname, started.elapsed()));
+        };
 
-        line.hide();
-        let took = started.elapsed();
-        match &ending {
-            Ok(ending) => println!("{}", ending.line(&hostname, took)),
-            Err(_) => println!("{}", failed_line(&hostname, line.step(), took)),
+        match self.rebuild_with(flake, &hostname, &line, &report).await {
+            Ok(Some(ending)) => report(ending),
+            Ok(None) => {}
+            Err(error) => {
+                line.hide();
+                println!("{}", failed_line(&hostname, line.step(), started.elapsed()));
+                return Err(error);
+            }
         }
-        ending.map(|_| ())
+        Ok(())
     }
 
+    /// None once the ending went to `report` already
     async fn rebuild_with(
         &self,
         flake: &Flake,
         hostname: &str,
         line: &Arc<HostLine>,
-    ) -> Result<Ending> {
+        report: &dyn Fn(Ending),
+    ) -> Result<Option<Ending>> {
         let nix_backend = crate::backend_factory::create_nix_backend(
             #[cfg(debug_assertions)]
             &self.mock_fixture,
@@ -181,10 +189,10 @@ impl RebuildArgs {
             line.start(PipelineStep::Activate);
             deployer.activate(host, system, mode).await?;
             tracing::info!("{hostname}: activated ({mode:?} mode)");
-            Result::Ok(Ending::Activated {
+            Result::Ok(Some(Ending::Activated {
                 mode,
                 rebooting: false,
-            })
+            }))
         };
 
         let mode = self.activation_mode();
@@ -210,18 +218,20 @@ impl RebuildArgs {
                 activate(ActivationMode::Boot).await?;
                 line.start(PipelineStep::Reboot);
                 tracing::info!("{hostname}: rebooting");
-                reboot_backend.reboot_and_wait(&target).await?;
-                Ok(Ending::Activated {
+                // Before the reboot, which may take snow down before it says so
+                report(Ending::Activated {
                     mode: ActivationMode::Boot,
                     rebooting: true,
-                })
+                });
+                reboot_backend.reboot_and_wait(&target).await?;
+                Ok(None)
             }
             RebootAction::BootOnly => activate(ActivationMode::Boot).await,
             RebootAction::SwitchRisky => {
                 activate(mode).await?;
-                Ok(Ending::SwitchedBeforeReboot)
+                Ok(Some(Ending::SwitchedBeforeReboot))
             }
-            RebootAction::Cancel => Ok(Ending::Cancelled),
+            RebootAction::Cancel => Ok(Some(Ending::Cancelled)),
         }
     }
 }
