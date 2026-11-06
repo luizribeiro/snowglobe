@@ -4,6 +4,8 @@ pkgs.writeScriptBin "snowglobe-activate" ''
   #!${pkgs.bash}/bin/bash
   set -e
 
+  ${import ./store-path-check.nix}
+
   usage() {
     echo "Usage: snowglobe-activate <store-path> <mode>" >&2
     echo "       snowglobe-activate reboot" >&2
@@ -24,11 +26,7 @@ pkgs.writeScriptBin "snowglobe-activate" ''
   STORE_PATH="$1"
   MODE="$2"
 
-  # Validate store path starts with /nix/store/
-  if [[ ! "$STORE_PATH" =~ ^/nix/store/ ]]; then
-    echo "Error: Invalid store path (must start with /nix/store/)" >&2
-    exit 1
-  fi
+  require_store_path "$STORE_PATH"
 
   # Validate mode is one of the allowed values
   case "$MODE" in
