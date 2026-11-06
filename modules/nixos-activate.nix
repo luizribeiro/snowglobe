@@ -38,14 +38,6 @@ pkgs.writeScriptBin "snowglobe-activate" ''
       ;;
   esac
 
-  # Update system profile for persistent modes (switch/boot)
-  # Ephemeral modes (test/dry-activate) skip this to avoid polluting generation history
-  case "$MODE" in
-    switch|boot)
-      ${nixEnv} --profile /nix/var/nix/profiles/system --set "$STORE_PATH"
-      ;;
-  esac
-
   # NixOS uses /bin/switch-to-configuration
   ACTIVATION_SCRIPT="$STORE_PATH/bin/switch-to-configuration"
 
@@ -53,6 +45,14 @@ pkgs.writeScriptBin "snowglobe-activate" ''
     echo "Error: Activation script not found at $ACTIVATION_SCRIPT" >&2
     exit 1
   fi
+
+  # Update system profile for persistent modes (switch/boot)
+  # Ephemeral modes (test/dry-activate) skip this to avoid polluting generation history
+  case "$MODE" in
+    switch|boot)
+      ${nixEnv} --profile /nix/var/nix/profiles/system --set "$STORE_PATH"
+      ;;
+  esac
 
   # Execute the activation script with the specified mode
   exec "$ACTIVATION_SCRIPT" "$MODE"

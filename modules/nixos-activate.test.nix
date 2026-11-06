@@ -9,6 +9,7 @@ let
     systemctl = fakePrivileged "systemctl";
     nixEnv = fakePrivileged "nix-env";
   };
+  packageNotSystem = pkgs.writeTextDir "bin/hello" "";
 in
 pkgs.runCommand "nixos-activate-test" { } ''
   marker="$TMPDIR/privileged-called"
@@ -33,6 +34,8 @@ pkgs.runCommand "nixos-activate-test" { } ''
   expect_error "Invalid mode" /nix/store/$hash-nixos-system-boron poweroff
   expect_error "Invalid mode" /nix/store/$hash-nixos-system-boron reboot
   expect_error "Activation script not found" /nix/store/$hash-nixos-system-boron test
+  expect_error "Activation script not found" ${packageNotSystem} switch
+  expect_error "Activation script not found" ${packageNotSystem} boot
   expect_traversal_rejected bin/switch-to-configuration test
 
   touch $out
