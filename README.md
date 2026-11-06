@@ -1,126 +1,237 @@
 # snowglobe
 
-[![CI](https://github.com/luizribeiro/snowglobe/workflows/CI/badge.svg)](https://github.com/luizribeiro/snowglobe/actions)
+[![CI](https://github.com/luizribeiro/snowglobe/actions/workflows/ci.yml/badge.svg)](https://github.com/luizribeiro/snowglobe/actions/workflows/ci.yml)
 
-Self-contained cluster orchestration for NixOS.
-
-> **Status**: Early design phase. Not ready for use.
+snowglobe deploys NixOS and nix-darwin hosts from a flake over SSH. Its CLI,
+`snow`, builds each host's system, copies it to the host, activates it, and
+reboots the host when the new system needs it. Hosts deploy in ordered phases,
+in parallel within a phase, with optional serial groups and lifecycle hooks.
+Progress shows as a live board with one row per host.
 
 [![snow push: three hosts in two phases](docs/demos/switch.svg)](https://asciinema.org/a/FG9AARHrB4eEO1jq)
 
-More in [the demos](docs/demos.md), recorded from real pushes in the VM tests.
+snowglobe is young. Expect breaking changes to the CLI and module options
+before 1.0.
 
-## Vision
+## What works today
 
-snowglobe is a NixOS-native cluster orchestration tool that provides:
-- **Declarative cluster configuration** - Define your cluster in Nix
-- **Push-based deployment** - Deploy configurations to NixOS and nix-darwin hosts
-- **Activation helper** - Passwordless deployment through one auditable sudo command
-- **Reboot detection** - Automatically handle system updates requiring reboots
-- **Agent-based deployment** (planned) - Nodes manage themselves (pull-based)
-- **Built-in health checking** (planned) - Know when things break
-- **etcd-backed state** (planned) - Distributed state management
-- **VM testing** (planned) - Test deployments safely before production
+| Command | What it does |
+| --- | --- |
+| `snow list` | List hosts in `nixosConfigurations` and `darwinConfigurations` |
+| `snow status` | List hosts (live host state is not implemented yet: every host shows `unknown`) |
+| `snow build` | Build hosts' systems locally, in parallel |
+| `snow plan` | Show what a build would compile from source versus fetch, without building |
+| `snow push` | Deploy hosts over SSH |
+| `snow rebuild` | Rebuild and activate the machine you run it on |
+| `snow bootstrap` | Generate a new host's SSH key, build its image and inject the key |
 
-Think: A modern alternative to `deploy-rs` with cluster awareness.
+`build`, `plan` and `push` take host names, or select hosts with one of
+`-e/--filter` (a Nix expression over the host's config), `--phase`/`--phases`
+or `--tag`/`--tags`. With no hosts, they act on every host. `list` and
+`status` take `-e`. snow finds `flake.nix`
+in the current directory or a parent; `-f` or `FLAKE_PATH` points it elsewhere.
 
-## Features
+### `snow push`
 
-### Passwordless Deployment
+For each host, snow builds the system locally, skips the host if it already
+runs that system, copies the closure with `nix copy`, plans the activation,
+runs `pre-deploy` hooks, activates, reboots if needed, then runs
+`post-reboot` and `post-deploy` hooks. A failure stops that host and runs its
+`on-failure` hooks. Other hosts keep going.
 
-Snowglobe includes NixOS and nix-darwin modules that provide passwordless system activation:
+- **Phases.** Each host can have a phase. Phases run one after another, in name
+  order; hosts without one go in the phase `default`. If any host in a phase
+  fails, later phases are skipped. `--ignore-phases` pushes everything at once.
+- **Concurrency.** `--concurrency N` (default 3) caps how many hosts are active
+  at once. Each host moves through its steps on its own, so fast hosts don't
+  wait for slow ones.
+- **Serial groups.** Within a phase, hosts with the same
+  `snowglobe.push.serialGroup` take turns
+  through hooks, activation and reboot. Build, copy and planning stay parallel.
+  If one fails, the group's remaining hosts are skipped.
+- **Hooks.** `snowglobe.hooks.{pre-deploy,post-deploy,post-reboot,on-failure}`
+  run commands on the deploying machine or on the host, with timeouts, retries
+  and priorities. See [docs/hooks.md](docs/hooks.md).
+- **Reboot detection.** snow compares the new kernel and initrd with the
+  booted ones. If they match, it dry-activates and checks whether a service
+  that can't be safely restarted (udev, audit, sysctl and a few others) would
+  restart. If a reboot is needed, snow sets the new system for the next boot,
+  reboots the host, and waits for it to come back (`--reboot-timeout`, default
+  600 seconds).
+- **Reboot policies.** A host's policy is `auto` (the default: reboot only when
+  needed), `never` (set the new system for next boot and leave the reboot to
+  you) or `always`.
+- **Modes.** `--switch`, `--boot`, `--test` and `--dry-run` pick the activation
+  mode. `--skip-reboot` deploys but never reboots. `--switch --force` switches
+  even when a reboot is needed or the policy says otherwise. `--redeploy`
+  deploys hosts that already run the built system.
 
-```nix
-{
-  imports = [ inputs.snowglobe.nixosModules.default ];
+On nix-darwin, push only switches. `--boot`, `--test` and `--dry-run` fail,
+and there is no reboot detection or reboot. See [docs/push.md](docs/push.md) for the full reference and
+[docs/darwin.md](docs/darwin.md) for Darwin setup.
 
-  snowglobe.push.allowedUsers = [ "deploy" ];
-}
-```
+### `snow rebuild`
 
-This installs the `snowglobe-activate` command that:
-- Works around sudoers wildcard limitations on macOS
-- Provides a stable path for sudo configuration
-- Puts one auditable command in sudoers instead of `NOPASSWD: ALL`
+Like `nixos-rebuild`, for the machine you're on, with the same reboot
+detection. Reboot policies don't apply. When a switch needs a reboot, it asks whether to switch anyway, set
+the new system for the next boot, reboot now, or cancel.
 
-Allowed users are root-equivalent on the host, as with any push deployment tool, so use a dedicated deploy user.
+### `snow bootstrap`
 
-Snowglobe automatically detects and uses `snowglobe-activate` when available, falling back gracefully for compatibility.
+For a new NixOS host: snow generates its SSH host key and prints the matching
+age public key. With `--update-sops`, it adds that key to `.sops.yaml` and
+re-encrypts the secrets, so the host can decrypt them on first boot. It then
+builds the image named by `snowglobe.bootstrap.imageAttr` and injects the key.
+Set `snowglobe.bootstrap.provisioner` to `sd-image`, `raw` or `proxmox-vma`;
+the default, `manual`, stops with an error after the build. `--target` writes
+the image to a block device or a Proxmox host.
 
-See [docs/activation-helper.md](docs/activation-helper.md) for details.
+### Modules
 
-### Smart Reboot Detection
+`nixosModules.default` and `darwinModules.default` install
+`snowglobe-activate`, the helper snow activates and reboots through, and give
+the users in `snowglobe.push.allowedUsers` passwordless sudo for it alone. They
+also define the hook, serial group and bootstrap options.
 
-Snowglobe automatically detects when deployments require system reboots by checking:
-- Kernel and initrd changes (symlink comparison)
-- Critical service restarts (systemd analysis)
-- Per-host reboot policies
+## Install
 
-Hosts can configure their own reboot behavior:
-
-```nix
-{
-  config.core.rebootPolicy = "auto";  # or "never", "always"
-}
-```
-
-## Commands
+Run it without installing:
 
 ```bash
-# Cluster management
-snow status                    # Show cluster state
-snow deploy <host>             # Deploy to specific host
-snow deploy --all              # Deploy all changed hosts
-
-# Health and monitoring
-snow health                    # Show health status of all nodes
-
-# etcd cluster operations
-snow etcd status               # Show etcd cluster state
-snow etcd sync                 # Sync membership from config
-snow etcd promote <member>     # Promote learner to voting member
-
-# Future: VM testing
-snow vm create <name>          # Create test VM
-snow vm deploy <name>          # Deploy to test VM
+nix run github:luizribeiro/snowglobe -- list
 ```
 
-## Why?
+Or install it into your profile:
 
-Existing NixOS deployment tools (NixOps, deploy-rs, colmena, morph) are push-based and lack:
-- **Cluster awareness** - No understanding of cluster membership or distributed state
-- **Built-in health checking** - External tools needed (gatus, custom scripts)
-- **Agent-based deployment** - Can't pull updates from nodes
-- **State management** - No shared state between deployments
+```bash
+nix profile install github:luizribeiro/snowglobe
+```
 
-snowglobe addresses these gaps with an agent-based, cluster-aware approach.
+## Quickstart
 
-## Architecture
+Add snowglobe to your flake and import the module on each host:
 
-**Phase 1** (current focus):
-- CLI tool (`snow`) for push-based deployments
-- etcd for state management
-- Replaces: deploy-rs, custom sync scripts, parts of gatus
+```nix
+{
+  inputs.snowglobe.url = "github:luizribeiro/snowglobe";
 
-**Phase 2** (future):
-- Agent (`snow-agent`) on each node for pull-based deployments
-- Self-healing cluster operations
-- Automated member promotion and failure handling
+  outputs = { nixpkgs, snowglobe, ... }: {
+    nixosConfigurations.web1 = nixpkgs.lib.nixosSystem {
+      system = "x86_64-linux";
+      modules = [
+        snowglobe.nixosModules.default
+        ./hosts/web1.nix
+      ];
+    };
+  };
+}
+```
 
-**Phase 3** (future):
-- VM support for testing
-- Advanced health checks
-- Rollback mechanisms
+On nix-darwin, import `snowglobe.darwinModules.default` instead.
 
-## Origin
+In the host's config, let your deploy user run the helper:
 
-Born from managing a NixOS homelab and iteratively building:
-- Custom deployment scripts
-- etcd cluster management automation
-- Health checking with gatus
-- Deployment orchestration with just
+```nix
+{
+  snowglobe.push.allowedUsers = [ "deploy" ];
+  # nix copy as a non-root user needs a trusted user (or signed paths)
+  nix.settings.trusted-users = [ "deploy" ];
+}
+```
 
-Eventually realized: "I'm building an orchestrator from scratch, might as well do it properly."
+snow connects to `networking.hostName`, plus `networking.domain` when set,
+using your SSH config. Deploy the module once with `nixos-rebuild`, then from
+the flake's directory:
+
+```bash
+snow list                 # the hosts snow sees
+snow push --dry-run web1  # build, copy and show what would change (NixOS only)
+snow push web1            # deploy it
+snow push                 # deploy every host
+```
+
+`--user` picks the SSH user when your SSH config doesn't.
+
+Phases, tags and reboot policies are read from `core.pushPhase`, `core.tags`
+and `core.rebootPolicy` in each host's config. snowglobe's modules don't
+declare these options yet, so declare them in your own module:
+
+```nix
+{ lib, ... }:
+{
+  options.core = {
+    pushPhase = lib.mkOption { type = lib.types.nullOr lib.types.str; default = null; };
+    tags = lib.mkOption { type = lib.types.listOf lib.types.str; default = [ ]; };
+    rebootPolicy = lib.mkOption {
+      type = lib.types.enum [ "auto" "never" "always" ];
+      default = "auto";
+    };
+  };
+}
+```
+
+## Demos
+
+Recorded from real pushes between VMs in the NixOS tests.
+
+A host that must reboot is set to boot the new system, then rebooted:
+
+[![reboot](docs/demos/reboot.svg)](https://asciinema.org/a/C3DbCPc7hX4bzUiW)
+
+Two hosts in a serial group take turns:
+
+[![serial-group](docs/demos/serial-group.svg)](https://asciinema.org/a/6mFMCpWYPMuoNSfW)
+
+One host fails to activate while the others succeed:
+
+[![activation-failure](docs/demos/activation-failure.svg)](https://asciinema.org/a/Dr9UFyXxR6QaisGD)
+
+`snow rebuild` reboots into the new system:
+
+[![rebuild-reboot](docs/demos/rebuild-reboot.svg)](https://asciinema.org/a/7Tlyl2BUHoinFGZK)
+
+More on [the demos page](docs/demos.md).
+
+## How it compares
+
+- **`nixos-rebuild --target-host`** deploys one NixOS host per run and ships
+  with NixOS. snowglobe deploys many hosts per run and adds phases, hooks,
+  reboot detection and nix-darwin hosts.
+- **deploy-rs** deploys many flake hosts per run and has magic rollback: if the
+  host can't confirm a connection after activation, it rolls back. It can also
+  deploy profiles other than the system. snowglobe has neither.
+- **colmena** deploys many hosts in parallel, selects them by tag, can build
+  on the target, and uploads secrets outside the Nix store. snowglobe has tags
+  but none of the others.
+
+What snowglobe adds:
+
+- ordered phases that stop on failure, and serial groups
+- lifecycle hooks
+- automatic reboot detection with per-host policies
+- a live board with one row per host
+- NixOS and nix-darwin hosts in one push
+
+What it lacks: rollback, secrets upload, building on the target, and setups
+without flakes. It is also much newer than the others.
+
+## Security
+
+The activation helper puts one auditable command in sudoers instead of
+`NOPASSWD: ALL`. That doesn't make the deploy user less powerful: anyone in
+`allowedUsers` can activate a system they built, so they are root-equivalent
+on the host, as with any push tool. Use a dedicated deploy user and guard its
+SSH key like a root key. See [docs/activation-helper.md](docs/activation-helper.md).
+
+## Roadmap
+
+None of this exists yet:
+
+- **Signed deployments.** The host verifies a signed statement before it
+  activates a system, so the deploy user is no longer root-equivalent.
+- **`snow init`.** Onboarding that sets up a flake and hosts for snowglobe.
+- **Pull-based agents.** An agent on each host fetches and applies its own
+  configuration.
 
 ## License
 
@@ -130,7 +241,3 @@ Licensed under either of [Apache License, Version 2.0](LICENSE-APACHE) or
 Unless you explicitly state otherwise, any contribution intentionally submitted
 for inclusion in snowglobe by you, as defined in the Apache-2.0 license, shall
 be dual licensed as above, without any additional terms or conditions.
-
-## Contributing
-
-Not ready for contributions yet - design phase. Watch this space!
