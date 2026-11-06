@@ -98,14 +98,25 @@ pub(super) fn progress_bar(finished: usize, total: usize, width: usize) -> (Stri
 
 /// The style of the `slot`-th line, whatever is listed there right now
 pub(super) fn line_style(board: SharedBoard, slot: usize) -> ProgressStyle {
+    drawn_from(board, move |board, now, width| {
+        render_slot(board, slot, now, width, spinner())
+    })
+}
+
+/// A line that `render` redraws from the board on every tick
+fn drawn_from(
+    board: SharedBoard,
+    render: impl Fn(&HostBoard, Instant, usize) -> Option<String> + Clone + Send + Sync + 'static,
+) -> ProgressStyle {
     ProgressStyle::with_template("{row}")
         .expect("valid template")
         .with_key(
             "row",
             move |_: &indicatif::ProgressState, w: &mut dyn std::fmt::Write| {
-                let line = board.lock().as_ref().and_then(|board| {
-                    render_slot(board, slot, Instant::now(), terminal_width(), spinner())
-                });
+                let line = board
+                    .lock()
+                    .as_ref()
+                    .and_then(|board| render(board, Instant::now(), terminal_width()));
                 if let Some(line) = line {
                     let _ = write!(w, "{line}");
                 }
@@ -124,7 +135,7 @@ pub(super) fn render_slot(
     Some(match board.lines(now).into_iter().nth(slot)? {
         Line::Lane { lane, hosts } => lane_heading(lane, hosts),
         Line::Host(row) => {
-            let text = row_text(&row, board.hostname_width(), width, spinner);
+            let text = row_text(&row, ROW_INDENT, board.hostname_width(), width, spinner);
             styled(&row, text)
         }
     })
@@ -167,6 +178,7 @@ fn lane_heading(lane: Lane, hosts: usize) -> String {
 /// One row as plain text, cut to fit `width` columns
 pub(super) fn row_text(
     row: &Row,
+    indent: &str,
     hostname_width: usize,
     max_width: usize,
     spinner: &str,
@@ -180,7 +192,7 @@ pub(super) fn row_text(
     };
     let elapsed = row.elapsed.map(format_elapsed).unwrap_or_default();
     let line = format!(
-        "{ROW_INDENT}{icon} {:<hostname_width$}  {:<11} {}",
+        "{indent}{icon} {:<hostname_width$}  {:<11} {}",
         row.hostname, row.step, row.detail
     );
     let line = line.trim_end();
@@ -248,8 +260,8 @@ mod tests {
             Some(160),
         );
 
-        let cerium = row_text(&cerium, 9, 60, "⠋");
-        let neodymium = row_text(&neodymium, 9, 60, "⠋");
+        let cerium = row_text(&cerium, ROW_INDENT, 9, 60, "⠋");
+        let neodymium = row_text(&neodymium, ROW_INDENT, 9, 60, "⠋");
 
         assert_eq!(
             cerium,
@@ -273,7 +285,7 @@ mod tests {
             None,
         );
 
-        let text = row_text(&lanthanum, 9, 50, "⠋");
+        let text = row_text(&lanthanum, ROW_INDENT, 9, 50, "⠋");
 
         assert_eq!(text, "    ✗ lanthanum  plan        hook 'wait-storage-…");
         assert_eq!(text.chars().count(), 49);
@@ -398,6 +410,9 @@ mod tests {
     fn test_short_rows_are_not_padded_without_elapsed() {
         let sodium = row(RowKind::Unchanged, "sodium", "unchanged", "", None);
 
-        assert_eq!(row_text(&sodium, 9, 80, "⠋"), "    = sodium     unchanged");
+        assert_eq!(
+            row_text(&sodium, ROW_INDENT, 9, 80, "⠋"),
+            "    = sodium     unchanged"
+        );
     }
 }
