@@ -23,14 +23,15 @@ in
       description = ''
         Users allowed to run snowglobe-activate without password.
 
-        These users will be able to activate any NixOS configuration from the
-        Nix store, and reboot the host, without requiring a password. This is designed for automated
-        deployment scenarios (CI/CD, remote push deployments).
+        These users can activate any system from the Nix store, and reboot the
+        host, without a password. This is meant for push deployments.
 
-        Security note: Users in this list can activate any system configuration
-        from /nix/store/, but cannot modify the store itself (which requires root).
+        Users in this list are effectively root on this host: anyone who can
+        use the Nix daemon can add a store path with their own activation
+        script and run it as root through snowglobe-activate. Use a dedicated
+        deploy user, and guard its SSH key like a root key.
       '';
-      example = [ "alice" "pusher" ];
+      example = [ "deploy" ];
     };
   };
 

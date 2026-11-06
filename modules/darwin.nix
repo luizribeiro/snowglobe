@@ -30,15 +30,16 @@ in
       description = ''
         Users allowed to run snowglobe-activate without password.
 
-        These users will be able to activate any nix-darwin configuration from
-        the Nix store without requiring a password. This is designed for
-        automated deployment scenarios (CI/CD, remote push deployments).
+        These users can activate any system from the Nix store without a
+        password. This is meant for push deployments. On Darwin, only the
+        'switch' activation mode is supported.
 
-        Security note: Users in this list can activate any system configuration
-        from /nix/store/, but cannot modify the store itself (which requires root).
-        On Darwin, only the 'switch' activation mode is supported.
+        Users in this list are effectively root on this host: anyone who can
+        use the Nix daemon can add a store path with their own activation
+        script and run it as root through snowglobe-activate. Use a dedicated
+        deploy user, and guard its SSH key like a root key.
       '';
-      example = [ "alice" "pusher" ];
+      example = [ "deploy" ];
     };
   };
 
