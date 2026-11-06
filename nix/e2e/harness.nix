@@ -1,8 +1,9 @@
 # snowTest: a NixOS VM test of snow pushing to hosts, from a test file in
 # ./tests. The hosts boot a base system shared by every test; the test's
 # `nodes` are what snow pushes to them, from the deployer `sodium`. A test's
-# optional `base.<host>` module goes on that host's base system, booted and
-# pushed alike.
+# optional `common` module is booted by every VM, the deployer's included,
+# and its optional `base.<host>` module goes on that host's base system;
+# both are booted and pushed alike.
 { pkgs, snow, snowglobeModule }:
 
 let
@@ -131,7 +132,7 @@ pkgs.testers.runNixOSTest ({ config, ... }:
     demoScript = pkgs.writeText "${test.name}-demo.py" demo.script;
 
     node = name: {
-      imports = [ base (test.base.${name} or { }) ]
+      imports = [ base (test.common or { }) (test.base.${name} or { }) ]
         ++ lib.optional (builtins.elem name hosts) (pushedModule name);
       # Registered in the VM's store without being part of its system, which
       # stays the base
