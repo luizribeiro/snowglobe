@@ -487,7 +487,7 @@ mod tests {
 
         assert_eq!(
             command,
-            "ssh -o BatchMode=yes -o ConnectTimeout=10 'root@curium.example.com' 'kubectl uncordon curium'"
+            "ssh -o BatchMode=yes -o ConnectTimeout=10 -o ForwardAgent=no 'root@curium.example.com' 'kubectl uncordon curium'"
         );
     }
 

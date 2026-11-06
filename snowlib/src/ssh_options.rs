@@ -27,10 +27,15 @@ pub(crate) enum Keepalive {
     Never,
 }
 
+/// A host snow deploys to could be compromised; with the deployer's agent
+/// forwarded, it could sign in to every other host as the deployer.
+pub(crate) const NO_AGENT_FORWARDING: &str = "ForwardAgent=no";
+
 pub(crate) fn ssh_options(connect_timeout_secs: u64, keepalive: Keepalive) -> Vec<String> {
     let mut options = vec![
         "BatchMode=yes".to_string(),
         format!("ConnectTimeout={connect_timeout_secs}"),
+        NO_AGENT_FORWARDING.to_string(),
     ];
     if keepalive == Keepalive::Probe {
         options.push(format!("ServerAliveInterval={SERVER_ALIVE_INTERVAL_SECS}"));
@@ -42,7 +47,8 @@ pub(crate) fn ssh_options(connect_timeout_secs: u64, keepalive: Keepalive) -> Ve
         .collect()
 }
 
-/// `NIX_SSHOPTS` for `nix copy`, after the user's own. An interrupted copy is
+/// `NIX_SSHOPTS` for `nix copy`, after the user's own. ssh keeps the first
+/// value it sees for an option, so the user's win. An interrupted copy is
 /// safe to retry, so it uses probe keepalives.
 pub(crate) fn nix_sshopts(existing: Option<&str>) -> String {
     let ours = ssh_options(CONNECT_TIMEOUT_SECS, Keepalive::Probe).join(" ");
@@ -133,7 +139,7 @@ mod tests {
 
         assert_eq!(
             options,
-            "-o BatchMode=yes -o ConnectTimeout=5 -o ServerAliveInterval=15 -o ServerAliveCountMax=3"
+            "-o BatchMode=yes -o ConnectTimeout=5 -o ForwardAgent=no -o ServerAliveInterval=15 -o ServerAliveCountMax=3"
         );
     }
 
@@ -141,7 +147,10 @@ mod tests {
     fn test_activation_keeps_waiting_on_a_silent_host() {
         let options = ssh_options(10, Keepalive::Never).join(" ");
 
-        assert_eq!(options, "-o BatchMode=yes -o ConnectTimeout=10");
+        assert_eq!(
+            options,
+            "-o BatchMode=yes -o ConnectTimeout=10 -o ForwardAgent=no"
+        );
     }
 
     #[test]
@@ -149,6 +158,7 @@ mod tests {
         let sshopts = nix_sshopts(Some("-i /home/luiz/.ssh/deploy -p 2222"));
 
         assert!(sshopts.starts_with("-i /home/luiz/.ssh/deploy -p 2222 -o BatchMode=yes"));
+        assert_eq!(sshopts.matches("-o ForwardAgent=no").count(), 1);
         assert!(sshopts.ends_with("-o ServerAliveCountMax=3"));
         assert_eq!(nix_sshopts(Some("  ")), nix_sshopts(None));
     }
