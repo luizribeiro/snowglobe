@@ -1,10 +1,11 @@
 # Push Command
 
-The `push` command is the primary deployment mechanism in Snowglobe. It builds NixOS configurations and deploys them to remote hosts over SSH.
+The `push` command is the primary deployment mechanism in Snowglobe. It builds NixOS and nix-darwin configurations and deploys them to remote hosts over SSH.
 
 ## Table of Contents
 
 - [Basic Usage](#basic-usage)
+- [Phases](#phases)
 - [Host Pipeline](#host-pipeline)
 - [Serial Groups](#serial-groups)
 - [Lifecycle Hooks](#lifecycle-hooks)
@@ -32,6 +33,48 @@ snow push hydrogen --user deploy
 
 # Control parallelism
 snow push --concurrency 5
+
+# Select hosts by phase, tag or a Nix expression
+snow push --phase production
+snow push --tags web,database
+snow push -e 'config: config.services.nginx.enable or false'
+```
+
+snow finds `flake.nix` in the current directory or a parent. `-f <path>` or
+the `FLAKE_PATH` environment variable points it elsewhere.
+
+nix-darwin hosts always switch. Reboot policies and reboot detection don't
+apply to them, they are never rebooted, and `--boot`, `--test` and
+`--dry-run` fail on them. See [darwin.md](darwin.md).
+
+---
+
+## Phases
+
+A host's phase comes from `core.pushPhase` in its config. Hosts without one
+go in a phase named `default`.
+
+- Phases run one after another, in name order.
+- If any host in a phase fails, later phases are skipped and `snow push`
+  exits non-zero.
+- `--ignore-phases` puts every selected host in a single phase.
+
+snowglobe's modules don't declare `core.pushPhase`, `core.tags` or
+`core.rebootPolicy`. snow reads them when they exist, so declare them in your
+own module:
+
+```nix
+{ lib, ... }:
+{
+  options.core = {
+    pushPhase = lib.mkOption { type = lib.types.nullOr lib.types.str; default = null; };
+    tags = lib.mkOption { type = lib.types.listOf lib.types.str; default = [ ]; };
+    rebootPolicy = lib.mkOption {
+      type = lib.types.enum [ "auto" "never" "always" ];
+      default = "auto";
+    };
+  };
+}
 ```
 
 ---
@@ -62,9 +105,10 @@ A failure at any step stops the host and runs its on-failure hooks.
   fetches or builds the packages local hooks reference (see [Packages in Hook
   Commands](hooks.md#packages-in-hook-commands)). If that fails for a host,
   the push stops before anything is deployed.
-- **`--concurrency`** limits how many hosts are in steps 1–4 at once, and,
-  separately, how many are inside a deploy section at once. A host waiting for
-  its serial group holds no concurrency slot.
+- **`--concurrency`** is one pool of slots shared by steps 1–4 and the deploy
+  section, so at most that many hosts are active at once. A host gives up its
+  slot after planning and takes one again once its serial group lets it in, so
+  a host waiting for its serial group holds no slot.
 - **Unchanged hosts** are skipped right after the build. A host is unchanged
   when both `/run/current-system` (what it runs) and
   `/nix/var/nix/profiles/system` (what it boots next) already point at the
@@ -183,12 +227,12 @@ Snowglobe supports per-host reboot policies that can be configured in your NixOS
 
 ### Configuring Reboot Policy
 
-Set the `core.rebootPolicy` option in your NixOS configuration:
+Set `core.rebootPolicy` in the host's configuration. Your own module must
+declare the option (see [Phases](#phases)):
 
 ```nix
 {
-  # In your host configuration
-  config.core.rebootPolicy = "auto";  # or "never" or "always"
+  core.rebootPolicy = "auto";  # or "never" or "always"
 }
 ```
 
@@ -198,7 +242,7 @@ Set the `core.rebootPolicy` option in your NixOS configuration:
 Automatically detects if a reboot is required and reboots only when necessary.
 
 **Behavior:**
-- Runs reboot detection (checks kernel, initrd, init, and critical services)
+- Runs reboot detection (checks kernel, initrd and critical services)
 - Uses `boot` mode + automatic reboot if changes require it
 - Uses `switch` mode for immediate activation if safe
 
@@ -234,7 +278,8 @@ that are already running the built system are skipped and not rebooted (see
 
 ### Policy Override Behavior
 
-Reboot policies override command-line flags:
+Reboot policies apply to auto mode and `--switch` (unless `--force` is
+given). `--boot`, `--test` and `--dry-run` ignore them.
 
 ```bash
 # Host has rebootPolicy = "never"
@@ -253,23 +298,14 @@ snow push myhost --switch
 ### Example Configuration
 
 ```nix
-# In your flake or host configuration
-{
-  # Production database server - never auto-reboot
-  hosts.db-prod = {
-    config.core.rebootPolicy = "never";
-  };
+# hosts/db-prod.nix: never auto-reboot
+{ core.rebootPolicy = "never"; }
 
-  # Stateless web server - always reboot to ensure fresh state
-  hosts.web-frontend = {
-    config.core.rebootPolicy = "always";
-  };
+# hosts/web-frontend.nix: stateless, always reboot
+{ core.rebootPolicy = "always"; }
 
-  # Standard server - use automatic detection
-  hosts.app-server = {
-    config.core.rebootPolicy = "auto";  # or omit (auto is default)
-  };
-}
+# hosts/app-server.nix: automatic detection (the default, so it can be omitted)
+{ core.rebootPolicy = "auto"; }
 ```
 
 ---
@@ -290,7 +326,6 @@ snow push myhost
 2. **Detects if a reboot is required** by checking:
    - Kernel changes
    - Initrd changes
-   - Init (systemd) changes
    - Critical system services that would restart
 3. **Chooses the appropriate mode:**
    - If reboot needed → uses `boot` mode + automatically reboots and waits
@@ -304,7 +339,10 @@ You can override the automatic behavior with these flags:
 
 #### `--switch` - Force Immediate Activation
 
-Forces immediate activation regardless of reboot detection.
+Activates immediately. Under `rebootPolicy = "auto"`, snow still runs reboot
+detection: if a reboot is required, the host fails at the plan step with the
+reason, and nothing is activated. Hosts with `"never"` or `"always"` get boot
+mode instead. `--force` switches in every case.
 
 ```bash
 snow push myhost --switch
@@ -315,24 +353,27 @@ snow push myhost --switch
 - You're testing and want to see changes right away
 - You're deploying to a development system
 
-**Warning:** This can leave the system in an inconsistent state if kernel/initrd/critical services changed.
+**Warning:** With `--force`, this can leave the system in an inconsistent state if the kernel, initrd or critical services changed.
 
 #### `--boot` - Set for Next Boot
 
-Sets the new configuration as the boot default but doesn't activate it immediately.
+Sets the new configuration as the boot default without activating it, then
+reboots the host into it. Add `--skip-reboot` to leave the reboot to you.
+`--boot` skips reboot detection and ignores the host's reboot policy, so it
+reboots even a host with `rebootPolicy = "never"`.
 
 ```bash
 snow push myhost --boot
+snow push myhost --boot --skip-reboot
 ```
 
 **Use when:**
-- You want to deploy now but reboot manually later
-- You're batching updates during a maintenance window
-- You want to review changes before activating
+- You want the host to boot the new system now, whatever changed
+- With `--skip-reboot`: you're batching updates for a maintenance window
 
 #### `--dry-run` - Preview Only
 
-Shows what would change without actually deploying or activating anything.
+Builds and copies the system, then runs `dry-activate` on the host to show what would change. Nothing is activated, no hooks run, and there is no reboot detection.
 
 ```bash
 snow push myhost --dry-run
@@ -389,14 +430,13 @@ Test and dry-activate modes are designed for experimentation and validation. Cre
 
 ## Reboot Detection & Handling
 
-Snowglobe automatically detects when a deployment requires a reboot using a sophisticated two-phase detection system:
+In auto mode and with `--switch`, snow checks whether the new system needs a reboot, in two phases:
 
 ### What Requires a Reboot?
 
 1. **Kernel upgrades** - The running kernel cannot be replaced
 2. **Initrd changes** - Early boot components need a reboot
-3. **Init (systemd) changes** - PID 1 cannot restart itself
-4. **Critical system services** - Services that are too fundamental to safely restart:
+3. **Critical system services** - Services that are too fundamental to safely restart:
    - `audit.service`
    - `kmod-static-nodes.service`
    - `network-local-commands.service`
@@ -411,11 +451,12 @@ Snowglobe automatically detects when a deployment requires a reboot using a soph
 ### How Detection Works
 
 **Phase 1: Fast Symlink Check**
-- Compares `/run/booted-system/{kernel,initrd,init}` with new system paths
+- Compares `/run/booted-system/{kernel,initrd}` with the new system's
 - Very fast, no activation needed
 - Catches most reboot-requiring changes
 
 **Phase 2: Detailed Service Check**
+- Skipped when phase 1 already found a reason to reboot
 - Runs `dry-activate` to see what services would change
 - Reads machine-readable output from `/run/nixos/dry-activation-restart-list`
 - Checks if any critical services would restart
@@ -434,7 +475,7 @@ snow push myhost
 # → Runs `sudo snowglobe-activate reboot` via SSH (or `sudo systemctl reboot`
 #   on hosts without the snowglobe module)
 # → Waits until the host answers with a new boot ID
-# → Shows "Deployed & Rebooted" in results
+# → Reports "✓ myhost (boot, rebooted)"
 ```
 
 #### `--skip-reboot` - Inform Only
@@ -446,7 +487,7 @@ snow push myhost --skip-reboot
 # → Detects kernel upgrade
 # → Uses boot mode
 # → Deploys configuration
-# → Shows "Reboot Required: Yes (kernel changed)"
+# → Reports "✓ myhost (boot)"
 # → User must manually reboot
 ```
 
@@ -455,20 +496,7 @@ snow push myhost --skip-reboot
 - You're deploying to multiple hosts and want to reboot them all at once later
 - You want to verify the deployment before rebooting
 
-#### `--reboot` - Force Reboot
-
-Forces a reboot even if detection says it's not needed:
-
-```bash
-snow push myhost --reboot
-# → May detect no reboot needed
-# → Uses boot mode anyway
-# → Deploys and reboots
-```
-
-**Use when:**
-- You know a reboot is needed for other reasons
-- You want to ensure a clean state
+To reboot a host whatever changed, use `--boot` or `rebootPolicy = "always"`.
 
 ---
 
@@ -479,35 +507,50 @@ snow push myhost --reboot
 | Flag | Description | Reboot Detection | Auto-reboot | Notes |
 |------|-------------|------------------|-------------|-------|
 | (none) | Auto mode - detect and choose | Yes | Yes (if boot) | **Recommended default** |
-| `--switch` | Force immediate activation | Yes | N/A | Blocked if reboot required (unless `--force`) |
-| `--boot` | Set for next boot only | No | Yes* | |
-| `--dry-run` | Preview changes only | Yes | N/A | |
+| `--switch` | Immediate activation | Yes | N/A | Blocked if reboot required (unless `--force`) |
+| `--boot` | Set for next boot | No | Yes* | Ignores reboot policy |
+| `--dry-run` | Preview changes only | No | N/A | No hooks run |
 | `--test` | Test activation (non-persistent) | No | N/A | |
 
-\* Can be controlled with `--no-reboot`
+\* Unless `--skip-reboot` is given
 
 ### Reboot Control Flags
 
-| Flag | Description | When it applies |
-|------|-------------|-----------------|
-| (none) | Auto-reboot if boot mode used | When boot mode is chosen |
-| `--reboot` | Force reboot after boot deploy | When boot mode is used |
-| `--skip-reboot` | Never auto-reboot | Always |
+| Flag | Description |
+|------|-------------|
+| (none) | Reboot after a boot deploy when a reboot is required, the policy is `always`, or `--boot` was given |
+| `--skip-reboot` | Never reboot |
+| `--reboot-timeout <SECONDS>` | How long to wait for a rebooted host to come back (default: 600) |
 
 ### Safety Flags
 
 | Flag | Description |
 |------|-------------|
-| `--force` | Override policies and safety checks (use with `--switch` to ignore reboot policies and detection) |
+| `--force` | Switch even when a reboot is required or the reboot policy says otherwise. Requires `--switch`; can't be combined with `--dry-run`, `--boot` or `--test` |
+
+### Host Selection Flags
+
+| Flag | Description |
+|------|-------------|
+| `<HOSTS>...` | Hosts to push (default: all hosts) |
+| `-e`, `--filter <EXPR>` | Hosts whose config matches a Nix expression, e.g. `config: config.services.nginx.enable or false` |
+| `--phase <PHASE>` | Hosts in one phase |
+| `--phases <A,B>` | Hosts in any of these phases |
+| `--tag <TAG>` | Hosts with a tag (from `core.tags`) |
+| `--tags <A,B>` | Hosts with any of these tags |
+
+`--filter`, `--phase`, `--phases`, `--tag` and `--tags` are mutually
+exclusive. Given with host names, they narrow those hosts down.
 
 ### Other Flags
 
 | Flag | Description |
 |------|-------------|
+| `-f`, `--flake-path <PATH>` | Flake directory (also `FLAKE_PATH`; default: search upward from the current directory) |
+| `--ignore-phases` | Push all selected hosts in one phase |
 | `--quiet`, `-q` | Suppress subprocess output, only show summary |
 | `--user <USER>` | SSH user to use for deployment |
 | `--concurrency <N>` | Max hosts to deploy in parallel (default: 3) |
-| `--reboot-timeout <SECONDS>` | How long to wait for a rebooted host to come back (default: 600) |
 | `--redeploy` | Deploy hosts even if they already run the built system |
 
 ---
@@ -518,194 +561,49 @@ snow push myhost --reboot
 |---------|-----------|------------|--------------|----------|
 | `snow push myhost` | Yes | Auto (boot/switch) | Yes (if boot) | **Default**: Do the right thing automatically |
 | `snow push myhost --skip-reboot` | Yes | Auto (boot/switch) | No | Deploy now, reboot manually later |
-| `snow push myhost --switch` | Yes | Switch (if safe) or Error | N/A | Force immediate activation (blocked if reboot required or policy) |
+| `snow push myhost --switch` | Yes | Switch (if safe) or Error | N/A | Immediate activation (blocked if reboot required; policy `never`/`always` uses boot) |
 | `snow push myhost --switch --force` | Yes (shows warning) | Switch | N/A | Force immediate activation despite reboot requirement or policy |
 | `snow push myhost --boot` | No | Boot | Yes | Set for next boot and reboot now |
 | `snow push myhost --boot --skip-reboot` | No | Boot | No | Set for next boot, reboot manually later |
-| `snow push myhost --boot --reboot` | No | Boot | Yes | Same as `--boot` (redundant) |
-| `snow push myhost --dry-run` | Yes | None | N/A | Preview what would change |
+| `snow push myhost --dry-run` | No | None | N/A | Preview what would change |
 | `snow push myhost --test` | No | Test | N/A | Test configuration (reverts on reboot) |
 
 ---
 
 ## Examples
 
-### Example 1: Normal Deployment
+Each phase ends with a report: one line per host, with the activation mode
+and whether it rebooted or was unchanged, or the step it failed at. Hosts
+without a phase are reported under `Push`.
 
-```bash
-$ snow push hydrogen
+### Normal deployment
 
-→ Building configurations...
-✓ Built 1 configuration(s)
-
-→ Deploying...
-activating the configuration...
-setting up /etc...
-reloading the following units: dbus.service
-
-Push Results
-
-+-----------+--------+--------+-----------------------+
-| Host      | Status | Reboot | Message               |
-+-----------+--------+--------+-----------------------+
-| hydrogen  | ✓      | No     | Deployed successfully |
-+-----------+--------+--------+-----------------------+
-
-1/1 hosts deployed successfully
+```
+$ snow push hydrogen oxygen
+✓ Push (2 hosts in 1:12)
+  ✓ hydrogen (switch)
+  ✓ oxygen (boot, rebooted)
 ```
 
-### Example 2: Kernel Upgrade (Auto-reboot)
+oxygen needed a reboot (for example a new kernel), so it was set to boot the
+new system and rebooted.
 
-```bash
-$ snow push hydrogen
+### Manual reboot
 
-→ Building configurations...
-✓ Built 1 configuration(s)
+With `snow push --skip-reboot`, oxygen would be reported as `(boot)` and keep
+running the old system until you reboot it.
 
-→ Deploying...
-activating the configuration...
-setting up /etc...
+### Switch blocked by a reboot requirement
 
-Rebooting hydrogen...
-Waiting for hydrogen to come back online...
-hydrogen is back online
+`snow push hydrogen --switch` fails hydrogen at the plan step when a reboot is
+required, with the reason, such as `kernel linux-6.12.57 → linux-6.12.58` or
+`audit.service would restart`. Nothing is activated. Drop `--switch` to let
+snow pick boot mode and reboot, or add `--force` to switch anyway.
 
-Push Results
+### Force switch despite a reboot need or policy
 
-+-----------+--------+-----------------------+----------------------------+
-| Host      | Status | Reboot                | Message                    |
-+-----------+--------+-----------------------+----------------------------+
-| hydrogen  | ✓      | Yes (kernel changed)  | Deployed & Rebooted        |
-+-----------+--------+-----------------------+----------------------------+
-
-1/1 hosts deployed successfully
-```
-
-### Example 3: Kernel Upgrade (Manual Reboot)
-
-```bash
-$ snow push hydrogen --skip-reboot
-
-→ Building configurations...
-✓ Built 1 configuration(s)
-
-→ Deploying...
-activating the configuration...
-setting up /etc...
-
-Push Results
-
-+-----------+--------+-----------------------+----------------------------+
-| Host      | Status | Reboot                | Message                    |
-+-----------+--------+-----------------------+----------------------------+
-| hydrogen  | ✓      | Yes (kernel changed)  | Set for next boot          |
-+-----------+--------+-----------------------+----------------------------+
-
-1/1 hosts deployed successfully
-
-⚠  The following hosts require a manual reboot:
-  - hydrogen (kernel changed)
-```
-
-### Example 4: Multi-Host with Mixed Requirements
-
-```bash
-$ snow push hydrogen oxygen nitrogen
-
-→ Building configurations...
-✓ Built 3 configuration(s)
-
-→ Deploying...
-[parallel deployment output...]
-
-Push Results
-
-+-----------+--------+------------------------------------+------------------------+
-| Host      | Status | Reboot                             | Message                |
-+-----------+--------+------------------------------------+------------------------+
-| hydrogen  | ✓      | Yes (kernel changed)               | Deployed & Rebooted    |
-| oxygen    | ✓      | No                                 | Deployed successfully  |
-| nitrogen  | ✓      | Yes (critical service: audit.ser…) | Deployed & Rebooted    |
-+-----------+--------+------------------------------------+------------------------+
-
-3/3 hosts deployed successfully
-```
-
-### Example 5: Dry Run to Preview
-
-```bash
-$ snow push hydrogen --dry-run
-
-→ Building configurations...
-✓ Built 1 configuration(s)
-
-→ Deploying...
-would activate the configuration...
-would restart the following units: postgresql.service nginx.service
-would start the following units: grafana.service
-
-Push Results
-
-+-----------+--------+--------+--------------------+
-| Host      | Status | Reboot | Message            |
-+-----------+--------+--------+--------------------+
-| hydrogen  | ✓      | No     | Dry run successful |
-+-----------+--------+--------+--------------------+
-
-1/1 hosts deployed successfully
-```
-
-### Example 6: Switch Blocked by Reboot Requirement
-
-```bash
-$ snow push hydrogen --switch
-
-→ Building configurations...
-✓ Built 1 configuration(s)
-
-✗ Cannot use --switch when reboot is required
-
-Reboot required because: kernel changed
-
-The --switch flag forces immediate activation, which can leave the system in an
-inconsistent state when kernel/initrd/init changes occur or critical services restart.
-
-Options:
-  1. Remove --switch to use automatic mode (will use boot mode + reboot)
-  2. Use --switch --force to force immediate activation anyway (not recommended)
-  3. Use --boot to set for next boot without immediate activation
-```
-
-### Example 7: Force Switch Despite Reboot Need or Policy
-
-```bash
-$ snow push hydrogen --switch --force
-
-→ Building configurations...
-✓ Built 1 configuration(s)
-
-⚠  Warning: Forcing immediate activation despite reboot requirement (kernel changed)
-   This may leave the system in an inconsistent state.
-
-→ Deploying...
-activating the configuration...
-setting up /etc...
-restarting the following units: systemd-udevd.service
-
-Push Results
-
-+-----------+--------+--------+-----------------------+
-| Host      | Status | Reboot | Message               |
-+-----------+--------+--------+-----------------------+
-| hydrogen  | ✓      | N/A    | Deployed successfully |
-+-----------+--------+--------+-----------------------+
-
-1/1 hosts deployed successfully
-
-⚠  Warning: System may be in an inconsistent state
-   - New configuration active but old kernel still running
-   - Consider rebooting soon
-```
+`snow push hydrogen --switch --force` activates the new system right away.
+The old kernel keeps running until the next reboot.
 
 **Note**: `--force` also overrides reboot policies. If a host has `rebootPolicy = "always"` or `"never"`, using `--switch --force` will use switch mode anyway.
 
@@ -785,8 +683,8 @@ When deploying to multiple hosts:
 
 - Hosts can have different activation modes in the same deployment
 - Some may need reboot (boot mode), others may not (switch mode)
-- Reboots happen in parallel (respecting `--concurrency`)
-- Clear table output shows per-host status
+- Reboots happen in parallel (respecting `--concurrency` and serial groups)
+- Each phase's report shows per-host status
 
 ### Inspired by Production Workflows
 
@@ -801,4 +699,6 @@ This design is based on real-world NixOS deployment workflows where:
 
 ## Related Documentation
 
-- [Reboot Detection System](wip/reboot-detection.md) - Detailed design of the reboot detection system
+- [hooks.md](hooks.md) - Lifecycle hooks
+- [darwin.md](darwin.md) - Deploying to nix-darwin hosts
+- [activation-helper.md](activation-helper.md) - `snowglobe-activate` and its security properties
