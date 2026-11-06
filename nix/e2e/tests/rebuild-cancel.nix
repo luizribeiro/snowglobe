@@ -13,7 +13,7 @@
       press(DOWN, DOWN, ENTER)
       expect("Switch anyway?")
       press("n")
-      expect("Cancelled, nothing changed")
+      expect("boron (cancelled)")
     '';
   };
 
@@ -21,8 +21,8 @@
     rebuild = demo()
     rebuild.succeeded()
     rebuild.cursor_shown_at("Switch anyway?")
-    rebuild.cursor_hidden_at("Rebuilding", "What now?", "mixes old and new parts")
-    rebuild.has("Reboot needed:", "• initrd changed", "mixes old and new parts", "⊘ Cancelled, nothing changed")
+    rebuild.cursor_hidden_at("boron  build", "What now?", "mixes old and new parts")
+    rebuild.has("Reboot needed:", "• initrd changed", "mixes old and new parts", "⊘ boron (cancelled) in")
     rebuild.logged("boron: reboot required: initrd changed", "boron: chose to cancel")
     boots("boron", base("boron"))
     runs("boron", base("boron"))

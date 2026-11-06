@@ -339,7 +339,7 @@ pub(super) fn plural(n: usize, word: &str) -> String {
 }
 
 /// "3:07", or "1:02:07" past an hour
-pub(super) fn format_elapsed(elapsed: Duration) -> String {
+pub(in crate::commands) fn format_elapsed(elapsed: Duration) -> String {
     let secs = elapsed.as_secs();
     let (hours, minutes, seconds) = (secs / 3600, secs / 60 % 60, secs % 60);
     if hours > 0 {

@@ -17,7 +17,7 @@
   testScript = ''
     rebuild = demo()
     rebuild.succeeded()
-    rebuild.has("The new system starts at the next boot")
+    rebuild.has("✓ boron (boot) in")
     rebuild.logged("boron: built", "boron: chose to activate on the next boot", "boron: activated (Boot mode)")
     boots("boron", pushed("boron"))
     runs("boron", base("boron"))

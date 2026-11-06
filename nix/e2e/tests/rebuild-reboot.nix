@@ -27,6 +27,6 @@
     rebuild.logged("boron: chose to reboot now", "boron: activated (Boot mode)", "boron: rebooting")
     boots("boron", pushed("boron"))
     recorded = boron.succeed("cat /var/lib/demo/demo.cast")
-    assert "Rebooting" in recorded, recorded
+    assert "(boot, rebooting)" in recorded, recorded
   '';
 }

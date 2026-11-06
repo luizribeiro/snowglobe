@@ -103,6 +103,13 @@ pub(super) fn line_style(board: SharedBoard, slot: usize) -> ProgressStyle {
     })
 }
 
+/// The style of a board's only host, drawn on its own without lanes
+pub(super) fn lone_host_style(board: SharedBoard) -> ProgressStyle {
+    drawn_from(board, |board, now, width| {
+        render_lone_host(board, now, width, spinner())
+    })
+}
+
 /// A line that `render` redraws from the board on every tick
 fn drawn_from(
     board: SharedBoard,
@@ -122,6 +129,18 @@ fn drawn_from(
                 }
             },
         )
+}
+
+/// The first host's row, coloured, as "⠋ boron  build      0:12"
+pub(super) fn render_lone_host(
+    board: &HostBoard,
+    now: Instant,
+    width: usize,
+    spinner: &str,
+) -> Option<String> {
+    let row = board.rows(now).into_iter().next()?;
+    let text = row_text(&row, "", board.hostname_width(), width, spinner);
+    Some(styled(&row, text))
 }
 
 /// The `slot`-th line, coloured, or None past the last one
@@ -404,6 +423,23 @@ mod tests {
         assert_eq!(bar(1, 2), "━━━━━╸|────");
         assert_eq!(bar(3, 3), "━━━━━━━━━━|");
         assert_eq!(bar(0, 0), "╸|─────────");
+    }
+
+    #[test]
+    fn test_lone_host_is_drawn_without_a_lane_to_sit_under() {
+        console::set_colors_enabled(false);
+        let t0 = Instant::now();
+        let mut board = HostBoard::new("rebuild", &["boron".to_string()], t0);
+        board.apply(
+            "boron",
+            &snowlib::HostEvent::Started(snowlib::PipelineStep::Check),
+            t0,
+        );
+
+        assert_eq!(
+            render_lone_host(&board, t0 + Duration::from_secs(12), 40, "⠋"),
+            Some(format!("⠋ boron  check{}0:12", " ".repeat(21)))
+        );
     }
 
     #[test]

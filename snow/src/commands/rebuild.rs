@@ -1,3 +1,4 @@
+use super::push::{failed_host, format_elapsed, mode_label, success_line, HostLine};
 use crate::cursor::Cursor;
 use crate::marks;
 use crate::prompt;
@@ -5,9 +6,10 @@ use clap::Args;
 use console::style;
 use snowlib::{
     ActivationMode, DeployBackend, DeployTarget, Flake, LocalDeployBackend, LocalRebootBackend,
-    RebootBackend, RebootCheck, Result, Sudo, SudoPrompt, SudoTerminal, SystemType,
+    PipelineStep, RebootBackend, RebootCheck, Result, Sudo, SudoPrompt, SudoTerminal, SystemType,
 };
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 /// Rebuild the current host
 #[derive(Debug, Args)]
@@ -76,7 +78,7 @@ impl RebuildArgs {
 
     /// Asks what to do about a needed reboot, unless a flag already said
     fn prompt_reboot_action(&self, check: &RebootCheck) -> Result<RebootAction> {
-        println!("\n{}", reboot_notice(check));
+        println!("{}", reboot_notice(check));
 
         if self.force {
             println!(
@@ -117,9 +119,27 @@ impl RebuildArgs {
 
     async fn rebuild(self, flake: &Flake) -> Result<()> {
         let hostname = self.resolve_hostname()?;
-        println!("Rebuilding configuration for {}", hostname);
         tracing::info!("{hostname}: rebuilding");
+        let started = Instant::now();
+        let line = Arc::new(HostLine::new(&hostname));
 
+        let ending = self.rebuild_with(flake, &hostname, &line).await;
+
+        line.hide();
+        let took = started.elapsed();
+        match &ending {
+            Ok(ending) => println!("{}", ending.line(&hostname, took)),
+            Err(_) => println!("{}", failed_line(&hostname, line.step(), took)),
+        }
+        ending.map(|_| ())
+    }
+
+    async fn rebuild_with(
+        &self,
+        flake: &Flake,
+        hostname: &str,
+        line: &Arc<HostLine>,
+    ) -> Result<Ending> {
         let nix_backend = crate::backend_factory::create_nix_backend(
             #[cfg(debug_assertions)]
             &self.mock_fixture,
@@ -128,116 +148,135 @@ impl RebuildArgs {
         let output_mode = if self.quiet {
             snowlib::OutputMode::Capture
         } else {
-            snowlib::OutputMode::Inherit
+            snowlib::OutputMode::Display
         };
 
         // Asked before the build, so a long build doesn't wait for a
         // password typed only once it is done
         let sudo = Arc::new(
             Sudo::start(Arc::new(SudoView {
-                hostname: hostname.clone(),
+                hostname: hostname.to_string(),
+                line: line.clone(),
             }))
             .await?,
         );
 
-        let system_type = SystemType::detect_current();
-
-        println!("Building configuration...");
+        line.start(PipelineStep::Build);
         let store_path = nix_backend
-            .build_host(flake, &hostname, system_type, output_mode)
+            .build_host(flake, hostname, SystemType::detect_current(), output_mode)
             .await?;
-        println!("Built {}", store_path.as_str());
         tracing::info!("{hostname}: built {}", store_path.as_str());
 
         let target = DeployTarget {
             user: None,
-            hostname: hostname.clone(),
+            hostname: hostname.to_string(),
             port: None,
         };
 
         let deploy_backend = LocalDeployBackend::new(sudo.clone()).with_output_mode(output_mode);
         let reboot_backend = LocalRebootBackend::new(sudo);
 
-        let mode = self.activation_mode();
-
-        let (deployer, host, system, name) = (&deploy_backend, &target, &store_path, &hostname);
+        let (deployer, host, system) = (&deploy_backend, &target, &store_path);
         let activate = |mode| async move {
+            line.start(PipelineStep::Activate);
             deployer.activate(host, system, mode).await?;
-            tracing::info!("{name}: activated ({mode:?} mode)");
-            Result::Ok(())
+            tracing::info!("{hostname}: activated ({mode:?} mode)");
+            Result::Ok(Ending::Activated {
+                mode,
+                rebooting: false,
+            })
         };
 
-        // Handle non-switch modes early (dry-run, test, boot)
+        let mode = self.activation_mode();
         if mode != ActivationMode::Switch {
-            println!("Activating configuration...");
-            activate(mode).await?;
-            match mode {
-                ActivationMode::DryActivate => println!("{} Dry run complete", marks::success()),
-                ActivationMode::Test => println!("{} Test activation complete", marks::success()),
-                ActivationMode::Boot => {
-                    println!("{} {NEXT_BOOT}", marks::success())
-                }
-                ActivationMode::Switch => unreachable!(),
-            }
-            return Ok(());
+            return activate(mode).await;
         }
 
-        // For switch mode, check if reboot is required
-        println!("Checking if reboot is required...");
+        line.start(PipelineStep::Check);
         let reboot_check = reboot_backend
             .check_reboot_required(&target, &store_path)
             .await?;
-
-        // If no reboot needed, activate immediately and exit
         if !reboot_check.is_required() {
             tracing::info!("{hostname}: no reboot required, switching");
-            println!("{} No reboot needed", marks::success());
-            println!("Activating configuration...");
-            activate(mode).await?;
-            println!("{} Switched to the new system", marks::success());
-            return Ok(());
+            return activate(mode).await;
         }
 
         tracing::info!("{hostname}: reboot required: {}", reboot_check.summary());
-        let action = self.prompt_reboot_action(&reboot_check)?;
+        let action = line.paused(|| self.prompt_reboot_action(&reboot_check))?;
         tracing::info!("{hostname}: chose to {}", action.describe());
 
         match action {
             RebootAction::BootAndReboot => {
                 activate(ActivationMode::Boot).await?;
-                println!("\n{} {NEXT_BOOT}", marks::success());
-                println!("Rebooting...");
+                line.start(PipelineStep::Reboot);
                 tracing::info!("{hostname}: rebooting");
                 reboot_backend.reboot_and_wait(&target).await?;
+                Ok(Ending::Activated {
+                    mode: ActivationMode::Boot,
+                    rebooting: true,
+                })
             }
-            RebootAction::BootOnly => {
-                activate(ActivationMode::Boot).await?;
-                println!("\n{} {NEXT_BOOT}", marks::success());
-            }
+            RebootAction::BootOnly => activate(ActivationMode::Boot).await,
             RebootAction::SwitchRisky => {
                 activate(mode).await?;
-                println!(
-                    "\n{} Switched; reboot when you can to finish",
-                    marks::success()
-                );
+                Ok(Ending::SwitchedBeforeReboot)
             }
-            RebootAction::Cancel => {
-                println!("\n{}", marks::skipped_line("Cancelled, nothing changed"));
-                return Ok(());
-            }
+            RebootAction::Cancel => Ok(Ending::Cancelled),
         }
-
-        Ok(())
     }
 }
 
-/// Shows the cursor while sudo may read the password, as at any typed answer
+/// How a rebuild that didn't fail ended
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Ending {
+    /// `rebooting` once the reboot is queued: snow goes down with the host
+    Activated {
+        mode: ActivationMode,
+        rebooting: bool,
+    },
+    SwitchedBeforeReboot,
+    Cancelled,
+}
+
+impl Ending {
+    /// As push reports a host, with how long the rebuild took
+    fn line(&self, hostname: &str, took: Duration) -> String {
+        let outcome = match *self {
+            Ending::Activated { mode, rebooting } => {
+                let labels = [mode_label(mode), "rebooting"];
+                success_line(hostname, &labels[..if rebooting { 2 } else { 1 }])
+            }
+            Ending::SwitchedBeforeReboot => success_line(
+                hostname,
+                &[mode_label(ActivationMode::Switch), "reboot to finish"],
+            ),
+            Ending::Cancelled => marks::skipped_line(&format!("{hostname} (cancelled)")),
+        };
+        with_time(outcome, took)
+    }
+}
+
+/// The error itself follows, printed by `main`
+fn failed_line(hostname: &str, step: Option<PipelineStep>, took: Duration) -> String {
+    with_time(failed_host(hostname, step), took)
+}
+
+fn with_time(line: String, took: Duration) -> String {
+    format!(
+        "{line} {}",
+        style(format!("in {}", format_elapsed(took))).dim()
+    )
+}
+
+/// Makes way for sudo, with the cursor shown as at any typed answer
 struct SudoView {
     hostname: String,
+    line: Arc<HostLine>,
 }
 
 impl SudoTerminal for SudoView {
     fn pause(&self, prompt: SudoPrompt) {
+        self.line.pause();
         if prompt == SudoPrompt::Password {
             println!("{} needs sudo", self.hostname);
         }
@@ -246,6 +285,7 @@ impl SudoTerminal for SudoView {
 
     fn resume(&self) {
         Cursor::stderr().hide();
+        self.line.resume();
     }
 }
 
@@ -309,6 +349,45 @@ mod tests {
             reboot_notice(&check),
             "Reboot needed:\n  • kernel linux-6.12.58 → linux-6.12.60\n  • network-setup.service would restart"
         );
+    }
+
+    #[test]
+    fn test_endings_read_as_push_reports_a_host() {
+        console::set_colors_enabled(false);
+        let took = Duration::from_secs(41);
+        let line = |ending: Ending| ending.line("boron", took);
+
+        assert_eq!(
+            line(Ending::Activated {
+                mode: ActivationMode::Switch,
+                rebooting: false
+            }),
+            "✓ boron (switch) in 0:41"
+        );
+        assert_eq!(
+            line(Ending::Activated {
+                mode: ActivationMode::Boot,
+                rebooting: true
+            }),
+            "✓ boron (boot, rebooting) in 0:41"
+        );
+        assert_eq!(
+            line(Ending::SwitchedBeforeReboot),
+            "✓ boron (switch, reboot to finish) in 0:41"
+        );
+        assert_eq!(line(Ending::Cancelled), "⊘ boron (cancelled) in 0:41");
+    }
+
+    #[test]
+    fn test_failure_says_at_which_step() {
+        console::set_colors_enabled(false);
+        let took = Duration::from_secs(72);
+
+        assert_eq!(
+            failed_line("boron", Some(PipelineStep::Activate), took),
+            "✗ boron at activate in 1:12"
+        );
+        assert_eq!(failed_line("boron", None, took), "✗ boron in 1:12");
     }
 
     #[test]
