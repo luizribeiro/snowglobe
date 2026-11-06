@@ -1,5 +1,5 @@
 use super::{BootComponent, RebootBackend, RebootCheck, RebootDetectionConfig, RebootReason};
-use crate::backends::deploy::DeployTarget;
+use crate::backends::deploy::{helper_found, DeployTarget, HELPER_CHECK};
 use crate::error::{DeployError, Result, SnowError};
 use crate::nix::StorePath;
 use crate::process::CommandResult;
@@ -121,16 +121,31 @@ impl SystemRebootBackend {
         Ok(status.success())
     }
 
+    /// Through snowglobe-activate when the host has it, as that is all a
+    /// deploy user may sudo
+    async fn dry_activate_command(
+        &self,
+        target: &DeployTarget,
+        new_system: &StorePath,
+    ) -> Result<String> {
+        let system = shell_escape(new_system.as_str());
+        let helper_check = self.ssh_exec_full(target, &HELPER_CHECK.join(" ")).await?;
+        if helper_found(&self.get_destination(target), &helper_check)? {
+            Ok(format!("sudo snowglobe-activate {system} dry-activate"))
+        } else {
+            Ok(format!(
+                "sudo {system}/bin/switch-to-configuration dry-activate"
+            ))
+        }
+    }
+
     /// Check if any critical services would be restarted
     async fn check_critical_services(
         &self,
         target: &DeployTarget,
         new_system: &StorePath,
     ) -> Result<Vec<RebootReason>> {
-        let dry_activate_cmd = format!(
-            "sudo {}/bin/switch-to-configuration dry-activate",
-            shell_escape(new_system.as_str())
-        );
+        let dry_activate_cmd = self.dry_activate_command(target, new_system).await?;
 
         let timeout = Duration::from_secs(self.config.dry_activate_timeout.into());
         let result = self
@@ -345,7 +360,8 @@ fn dry_activate_failed(target: &DeployTarget, command: &str, result: &CommandRes
         host: target.hostname.clone(),
         source: std::io::Error::other(format!(
             "Could not tell whether the new system needs a reboot: `{command}` exited with {}. \
-             If sudo refused it, add the SSH user to snowglobe.push.allowedUsers on the host.\
+             If sudo refused it, import the snowglobe module on the host and add the SSH \
+             user to snowglobe.push.allowedUsers.\
              \n\nStderr:\n{}",
             result.status,
             String::from_utf8_lossy(&result.stderr).trim()
@@ -368,8 +384,9 @@ mod tests {
     /// Writing `$state/next_boot_id` makes the host come back on that boot after
     /// one unreachable poll, and `$state/stale_polls` delays that by N polls that
     /// still answer with the old boot. `$state/refuse` names a command that
-    /// sudo refuses, and `$state/dry-activation-restart-list` stands in for
-    /// the one under /run/nixos.
+    /// sudo refuses, `$state/helper_status` is how the check for
+    /// snowglobe-activate exits (0, it's installed, by default), and
+    /// `$state/dry-activation-restart-list` stands in for the one under /run/nixos.
     struct FakeHost {
         state: tempfile::TempDir,
     }
@@ -393,6 +410,9 @@ if [ -e "$state/refuse" ]; then
   case "$cmd" in *"$(cat "$state/refuse")"*) echo "sudo: a password is required" >&2; exit 1 ;; esac
 fi
 case "$cmd" in
+  "command -v snowglobe-activate")
+    exit "$(cat "$state/helper_status" 2>/dev/null || echo 0)"
+    ;;
   *dry-activation-restart-list*)
     eval "${{cmd//\/run\/nixos/$state}}"
     ;;
@@ -705,6 +725,69 @@ esac
                 "systemd-sysctl.service".to_string()
             )]
         );
+    }
+
+    /// Runs the reboot check on a host whose check for snowglobe-activate
+    /// exits with `helper_status`
+    async fn dry_activation(helper_status: i32) -> (FakeHost, Result<RebootCheck>, StorePath) {
+        let host = FakeHost::new("exit 0");
+        let new_system = systems(&host, ["k1", "i1"], ["k1", "i1"]);
+        std::fs::write(
+            host.state.path().join("helper_status"),
+            helper_status.to_string(),
+        )
+        .unwrap();
+        let check = host
+            .backend(5)
+            .check_reboot_required(&fake_target(), &new_system)
+            .await;
+        (host, check, new_system)
+    }
+
+    fn dry_activate_commands(host: &FakeHost) -> Vec<String> {
+        host.commands()
+            .into_iter()
+            .filter(|c| c.ends_with(" dry-activate"))
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn test_dry_activate_runs_through_the_helper_when_installed() {
+        let (host, check, new_system) = dry_activation(0).await;
+
+        check.unwrap();
+        assert_eq!(
+            dry_activate_commands(&host),
+            vec![format!(
+                "sudo snowglobe-activate '{}' dry-activate",
+                new_system.as_str()
+            )]
+        );
+    }
+
+    #[tokio::test]
+    async fn test_dry_activate_falls_back_only_when_the_helper_is_missing() {
+        let (host, check, new_system) = dry_activation(1).await;
+
+        check.unwrap();
+        assert_eq!(
+            dry_activate_commands(&host),
+            vec![format!(
+                "sudo '{}'/bin/switch-to-configuration dry-activate",
+                new_system.as_str()
+            )]
+        );
+    }
+
+    #[tokio::test]
+    async fn test_reboot_check_stops_when_the_helper_check_fails() {
+        let (host, check, _) = dry_activation(255).await;
+
+        assert!(matches!(
+            check.unwrap_err(),
+            SnowError::Deploy(DeployError::SshFailed { .. })
+        ));
+        assert_eq!(dry_activate_commands(&host), Vec::<String>::new());
     }
 
     #[tokio::test]
