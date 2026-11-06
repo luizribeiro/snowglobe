@@ -1,7 +1,6 @@
 { pkgs }:
 
 let
-  hash = "0123456789abcdfghijklmnpqrsvwxyz";
   fakeNixEnv = pkgs.writeShellScript "fake-nix-env" ''
     echo "$*" > "$TMPDIR/nix-env-called"
     [ ! -e "$TMPDIR/nix-env-fails" ]
@@ -23,19 +22,13 @@ let
   };
 in
 pkgs.runCommand "darwin-activate-test" { } ''
-  activate=${helper}/bin/snowglobe-activate
   nix_env="$TMPDIR/nix-env-called"
   activated="$TMPDIR/activate-called"
-
-  fail() { echo "FAIL: $*" >&2; exit 1; }
-
-  expect_error() {
-    local message="$1" output
-    shift
-    output=$("$activate" "$@" 2>&1) && fail "snowglobe-activate $* should have failed"
-    [[ "$output" == *"$message"* ]] || fail "snowglobe-activate $* should fail with '$message', got: $output"
-    [ ! -e "$nix_env" ] || fail "snowglobe-activate $* must not touch the profile"
-  }
+  ${import ./activate-test-lib.nix {
+    inherit helper;
+    sideEffect = "$nix_env";
+    sideEffectName = "touch the profile";
+  }}
 
   "$activate" ${fakeSystem} switch
   [ "$(cat "$nix_env")" = "--profile /nix/var/nix/profiles/system --set ${fakeSystem}" ] \
@@ -56,17 +49,8 @@ pkgs.runCommand "darwin-activate-test" { } ''
   expect_error "Usage" ${fakeSystem}
   expect_error "Invalid store path" /tmp/evil switch
   expect_error "Activation script not found" ${systemWithoutActivate} switch
-  expect_error "Activation script not found" /nix/store/${hash}-darwin-system-26.05 switch
-
-  evil="$TMPDIR/evil/activate"
-  mkdir -p "$(dirname "$evil")"
-  printf '#!/bin/sh\ntouch "$TMPDIR/pwned"\n' > "$evil"
-  chmod +x "$evil"
-  traversal="/nix/store/../..$TMPDIR/evil"
-  [ -x "$traversal/activate" ] || fail "$traversal does not reach $evil"
-  expect_error "Invalid store path" "$traversal" switch
-  [ ! -e "$TMPDIR/pwned" ] || fail "ran a script outside the store"
-  expect_error "Invalid store path" /nix/store/${hash}-system/../../../tmp/evil switch
+  expect_error "Activation script not found" /nix/store/$hash-darwin-system-26.05 switch
+  expect_traversal_rejected activate switch
 
   touch $out
 ''
