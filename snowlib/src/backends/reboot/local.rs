@@ -142,22 +142,8 @@ impl LocalRebootBackend {
             .into());
         }
 
-        let restart_list_path = Path::new("/run/nixos/dry-activation-restart-list");
-        if !restart_list_path.exists() {
-            return Ok(Vec::new());
-        }
-
-        let restart_list =
-            fs::read_to_string(restart_list_path).map_err(|e| DeployError::Failed {
-                host: target.hostname.clone(),
-                source: std::io::Error::new(
-                    e.kind(),
-                    format!("Failed to read restart list: {}", e),
-                ),
-            })?;
-
         Ok(super::critical_restarts(
-            &restart_list,
+            &String::from_utf8_lossy(&result.stderr),
             &self.config.critical_services,
         ))
     }

@@ -78,10 +78,29 @@ impl RebootCheck {
     }
 }
 
-/// Which of `critical` services a dry-activate restart list would restart
-pub(crate) fn critical_restarts(restart_list: &str, critical: &[String]) -> Vec<RebootReason> {
+/// How switch-to-configuration dry-activate lists the units it would take
+/// down; a stopped unit is started again after activation, so it restarts too
+const DRY_ACTIVATE_RESTARTS: [&str; 2] = [
+    "would stop the following units:",
+    "would restart the following units:",
+];
+
+/// Which of `critical` services dry-activate's output says would restart.
+/// It reports that on stderr alone.
+pub(crate) fn critical_restarts(
+    dry_activate_output: &str,
+    critical: &[String],
+) -> Vec<RebootReason> {
+    let restarted = dry_activate_output
+        .lines()
+        .filter_map(|line| {
+            DRY_ACTIVATE_RESTARTS
+                .iter()
+                .find_map(|prefix| line.trim().strip_prefix(prefix))
+        })
+        .flat_map(|units| units.split(',').map(str::trim));
     let mut services: Vec<&str> = Vec::new();
-    for service in restart_list.lines().map(str::trim) {
+    for service in restarted {
         if critical.iter().any(|c| c == service) && !services.contains(&service) {
             services.push(service);
         }
@@ -282,17 +301,29 @@ mod tests {
             "network-setup.service".to_string(),
             "systemd-udevd-kernel.socket".to_string(),
         ];
-        let restart_list =
-            "nginx.service\nsystemd-udevd-kernel.socket\n\n  network-setup.service  \nnetwork-setup.service\n";
+        let output = "would stop the following units: nginx.service, systemd-udevd-kernel.socket\n\
+                      would activate the configuration...\n\
+                      would restart the following units: network-setup.service, sshd.service\n\
+                      would start the following units: nginx.service, systemd-udevd-kernel.socket\n";
 
         assert_eq!(
-            critical_restarts(restart_list, &critical),
+            critical_restarts(output, &critical),
             vec![
                 RebootReason::CriticalService("systemd-udevd-kernel.socket".to_string()),
                 RebootReason::CriticalService("network-setup.service".to_string()),
             ]
         );
-        assert!(critical_restarts("nginx.service\n", &critical).is_empty());
+    }
+
+    #[test]
+    fn test_critical_restarts_ignores_units_dry_activate_only_starts_or_reloads() {
+        let critical = vec!["network-setup.service".to_string()];
+        let output = "would reload the following units: network-setup.service\n\
+                      would start the following units: network-setup.service\n\
+                      would NOT stop the following changed units: network-setup.service\n";
+
+        assert!(critical_restarts(output, &critical).is_empty());
+        assert!(critical_restarts("", &critical).is_empty());
     }
 
     fn kernel(old: &str, new: &str) -> RebootReason {

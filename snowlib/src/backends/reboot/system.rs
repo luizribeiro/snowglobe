@@ -155,19 +155,8 @@ impl SystemRebootBackend {
             return Err(dry_activate_failed(target, &dry_activate_cmd, &result));
         }
 
-        let check_file_cmd = "test -f /run/nixos/dry-activation-restart-list";
-        let file_exists = self.ssh_exec(target, check_file_cmd).await?.success();
-
-        if !file_exists {
-            return Ok(Vec::new());
-        }
-
-        let restart_list = self
-            .ssh_read_file(target, "/run/nixos/dry-activation-restart-list")
-            .await?;
-
         Ok(super::critical_restarts(
-            &restart_list,
+            &String::from_utf8_lossy(&result.stderr),
             &self.config.critical_services,
         ))
     }
@@ -386,7 +375,7 @@ mod tests {
     /// still answer with the old boot. `$state/refuse` names a command that
     /// sudo refuses, `$state/helper_status` is how the check for
     /// snowglobe-activate exits (0, it's installed, by default), and
-    /// `$state/dry-activation-restart-list` stands in for the one under /run/nixos.
+    /// `$state/dry_activate_output` is what dry-activate prints.
     struct FakeHost {
         state: tempfile::TempDir,
     }
@@ -413,8 +402,8 @@ case "$cmd" in
   "command -v snowglobe-activate")
     exit "$(cat "$state/helper_status" 2>/dev/null || echo 0)"
     ;;
-  *dry-activation-restart-list*)
-    eval "${{cmd//\/run\/nixos/$state}}"
+  *dry-activate)
+    if [ -e "$state/dry_activate_output" ]; then cat "$state/dry_activate_output" >&2; fi
     ;;
   *readlink*)
     eval "${{cmd//\/run\/booted-system/$state/booted}}"
@@ -708,8 +697,11 @@ esac
         let host = FakeHost::new("exit 0");
         let new_system = systems(&host, ["k1", "i1"], ["k1", "i1"]);
         std::fs::write(
-            host.state.path().join("dry-activation-restart-list"),
-            "nix-daemon.service\nsystemd-sysctl.service\n",
+            host.state.path().join("dry_activate_output"),
+            "would stop the following units: systemd-sysctl.service\n\
+             would activate the configuration...\n\
+             would restart the following units: nix-daemon.service\n\
+             would start the following units: systemd-sysctl.service\n",
         )
         .unwrap();
 
@@ -795,11 +787,6 @@ esac
         let host = FakeHost::new("exit 0");
         let new_system = systems(&host, ["k1", "i1"], ["k1", "i1"]);
         std::fs::write(host.state.path().join("refuse"), "dry-activate").unwrap();
-        std::fs::write(
-            host.state.path().join("dry-activation-restart-list"),
-            "systemd-sysctl.service\n",
-        )
-        .unwrap();
 
         let err = host
             .backend(5)
@@ -812,14 +799,6 @@ esac
         assert!(
             reason.trim_end().ends_with("sudo: a password is required"),
             "{reason}"
-        );
-        assert!(
-            !host
-                .commands()
-                .iter()
-                .any(|c| c.contains("dry-activation-restart-list")),
-            "a list left by an earlier dry-activate must not be read: {:?}",
-            host.commands()
         );
     }
 

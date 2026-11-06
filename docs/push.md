@@ -472,9 +472,10 @@ In auto mode and with `--switch`, snow checks whether the new system needs a reb
 
 **Phase 2: Detailed Service Check**
 - Skipped when phase 1 already found a reason to reboot
-- Runs `dry-activate` to see what services would change
-- Reads machine-readable output from `/run/nixos/dry-activation-restart-list`
-- Checks if any critical services would restart
+- Runs `dry-activate` (through `sudo snowglobe-activate` when the host has it)
+  to see what services would change
+- Checks if any critical services would be stopped or restarted, from the
+  units it says it would stop or restart
 
 ### Controlling Reboot Behavior
 
