@@ -18,14 +18,13 @@ Snowglobe provides a nix-darwin module that handles passwordless deployment conf
   imports = [ inputs.snowglobe.darwinModules.default ];
 
   # Configure passwordless deployment users
-  snowglobe.push.allowedUsers = [ "your-username" ];
+  snowglobe.push.allowedUsers = [ "deploy" ];
 }
 ```
 
 This module:
 - Installs the `snowglobe-activate` command system-wide
-- Configures passwordless sudo for specified users only (more secure)
-- Validates inputs to prevent unauthorized command execution
+- Configures passwordless sudo for that one command, for the listed users only
 - Works with both local and remote deployments
 
 Snowglobe automatically detects and uses `snowglobe-activate` when available, falling back to direct activation for compatibility.
@@ -38,7 +37,6 @@ If you prefer not to use the module, you can configure sudoers manually:
 {
   security.sudo.extraConfig = ''
     # Allow admin users to run system activation without password
-    # Note: This is less secure than using the snowglobe module
     %admin ALL=(root) NOPASSWD: /nix/store/*/activate
   '';
 }
@@ -69,21 +67,16 @@ Since batch mode SSH cannot prompt for passwords, the target host must allow pas
 
 ## Security Considerations
 
-When using the **snowglobe module** (recommended), security is enhanced because:
+Any user who can activate systems without a password is root-equivalent, whichever sudoers setup you use, as with any push deployment tool. Use a dedicated deploy user and treat its SSH key like a root key.
 
-1. **Stable command path**: Only `snowglobe-activate` can run without password, not arbitrary store paths
-2. **Input validation**: Validates that paths start with `/nix/store/` and modes are valid
-3. **Explicit allowlist**: Only users in `allowedUsers` can activate without password
-4. **No wildcards**: sudoers rules use exact paths, avoiding wildcard matching issues
-5. **Immutable store**: Users cannot modify `/nix/store` contents without root
+The **snowglobe module** (recommended) puts one fixed command in sudoers, with an exact path that sudo matches reliably.
 
-When using **manual sudoers configuration**, consider:
+With **manual sudoers configuration**:
 
 1. **Wildcard limitations**: The pattern `/nix/store/*/activate` may not work reliably on macOS
-2. **Broader access**: Any user in the specified group can activate any store path
-3. **Less validation**: No additional input validation beyond sudo's path matching
+2. **Group-wide access**: `%admin` makes every admin user root-equivalent without a password
 
-The activation script itself is a trusted component of nix-darwin that validates and applies system configurations.
+See [activation-helper.md](activation-helper.md#security) for details.
 
 ## Troubleshooting
 
@@ -148,7 +141,7 @@ Here's a complete minimal nix-darwin host configuration for snowglobe:
   imports = [ inputs.snowglobe.darwinModules.default ];
 
   # Configure passwordless deployment users
-  snowglobe.push.allowedUsers = [ "your-username" "ci-bot" ];
+  snowglobe.push.allowedUsers = [ "deploy" ];
 
   # Configure SSH for remote deployment
   services.openssh = {
