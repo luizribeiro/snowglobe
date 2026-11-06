@@ -34,7 +34,7 @@ pub struct PushArgs {
     #[arg(long)]
     pub switch: bool,
 
-    /// Only set for next boot (don't activate now)
+    /// Only set for next boot (don't activate now or reboot)
     #[arg(long)]
     pub boot: bool,
 

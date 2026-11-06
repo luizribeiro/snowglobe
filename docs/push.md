@@ -357,19 +357,19 @@ snow push myhost --switch
 
 #### `--boot` - Set for Next Boot
 
-Sets the new configuration as the boot default without activating it, then
-reboots the host into it. Add `--skip-reboot` to leave the reboot to you.
-`--boot` skips reboot detection and ignores the host's reboot policy, so it
-reboots even a host with `rebootPolicy = "never"`.
+Sets the new configuration as the boot default without activating it, like
+`nixos-rebuild boot`. The host keeps running its current system and boots the
+new one at its next reboot; snow never reboots it. `--boot` skips reboot
+detection and ignores the host's reboot policy, so even a host with
+`rebootPolicy = "always"` is not rebooted.
 
 ```bash
 snow push myhost --boot
-snow push myhost --boot --skip-reboot
 ```
 
 **Use when:**
-- You want the host to boot the new system now, whatever changed
-- With `--skip-reboot`: you're batching updates for a maintenance window
+- You're batching updates for a maintenance window
+- You'll reboot the host yourself, when it suits you
 
 #### `--dry-run` - Preview Only
 
@@ -496,7 +496,7 @@ snow push myhost --skip-reboot
 - You're deploying to multiple hosts and want to reboot them all at once later
 - You want to verify the deployment before rebooting
 
-To reboot a host whatever changed, use `--boot` or `rebootPolicy = "always"`.
+To reboot a host whatever changed, use `rebootPolicy = "always"`.
 
 ---
 
@@ -508,17 +508,15 @@ To reboot a host whatever changed, use `--boot` or `rebootPolicy = "always"`.
 |------|-------------|------------------|-------------|-------|
 | (none) | Auto mode - detect and choose | Yes | Yes (if boot) | **Recommended default** |
 | `--switch` | Immediate activation | Yes | N/A | Blocked if reboot required (unless `--force`) |
-| `--boot` | Set for next boot | No | Yes* | Ignores reboot policy |
+| `--boot` | Set for next boot | No | No | Ignores reboot policy |
 | `--dry-run` | Preview changes only | No | N/A | No hooks run |
 | `--test` | Test activation (non-persistent) | No | N/A | |
-
-\* Unless `--skip-reboot` is given
 
 ### Reboot Control Flags
 
 | Flag | Description |
 |------|-------------|
-| (none) | Reboot after a boot deploy when a reboot is required, the policy is `always`, or `--boot` was given |
+| (none) | Reboot after an auto or `--switch` deploy that uses boot mode, when a reboot is required or the policy is `always` |
 | `--skip-reboot` | Never reboot |
 | `--reboot-timeout <SECONDS>` | How long to wait for a rebooted host to come back (default: 600) |
 
@@ -563,8 +561,7 @@ exclusive. Given with host names, they narrow those hosts down.
 | `snow push myhost --skip-reboot` | Yes | Auto (boot/switch) | No | Deploy now, reboot manually later |
 | `snow push myhost --switch` | Yes | Switch (if safe) or Error | N/A | Immediate activation (blocked if reboot required; policy `never`/`always` uses boot) |
 | `snow push myhost --switch --force` | Yes (shows warning) | Switch | N/A | Force immediate activation despite reboot requirement or policy |
-| `snow push myhost --boot` | No | Boot | Yes | Set for next boot and reboot now |
-| `snow push myhost --boot --skip-reboot` | No | Boot | No | Set for next boot, reboot manually later |
+| `snow push myhost --boot` | No | Boot | No | Set for next boot, reboot manually later |
 | `snow push myhost --dry-run` | No | None | N/A | Preview what would change |
 | `snow push myhost --test` | No | Test | N/A | Test configuration (reverts on reboot) |
 
@@ -667,7 +664,7 @@ Power users have full control via explicit flags:
 
 - `--switch` - "I know this is safe to activate immediately"
 - `--switch --force` - "Override policies and force immediate activation"
-- `--boot --skip-reboot` - "I'll reboot during my maintenance window"
+- `--boot` - "I'll reboot during my maintenance window"
 - `--dry-run` - "Let me see what would happen first"
 
 ### Safe by Default

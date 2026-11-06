@@ -62,7 +62,8 @@ runs `pre-deploy` hooks, activates, reboots if needed, then runs
   needed), `never` (set the new system for next boot and leave the reboot to
   you) or `always`.
 - **Modes.** `--switch`, `--boot`, `--test` and `--dry-run` pick the activation
-  mode. `--skip-reboot` deploys but never reboots. `--switch --force` switches
+  mode. `--boot` sets the new system for the next boot and leaves the reboot to
+  you. `--skip-reboot` deploys but never reboots. `--switch --force` switches
   even when a reboot is needed or the policy says otherwise. `--redeploy`
   deploys hosts that already run the built system.
 
