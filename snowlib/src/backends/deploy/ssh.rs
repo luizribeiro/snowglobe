@@ -559,7 +559,7 @@ mod tests {
             .join(" ");
 
         assert!(
-            probe.contains("-o ConnectTimeout=10 -o ForwardAgent=no -o ServerAliveInterval=15"),
+            probe.contains("-o ConnectTimeout=10 -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -o ForwardAgent=no"),
             "{probe}"
         );
         assert!(probe.ends_with("pusher@curium.example.com readlink -f /run/current-system /nix/var/nix/profiles/system"), "{probe}");

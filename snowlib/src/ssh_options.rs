@@ -27,11 +27,21 @@ pub(crate) enum Keepalive {
     Never,
 }
 
-/// A host snow deploys to could be compromised; with the deployer's agent
-/// forwarded, it could sign in to every other host as the deployer.
-pub(crate) const NO_AGENT_FORWARDING: &str = "ForwardAgent=no";
+/// Options for every ssh connection snow makes, interactive ones included.
+/// Without a `port`, ssh connects to the one the user's ssh config gives the
+/// host.
+///
+/// A host could be compromised; with the deployer's agent forwarded, it
+/// could sign in to every other host as the deployer.
+pub(crate) fn connection_options(port: Option<u16>) -> Vec<String> {
+    let mut args = vec!["-o".to_string(), "ForwardAgent=no".to_string()];
+    if let Some(port) = port {
+        args.extend(["-p".to_string(), port.to_string()]);
+    }
+    args
+}
 
-/// Without a `port`, ssh connects to the one the user's ssh config gives the host
+/// `connection_options` for a command that must never prompt
 pub(crate) fn ssh_options(
     connect_timeout_secs: u64,
     keepalive: Keepalive,
@@ -40,7 +50,6 @@ pub(crate) fn ssh_options(
     let mut options = vec![
         "BatchMode=yes".to_string(),
         format!("ConnectTimeout={connect_timeout_secs}"),
-        NO_AGENT_FORWARDING.to_string(),
     ];
     if keepalive == Keepalive::Probe {
         options.push(format!("ServerAliveInterval={SERVER_ALIVE_INTERVAL_SECS}"));
@@ -50,9 +59,7 @@ pub(crate) fn ssh_options(
         .into_iter()
         .flat_map(|option| ["-o".to_string(), option])
         .collect();
-    if let Some(port) = port {
-        args.extend(["-p".to_string(), port.to_string()]);
-    }
+    args.extend(connection_options(port));
     args
 }
 
@@ -148,7 +155,16 @@ mod tests {
 
         assert_eq!(
             options,
-            "-o BatchMode=yes -o ConnectTimeout=5 -o ForwardAgent=no -o ServerAliveInterval=15 -o ServerAliveCountMax=3"
+            "-o BatchMode=yes -o ConnectTimeout=5 -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -o ForwardAgent=no"
+        );
+    }
+
+    #[test]
+    fn test_connection_options_never_forward_the_agent() {
+        assert_eq!(connection_options(None).join(" "), "-o ForwardAgent=no");
+        assert_eq!(
+            connection_options(Some(2222)).join(" "),
+            "-o ForwardAgent=no -p 2222"
         );
     }
 
@@ -168,7 +184,7 @@ mod tests {
 
         assert!(sshopts.starts_with("-i /home/luiz/.ssh/deploy -o BatchMode=yes"));
         assert_eq!(sshopts.matches("-o ForwardAgent=no").count(), 1);
-        assert!(sshopts.ends_with("-o ServerAliveCountMax=3"));
+        assert!(sshopts.ends_with("-o ServerAliveCountMax=3 -o ForwardAgent=no"));
         assert_eq!(nix_sshopts(Some("  "), None), nix_sshopts(None, None));
     }
 
@@ -187,10 +203,7 @@ mod tests {
         let sshopts = nix_sshopts(Some("-i /home/luiz/.ssh/deploy"), Some(2222));
 
         assert!(sshopts.starts_with("-i /home/luiz/.ssh/deploy -o BatchMode=yes"));
-        assert!(
-            sshopts.ends_with("-o ServerAliveCountMax=3 -p 2222"),
-            "{sshopts}"
-        );
+        assert!(sshopts.ends_with("-o ForwardAgent=no -p 2222"), "{sshopts}");
     }
 
     #[test]

@@ -735,7 +735,7 @@ esac
 
         assert_eq!(
             args,
-            "-o BatchMode=yes -o ConnectTimeout=5 -o ForwardAgent=no -o ServerAliveInterval=15 -o ServerAliveCountMax=3 \
+            "-o BatchMode=yes -o ConnectTimeout=5 -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -o ForwardAgent=no \
              pusher@hydrogen.example.com cat /proc/sys/kernel/random/boot_id"
         );
     }
