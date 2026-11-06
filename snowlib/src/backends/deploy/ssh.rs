@@ -9,8 +9,9 @@ use async_trait::async_trait;
 use std::time::Duration;
 
 use super::{
-    activation_mode_to_string, command_failed, should_update_profile, store_path_from_resolved,
-    DeployBackend, DeployTarget, HostSystems, CURRENT_SYSTEM_LINK, SYSTEM_PROFILE_LINK,
+    activation_mode_to_string, command_failed, helper_found, should_update_profile,
+    store_path_from_resolved, DeployBackend, DeployTarget, HostSystems, CURRENT_SYSTEM_LINK,
+    HELPER_CHECK, SYSTEM_PROFILE_LINK,
 };
 
 /// Convert command args to a shell-like string representation for error messages
@@ -27,10 +28,6 @@ fn args_to_command_string(program: &str, args: &[&str]) -> String {
         format!("{} {}", escaped_program, escaped_args.join(" "))
     }
 }
-
-/// `command -v`'s exit status when the command isn't installed. Anything
-/// else non-zero (ssh failing, a non-POSIX login shell) is not an answer.
-const COMMAND_NOT_FOUND: i32 = 1;
 
 const READ_HOST_SYSTEMS_ARGS: [&str; 4] =
     ["readlink", "-f", CURRENT_SYSTEM_LINK, SYSTEM_PROFILE_LINK];
@@ -164,38 +161,18 @@ impl SshDeployBackend {
         args
     }
 
-    /// Whether snowglobe-activate is installed on the target
-    ///
-    /// An ssh failure is an error rather than "not installed": guessing wrong
-    /// would silently activate through the fallback path.
     async fn check_helper_available(&self, target: &DeployTarget) -> Result<bool> {
-        let args = self.ssh_args(
-            target,
-            Keepalive::Probe,
-            &["command", "-v", "snowglobe-activate"],
-        );
+        let args = self.ssh_args(target, Keepalive::Probe, &HELPER_CHECK);
         let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-        let ssh_failed = |source| DeployError::SshFailed {
-            destination: self.get_destination(target),
-            source,
-        };
+        let destination = self.get_destination(target);
 
         let result = run_bounded(self.ssh_program(), &args_refs, self.probe_timeout)
             .await
-            .map_err(ssh_failed)?;
-        match result.status.code() {
-            Some(0) => Ok(true),
-            Some(COMMAND_NOT_FOUND) => Ok(false),
-            _ => {
-                let stderr = String::from_utf8_lossy(&result.stderr);
-                Err(ssh_failed(std::io::Error::other(format!(
-                    "The ssh command exited with {}: {}",
-                    result.status,
-                    stderr.trim()
-                )))
-                .into())
-            }
-        }
+            .map_err(|source| DeployError::SshFailed {
+                destination: destination.clone(),
+                source,
+            })?;
+        helper_found(&destination, &result)
     }
 }
 

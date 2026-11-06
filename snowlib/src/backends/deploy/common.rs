@@ -1,6 +1,6 @@
 //! Common deployment primitives shared between local and SSH backends
 
-use crate::error::DeployError;
+use crate::error::{DeployError, Result};
 use crate::nix::ActivationMode;
 use crate::process::CommandResult;
 
@@ -17,6 +17,34 @@ pub fn activation_mode_to_string(mode: ActivationMode) -> &'static str {
 /// Ephemeral modes (Test/DryActivate) intentionally skip this to avoid polluting the generation list.
 pub fn should_update_profile(mode: ActivationMode) -> bool {
     !matches!(mode, ActivationMode::Test | ActivationMode::DryActivate)
+}
+
+/// Run over ssh to tell whether the host has snowglobe-activate, the only
+/// command the snowglobe module lets deploy users sudo without a password
+pub(crate) const HELPER_CHECK: [&str; 3] = ["command", "-v", "snowglobe-activate"];
+
+/// `command -v`'s exit status when the command isn't installed. Anything
+/// else non-zero (ssh failing, a non-POSIX login shell) is not an answer.
+const COMMAND_NOT_FOUND: i32 = 1;
+
+/// Whether `HELPER_CHECK`, run over ssh to `destination`, found the helper
+///
+/// A failed check is an error rather than "not installed": guessing wrong
+/// would silently take the path without the helper.
+pub(crate) fn helper_found(destination: &str, result: &CommandResult) -> Result<bool> {
+    match result.status.code() {
+        Some(0) => Ok(true),
+        Some(COMMAND_NOT_FOUND) => Ok(false),
+        _ => Err(DeployError::SshFailed {
+            destination: destination.to_string(),
+            source: std::io::Error::other(format!(
+                "The ssh command exited with {}: {}",
+                result.status,
+                String::from_utf8_lossy(&result.stderr).trim()
+            )),
+        }
+        .into()),
+    }
 }
 
 pub(crate) fn command_failed(host: &str, command: String, result: &CommandResult) -> DeployError {
