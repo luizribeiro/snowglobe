@@ -2,7 +2,9 @@
 //!
 //! Provides a trait for executing shell commands that can be mocked in tests.
 
+use crate::backends::deploy::DeployTarget;
 use crate::error::{ProvisionerError, Result};
+use crate::ssh_options::connection_options;
 use std::process::{Command, Output, Stdio};
 
 /// Output from a command execution
@@ -51,7 +53,13 @@ pub trait CommandExecutor: Send + Sync {
     ) -> Result<CommandOutput>;
 
     /// Execute a command on a remote host via SSH
-    fn execute_remote(&self, ssh_dest: &str, remote_cmd: &str) -> Result<CommandOutput>;
+    fn execute_remote(&self, host: &DeployTarget, remote_cmd: &str) -> Result<CommandOutput> {
+        let mut args = connection_options(host.port);
+        args.push(host.ssh_destination());
+        args.push(remote_cmd.to_string());
+        let args: Vec<&str> = args.iter().map(String::as_str).collect();
+        self.execute("ssh", &args)
+    }
 
     /// Check if a command is available in PATH
     fn which(&self, cmd: &str) -> Option<std::path::PathBuf>;
@@ -125,10 +133,6 @@ impl CommandExecutor for SystemCommandExecutor {
                 })?;
 
         Ok(output.into())
-    }
-
-    fn execute_remote(&self, ssh_dest: &str, remote_cmd: &str) -> Result<CommandOutput> {
-        self.execute("ssh", &[ssh_dest, remote_cmd])
     }
 
     fn which(&self, cmd: &str) -> Option<std::path::PathBuf> {
@@ -266,10 +270,6 @@ impl CommandExecutor for MockCommandExecutor {
     ) -> Result<CommandOutput> {
         // For mock, just delegate to execute
         self.execute(cmd, args)
-    }
-
-    fn execute_remote(&self, ssh_dest: &str, remote_cmd: &str) -> Result<CommandOutput> {
-        self.execute("ssh", &[ssh_dest, remote_cmd])
     }
 
     fn which(&self, cmd: &str) -> Option<std::path::PathBuf> {

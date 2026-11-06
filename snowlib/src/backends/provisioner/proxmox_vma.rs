@@ -6,8 +6,10 @@ use super::command::{CommandExecutor, CommandOutput, SystemCommandExecutor};
 use super::{
     guestfish, InjectionResult, Provisioner, ProvisionerConfig, ProvisioningResult, TargetType,
 };
+use crate::backends::deploy::DeployTarget;
 use crate::bootstrap::HostKeys;
 use crate::error::{ProvisionerError, Result};
+use crate::ssh_options::connection_options;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -87,8 +89,8 @@ impl ProxmoxVmaProvisioner {
         Ok(output)
     }
 
-    fn run_remote(&self, ssh_dest: &str, cmd: &str, operation: &str) -> Result<CommandOutput> {
-        let output = self.executor.execute_remote(ssh_dest, cmd)?;
+    fn run_remote(&self, host: &DeployTarget, cmd: &str, operation: &str) -> Result<CommandOutput> {
+        let output = self.executor.execute_remote(host, cmd)?;
 
         if !output.success {
             return Err(ProvisionerError::DeploymentFailed {
@@ -353,16 +355,20 @@ impl Provisioner for ProxmoxVmaProvisioner {
             unreachable!("validate_target ensures only ProxmoxHost reaches here");
         };
 
-        let ssh_dest = deploy_target.ssh_destination();
-        let deployer = VmaDeployer::new(self, &ssh_dest, image_path, hostname)?;
+        let deployer = VmaDeployer::new(self, deploy_target, image_path, hostname)?;
         deployer.deploy()
     }
+}
+
+/// Without BatchMode: bootstrapping a Proxmox host may need a password prompt
+fn rsync_ssh_command(host: &DeployTarget) -> String {
+    format!("ssh {}", connection_options(host.port).join(" "))
 }
 
 /// Handles the multi-step VMA deployment process
 struct VmaDeployer<'a> {
     provisioner: &'a ProxmoxVmaProvisioner,
-    ssh_dest: String,
+    host: DeployTarget,
     remote_path: String,
     hostname: String,
     vmid: u32,
@@ -372,7 +378,7 @@ struct VmaDeployer<'a> {
 impl<'a> VmaDeployer<'a> {
     fn new(
         provisioner: &'a ProxmoxVmaProvisioner,
-        ssh_dest: &str,
+        host: &DeployTarget,
         image_path: &Path,
         hostname: &str,
     ) -> Result<Self> {
@@ -382,25 +388,25 @@ impl<'a> VmaDeployer<'a> {
             .unwrap_or("image.vma.zst");
         let remote_path = format!("/tmp/{}", filename);
 
-        // Upload image
         provisioner.run_tool(
             "rsync",
             &[
                 "-v",
                 "--progress",
+                "-e",
+                &rsync_ssh_command(host),
                 &image_path.to_string_lossy(),
-                &format!("{}:{}", ssh_dest, remote_path),
+                &format!("{}:{}", host.ssh_destination(), remote_path),
             ],
             "Image upload",
         )?;
 
-        // Get VMID
-        let vmid = Self::get_next_vmid(provisioner, ssh_dest)?;
+        let vmid = Self::get_next_vmid(provisioner, host)?;
         let extract_dir = format!("/tmp/snow-extract-{}", vmid);
 
         Ok(Self {
             provisioner,
-            ssh_dest: ssh_dest.to_string(),
+            host: host.clone(),
             remote_path,
             hostname: hostname.to_string(),
             vmid,
@@ -408,8 +414,8 @@ impl<'a> VmaDeployer<'a> {
         })
     }
 
-    fn get_next_vmid(provisioner: &ProxmoxVmaProvisioner, ssh_dest: &str) -> Result<u32> {
-        let output = provisioner.run_remote(ssh_dest, "pvesh get /cluster/nextid", "Get VMID")?;
+    fn get_next_vmid(provisioner: &ProxmoxVmaProvisioner, host: &DeployTarget) -> Result<u32> {
+        let output = provisioner.run_remote(host, "pvesh get /cluster/nextid", "Get VMID")?;
         let vmid_str = output.stdout_str().trim().to_string();
 
         vmid_str.parse::<u32>().map_err(|_| {
@@ -434,12 +440,7 @@ impl<'a> VmaDeployer<'a> {
         Ok(ProvisioningResult::Success {
             message: format!(
                 "VM {} created and started on {} (VMID: {})",
-                self.hostname,
-                self.ssh_dest
-                    .split('@')
-                    .next_back()
-                    .unwrap_or(&self.ssh_dest),
-                self.vmid
+                self.hostname, self.host.hostname, self.vmid
             ),
         })
     }
@@ -452,7 +453,7 @@ impl<'a> VmaDeployer<'a> {
             shell_escape(&self.extract_dir)
         );
         self.provisioner
-            .run_remote(&self.ssh_dest, &cmd, "VMA extraction")
+            .run_remote(&self.host, &cmd, "VMA extraction")
             .map(|_| ())
     }
 
@@ -460,7 +461,7 @@ impl<'a> VmaDeployer<'a> {
         let cmd = format!("cat {}/qemu-server.conf", shell_escape(&self.extract_dir));
         let output = self
             .provisioner
-            .run_remote(&self.ssh_dest, &cmd, "Read VM config")?;
+            .run_remote(&self.host, &cmd, "Read VM config")?;
         Ok(VmConfig::parse(&output.stdout_str()))
     }
 
@@ -470,9 +471,9 @@ impl<'a> VmaDeployer<'a> {
         for disk_type in ["virtio0", "scsi0", "sata0", "ide0"] {
             let disk_file = format!("{}/disk-drive-{}.raw", self.extract_dir, disk_type);
             let check_cmd = format!("test -f {} && echo exists", shell_escape(&disk_file));
-            if let Ok(output) =
-                self.provisioner
-                    .run_remote(&self.ssh_dest, &check_cmd, "Check disk")
+            if let Ok(output) = self
+                .provisioner
+                .run_remote(&self.host, &check_cmd, "Check disk")
             {
                 if output.stdout_str().contains("exists") {
                     return Ok(disk_file);
@@ -485,9 +486,7 @@ impl<'a> VmaDeployer<'a> {
             "ls {}/*.raw 2>/dev/null | head -1",
             shell_escape(&self.extract_dir)
         );
-        let output = self
-            .provisioner
-            .run_remote(&self.ssh_dest, &cmd, "Find disk")?;
+        let output = self.provisioner.run_remote(&self.host, &cmd, "Find disk")?;
         let disk_path = output.stdout_str().trim().to_string();
 
         if disk_path.is_empty() {
@@ -516,7 +515,7 @@ impl<'a> VmaDeployer<'a> {
             config.agent,
         );
         self.provisioner
-            .run_remote(&self.ssh_dest, &cmd, "Create VM")
+            .run_remote(&self.host, &cmd, "Create VM")
             .map(|_| ())
     }
 
@@ -528,7 +527,7 @@ impl<'a> VmaDeployer<'a> {
         );
         let output = self
             .provisioner
-            .run_remote(&self.ssh_dest, &cmd, "Import disk")?;
+            .run_remote(&self.host, &cmd, "Import disk")?;
 
         let disk_volume = parse_imported_disk(&output.stdout_str()).unwrap_or_else(|| {
             tracing::warn!(
@@ -548,7 +547,7 @@ impl<'a> VmaDeployer<'a> {
             shell_escape(disk_volume)
         );
         self.provisioner
-            .run_remote(&self.ssh_dest, &cmd, "Configure VM")
+            .run_remote(&self.host, &cmd, "Configure VM")
             .map(|_| ())
     }
 
@@ -558,10 +557,10 @@ impl<'a> VmaDeployer<'a> {
             shell_escape(&self.extract_dir),
             shell_escape(&self.remote_path)
         );
-        if let Err(e) = self.provisioner.run_remote(&self.ssh_dest, &cmd, "Cleanup") {
+        if let Err(e) = self.provisioner.run_remote(&self.host, &cmd, "Cleanup") {
             tracing::warn!(
                 "Failed to cleanup temporary files on {}: {}",
-                self.ssh_dest,
+                self.host.ssh_destination(),
                 e
             );
         }
@@ -570,7 +569,7 @@ impl<'a> VmaDeployer<'a> {
     fn start_vm(&self) -> Result<()> {
         let cmd = format!("qm start {}", self.vmid);
         self.provisioner
-            .run_remote(&self.ssh_dest, &cmd, "Start VM")
+            .run_remote(&self.host, &cmd, "Start VM")
             .map(|_| ())
     }
 }
@@ -790,7 +789,7 @@ mod tests {
             .with_response("pvesh", MockCommandExecutor::success_output("100\n"));
         let provisioner = ProxmoxVmaProvisioner::with_executor(Arc::new(mock));
 
-        let result = VmaDeployer::get_next_vmid(&provisioner, "root@proxmox");
+        let result = VmaDeployer::get_next_vmid(&provisioner, &DeployTarget::parse("root@proxmox"));
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), 100);
     }
@@ -803,7 +802,7 @@ mod tests {
         );
         let provisioner = ProxmoxVmaProvisioner::with_executor(Arc::new(mock));
 
-        let result = VmaDeployer::get_next_vmid(&provisioner, "root@proxmox");
+        let result = VmaDeployer::get_next_vmid(&provisioner, &DeployTarget::parse("root@proxmox"));
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("Invalid VMID"));
     }
@@ -814,9 +813,79 @@ mod tests {
             .with_response("ssh", MockCommandExecutor::success_output("success"));
         let provisioner = ProxmoxVmaProvisioner::with_executor(Arc::new(mock));
 
-        let result = provisioner.run_remote("root@proxmox", "echo test", "Test command");
+        let result = provisioner.run_remote(
+            &DeployTarget::parse("root@proxmox"),
+            "echo test",
+            "Test command",
+        );
         assert!(result.is_ok());
         assert_eq!(result.unwrap().stdout_str(), "success");
+    }
+
+    #[test]
+    fn test_run_remote_connects_to_the_hosts_port_without_forwarding_the_agent() {
+        let mock = Arc::new(
+            MockCommandExecutor::new()
+                .with_response("ssh", MockCommandExecutor::success_output("101\n")),
+        );
+        let provisioner = ProxmoxVmaProvisioner::with_executor(mock.clone());
+
+        provisioner
+            .run_remote(
+                &DeployTarget::parse("root@proxmox:2222"),
+                "pvesh get /cluster/nextid",
+                "Get VMID",
+            )
+            .unwrap();
+
+        assert_eq!(
+            mock.get_executed(),
+            vec![(
+                "ssh".to_string(),
+                [
+                    "-o",
+                    "ForwardAgent=no",
+                    "-p",
+                    "2222",
+                    "root@proxmox",
+                    "pvesh get /cluster/nextid"
+                ]
+                .map(String::from)
+                .to_vec()
+            )]
+        );
+    }
+
+    #[test]
+    fn test_image_upload_reaches_the_hosts_port_without_forwarding_the_agent() {
+        let mock = Arc::new(
+            MockCommandExecutor::new()
+                .with_response("pvesh", MockCommandExecutor::success_output("101\n")),
+        );
+        let provisioner = ProxmoxVmaProvisioner::with_executor(mock.clone());
+
+        VmaDeployer::new(
+            &provisioner,
+            &DeployTarget::parse("root@proxmox:2222"),
+            Path::new("/tmp/hydrogen.vma.zst"),
+            "hydrogen",
+        )
+        .unwrap();
+
+        let (program, args) = &mock.get_executed()[0];
+        assert_eq!(program, "rsync");
+        assert_eq!(
+            args,
+            &[
+                "-v",
+                "--progress",
+                "-e",
+                "ssh -o ForwardAgent=no -p 2222",
+                "/tmp/hydrogen.vma.zst",
+                "root@proxmox:/tmp/hydrogen.vma.zst"
+            ]
+            .map(String::from)
+        );
     }
 
     #[test]
@@ -829,7 +898,11 @@ mod tests {
             .with_default_success(false);
         let provisioner = ProxmoxVmaProvisioner::with_executor(Arc::new(mock));
 
-        let result = provisioner.run_remote("root@proxmox", "echo test", "Test command");
+        let result = provisioner.run_remote(
+            &DeployTarget::parse("root@proxmox"),
+            "echo test",
+            "Test command",
+        );
         assert!(result.is_err());
         assert!(result
             .unwrap_err()
