@@ -213,7 +213,7 @@ snowlib/src/
 
 ## Design Philosophy & Patterns
 
-### From docs/context.md
+### Principles
 
 The project emerged from real homelab pain points and embodies these principles:
 
@@ -262,14 +262,12 @@ Use comments sparingly and focus on explaining **WHY**, not **WHAT**.
 
 ## Context Files
 
-For deep understanding of design decisions and project evolution:
-
-- **docs/design.md** - Original comprehensive design document (may be outdated)
-- **docs/context.md** - Complete project history, all decisions and rationale
-- **docs/push.md** - Current push command documentation (up-to-date)
-- **README.md** - Project overview and vision
-
-Note: docs/design.md was written before implementation began and may not reflect current architecture. docs/context.md and docs/push.md are more reliable for understanding current state.
+- **README.md** - Project overview
+- **docs/push.md** - Push command: phases, serial groups, reboot detection and policies
+- **docs/hooks.md** - Deployment hooks
+- **docs/darwin.md** - nix-darwin deployment
+- **docs/activation-helper.md** - `snowglobe-activate` and its security properties
+- **docs/demos.md** - Recorded demos from the VM tests
 
 ## Git Workflow
 

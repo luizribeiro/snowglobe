@@ -290,4 +290,3 @@ This returns exit code 0 if the helper is in PATH, non-zero otherwise. The check
 
 - [darwin.md](darwin.md) - Darwin-specific deployment guide
 - [push.md](push.md) - Complete push command documentation
-- [Original feature request](../docs/feature-requests/activation-helper.md) - Design rationale and discussion

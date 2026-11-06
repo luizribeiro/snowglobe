@@ -97,8 +97,6 @@ snowglobe addresses these gaps with an agent-based, cluster-aware approach.
 
 ## Architecture
 
-See [docs/design.md](docs/design.md) for detailed design.
-
 **Phase 1** (current focus):
 - CLI tool (`snow`) for push-based deployments
 - etcd for state management
@@ -113,16 +111,6 @@ See [docs/design.md](docs/design.md) for detailed design.
 - VM support for testing
 - Advanced health checks
 - Rollback mechanisms
-
-## Development
-
-This project is in early design phase. See:
-- [docs/design.md](docs/design.md) - Full design document (user-facing)
-- [docs/context.md](docs/context.md) - Complete development context and history
-- [docs/architecture.md](docs/architecture.md) - Architecture details (TBD)
-- [docs/etcd-schema.md](docs/etcd-schema.md) - etcd data model (TBD)
-
-**For developers/contributors**: Start with [docs/context.md](docs/context.md) to understand the full journey, all design decisions, and rationale behind this project.
 
 ## Origin
 
