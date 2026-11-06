@@ -4,6 +4,8 @@ pkgs.writeScriptBin "snowglobe-activate" ''
   #!${pkgs.bash}/bin/bash
   set -e
 
+  ${import ./store-path-check.nix}
+
   if [ $# -lt 2 ]; then
     echo "Usage: snowglobe-activate <store-path> <mode>" >&2
     echo "Modes: switch (only mode supported on Darwin)" >&2
@@ -13,11 +15,7 @@ pkgs.writeScriptBin "snowglobe-activate" ''
   STORE_PATH="$1"
   MODE="$2"
 
-  # Validate store path starts with /nix/store/
-  if [[ ! "$STORE_PATH" =~ ^/nix/store/ ]]; then
-    echo "Error: Invalid store path (must start with /nix/store/)" >&2
-    exit 1
-  fi
+  require_store_path "$STORE_PATH"
 
   # Darwin only supports switch mode - error on unsupported modes
   case "$MODE" in
