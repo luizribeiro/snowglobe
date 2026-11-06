@@ -123,16 +123,9 @@ fn failure_headline(text: &str) -> String {
 }
 
 pub(super) fn success_labels(host: &snowlib::HostDeploymentResult) -> Vec<&'static str> {
-    use snowlib::ActivationMode;
-
     let mut labels = Vec::new();
     if let Some(mode) = host.activation_mode {
-        labels.push(match mode {
-            ActivationMode::Switch => "switch",
-            ActivationMode::Boot => "boot",
-            ActivationMode::Test => "test",
-            ActivationMode::DryActivate => "dry-run",
-        });
+        labels.push(mode_label(mode));
     }
     if host.rebooted {
         labels.push("rebooted");
@@ -149,13 +142,11 @@ fn host_lines(
     log_file: Option<&Path>,
 ) -> Vec<String> {
     if host.success {
-        let labels = success_labels(host);
-        let status = if labels.is_empty() {
-            String::new()
-        } else {
-            format!(" {}", style(format!("({})", labels.join(", "))).dim())
-        };
-        vec![format!("  {} {}{status}", marks::success(), host.hostname)]
+        vec![format!(
+            "{}{}",
+            " ".repeat(HOST_INDENT),
+            success_line(&host.hostname, &success_labels(host))
+        )]
     } else if host.is_skipped() {
         let reason = host.error_message.as_deref().unwrap_or_default();
         vec![format!(
@@ -168,23 +159,42 @@ fn host_lines(
             .as_deref()
             .map(|error| failure_details(error, log_file))
             .unwrap_or_default();
-        std::iter::once(failure_line(host, width))
-            .chain(details.into_iter().map(|line| format!("    {line}")))
-            .collect()
+        std::iter::once(format!(
+            "{}{}",
+            " ".repeat(HOST_INDENT),
+            failure_line(host, width.saturating_sub(HOST_INDENT))
+        ))
+        .chain(details.into_iter().map(|line| format!("    {line}")))
+        .collect()
     }
 }
 
+pub(in crate::commands) fn mode_label(mode: snowlib::ActivationMode) -> &'static str {
+    use snowlib::ActivationMode;
+    match mode {
+        ActivationMode::Switch => "switch",
+        ActivationMode::Boot => "boot",
+        ActivationMode::Test => "test",
+        ActivationMode::DryActivate => "dry-run",
+    }
+}
+
+/// "✓ boron (switch, rebooted)"
+pub(in crate::commands) fn success_line(hostname: &str, labels: &[&str]) -> String {
+    let status = if labels.is_empty() {
+        String::new()
+    } else {
+        format!(" {}", style(format!("({})", labels.join(", "))).dim())
+    };
+    format!("{} {hostname}{status}", marks::success())
+}
+
+/// What a phase's report indents its hosts by
+const HOST_INDENT: usize = 2;
+
+/// "✗ cerium at activate: <cause>", the cause cut to fit `width` columns
 fn failure_line(host: &snowlib::HostDeploymentResult, width: usize) -> String {
-    let step = host
-        .failed_at_step
-        .map(|step| format!(" at {step}"))
-        .unwrap_or_default();
-    let line = format!(
-        "  {} {}{}",
-        marks::failure(),
-        host.hostname,
-        style(step).red()
-    );
+    let line = failed_host(&host.hostname, host.failed_at_step);
     match host.error_message.as_deref().map(error_summary) {
         Some(cause) if !cause.is_empty() => {
             // Some terminals wrap a line that reaches the last column
@@ -193,6 +203,15 @@ fn failure_line(host: &snowlib::HostDeploymentResult, width: usize) -> String {
         }
         _ => line,
     }
+}
+
+/// "✗ cerium at activate"
+pub(in crate::commands) fn failed_host(
+    hostname: &str,
+    step: Option<snowlib::PipelineStep>,
+) -> String {
+    let step = step.map(|step| format!(" at {step}")).unwrap_or_default();
+    format!("{} {hostname}{}", marks::failure(), style(step).red())
 }
 
 fn print_skipped_phases(skipped_phases: &[snowlib::SkippedPhase]) {
@@ -492,11 +511,11 @@ mod tests {
 
         assert_eq!(
             super::failure_line(&cerium, 100),
-            "  ✗ cerium at activate: warning: the following units failed: storage-agent.service"
+            "✗ cerium at activate: warning: the following units failed: storage-agent.service"
         );
         assert_eq!(
-            super::failure_line(&cerium, 50),
-            "  ✗ cerium at activate: warning: the following u…"
+            super::failure_line(&cerium, 48),
+            "✗ cerium at activate: warning: the following u…"
         );
     }
 
@@ -545,10 +564,10 @@ mod tests {
             ..make_failed_host("radon", PipelineStep::Build, "")
         };
 
-        assert_eq!(super::failure_line(&cerium, 100), "  ✗ cerium at copy");
-        assert_eq!(super::failure_line(&radon, 100), "  ✗ radon at build");
+        assert_eq!(super::failure_line(&cerium, 100), "✗ cerium at copy");
+        assert_eq!(super::failure_line(&radon, 100), "✗ radon at build");
         cerium.failed_at_step = None;
-        assert_eq!(super::failure_line(&cerium, 100), "  ✗ cerium");
+        assert_eq!(super::failure_line(&cerium, 100), "✗ cerium");
     }
 
     #[test]
