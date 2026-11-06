@@ -1,11 +1,14 @@
 # Lifecycle Hooks
 
-Lifecycle hooks enable you to execute custom commands at specific points in the deployment pipeline, allowing for sophisticated orchestration like draining Kubernetes nodes, coordinating with service discovery systems, or performing custom validation.
+Lifecycle hooks run your commands at set points of a push: drain a Kubernetes
+node before it activates, take a host out of a load balancer, check its health
+afterwards.
 
 ## Overview
 
-Hooks are configured in your NixOS configuration and execute automatically during deployment
-(see [Host Pipeline](push.md#host-pipeline) for the full per-host order and serial groups):
+Hooks are options of the snowglobe NixOS and nix-darwin modules. They run
+during `snow push` (see [Host Pipeline](push.md#host-pipeline) for the full
+per-host order and serial groups):
 
 ```
 Build → (skip if unchanged) → Copy → Plan → [pre-deploy] → Activate → Reboot? → [post-reboot]? → [post-deploy]
@@ -13,27 +16,27 @@ Build → (skip if unchanged) → Copy → Plan → [pre-deploy] → Activate �
                                                   [on-failure]
 ```
 
-### Key Features
-
-- **Declarative Configuration**: Define hooks in your NixOS config alongside your system definition
-- **Per-Host Execution**: Hooks run individually for each host during parallel deployments
-- **Local and Remote**: Execute commands on the machine running `snow` or on the target host via SSH
-- **Reliable Error Handling**: Built-in timeout, retry logic, and failure modes
-- **Environment Variables**: Access deployment metadata (hostname, phase, store path)
+- Hooks are declared in each host's config, next to the rest of the system.
+- Each host runs its own hooks. Hosts in a serial group run their hooks one
+  at a time, since hooks are part of the serialized deploy section.
+- A hook runs either on the machine running `snow` (`local`) or on the host
+  over SSH (`remote`).
+- Hooks have a timeout, optional retries, and a choice of whether their
+  failure fails the host.
+- Hooks get the hostname, phase and store path in environment variables.
 
 ## Configuration
 
-Hooks are configured under `config.snowglobe.hooks` in your NixOS configuration:
-
 ```nix
+{ config, ... }:
 {
-  config.snowglobe.hooks = {
+  snowglobe.hooks = {
     pre-deploy = {
       drain-node = {
         location = "local";  # or "remote"
         command = "kubectl drain ${config.networking.hostName}";
-        timeout = 300;  # seconds (default: 300)
-        continueOnFailure = false;  # default: false
+        timeout = 300;
+        continueOnFailure = false;
       };
     };
     post-deploy = { /* ... */ };
@@ -43,141 +46,124 @@ Hooks are configured under `config.snowglobe.hooks` in your NixOS configuration:
 }
 ```
 
+### Options
+
+Each hook is an attribute of its stage. Its name must match `[a-zA-Z0-9_-]+`.
+
+| Option | Type | Default | Meaning |
+|--------|------|---------|---------|
+| `location` | `"local"` or `"remote"` | required | Where the command runs |
+| `command` | string | required | Shell command, run with `sh -c`; must not be empty |
+| `environment` | attrs of strings | `{}` | Extra environment variables |
+| `environmentFiles` | list of paths | `[]` | `KEY=VALUE` files read on the machine running `snow` |
+| `timeout` | seconds | `300` | 1 to 7200 |
+| `continueOnFailure` | bool | `false` | If true, the hook's failure doesn't fail the host |
+| `priority` | int | `100` | Hooks in a stage run lowest priority first, then by name |
+| `retries` | int | `0` | Extra attempts after a failure, at most 20 |
+| `retryDelay` | seconds | `5` | Wait between attempts, 1 to 300 |
+
 ### Hook Stages
 
 #### `pre-deploy`
 
-Runs **after copying** the new system but **before activation**, and only for
-hosts that change: a host already running and booting the built system is
-skipped entirely.
+Runs after the new system is copied and planned, before activation. It runs
+only for hosts that change: a host already running and booting the built
+system skips every hook.
 
-This stage was called `pre-activate`; defining `snowglobe.hooks.pre-activate`
-now fails evaluation with a pointer to `pre-deploy`.
+This stage was called `pre-activate`. Defining `snowglobe.hooks.pre-activate`
+fails evaluation with a pointer to `pre-deploy`.
 
-**Common use cases:**
-- Drain cluster nodes (Kubernetes, Nomad)
-- Remove from load balancer pool
-- Stop accepting new connections
-- Gracefully leave cluster (Consul, etcd)
+Use it to drain nodes, remove a host from a load balancer pool, or leave a
+cluster.
 
-**Example:**
 ```nix
 pre-deploy = {
   drain-node = {
     location = "local";
     command = "kubectl drain --delete-emptydir-data --ignore-daemonsets --timeout=5m ${config.networking.hostName}";
     timeout = 360;
-    continueOnFailure = false;
   };
 };
 ```
 
 #### `post-deploy`
 
-Runs **last**, once the host runs the new system: after activation, after any
-reboot, and after `post-reboot` hooks. It runs whether or not a reboot happened,
-but only if the deploy (including any reboot) succeeded.
+Runs last, once the host runs the new system: after activation, any reboot,
+and `post-reboot` hooks. It runs whether or not the host rebooted, but only if
+everything before it succeeded. To clean up after a failure, use `on-failure`.
 
-This replaces `post-activate`, which ran before the reboot; defining
-`snowglobe.hooks.post-activate` now fails evaluation with a pointer here.
+This replaces `post-activate`, which ran before the reboot. Defining
+`snowglobe.hooks.post-activate` fails evaluation with a pointer here.
 
-**Common use cases:**
-- Uncordon cluster nodes
-- Add back to load balancer pool
-- Gate on cluster health before the next host proceeds
-- Update service discovery
+Use it to uncordon nodes, add a host back to a pool, or gate on cluster health
+before the next host in a serial group starts.
 
-**Example:**
 ```nix
 post-deploy = {
   uncordon-node = {
     location = "local";
     command = "kubectl uncordon ${config.networking.hostName}";
     timeout = 60;
-    continueOnFailure = true;  # Always uncordon, even if activation had issues
+    continueOnFailure = true;  # don't fail the host if uncordon fails
   };
 };
 ```
 
 #### `post-reboot`
 
-Runs **after the host reboots** and comes back online (only if a reboot actually occurred).
+Runs after the host reboots and comes back, only if it rebooted. nix-darwin
+hosts are never rebooted, and neither are hosts pushed with `--skip-reboot`,
+so it never runs for them.
 
-**Common use cases:**
-- Wait for services to be ready
-- Verify node is healthy
-- Rejoin cluster after reboot
-- Run post-boot validation
-
-**Example:**
 ```nix
 post-reboot = {
   wait-node-ready = {
     location = "local";
     command = "kubectl wait --for=condition=Ready node/${config.networking.hostName} --timeout=5m";
     timeout = 360;
-    continueOnFailure = false;
   };
 };
 ```
 
 #### `on-failure`
 
-Runs **when deployment or reboot fails** at any stage.
+Runs when a step of the host fails, or when one of its hooks fails with
+`continueOnFailure = false`.
 
-**Common use cases:**
-- Cleanup after failed deployment
-- Send alerts or notifications
-- Rollback operations
-- Log failure details
+- Failures during build, the unchanged check or copy happen before snow has an
+  SSH target for the host. A `remote` on-failure hook can't run then: it
+  errors, and the rest of the on-failure stage is skipped. Use `local`
+  on-failure hooks for anything that must always run.
+- The stage stops at the first on-failure hook that fails with
+  `continueOnFailure = false`. Set `continueOnFailure = true` on on-failure
+  hooks so one failing doesn't skip the others.
+- An on-failure hook failing is logged as a warning. The host has failed
+  already.
 
-**Example:**
 ```nix
 on-failure = {
   send-alert = {
     location = "local";
     command = "curl -X POST https://alerts.example.com/webhook -d '{\"host\": \"${config.networking.hostName}\", \"status\": \"failed\"}'";
     timeout = 30;
-    continueOnFailure = true;  # Don't fail the failure handler
+    continueOnFailure = true;
   };
 };
 ```
 
 ## Execution Location
 
-### Local Execution (`location = "local"`)
+### Local (`location = "local"`)
 
-Executes on the **machine running `snow`** (your workstation, CI/CD runner, etc.).
+Runs on the machine running `snow`: your workstation or a CI runner. Use it
+for cluster orchestration (`kubectl`, `consul`, `nomad`), API calls, and
+commands that need credentials the host doesn't have.
 
-**Use for:**
-- Cluster orchestration commands (`kubectl`, `consul`, `nomad`)
-- API calls to external services
-- Commands that need credentials not on the target host
+### Remote (`location = "remote"`)
 
-**Example:**
-```nix
-{
-  location = "local";
-  command = "kubectl drain ${config.networking.hostName}";
-}
-```
-
-### Remote Execution (`location = "remote"`)
-
-Executes on the **target host via SSH**.
-
-**Use for:**
-- Host-specific validation
-- Local service checks
-- Commands that must run on the target system
-
-**Example:**
-```nix
-{
-  location = "remote";
-  command = "systemctl is-active docker";
-}
-```
+Runs on the host over SSH, as the `--user` given to `snow push`, or `root` by
+default. Use it for host-specific checks. The command must be on the remote
+`PATH`, or referenced by store path.
 
 ## Packages in Hook Commands
 
@@ -207,214 +193,151 @@ This covers both the `command` and the `environment` values of a hook.
 }
 ```
 
-`localPkgs` is the host's own nixpkgs (same pinned version) built for the
-platform of the machine running snow. A Mac pushing to an aarch64 Raspberry Pi
-gets a Mac `kubectl` in local hooks and an aarch64 `curl` in remote hooks. It
-includes the host's `nixpkgs.config` and `nixpkgs.overlays`. When the
-platforms differ, overlays baked into an externally supplied `nixpkgs.pkgs`
-aren't carried over.
+`localPkgs` is the host's own nixpkgs (same pinned version) built for
+`snowglobe.localSystem`, which snow sets to the platform of the machine running
+it. A Mac pushing to an aarch64 Raspberry Pi gets a Mac `kubectl` in local
+hooks and an aarch64 `curl` in remote hooks. It includes the host's
+`nixpkgs.config` and `nixpkgs.overlays`. When the platforms differ, overlays
+baked into an externally supplied `nixpkgs.pkgs` aren't carried over.
 
 Commands that don't reference store paths (e.g. plain `kubectl` from the
-deploying machine's `PATH`) keep working as before.
+deploying machine's `PATH`) work too.
 
 If a local hook's command references a store path that isn't present on the
 deploying machine, typically because it used `pkgs` instead of `localPkgs`,
-the host fails during planning, before any hook runs, with an error naming the
-hook and the path. `--dry-run` skips this check, since it runs no hooks.
+`snow push` stops before touching any host, with an error naming the hook and
+the path. `--dry-run` skips this check, since it runs no hooks.
 
 ## Error Handling
 
 ### `continueOnFailure`
 
-Controls what happens when a hook fails (non-zero exit code or timeout).
+A hook fails when it exits non-zero or times out, after any retries.
 
-**`continueOnFailure = false` (default):**
-- Hook failure **aborts the deployment** for that host
-- Other hosts in the phase continue deploying
-- `on-failure` hooks are executed
+With `continueOnFailure = false` (the default):
+- The host fails and its `on-failure` hooks run.
+- Hosts in its serial group that haven't started are skipped.
+- Other hosts in the phase keep going, but later phases are skipped.
 
-**`continueOnFailure = true`:**
-- Hook failure is **logged as a warning**
-- Deployment continues normally
-- `on-failure` hooks are **not** executed
+With `continueOnFailure = true`:
+- The failure is logged as a warning and the host carries on.
+- `on-failure` hooks don't run.
 
-**When to use `continueOnFailure = true`:**
-- Cleanup operations (like uncordoning nodes)
-- Best-effort operations (like sending notifications)
-- Non-critical validation
+Use `true` for best-effort work like notifications, and for `on-failure`
+hooks.
 
-**Example:**
-```nix
-post-deploy = {
-  uncordon-node = {
-    location = "local";
-    command = "kubectl uncordon ${config.networking.hostName}";
-    continueOnFailure = true;  # Always uncordon, even if activation failed
-  };
-};
-```
+### Retries
+
+With `retries = N`, a failing hook runs up to N more times, `retryDelay`
+seconds apart. Only the last attempt counts.
 
 ### Timeout
 
-Each hook has a timeout (default: 300 seconds). If the command doesn't complete within the timeout, it's terminated and treated as a failure.
+When a hook runs past its `timeout`:
 
-**Timeout behavior:**
-1. When a hook exceeds its timeout, `snow` sends `SIGTERM` to gracefully terminate the process
-2. If the process doesn't exit within 5 seconds, `SIGKILL` is sent to force termination
-3. `snow` waits up to 2 seconds for the process to be reaped by the kernel
-4. The hook is marked as failed and any output captured up to the timeout is included in error messages
+1. snow sends `SIGTERM` to the hook's shell.
+2. If it hasn't exited after 5 seconds, snow sends `SIGKILL` and waits for it
+   to exit.
+3. The attempt fails. Its stderr is replaced by `Hook timed out after N
+   seconds`; its stdout is kept.
 
-```nix
-{
-  command = "kubectl drain ${config.networking.hostName}";
-  timeout = 600;  # 10 minutes for slow drain
-}
-```
-
-**Notes:**
-- For hooks that perform cleanup or have side effects, ensure they handle `SIGTERM` gracefully to avoid leaving resources in an inconsistent state
-- In rare cases (zombie processes or uninterruptible sleep states), a process may not be killable; `snow` will log an error but continue with the deployment
+The signals go to the `sh` process only, not to its children. For a remote
+hook, they stop the local `ssh` client; the command on the host may keep
+running.
 
 ## Environment Variables
 
 ### Default Environment
 
-Hooks receive these environment variables automatically:
-
 | Variable | Description | Example |
 |----------|-------------|---------|
 | `SNOW_HOSTNAME` | Target hostname | `web01` |
-| `SNOW_PHASE` | Deployment phase | `production` |
+| `SNOW_PHASE` | Push phase, set only when the host has one (`core.pushPhase`) | `production` |
 | `SNOW_STORE_PATH` | Nix store path being deployed | `/nix/store/...` |
 
-Plus any environment variables from your shell or CI/CD workflow (e.g., `KUBECONFIG`).
+Local hooks also inherit the environment `snow` runs in (e.g. `KUBECONFIG`).
+Remote hooks get only the variables above, `environment`, and the contents of
+`environmentFiles`.
 
 ### Custom Environment Variables
 
-You can set additional environment variables for hooks using `environment` and `environmentFiles`:
-
 ```nix
+{ localPkgs, ... }:
 {
-  notify-deploy = {
+  snowglobe.hooks.pre-deploy.notify-deploy = {
     location = "local";
-    command = ./scripts/notify-slack.sh;
+    command = "${localPkgs.curl}/bin/curl -fsS -X POST \"$WEBHOOK_URL\" -d \"deploying $SNOW_HOSTNAME\"";
     environment = {
-      SLACK_CHANNEL = "#deploys";
+      CHANNEL = "#deploys";
     };
     environmentFiles = [
-      config.age.secrets.slack-webhook.path
+      "/home/me/.config/snow/webhook.env"  # WEBHOOK_URL=...
     ];
+    continueOnFailure = true;
   };
 }
 ```
 
-**`environment`**: Attrset of environment variables to set:
-```nix
-environment = {
-  KUBECONFIG = "/home/user/.kube/config";
-  LOG_LEVEL = "debug";
-};
-```
+- **`environment`** sets variables directly. Its values end up in the Nix
+  store, so don't put secrets here.
+- **`environmentFiles`** are read when the hook runs, on the machine running
+  `snow`, for local and remote hooks alike. For a remote hook, their values
+  are sent to the host on the ssh command line. Each line is `KEY=VALUE`;
+  blank lines, lines starting with `#` and lines without `=` are skipped. Quotes are kept as
+  part of the value and `export` isn't understood. A missing or unreadable
+  file fails the hook.
+- Write file paths as strings. A path literal like `./webhook.env` is copied
+  into the world-readable Nix store.
+- Secrets that are decrypted on the host, like agenix or sops-nix paths, only
+  work here if the same file exists on the deploying machine.
 
-**`environmentFiles`**: List of files containing environment variables (KEY=VALUE format, one per line). Useful for secrets:
-```nix
-environmentFiles = [
-  config.age.secrets.deploy-tokens.path
-  /run/secrets/api-keys
-];
-```
-
-Environment files are loaded first, then `environment` variables are applied (allowing explicit variables to override file contents).
+Environment files are loaded first, then `environment` is applied, so
+`environment` overrides file contents.
 
 ## Variable Substitution
 
-Hooks support Nix string interpolation for host-specific values:
-
-```nix
-{
-  command = "kubectl drain ${config.networking.hostName}";
-  #                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  #                        Substituted during Nix evaluation
-}
-```
-
-This is evaluated when building the configuration, so the command stored in metadata contains the actual hostname.
+Nix interpolation in a command, like `${config.networking.hostName}`, is
+resolved when snow evaluates the host. snow writes every hook to the host's
+`snowglobe.hooksFile`, a JSON file it builds before the push starts, so the
+command it runs already holds the actual hostname.
 
 ## Complete Examples
 
 ### Kubernetes Cluster
 
-Zero-downtime rolling updates for Kubernetes nodes:
+Rolling updates, one node at a time. `features.kubernetes.enable` stands for
+an option of your own:
 
 ```nix
-# In features/linux/kubernetes.nix
 { config, lib, ... }:
-
 {
   config = lib.mkIf config.features.kubernetes.enable {
+    snowglobe.push.serialGroup = "kubernetes";
+
     snowglobe.hooks = {
-      pre-deploy = {
-        drain-node = {
-          location = "local";
-          command = "kubectl drain --delete-emptydir-data --ignore-daemonsets --timeout=5m ${config.networking.hostName}";
-          timeout = 360;
-          continueOnFailure = false;
-        };
+      pre-deploy.drain-node = {
+        location = "local";
+        command = "kubectl drain --delete-emptydir-data --ignore-daemonsets --timeout=5m ${config.networking.hostName}";
+        timeout = 360;
       };
 
-      post-deploy = {
-        uncordon-node = {
-          location = "local";
-          command = "kubectl uncordon ${config.networking.hostName}";
-          timeout = 60;
-          continueOnFailure = true;  # Always uncordon
-        };
+      post-reboot.wait-node-ready = {
+        location = "local";
+        command = "kubectl wait --for=condition=Ready node/${config.networking.hostName} --timeout=5m";
+        timeout = 360;
       };
 
-      post-reboot = {
-        wait-node-ready = {
-          location = "local";
-          command = "kubectl wait --for=condition=Ready node/${config.networking.hostName} --timeout=5m";
-          timeout = 360;
-          continueOnFailure = false;
-        };
+      post-deploy.uncordon-node = {
+        location = "local";
+        command = "kubectl uncordon ${config.networking.hostName}";
+        timeout = 60;
       };
 
-      on-failure = {
-        uncordon-node = {
-          location = "local";
-          command = "kubectl uncordon ${config.networking.hostName}";
-          timeout = 60;
-          continueOnFailure = true;  # Cleanup: uncordon even on failure
-        };
-      };
-    };
-  };
-}
-```
-
-### Consul Cluster
-
-Gracefully leave and rejoin Consul cluster:
-
-```nix
-{
-  snowglobe.hooks = {
-    pre-deploy = {
-      leave-cluster = {
-        location = "remote";
-        command = "consul leave";
-        timeout = 30;
-        continueOnFailure = true;  # Leave is best-effort
-      };
-    };
-
-    post-reboot = {
-      wait-cluster-rejoin = {
-        location = "remote";
-        command = "until consul members | grep ${config.networking.hostName}; do sleep 2; done";
-        timeout = 120;
-        continueOnFailure = false;
+      on-failure.uncordon-node = {
+        location = "local";
+        command = "kubectl uncordon ${config.networking.hostName}";
+        timeout = 60;
+        continueOnFailure = true;
       };
     };
   };
@@ -423,42 +346,37 @@ Gracefully leave and rejoin Consul cluster:
 
 ### Load Balancer Integration
 
-Remove from and add back to load balancer:
-
 ```nix
+{ config, ... }:
 {
   snowglobe.hooks = {
     pre-deploy = {
       remove-from-pool = {
         location = "local";
-        command = "curl -X POST https://lb.example.com/api/pool/remove -d '{\"host\": \"${config.networking.hostName}\"}'";
+        command = "curl -fsS -X POST https://lb.example.com/api/pool/remove -d '{\"host\": \"${config.networking.hostName}\"}'";
         timeout = 30;
-        continueOnFailure = false;
+        priority = 10;
       };
       drain-connections = {
         location = "local";
-        command = "sleep 10";  # Wait for connections to drain
+        command = "sleep 10";
         timeout = 15;
-        continueOnFailure = false;
+        priority = 20;
       };
     };
 
-    post-deploy = {
-      add-to-pool = {
-        location = "local";
-        command = "curl -X POST https://lb.example.com/api/pool/add -d '{\"host\": \"${config.networking.hostName}\"}'";
-        timeout = 30;
-        continueOnFailure = false;
-      };
+    post-deploy.add-to-pool = {
+      location = "local";
+      command = "curl -fsS -X POST https://lb.example.com/api/pool/add -d '{\"host\": \"${config.networking.hostName}\"}'";
+      timeout = 30;
+      retries = 3;
     };
 
-    on-failure = {
-      add-to-pool = {
-        location = "local";
-        command = "curl -X POST https://lb.example.com/api/pool/add -d '{\"host\": \"${config.networking.hostName}\"}'";
-        timeout = 30;
-        continueOnFailure = true;  # Always re-add to pool
-      };
+    on-failure.add-to-pool = {
+      location = "local";
+      command = "curl -fsS -X POST https://lb.example.com/api/pool/add -d '{\"host\": \"${config.networking.hostName}\"}'";
+      timeout = 30;
+      continueOnFailure = true;
     };
   };
 }
@@ -466,298 +384,146 @@ Remove from and add back to load balancer:
 
 ### Custom Validation
 
-Validate deployment before considering it successful:
+Fail the host if its services aren't healthy after the deploy:
 
 ```nix
 {
-  snowglobe.hooks = {
-    post-deploy = {
-      check-services = {
-        location = "remote";
-        command = "systemctl is-active nginx postgresql";
-        timeout = 30;
-        continueOnFailure = false;  # Fail deployment if services aren't running
-      };
-    };
-
-    post-reboot = {
-      check-health = {
-        location = "remote";
-        command = "curl --fail http://localhost:8080/health";
-        timeout = 60;
-        continueOnFailure = false;  # Fail if health check fails
-      };
-    };
-  };
-}
-```
-
-### Notifications and Alerts
-
-Send notifications during deployment using environment files for secrets:
-
-```nix
-{ pkgs, config, ... }:
-
-let
-  notifySlack = pkgs.writeShellScript "notify-slack.sh" ''
-    #!/usr/bin/env bash
-    set -euo pipefail
-
-    MESSAGE="$1"
-
-    curl -X POST https://slack.com/api/chat.postMessage \
-      -H "Authorization: Bearer $SLACK_WEBHOOK_TOKEN" \
-      -H "Content-Type: application/json" \
-      -d "{
-        \"channel\": \"$SLACK_CHANNEL\",
-        \"text\": \"$MESSAGE\"
-      }"
-  '';
-in
-{
-  snowglobe.hooks = {
-    pre-deploy = {
-      notify-start = {
-        location = "local";
-        command = "${notifySlack} 'Starting deployment to ${config.networking.hostName}'";
-        environment = {
-          SLACK_CHANNEL = "#deploys";
-        };
-        environmentFiles = [
-          config.age.secrets.slack-webhook.path  # Contains SLACK_WEBHOOK_TOKEN=...
-        ];
-        timeout = 10;
-        continueOnFailure = true;  # Don't fail deployment if notification fails
-      };
-    };
-
-    on-failure = {
-      notify-failure = {
-        location = "local";
-        command = "${notifySlack} 'Deployment failed for ${config.networking.hostName}'";
-        environment = {
-          SLACK_CHANNEL = "#alerts";
-        };
-        environmentFiles = [
-          config.age.secrets.slack-webhook.path
-        ];
-        timeout = 30;
-        continueOnFailure = true;
-      };
-    };
+  snowglobe.hooks.post-deploy.check-services = {
+    location = "remote";
+    command = "systemctl is-active nginx postgresql";
+    timeout = 30;
   };
 }
 ```
 
 ## Best Practices
 
-### 1. Use Appropriate `continueOnFailure` Settings
-
-```nix
-# Critical pre-deployment checks: fail fast
-pre-deploy = {
-  check-health = {
-    command = "check-cluster-health";
-    continueOnFailure = false;
-  };
-};
-
-# Cleanup operations: always run
-post-deploy = {
-  uncordon-node = {
-    command = "kubectl uncordon ${config.networking.hostName}";
-    continueOnFailure = true;
-  };
-};
-```
-
-### 2. Set Realistic Timeouts
-
-```nix
-# Quick health checks
-{ command = "curl localhost:8080/health"; timeout = 10; }
-
-# Slow operations like draining
-{ command = "kubectl drain ..."; timeout = 600; }
-```
-
-### 3. Use on-failure for Cleanup
-
-Always uncordon nodes or re-add to pools even if deployment fails:
-
-```nix
-on-failure = {
-  uncordon-node = {
-    location = "local";
-    command = "kubectl uncordon ${config.networking.hostName}";
-    continueOnFailure = true;
-  };
-};
-```
-
-### 4. Organize Hooks in Feature Modules
-
-Define hooks alongside the feature they support:
-
-```nix
-# features/linux/kubernetes.nix
-{ config, lib, ... }:
-{
-  config = lib.mkIf config.features.kubernetes.enable {
-    snowglobe.hooks = {
-      pre-deploy = {
-        drain-node = { /* kubectl drain */ };
-      };
-      post-deploy = {
-        uncordon-node = { /* kubectl uncordon */ };
-      };
-    };
-  };
-}
-```
-
-### 5. Test Hooks Before Production
-
-Test hooks on a single host before rolling out to the cluster:
-
-```bash
-# Deploy to a single test host first
-snow push test-host
-
-# Then deploy to the full phase
-snow push --phase production
-```
-
-### 6. Use Remote Hooks Sparingly
-
-Prefer local execution for cluster orchestration. Use remote hooks only for host-specific operations:
-
-```nix
-# Good: Cluster orchestration from local
-{ location = "local"; command = "kubectl drain ..."; }
-
-# Good: Host-specific check on remote
-{ location = "remote"; command = "systemctl is-active docker"; }
-```
-
-### 7. Make Hooks Idempotent
-
-Hooks may be retried, so ensure they can run multiple times safely:
-
-```bash
-# Bad: Fails if already drained
-kubectl drain node
-
-# Good: Succeeds even if already drained
-kubectl drain node || kubectl get node | grep SchedulingDisabled
-```
+- **Fail fast before the deploy, be lenient after it.** Leave
+  `continueOnFailure = false` on pre-deploy checks. Set it to `true` on
+  notifications and on-failure hooks.
+- **Set realistic timeouts.** A health check needs seconds; a drain may need
+  minutes.
+- **Clean up in `on-failure`.** `post-deploy` doesn't run after a failure, so
+  undo pre-deploy work (uncordon, re-add to a pool) there too.
+- **Keep hooks next to the feature they support,** in the same module.
+- **Try hooks on one host first:** `snow push test-host`, then
+  `snow push --phase production`.
+- **Prefer local hooks for cluster orchestration,** and remote hooks for
+  host-specific checks.
+- **Make hooks idempotent,** especially with `retries`: a retried or
+  re-pushed hook may find its work already done.
 
 ## Troubleshooting
 
 ### Hook Failures
 
-When a hook fails, you'll see:
+A failed hook fails the host. Its error names the hook, stage and command,
+with the exit code and stderr (a timed-out hook shows exit code `-1`). snow
+also logs a line like:
 
 ```
-ERROR Hook failed for web01 (exit code: 1): error message from stderr
+web01: hook 'drain-node' (pre-deploy) failed with exit code 1 after 3 attempts: <stderr>
 ```
 
-**Debug steps:**
-1. Check the hook command runs successfully manually
-2. Verify environment variables are available (`KUBECONFIG`, etc.)
-3. Increase timeout if the command is slow
-4. Check SSH connectivity for remote hooks
+For a timed-out hook, the log line reads `failed without an exit code`. To
+debug:
 
-### Hooks Not Executing
+1. Run the command by hand where the hook runs.
+2. Check the environment variables it needs are set (`KUBECONFIG`, etc.).
+3. Raise the timeout if the command is slow.
+4. For remote hooks, check SSH access as the push user. snow runs ssh with
+   `BatchMode=yes`, so the key must work without a prompt and the host key
+   must already be known.
 
-**Verify hooks are configured:**
+### Hooks Not Running
+
+Look at a host's hooks with:
+
 ```bash
-# Check host metadata includes hooks
-snow list -e 'c: c.snowglobe.hooks or {}'
+nix eval .#nixosConfigurations.web01.config.snowglobe.hooks.pre-deploy --json
 ```
 
-**Common issues:**
-- Hooks configured in wrong location (must be under `config.snowglobe.hooks`)
-- Typo in stage name (must be `pre-deploy`, not `preDeploy`)
-- Missing `continueOnFailure` field (defaults to `false`)
+Evaluate one stage at a time: the removed `pre-activate` and `post-activate`
+stages throw when read.
 
-### SSH Issues with Remote Hooks
+Common causes:
+- The host is unchanged. Unchanged hosts run no hooks; use `--redeploy` to
+  deploy them anyway.
+- `--dry-run` runs no hooks.
+- `post-reboot` only runs after a reboot.
+- `post-deploy` doesn't run if an earlier step failed.
 
-Remote hooks use SSH to connect to the target host. Ensure:
-- SSH key authentication is configured
-- The user has permission to run the command
-- The command is in the `PATH` on the remote system
+A misspelled stage name (`preDeploy` instead of `pre-deploy`) fails evaluation
+with "option does not exist".
 
 ## Migration from External Wrappers
 
-If you currently use wrapper scripts around `snow push`:
+Before, a wrapper around `snow push`:
 
-**Before (justfile wrapper):**
 ```bash
 push-k8s:
   kubectl drain node1 node2 node3
-  snow push --hosts node1,node2,node3
+  snow push node1 node2 node3
   kubectl uncordon node1 node2 node3
 ```
 
-**After (hooks in NixOS config):**
+After, with hooks and a serial group in the host config:
+
 ```nix
-# features/linux/kubernetes.nix
-config.snowglobe.hooks = {
-  pre-deploy = {
-    drain-node = { location = "local"; command = "kubectl drain ${config.networking.hostName}"; };
+{ config, ... }:
+{
+  snowglobe.push.serialGroup = "kubernetes";
+  snowglobe.hooks = {
+    pre-deploy.drain-node = { location = "local"; command = "kubectl drain ${config.networking.hostName}"; };
+    post-deploy.uncordon-node = { location = "local"; command = "kubectl uncordon ${config.networking.hostName}"; };
   };
-  post-deploy = {
-    uncordon-node = { location = "local"; command = "kubectl uncordon ${config.networking.hostName}"; };
-  };
-};
+}
 ```
 
 ```bash
-# Just deploy directly
-snow push --hosts node1,node2,node3
+snow push node1 node2 node3
 ```
 
-**Benefits:**
-- Proper per-host orchestration (rolling updates)
-- Better error handling
-- Integrated logging
-- No external wrapper scripts needed
+Each node is drained, deployed and uncordoned in turn, and a failure stops the
+rest of the group.
 
-## Logging and Observability
+## Logging
 
-Hooks integrate with snowglobe's logging via `tracing`:
+snow logs each hook attempt and its result:
 
 ```
-INFO  hooks: Executing pre-deploy hook for web01: kubectl drain web01
-INFO  hooks: Hook completed successfully for web01 in 12.3s
+Executing pre-deploy hook 'drain-node' for web01 (attempt 1/1): kubectl drain web01
+Hook 'drain-node' completed successfully for web01 in 12.345678s
 ```
 
-**Hook lifecycle logging:**
-- Hook start with command
-- Hook completion with duration
-- Hook failure with exit code and stderr
-- Warnings for hooks with `continueOnFailure = true`
-
-Set `RUST_LOG=hooks=debug` for verbose hook debugging.
+Interactive pushes write the log to `/tmp/snow-<timestamp>.log`; other pushes
+log to stderr. Hook logs use
+the `snowlib::push::hooks` target at info level, which the default log level
+includes. Setting `RUST_LOG` replaces the default, so if you set it, include
+`snowlib=info`.
 
 ## FAQ
 
-**Q: Can I use hooks to modify the system before building?**
-A: No, hooks run during deployment, not during build. Use NixOS configuration for system modifications.
+**Can hooks change the system before it's built?**
+No. Hooks run during the push, after the build. Change the system through its
+NixOS or nix-darwin config.
 
-**Q: Do hooks run in parallel?**
-A: Hooks for different hosts run in parallel (same as deployment). Hooks for the same host run sequentially in the order defined.
+**Do hooks run in parallel?**
+Hooks of different hosts run in parallel, up to `--concurrency`, except within
+a serial group, where hosts take turns. A host's hooks in one stage run one at
+a time, by `priority` and then name.
 
-**Q: Can hooks access secrets?**
-A: Yes, via environment variables or files on the local machine (for local hooks) or target host (for remote hooks).
+**Can hooks access secrets?**
+Yes, through `environmentFiles` on the machine running `snow`, or through files
+the command reads itself. For remote hooks, a file the command reads on the
+host works too.
 
-**Q: What happens if a hook times out?**
-A: The hook is killed and treated as a failure (unless `continueOnFailure = true`).
+**What happens if a hook times out?**
+The attempt fails like a non-zero exit, and is retried if `retries` allows.
 
-**Q: Can I skip hooks for a specific deployment?**
-A: Not currently. Hooks are part of the host configuration and always execute.
+**Can I skip hooks for one push?**
+Only with `--dry-run`, which runs no hooks. Otherwise every changed host runs
+its hooks.
 
-**Q: Do hooks work with `--dry-run`?**
-A: No, hooks do not execute during dry-run mode.
+**Do hooks run with `--dry-run`?**
+No.
