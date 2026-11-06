@@ -1,9 +1,10 @@
 use crate::error::{DeployError, Result};
 use crate::nix::{ActivationMode, StorePath, SystemType};
-use crate::process::r#async::run_command;
 use crate::process::OutputMode;
+use crate::sudo::Sudo;
 use async_trait::async_trait;
 use std::path::Path;
+use std::sync::Arc;
 
 use super::{
     activation_mode_to_string, command_failed, should_update_profile, store_path_from_resolved,
@@ -17,6 +18,7 @@ use super::{
 pub struct LocalDeployBackend {
     /// Output mode for subprocess operations
     pub output_mode: OutputMode,
+    sudo: Arc<Sudo>,
 }
 
 fn store_path_at(link: &Path, host: &str) -> Result<StorePath> {
@@ -28,9 +30,10 @@ fn store_path_at(link: &Path, host: &str) -> Result<StorePath> {
 }
 
 impl LocalDeployBackend {
-    pub fn new() -> Self {
+    pub fn new(sudo: Arc<Sudo>) -> Self {
         Self {
             output_mode: OutputMode::Inherit,
+            sudo,
         }
     }
 
@@ -41,6 +44,23 @@ impl LocalDeployBackend {
 
     pub fn with_quiet(self) -> Self {
         self.with_output_mode(OutputMode::Capture)
+    }
+
+    /// `doing` says what the command is for, as in "update system profile"
+    async fn run_as_root(&self, host: &str, command: &[&str], doing: &str) -> Result<()> {
+        let result = self
+            .sudo
+            .run(command, self.output_mode)
+            .await?
+            .map_err(|e| DeployError::Failed {
+                host: host.to_string(),
+                source: std::io::Error::new(e.kind(), format!("Failed to {doing}: {e}")),
+            })?;
+        if !result.status.success() {
+            let command = format!("sudo {}", command.join(" "));
+            return Err(command_failed(host, command, &result).into());
+        }
+        Ok(())
     }
 }
 
@@ -86,73 +106,33 @@ impl DeployBackend for LocalDeployBackend {
 
         // Create system profile generation for rollback support (persistent modes only)
         if should_update_profile(mode) {
-            let args = [
+            let set_profile = [
                 "nix-env",
                 "--profile",
                 "/nix/var/nix/profiles/system",
                 "--set",
                 store_path.as_str(),
             ];
-
-            let result = run_command("sudo", &args, self.output_mode, None, None, &[])
-                .await
-                .map_err(|e| DeployError::Failed {
-                    host: target.hostname.clone(),
-                    source: std::io::Error::new(
-                        e.kind(),
-                        format!("Failed to update system profile: {}", e),
-                    ),
-                })?;
-
-            if !result.status.success() {
-                let command_display = format!(
-                    "sudo nix-env --profile /nix/var/nix/profiles/system --set {}",
-                    store_path.as_str()
-                );
-                return Err(command_failed(&target.hostname, command_display, &result).into());
-            }
+            self.run_as_root(&target.hostname, &set_profile, "update system profile")
+                .await?;
         }
 
-        let (owned_args, command_name): (Vec<String>, &str) = match system_type {
-            SystemType::NixOS => {
-                let switch_to_configuration =
-                    format!("{}/bin/switch-to-configuration", store_path.as_str());
-                let mode_arg = activation_mode_to_string(mode);
-                (
-                    vec![switch_to_configuration, mode_arg.to_string()],
-                    "switch-to-configuration",
-                )
-            }
-            SystemType::Darwin => {
-                // Only Switch mode reaches here - others rejected at top of function
-                let activate_script = format!("{}/activate", store_path.as_str());
-                (vec![activate_script], "activate script")
-            }
+        let (activation, doing) = match system_type {
+            SystemType::NixOS => (
+                vec![
+                    format!("{}/bin/switch-to-configuration", store_path.as_str()),
+                    activation_mode_to_string(mode).to_string(),
+                ],
+                "execute switch-to-configuration",
+            ),
+            // Only Switch mode reaches here - others rejected at top of function
+            SystemType::Darwin => (
+                vec![format!("{}/activate", store_path.as_str())],
+                "execute activate script",
+            ),
         };
-
-        let args: Vec<&str> = owned_args.iter().map(|s| s.as_str()).collect();
-        let result = run_command("sudo", &args, self.output_mode, None, None, &[])
-            .await
-            .map_err(|e| DeployError::Failed {
-                host: target.hostname.clone(),
-                source: std::io::Error::new(
-                    e.kind(),
-                    format!("Failed to execute {}: {}", command_name, e),
-                ),
-            })?;
-
-        if !result.status.success() {
-            let command = format!("sudo {}", owned_args.join(" "));
-            return Err(command_failed(&target.hostname, command, &result).into());
-        }
-
-        Ok(())
-    }
-}
-
-impl Default for LocalDeployBackend {
-    fn default() -> Self {
-        Self::new()
+        let activation: Vec<&str> = activation.iter().map(String::as_str).collect();
+        self.run_as_root(&target.hostname, &activation, doing).await
     }
 }
 
@@ -187,7 +167,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_copy_closure_is_noop() {
-        let backend = LocalDeployBackend::new();
+        let (_sudo, backend) = create_test_backend();
         let target = DeployTarget {
             user: None,
             hostname: "localhost".to_string(),
@@ -201,7 +181,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_activate_nonexistent_path() {
-        let backend = LocalDeployBackend::new().with_quiet();
+        let (_sudo, backend) = create_test_backend();
         let target = DeployTarget {
             user: None,
             hostname: "localhost".to_string(),
@@ -227,7 +207,7 @@ mod tests {
     #[tokio::test]
     #[cfg(target_os = "macos")]
     async fn test_activate_darwin_boot_mode_errors() {
-        let backend = LocalDeployBackend::new().with_quiet();
+        let (_sudo, backend) = create_test_backend();
         let target = DeployTarget {
             user: None,
             hostname: "localhost".to_string(),
@@ -258,7 +238,7 @@ mod tests {
     #[tokio::test]
     #[cfg(target_os = "macos")]
     async fn test_activate_darwin_dry_activate_errors() {
-        let backend = LocalDeployBackend::new().with_quiet();
+        let (_sudo, backend) = create_test_backend();
         let target = DeployTarget {
             user: None,
             hostname: "localhost".to_string(),
@@ -289,14 +269,70 @@ mod tests {
 
     use super::super::common::test_utils::{create_test_store_path, create_test_target};
 
-    fn create_test_backend() -> LocalDeployBackend {
-        LocalDeployBackend::new().with_quiet()
+    use crate::sudo::test_utils::FakeSudo;
+
+    /// Leaves out the session's own checks
+    fn commands_run(sudo: &FakeSudo) -> Vec<String> {
+        sudo.calls()
+            .into_iter()
+            .filter(|call| call != "-n -v")
+            .collect()
+    }
+
+    /// Its sudo fails every command, as running the made-up store paths would
+    fn create_test_backend() -> (FakeSudo, LocalDeployBackend) {
+        let sudo = FakeSudo::new().with("fails");
+        let backend = LocalDeployBackend::new(sudo.session()).with_quiet();
+        (sudo, backend)
+    }
+
+    #[tokio::test]
+    #[cfg(not(target_os = "macos"))]
+    async fn test_switch_sets_the_profile_then_switches_through_sudo() {
+        let sudo = FakeSudo::new().with("pretends");
+        let backend = LocalDeployBackend::new(sudo.session()).with_quiet();
+        let system = create_test_store_path("/nix/store/36vm-nixos-system-boron");
+
+        backend
+            .activate(
+                &create_test_target("boron"),
+                &system,
+                ActivationMode::Switch,
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(
+            commands_run(&sudo),
+            vec![
+                "-n nix-env --profile /nix/var/nix/profiles/system --set /nix/store/36vm-nixos-system-boron",
+                "-n /nix/store/36vm-nixos-system-boron/bin/switch-to-configuration switch",
+            ]
+        );
+    }
+
+    #[tokio::test]
+    #[cfg(not(target_os = "macos"))]
+    async fn test_failed_profile_update_skips_the_switch() {
+        let (sudo, backend) = create_test_backend();
+        let system = create_test_store_path("/nix/store/36vm-nixos-system-boron");
+
+        let error = backend
+            .activate(&create_test_target("boron"), &system, ActivationMode::Boot)
+            .await
+            .unwrap_err();
+
+        assert!(error.to_string().contains("Command failed on host 'boron'"));
+        assert!(!sudo
+            .calls()
+            .iter()
+            .any(|call| call.contains("switch-to-configuration")));
     }
 
     #[tokio::test]
     #[cfg(not(target_os = "macos"))]
     async fn test_activate_nixos_uses_switch_to_configuration() {
-        let backend = create_test_backend();
+        let (_sudo, backend) = create_test_backend();
         let target = create_test_target("localhost");
         let store_path = create_test_store_path("/nix/store/nonexistent-nixos-system");
 
@@ -323,7 +359,7 @@ mod tests {
     #[tokio::test]
     #[cfg(not(target_os = "macos"))]
     async fn test_activate_switch_attempts_profile_update_on_nixos() {
-        let backend = create_test_backend();
+        let (_sudo, backend) = create_test_backend();
         let target = create_test_target("localhost");
         let store_path = create_test_store_path("/nix/store/test-system");
 
@@ -344,7 +380,7 @@ mod tests {
     #[tokio::test]
     #[cfg(not(target_os = "macos"))]
     async fn test_activate_boot_attempts_profile_update_on_nixos() {
-        let backend = create_test_backend();
+        let (_sudo, backend) = create_test_backend();
         let target = create_test_target("localhost");
         let store_path = create_test_store_path("/nix/store/test-system");
 
@@ -365,13 +401,17 @@ mod tests {
     #[tokio::test]
     #[cfg(not(target_os = "macos"))]
     async fn test_activate_test_skips_profile_update_on_nixos() {
-        let backend = create_test_backend();
+        let (sudo, backend) = create_test_backend();
         let target = create_test_target("localhost");
         let store_path = create_test_store_path("/nix/store/test-system");
 
         let result = backend
             .activate(&target, &store_path, ActivationMode::Test)
             .await;
+        assert_eq!(
+            commands_run(&sudo),
+            vec!["-n /nix/store/test-system/bin/switch-to-configuration test"]
+        );
 
         assert!(result.is_err());
         let err_string = format!("{:?}", result.unwrap_err());
@@ -392,13 +432,17 @@ mod tests {
     #[tokio::test]
     #[cfg(not(target_os = "macos"))]
     async fn test_activate_dry_activate_skips_profile_update_on_nixos() {
-        let backend = create_test_backend();
+        let (sudo, backend) = create_test_backend();
         let target = create_test_target("localhost");
         let store_path = create_test_store_path("/nix/store/test-system");
 
         let result = backend
             .activate(&target, &store_path, ActivationMode::DryActivate)
             .await;
+        assert_eq!(
+            commands_run(&sudo),
+            vec!["-n /nix/store/test-system/bin/switch-to-configuration dry-activate"]
+        );
 
         assert!(result.is_err());
         let err_string = format!("{:?}", result.unwrap_err());
@@ -419,7 +463,7 @@ mod tests {
     #[tokio::test]
     #[cfg(not(target_os = "macos"))]
     async fn test_activate_with_realistic_store_paths() {
-        let backend = create_test_backend();
+        let (_sudo, backend) = create_test_backend();
         let target = create_test_target("hydrogen");
         let store_path =
             create_test_store_path("/nix/store/abc123def456-nixos-system-hydrogen-24.05");
@@ -441,7 +485,7 @@ mod tests {
     #[tokio::test]
     #[cfg(target_os = "macos")]
     async fn test_activate_switch_attempts_profile_update_on_darwin() {
-        let backend = create_test_backend();
+        let (_sudo, backend) = create_test_backend();
         let target = create_test_target("localhost");
         let store_path = create_test_store_path("/nix/store/test-darwin-system");
 

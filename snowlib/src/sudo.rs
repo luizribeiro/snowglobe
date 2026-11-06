@@ -258,8 +258,10 @@ pub(crate) mod test_utils {
 
     /// A sudo that remembers the password in `remembers`, forgets it for
     /// good while `forgets` exists, refuses it while `refuses` exists, and
-    /// fails `sudo -n -v` while `validate-asks` exists. It logs every call
-    /// to `calls`.
+    /// fails `sudo -n -v` while `validate-asks` exists. Commands other than
+    /// `true` exit 0 without running while `pretends` exists, and fail
+    /// while `fails` exists, so backends' tests never run them. It logs
+    /// every call to `calls`.
     pub struct FakeSudo {
         pub dir: tempfile::TempDir,
     }
@@ -282,6 +284,10 @@ if [ "$1" = -n ]; then
     [ -e "$dir/validate-asks" ] && exit 1
     exit 0
   fi
+fi
+if [ "$1" != true ]; then
+  [ -e "$dir/pretends" ] && exit 0
+  [ -e "$dir/fails" ] && {{ echo "$1: No such file or directory" >&2; exit 1; }}
 fi
 exec "$@"
 "#,
@@ -312,6 +318,18 @@ exec "$@"
                 .lines()
                 .map(String::from)
                 .collect()
+        }
+
+        /// A session that has the password already, for backends' tests
+        pub fn session(&self) -> Arc<Sudo> {
+            self.set("remembers");
+            Arc::new(Sudo {
+                access: Access::Remembered,
+                options: self.options(false, false),
+                terminal: Arc::new(Pauses::default()),
+                asking: tokio::sync::Mutex::new(()),
+                _keepalive: None,
+            })
         }
 
         fn path(&self, name: &str) -> std::path::PathBuf {

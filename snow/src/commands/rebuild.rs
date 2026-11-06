@@ -1,11 +1,13 @@
+use crate::cursor::Cursor;
 use crate::marks;
 use crate::prompt;
 use clap::Args;
 use console::style;
 use snowlib::{
     ActivationMode, DeployBackend, DeployTarget, Flake, LocalDeployBackend, LocalRebootBackend,
-    RebootBackend, RebootCheck, Result, SystemType,
+    RebootBackend, RebootCheck, Result, Sudo, SudoPrompt, SudoTerminal, SystemType,
 };
+use std::sync::Arc;
 
 /// Rebuild the current host
 #[derive(Debug, Args)]
@@ -129,6 +131,15 @@ impl RebuildArgs {
             snowlib::OutputMode::Inherit
         };
 
+        // Asked before the build, so a long build doesn't wait for a
+        // password typed only once it is done
+        let sudo = Arc::new(
+            Sudo::start(Arc::new(SudoView {
+                hostname: hostname.clone(),
+            }))
+            .await?,
+        );
+
         let system_type = SystemType::detect_current();
 
         println!("Building configuration...");
@@ -144,7 +155,7 @@ impl RebuildArgs {
             port: None,
         };
 
-        let deploy_backend = LocalDeployBackend::new().with_output_mode(output_mode);
+        let deploy_backend = LocalDeployBackend::new(sudo).with_output_mode(output_mode);
         let reboot_backend = LocalRebootBackend::default();
 
         let mode = self.activation_mode();
@@ -217,6 +228,24 @@ impl RebuildArgs {
         }
 
         Ok(())
+    }
+}
+
+/// Shows the cursor while sudo may read the password, as at any typed answer
+struct SudoView {
+    hostname: String,
+}
+
+impl SudoTerminal for SudoView {
+    fn pause(&self, prompt: SudoPrompt) {
+        if prompt == SudoPrompt::Password {
+            println!("{} needs sudo", self.hostname);
+        }
+        Cursor::stderr().show();
+    }
+
+    fn resume(&self) {
+        Cursor::stderr().hide();
     }
 }
 
