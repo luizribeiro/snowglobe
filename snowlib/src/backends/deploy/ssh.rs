@@ -163,13 +163,7 @@ impl SshDeployBackend {
         remote_args: &[&str],
     ) -> Vec<String> {
         let mut args = self.ssh_command[1..].to_vec();
-        args.extend(ssh_options(CONNECT_TIMEOUT_SECS, keepalive));
-
-        if let Some(port) = target.port {
-            args.push("-p".to_string());
-            args.push(port.to_string());
-        }
-
+        args.extend(ssh_options(CONNECT_TIMEOUT_SECS, keepalive, target.port));
         args.push(self.get_destination(target));
         args.extend(remote_args.iter().map(|s| s.to_string()));
         args
@@ -221,7 +215,7 @@ impl DeployBackend for SshDeployBackend {
 
         let args = ["copy", "--to", &ssh_target, store_path.as_str()];
         let command = args_to_command_string("nix", &args);
-        let sshopts = nix_sshopts(std::env::var("NIX_SSHOPTS").ok().as_deref());
+        let sshopts = nix_sshopts(std::env::var("NIX_SSHOPTS").ok().as_deref(), target.port);
         let env = [("NIX_SSHOPTS", sshopts.as_str())];
 
         let result = run_command("nix", &args, self.output_mode, None, None, &env)

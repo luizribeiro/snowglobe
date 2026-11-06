@@ -31,7 +31,12 @@ pub(crate) enum Keepalive {
 /// forwarded, it could sign in to every other host as the deployer.
 pub(crate) const NO_AGENT_FORWARDING: &str = "ForwardAgent=no";
 
-pub(crate) fn ssh_options(connect_timeout_secs: u64, keepalive: Keepalive) -> Vec<String> {
+/// Without a `port`, ssh connects to the one the user's ssh config gives the host
+pub(crate) fn ssh_options(
+    connect_timeout_secs: u64,
+    keepalive: Keepalive,
+    port: Option<u16>,
+) -> Vec<String> {
     let mut options = vec![
         "BatchMode=yes".to_string(),
         format!("ConnectTimeout={connect_timeout_secs}"),
@@ -41,17 +46,21 @@ pub(crate) fn ssh_options(connect_timeout_secs: u64, keepalive: Keepalive) -> Ve
         options.push(format!("ServerAliveInterval={SERVER_ALIVE_INTERVAL_SECS}"));
         options.push(format!("ServerAliveCountMax={SERVER_ALIVE_COUNT_MAX}"));
     }
-    options
+    let mut args: Vec<String> = options
         .into_iter()
         .flat_map(|option| ["-o".to_string(), option])
-        .collect()
+        .collect();
+    if let Some(port) = port {
+        args.extend(["-p".to_string(), port.to_string()]);
+    }
+    args
 }
 
 /// `NIX_SSHOPTS` for `nix copy`, after the user's own. ssh keeps the first
 /// value it sees for an option, so the user's win. An interrupted copy is
 /// safe to retry, so it uses probe keepalives.
-pub(crate) fn nix_sshopts(existing: Option<&str>) -> String {
-    let ours = ssh_options(CONNECT_TIMEOUT_SECS, Keepalive::Probe).join(" ");
+pub(crate) fn nix_sshopts(existing: Option<&str>, port: Option<u16>) -> String {
+    let ours = ssh_options(CONNECT_TIMEOUT_SECS, Keepalive::Probe, port).join(" ");
     match existing.map(str::trim).filter(|s| !s.is_empty()) {
         Some(existing) => format!("{existing} {ours}"),
         None => ours,
@@ -135,7 +144,7 @@ mod tests {
 
     #[test]
     fn test_probes_give_up_on_a_silent_host() {
-        let options = ssh_options(5, Keepalive::Probe).join(" ");
+        let options = ssh_options(5, Keepalive::Probe, None).join(" ");
 
         assert_eq!(
             options,
@@ -145,7 +154,7 @@ mod tests {
 
     #[test]
     fn test_activation_keeps_waiting_on_a_silent_host() {
-        let options = ssh_options(10, Keepalive::Never).join(" ");
+        let options = ssh_options(10, Keepalive::Never, None).join(" ");
 
         assert_eq!(
             options,
@@ -155,12 +164,40 @@ mod tests {
 
     #[test]
     fn test_nix_sshopts_keeps_the_users_options() {
-        let sshopts = nix_sshopts(Some("-i /home/luiz/.ssh/deploy -p 2222"));
+        let sshopts = nix_sshopts(Some("-i /home/luiz/.ssh/deploy"), None);
 
-        assert!(sshopts.starts_with("-i /home/luiz/.ssh/deploy -p 2222 -o BatchMode=yes"));
+        assert!(sshopts.starts_with("-i /home/luiz/.ssh/deploy -o BatchMode=yes"));
         assert_eq!(sshopts.matches("-o ForwardAgent=no").count(), 1);
         assert!(sshopts.ends_with("-o ServerAliveCountMax=3"));
-        assert_eq!(nix_sshopts(Some("  ")), nix_sshopts(None));
+        assert_eq!(nix_sshopts(Some("  "), None), nix_sshopts(None, None));
+    }
+
+    #[test]
+    fn test_ssh_options_connect_to_the_hosts_port() {
+        let options = ssh_options(10, Keepalive::Never, Some(2222)).join(" ");
+
+        assert_eq!(
+            options,
+            "-o BatchMode=yes -o ConnectTimeout=10 -o ForwardAgent=no -p 2222"
+        );
+    }
+
+    #[test]
+    fn test_nix_sshopts_copies_to_the_hosts_port() {
+        let sshopts = nix_sshopts(Some("-i /home/luiz/.ssh/deploy"), Some(2222));
+
+        assert!(sshopts.starts_with("-i /home/luiz/.ssh/deploy -o BatchMode=yes"));
+        assert!(
+            sshopts.ends_with("-o ServerAliveCountMax=3 -p 2222"),
+            "{sshopts}"
+        );
+    }
+
+    #[test]
+    fn test_nix_sshopts_puts_the_users_port_first_so_it_wins() {
+        let sshopts = nix_sshopts(Some("-p 2200"), Some(2222));
+
+        assert!(sshopts.starts_with("-p 2200 -o BatchMode=yes"), "{sshopts}");
     }
 
     #[tokio::test]

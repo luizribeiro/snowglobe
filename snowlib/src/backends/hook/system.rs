@@ -99,7 +99,7 @@ impl HookBackend for SystemHookBackend {
         let destination = format!("{}@{}", user, target.hostname);
         let remote_command = build_remote_command(&hook.command, env);
 
-        let ssh_command = ssh_shell_command(&destination, &remote_command);
+        let ssh_command = ssh_shell_command(&destination, target.port, &remote_command);
 
         self.execute_command(&ssh_command, &HashMap::new(), hook.timeout)
             .await
@@ -107,10 +107,10 @@ impl HookBackend for SystemHookBackend {
 }
 
 // Hooks may restart the host's network and are already bounded by their timeout
-fn ssh_shell_command(destination: &str, remote_command: &str) -> String {
+fn ssh_shell_command(destination: &str, port: Option<u16>, remote_command: &str) -> String {
     format!(
         "ssh {} {} {}",
-        ssh_options(CONNECT_TIMEOUT_SECS, Keepalive::Never).join(" "),
+        ssh_options(CONNECT_TIMEOUT_SECS, Keepalive::Never, port).join(" "),
         shell_escape::escape(destination.into()),
         shell_escape::escape(remote_command.into())
     )
@@ -483,11 +483,25 @@ mod tests {
 
     #[test]
     fn test_ssh_shell_command_never_prompts_and_bounds_the_connection() {
-        let command = ssh_shell_command("root@curium.example.com", "kubectl uncordon curium");
+        let command = ssh_shell_command("root@curium.example.com", None, "kubectl uncordon curium");
 
         assert_eq!(
             command,
             "ssh -o BatchMode=yes -o ConnectTimeout=10 -o ForwardAgent=no 'root@curium.example.com' 'kubectl uncordon curium'"
+        );
+    }
+
+    #[test]
+    fn test_ssh_shell_command_connects_to_the_hosts_port() {
+        let command = ssh_shell_command(
+            "root@curium.example.com",
+            Some(2222),
+            "kubectl uncordon curium",
+        );
+
+        assert!(
+            command.contains("-o ForwardAgent=no -p 2222 'root@curium.example.com'"),
+            "{command}"
         );
     }
 

@@ -160,13 +160,11 @@ impl SystemRebootBackend {
 
     /// Build SSH command arguments
     fn build_ssh_args(&self, target: &DeployTarget, command: &str) -> Vec<String> {
-        let mut args = ssh_options(self.config.ssh_connect_timeout.into(), Keepalive::Probe);
-
-        if let Some(port) = target.port {
-            args.push("-p".to_string());
-            args.push(port.to_string());
-        }
-
+        let mut args = ssh_options(
+            self.config.ssh_connect_timeout.into(),
+            Keepalive::Probe,
+            target.port,
+        );
         args.push(self.get_destination(target));
         args.push(command.to_string());
         args
@@ -748,6 +746,23 @@ esac
         assert_eq!(shell_escape("with'quote"), "'with'\\''quote'");
         assert_eq!(shell_escape("with spaces"), "'with spaces'");
         assert_eq!(shell_escape("/nix/store/path"), "'/nix/store/path'");
+    }
+
+    #[test]
+    fn test_ssh_args_connect_to_the_hosts_port() {
+        let target = DeployTarget {
+            port: Some(2222),
+            ..fake_target()
+        };
+
+        let args = SystemRebootBackend::with_defaults()
+            .build_ssh_args(&target, "true")
+            .join(" ");
+
+        assert!(
+            args.ends_with("-p 2222 pusher@hydrogen.example.com true"),
+            "{args}"
+        );
     }
 
     #[test]
