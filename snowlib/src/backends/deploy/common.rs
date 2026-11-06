@@ -2,7 +2,8 @@
 
 use crate::error::{DeployError, Result};
 use crate::nix::ActivationMode;
-use crate::process::CommandResult;
+use crate::process::{CommandResult, OutputMode};
+use crate::sudo::Sudo;
 
 pub fn activation_mode_to_string(mode: ActivationMode) -> &'static str {
     match mode {
@@ -55,6 +56,29 @@ pub(crate) fn command_failed(host: &str, command: String, result: &CommandResult
         stderr: String::from_utf8_lossy(&result.stderr).trim().to_string(),
         stdout: String::from_utf8_lossy(&result.stdout).trim().to_string(),
     }
+}
+
+/// Fails unless `command` exits 0; `doing` says what it is for, as in
+/// "update system profile"
+pub(crate) async fn run_as_root(
+    sudo: &Sudo,
+    host: &str,
+    command: &[&str],
+    output_mode: OutputMode,
+    doing: &str,
+) -> crate::error::Result<CommandResult> {
+    let result = sudo
+        .run(command, output_mode)
+        .await?
+        .map_err(|e| DeployError::Failed {
+            host: host.to_string(),
+            source: std::io::Error::new(e.kind(), format!("Failed to {doing}: {e}")),
+        })?;
+    if !result.status.success() {
+        let command = format!("sudo {}", command.join(" "));
+        return Err(command_failed(host, command, &result).into());
+    }
+    Ok(result)
 }
 
 #[cfg(test)]

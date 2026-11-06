@@ -7,7 +7,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use super::{
-    activation_mode_to_string, command_failed, should_update_profile, store_path_from_resolved,
+    activation_mode_to_string, run_as_root, should_update_profile, store_path_from_resolved,
     DeployBackend, DeployTarget, HostSystems, CURRENT_SYSTEM_LINK, SYSTEM_PROFILE_LINK,
 };
 
@@ -46,20 +46,8 @@ impl LocalDeployBackend {
         self.with_output_mode(OutputMode::Capture)
     }
 
-    /// `doing` says what the command is for, as in "update system profile"
     async fn run_as_root(&self, host: &str, command: &[&str], doing: &str) -> Result<()> {
-        let result = self
-            .sudo
-            .run(command, self.output_mode)
-            .await?
-            .map_err(|e| DeployError::Failed {
-                host: host.to_string(),
-                source: std::io::Error::new(e.kind(), format!("Failed to {doing}: {e}")),
-            })?;
-        if !result.status.success() {
-            let command = format!("sudo {}", command.join(" "));
-            return Err(command_failed(host, command, &result).into());
-        }
+        run_as_root(&self.sudo, host, command, self.output_mode, doing).await?;
         Ok(())
     }
 }

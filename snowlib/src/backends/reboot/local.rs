@@ -1,12 +1,13 @@
 use super::{BootComponent, RebootBackend, RebootCheck, RebootDetectionConfig, RebootReason};
-use crate::backends::deploy::DeployTarget;
+use crate::backends::deploy::{run_as_root, DeployTarget};
 use crate::error::{DeployError, Result};
 use crate::nix::{StorePath, SystemType};
-use crate::process::r#async::run_command;
 use crate::process::OutputMode;
+use crate::sudo::Sudo;
 use async_trait::async_trait;
 use std::fs;
 use std::path::Path;
+use std::sync::Arc;
 
 /// Local reboot detection backend for rebuilding the current host
 ///
@@ -14,17 +15,21 @@ use std::path::Path;
 /// LocalRebootBackend operates on the local machine directly.
 pub struct LocalRebootBackend {
     config: RebootDetectionConfig,
+    sudo: Arc<Sudo>,
 }
 
 impl LocalRebootBackend {
-    /// Create a new backend with the given configuration
-    pub fn new(config: RebootDetectionConfig) -> Self {
-        Self { config }
+    /// A backend with the default configuration
+    pub fn new(sudo: Arc<Sudo>) -> Self {
+        Self {
+            config: RebootDetectionConfig::default(),
+            sudo,
+        }
     }
 
-    /// Create a backend with default configuration
-    pub fn with_defaults() -> Self {
-        Self::new(RebootDetectionConfig::default())
+    pub fn with_config(mut self, config: RebootDetectionConfig) -> Self {
+        self.config = config;
+        self
     }
 
     /// Check if kernel or initrd changed (fast check)
@@ -117,41 +122,19 @@ impl LocalRebootBackend {
     ) -> Result<Vec<RebootReason>> {
         let dry_activate_path = format!("{}/bin/switch-to-configuration", new_system.as_str());
 
-        let result = run_command(
-            "sudo",
+        let result = run_as_root(
+            &self.sudo,
+            &target.hostname,
             &[&dry_activate_path, "dry-activate"],
             OutputMode::Capture,
-            None,
-            None,
-            &[],
+            "run dry-activate",
         )
-        .await
-        .map_err(|e| DeployError::Failed {
-            host: target.hostname.clone(),
-            source: e,
-        })?;
-
-        if !result.status.success() {
-            return Err(DeployError::Failed {
-                host: target.hostname.clone(),
-                source: std::io::Error::other(format!(
-                    "Running dry-activate failed: {}",
-                    String::from_utf8_lossy(&result.stderr)
-                )),
-            }
-            .into());
-        }
+        .await?;
 
         Ok(super::critical_restarts(
             &String::from_utf8_lossy(&result.stderr),
             &self.config.critical_services,
         ))
-    }
-}
-
-impl Default for LocalRebootBackend {
-    fn default() -> Self {
-        Self::with_defaults()
     }
 }
 
@@ -182,21 +165,23 @@ impl RebootBackend for LocalRebootBackend {
         }
     }
 
-    async fn reboot_and_wait(&self, _target: &DeployTarget) -> Result<()> {
+    async fn reboot_and_wait(&self, target: &DeployTarget) -> Result<()> {
         let system_type = SystemType::detect_current();
 
-        let (program, args): (&str, &[&str]) = match system_type {
-            SystemType::NixOS => ("sudo", &["systemctl", "reboot"]),
-            SystemType::Darwin => ("sudo", &["shutdown", "-r", "now"]),
+        let command: &[&str] = match system_type {
+            SystemType::NixOS => &["systemctl", "reboot"],
+            SystemType::Darwin => &["shutdown", "-r", "now"],
         };
 
-        run_command(program, args, OutputMode::Capture, None, None, &[])
-            .await
-            .map_err(|e| DeployError::Failed {
-                host: "localhost".to_string(),
-                source: e,
-            })?;
-
+        // systemctl returns once the reboot is queued, before anything stops
+        run_as_root(
+            &self.sudo,
+            &target.hostname,
+            command,
+            OutputMode::Capture,
+            "reboot",
+        )
+        .await?;
         Ok(())
     }
 }
@@ -204,11 +189,60 @@ impl RebootBackend for LocalRebootBackend {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sudo::test_utils::FakeSudo;
+
+    fn boron() -> DeployTarget {
+        DeployTarget {
+            user: None,
+            hostname: "boron".to_string(),
+            port: None,
+        }
+    }
+
+    #[tokio::test]
+    #[cfg(not(target_os = "macos"))]
+    async fn test_reboot_runs_systemctl_through_sudo() {
+        let sudo = FakeSudo::new().with("pretends");
+        let backend = LocalRebootBackend::new(sudo.session());
+
+        backend.reboot_and_wait(&boron()).await.unwrap();
+
+        assert_eq!(sudo.calls().last().unwrap(), "-n systemctl reboot");
+    }
+
+    #[tokio::test]
+    async fn test_failed_dry_activate_fails_the_check() {
+        let sudo = FakeSudo::new().with("fails");
+        let backend = LocalRebootBackend::new(sudo.session());
+        let new_system = StorePath::new("/nix/store/36vm-nixos-system-boron".to_string());
+
+        let error = backend
+            .check_critical_services(&boron(), &new_system)
+            .await
+            .unwrap_err();
+
+        assert!(error.to_string().contains("Command failed on host 'boron'"));
+        assert_eq!(
+            sudo.calls().last().unwrap(),
+            "-n /nix/store/36vm-nixos-system-boron/bin/switch-to-configuration dry-activate"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_refused_reboot_fails() {
+        let sudo = FakeSudo::new().with("fails");
+        let backend = LocalRebootBackend::new(sudo.session());
+
+        let error = backend.reboot_and_wait(&boron()).await.unwrap_err();
+
+        assert!(error.to_string().contains("Command failed on host 'boron'"));
+    }
 
     #[test]
     #[cfg(not(target_os = "macos"))]
     fn test_compare_symlinks_same_target() {
-        let backend = LocalRebootBackend::with_defaults();
+        let sudo = FakeSudo::new();
+        let backend = LocalRebootBackend::new(sudo.session());
         let target = DeployTarget {
             user: None,
             hostname: "localhost".to_string(),
@@ -222,7 +256,8 @@ mod tests {
 
     #[test]
     fn test_compare_symlinks_nonexistent() {
-        let backend = LocalRebootBackend::with_defaults();
+        let sudo = FakeSudo::new();
+        let backend = LocalRebootBackend::new(sudo.session());
         let target = DeployTarget {
             user: None,
             hostname: "localhost".to_string(),
@@ -237,7 +272,8 @@ mod tests {
     #[test]
     fn test_compare_symlinks_not_a_symlink() {
         use std::io::Write;
-        let backend = LocalRebootBackend::with_defaults();
+        let sudo = FakeSudo::new();
+        let backend = LocalRebootBackend::new(sudo.session());
         let target = DeployTarget {
             user: None,
             hostname: "localhost".to_string(),
@@ -262,8 +298,9 @@ mod tests {
     }
 
     #[test]
-    fn test_default_backend() {
-        let backend = LocalRebootBackend::default();
+    fn test_new_backend_uses_the_default_config() {
+        let sudo = FakeSudo::new();
+        let backend = LocalRebootBackend::new(sudo.session());
         assert!(backend.config.check_kernel);
         assert!(backend.config.check_initrd);
         assert!(!backend.config.critical_services.is_empty());
@@ -278,7 +315,8 @@ mod tests {
             ..Default::default()
         };
 
-        let backend = LocalRebootBackend::new(config);
+        let sudo = FakeSudo::new();
+        let backend = LocalRebootBackend::new(sudo.session()).with_config(config);
         assert!(!backend.config.check_kernel);
         assert!(backend.config.check_initrd);
         assert_eq!(backend.config.critical_services.len(), 1);
@@ -287,7 +325,8 @@ mod tests {
     #[tokio::test]
     #[cfg(target_os = "macos")]
     async fn test_check_reboot_required_darwin_always_returns_not_required() {
-        let backend = LocalRebootBackend::with_defaults();
+        let sudo = FakeSudo::new();
+        let backend = LocalRebootBackend::new(sudo.session());
         let target = DeployTarget {
             user: None,
             hostname: "localhost".to_string(),

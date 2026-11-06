@@ -155,8 +155,8 @@ impl RebuildArgs {
             port: None,
         };
 
-        let deploy_backend = LocalDeployBackend::new(sudo).with_output_mode(output_mode);
-        let reboot_backend = LocalRebootBackend::default();
+        let deploy_backend = LocalDeployBackend::new(sudo.clone()).with_output_mode(output_mode);
+        let reboot_backend = LocalRebootBackend::new(sudo);
 
         let mode = self.activation_mode();
 
