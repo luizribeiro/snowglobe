@@ -1,6 +1,6 @@
 use super::{BootComponent, RebootBackend, RebootCheck, RebootDetectionConfig, RebootReason};
 use crate::backends::deploy::DeployTarget;
-use crate::error::{DeployError, Result};
+use crate::error::{DeployError, Result, SnowError};
 use crate::nix::StorePath;
 use crate::process::CommandResult;
 use crate::ssh_options::{run_bounded, ssh_options, Keepalive};
@@ -133,8 +133,12 @@ impl SystemRebootBackend {
         );
 
         let timeout = Duration::from_secs(self.config.dry_activate_timeout.into());
-        self.ssh_exec_with_timeout(target, &dry_activate_cmd, timeout)
+        let result = self
+            .ssh_exec_with_timeout(target, &dry_activate_cmd, timeout)
             .await?;
+        if !result.status.success() {
+            return Err(dry_activate_failed(target, &dry_activate_cmd, &result));
+        }
 
         let check_file_cmd = "test -f /run/nixos/dry-activation-restart-list";
         let file_exists = self.ssh_exec(target, check_file_cmd).await?.success();
@@ -333,6 +337,23 @@ impl RebootBackend for SystemRebootBackend {
     }
 }
 
+/// Without dry-activate's restart list, snow can't tell whether the new
+/// system needs a reboot, so it must not guess that it doesn't. Stderr gets
+/// its own section, whose last line a push shows as the cause.
+fn dry_activate_failed(target: &DeployTarget, command: &str, result: &CommandResult) -> SnowError {
+    DeployError::Failed {
+        host: target.hostname.clone(),
+        source: std::io::Error::other(format!(
+            "Could not tell whether the new system needs a reboot: `{command}` exited with {}. \
+             If sudo refused it, add the SSH user to snowglobe.push.allowedUsers on the host.\
+             \n\nStderr:\n{}",
+            result.status,
+            String::from_utf8_lossy(&result.stderr).trim()
+        )),
+    }
+    .into()
+}
+
 fn shell_escape(s: &str) -> String {
     format!("'{}'", s.replace('\'', r"'\''"))
 }
@@ -346,7 +367,9 @@ mod tests {
     /// boot "boot-1"; `on_reboot` is the shell snippet run for the reboot command.
     /// Writing `$state/next_boot_id` makes the host come back on that boot after
     /// one unreachable poll, and `$state/stale_polls` delays that by N polls that
-    /// still answer with the old boot.
+    /// still answer with the old boot. `$state/refuse` names a command that
+    /// sudo refuses, and `$state/dry-activation-restart-list` stands in for
+    /// the one under /run/nixos.
     struct FakeHost {
         state: tempfile::TempDir,
     }
@@ -366,7 +389,13 @@ echo "$cmd" >> "$state/commands"
 if [ -e "$state/hang_on" ]; then
   case "$cmd" in *"$(cat "$state/hang_on")"*) exec sleep 30 ;; esac
 fi
+if [ -e "$state/refuse" ]; then
+  case "$cmd" in *"$(cat "$state/refuse")"*) echo "sudo: a password is required" >&2; exit 1 ;; esac
+fi
 case "$cmd" in
+  *dry-activation-restart-list*)
+    eval "${{cmd//\/run\/nixos/$state}}"
+    ;;
   *readlink*)
     eval "${{cmd//\/run\/booted-system/$state/booted}}"
     ;;
@@ -650,6 +679,63 @@ esac
         assert!(
             !host.commands().iter().any(|c| c.contains("dry-activate")),
             "{:?}",
+            host.commands()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_reboot_check_finds_critical_services_dry_activate_would_restart() {
+        let host = FakeHost::new("exit 0");
+        let new_system = systems(&host, ["k1", "i1"], ["k1", "i1"]);
+        std::fs::write(
+            host.state.path().join("dry-activation-restart-list"),
+            "nix-daemon.service\nsystemd-sysctl.service\n",
+        )
+        .unwrap();
+
+        let check = host
+            .backend(5)
+            .check_reboot_required(&fake_target(), &new_system)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            check.reasons,
+            vec![RebootReason::CriticalService(
+                "systemd-sysctl.service".to_string()
+            )]
+        );
+    }
+
+    #[tokio::test]
+    async fn test_reboot_check_fails_when_sudo_refuses_dry_activate() {
+        let host = FakeHost::new("exit 0");
+        let new_system = systems(&host, ["k1", "i1"], ["k1", "i1"]);
+        std::fs::write(host.state.path().join("refuse"), "dry-activate").unwrap();
+        std::fs::write(
+            host.state.path().join("dry-activation-restart-list"),
+            "systemd-sysctl.service\n",
+        )
+        .unwrap();
+
+        let err = host
+            .backend(5)
+            .check_reboot_required(&fake_target(), &new_system)
+            .await
+            .unwrap_err();
+
+        let reason = crate::error::error_chain(&err);
+        assert!(reason.contains("snowglobe.push.allowedUsers"), "{reason}");
+        assert!(
+            reason.trim_end().ends_with("sudo: a password is required"),
+            "{reason}"
+        );
+        assert!(
+            !host
+                .commands()
+                .iter()
+                .any(|c| c.contains("dry-activation-restart-list")),
+            "a list left by an earlier dry-activate must not be read: {:?}",
             host.commands()
         );
     }
