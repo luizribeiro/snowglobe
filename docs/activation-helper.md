@@ -110,16 +110,16 @@ The helper can be called directly:
 
 ```bash
 # Activate a system in switch mode
-sudo snowglobe-activate /nix/store/abc123-nixos-system-24.05 switch
+sudo snowglobe-activate /nix/store/qqz7czg0f46pg7n3f0xqmiv14bampzr7-nixos-system-25.05 switch
 
 # Set for next boot only
-sudo snowglobe-activate /nix/store/abc123-nixos-system-24.05 boot
+sudo snowglobe-activate /nix/store/qqz7czg0f46pg7n3f0xqmiv14bampzr7-nixos-system-25.05 boot
 
 # Test activation (non-permanent)
-sudo snowglobe-activate /nix/store/abc123-nixos-system-24.05 test
+sudo snowglobe-activate /nix/store/qqz7czg0f46pg7n3f0xqmiv14bampzr7-nixos-system-25.05 test
 
 # Dry run (show what would change)
-sudo snowglobe-activate /nix/store/abc123-nixos-system-24.05 dry-activate
+sudo snowglobe-activate /nix/store/qqz7czg0f46pg7n3f0xqmiv14bampzr7-nixos-system-25.05 dry-activate
 ```
 
 ## How It Works
@@ -128,10 +128,9 @@ sudo snowglobe-activate /nix/store/abc123-nixos-system-24.05 dry-activate
 
 The helper validates inputs before execution:
 
-1. **Store path validation**: Must start with `/nix/store/`
-2. **Mode validation**: Must be one of: `switch`, `boot`, `test`, `dry-activate`
-3. **Platform detection**: Checks which activation script exists
-4. **Activation script existence**: Verifies the script is present
+1. **Store path validation**: Must be a single top-level store path, `/nix/store/<hash>-<name>`, so `/run/current-system` or `/nix/store/../…` are rejected
+2. **Mode validation**: Must be one of: `switch`, `boot`, `test`, `dry-activate` (only `switch` on Darwin)
+3. **Activation script existence**: Verifies the system has `bin/switch-to-configuration` (NixOS) or `activate` (Darwin)
 
 ### Platform-Specific Behavior
 
@@ -188,8 +187,7 @@ A possible future improvement is to only activate systems signed with a deploy k
 
 1. **Treat the deploy user's SSH key like a root key**: key-only login, and keep the key only on the machine or CI runner that deploys
 2. **Use a dedicated deploy user, and only that one**: a personal account in `allowedUsers` is root-equivalent without a password
-3. **Use --require-helper in CI**: Ensures configuration is correct
-4. **Audit activations**: Check system logs for unexpected activation attempts
+3. **Audit activations**: Check system logs for unexpected activation attempts
 
 ## Troubleshooting
 
@@ -204,11 +202,11 @@ A possible future improvement is to only activate systems signed with a deploy k
 
 On subsequent deployments, snowglobe will automatically use `snowglobe-activate`.
 
-### Error: "Invalid store path (must start with /nix/store/)"
+### Error: "Invalid store path '…' (must be /nix/store/<hash>-<name>)"
 
-**Cause**: The store path argument doesn't start with `/nix/store/`.
+**Cause**: The first argument isn't a single top-level store path. Symlinks like `/run/current-system`, paths inside a store path, and paths with `..` are all rejected.
 
-**Solution**: Ensure you're passing a valid Nix store path as the first argument.
+**Solution**: Pass the system's resolved store path, e.g. `"$(readlink -f /run/current-system)"`.
 
 ### Error: "Activation script not found"
 
@@ -238,10 +236,10 @@ On subsequent deployments, snowglobe will automatically use `snowglobe-activate`
 **Cause**: The sudoers configuration hasn't been applied or doesn't match the helper path.
 
 **Solution**:
-1. Verify the module is enabled: `snowglobe.push.enable = true`
+1. Verify the module is imported: `imports = [ inputs.snowglobe.nixosModules.default ];`
 2. Check the user snowglobe connects as is in `allowedUsers`
 3. Rebuild the system to apply sudoers changes
-4. Test manually: `ssh target-host sudo snowglobe-activate --help`
+4. Test manually: `ssh target-host sudo -n -l /run/current-system/sw/bin/snowglobe-activate` prints the path if no password is needed
 5. Check sudoers config: `ssh target-host sudo cat /etc/sudoers` (look for snowglobe-activate rules)
 
 ## Migration from Manual Configuration
@@ -250,11 +248,10 @@ If you're currently using manual sudoers configuration (`NOPASSWD: ALL` or wildc
 
 1. **Add the module** to your configuration (don't remove old sudoers yet)
 2. **Rebuild the system** to install the helper
-3. **Test the helper** manually: `ssh target sudo snowglobe-activate /run/current-system switch`
+3. **Test the helper** manually: `ssh target 'sudo snowglobe-activate "$(readlink -f /run/current-system)" switch'`
 4. **Deploy with snowglobe**: `snow push target` (should use helper automatically)
-5. **Enable --require-helper** in your deployment scripts
-6. **Remove old sudoers config** from your configuration
-7. **Rebuild again** to clean up old sudoers rules
+5. **Remove old sudoers config** from your configuration
+6. **Rebuild again** to clean up old sudoers rules
 
 ## Implementation Details
 
