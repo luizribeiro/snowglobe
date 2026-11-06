@@ -20,7 +20,7 @@
           networking = { inherit (config) hostName domain; };
           core = { inherit (config) pushPhase tags rebootPolicy; };
           snowglobe = {
-            push = { inherit (config) serialGroup; };
+            push = { inherit (config) serialGroup sshPort; };
             hooksFile = hooksFile config.hooksFile;
           };
           system.build.toplevel = builtins.storePath config.toplevel;

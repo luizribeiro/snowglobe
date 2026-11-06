@@ -165,7 +165,8 @@ def setup() -> None:
     start_all()
     for name, host in hosts.items():
         host.wait_for_unit("install-system-profile.service")
-        deployer.wait_until_succeeds(f"ssh -o BatchMode=yes root@{name} true", timeout=60)
+        port = settings["sshPorts"][name] or 22
+        deployer.wait_until_succeeds(f"ssh -o BatchMode=yes -p {port} root@{name} true", timeout=60)
         runs(name, base(name))
         boots(name, base(name))
     stage_flake(deployer)

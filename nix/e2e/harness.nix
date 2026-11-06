@@ -1,6 +1,8 @@
 # snowTest: a NixOS VM test of snow pushing to hosts, from a test file in
 # ./tests. The hosts boot a base system shared by every test; the test's
-# `nodes` are what snow pushes to them, from the deployer `sodium`.
+# `nodes` are what snow pushes to them, from the deployer `sodium`. A test's
+# optional `base.<host>` module goes on that host's base system, booted and
+# pushed alike.
 { pkgs, snow, snowglobeModule }:
 
 let
@@ -84,7 +86,7 @@ let
       (_: config: {
         inherit (config.networking) hostName domain;
         inherit (config.core) pushPhase tags rebootPolicy;
-        inherit (config.snowglobe.push) serialGroup;
+        inherit (config.snowglobe.push) serialGroup sshPort;
         hooksFile = "${config.snowglobe.hooksFile}";
         toplevel = "${config.system.build.toplevel}";
       })
@@ -129,7 +131,8 @@ pkgs.testers.runNixOSTest ({ config, ... }:
     demoScript = pkgs.writeText "${test.name}-demo.py" demo.script;
 
     node = name: {
-      imports = [ base ] ++ lib.optional (builtins.elem name hosts) (pushedModule name);
+      imports = [ base (test.base.${name} or { }) ]
+        ++ lib.optional (builtins.elem name hosts) (pushedModule name);
       # Registered in the VM's store without being part of its system, which
       # stays the base
       virtualisation.additionalPaths =
@@ -140,6 +143,7 @@ pkgs.testers.runNixOSTest ({ config, ... }:
     settings = pkgs.writeText "${test.name}-harness.json" (builtins.toJSON {
       inherit deployer hosts flake;
       base = toplevels (lib.getAttrs hosts config.nodes);
+      sshPorts = lib.mapAttrs (_: node: node.snowglobe.push.sshPort) (lib.getAttrs hosts config.nodes);
       pushed = toplevels pushed;
       demo = if demo == null then null else {
         inherit (test) name;

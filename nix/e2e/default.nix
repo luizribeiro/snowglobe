@@ -19,6 +19,7 @@ let
     "rebuild-cancel"
     "rebuild-boot"
     "rebuild-reboot"
+    "ssh-port"
   ];
 
   files = lib.genAttrs names (name: import ./tests/${name}.nix);
