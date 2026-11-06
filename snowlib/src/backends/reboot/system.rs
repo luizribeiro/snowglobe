@@ -348,7 +348,7 @@ fn dry_activate_failed(target: &DeployTarget, command: &str, result: &CommandRes
     DeployError::Failed {
         host: target.hostname.clone(),
         source: std::io::Error::other(format!(
-            "Could not tell whether the new system needs a reboot: `{command}` exited with {}. \
+            "Could not tell whether the new system needs a reboot: `{command}` failed with {}. \
              If sudo refused it, import the snowglobe module on the host and add the SSH \
              user to snowglobe.push.allowedUsers.\
              \n\nStderr:\n{}",
@@ -795,6 +795,10 @@ esac
             .unwrap_err();
 
         let reason = crate::error::error_chain(&err);
+        assert!(
+            reason.contains("dry-activate` failed with exit status: 1."),
+            "{reason}"
+        );
         assert!(reason.contains("snowglobe.push.allowedUsers"), "{reason}");
         assert!(
             reason.trim_end().ends_with("sudo: a password is required"),
