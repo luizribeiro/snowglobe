@@ -15,34 +15,35 @@ More in [the demos](docs/demos.md), recorded from real pushes in the VM tests.
 snowglobe is a NixOS-native cluster orchestration tool that provides:
 - **Declarative cluster configuration** - Define your cluster in Nix
 - **Push-based deployment** - Deploy configurations to NixOS and nix-darwin hosts
-- **Secure activation helper** - Passwordless deployment without compromising security
+- **Activation helper** - Passwordless deployment through one auditable sudo command
 - **Reboot detection** - Automatically handle system updates requiring reboots
 - **Agent-based deployment** (planned) - Nodes manage themselves (pull-based)
 - **Built-in health checking** (planned) - Know when things break
 - **etcd-backed state** (planned) - Distributed state management
 - **VM testing** (planned) - Test deployments safely before production
 
-Think: A modern, security-focused alternative to `deploy-rs` with cluster awareness.
+Think: A modern alternative to `deploy-rs` with cluster awareness.
 
 ## Features
 
-### Secure Passwordless Deployment
+### Passwordless Deployment
 
-Snowglobe includes NixOS and nix-darwin modules that provide secure passwordless system activation:
+Snowglobe includes NixOS and nix-darwin modules that provide passwordless system activation:
 
 ```nix
 {
   imports = [ inputs.snowglobe.nixosModules.default ];
 
-  snowglobe.push.allowedUsers = [ "deploy-user" ];
+  snowglobe.push.allowedUsers = [ "deploy" ];
 }
 ```
 
 This installs the `snowglobe-activate` command that:
 - Works around sudoers wildcard limitations on macOS
-- Validates all inputs before execution
 - Provides a stable path for sudo configuration
-- Is more secure than `NOPASSWD: ALL`
+- Puts one auditable command in sudoers instead of `NOPASSWD: ALL`
+
+Allowed users are root-equivalent on the host, as with any push deployment tool, so use a dedicated deploy user.
 
 Snowglobe automatically detects and uses `snowglobe-activate` when available, falling back gracefully for compatibility.
 
