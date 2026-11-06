@@ -19,6 +19,7 @@ pub mod process;
 pub mod push;
 pub mod reboot;
 mod ssh_options;
+pub mod sudo;
 
 pub use backends::deploy::{DeployBackend, DeployTarget, LocalDeployBackend, SshDeployBackend};
 pub use backends::hook::{HookBackend, SystemHookBackend};
@@ -46,6 +47,7 @@ pub use push::{
     PushContext, PushResults, PushStrategy, SkippedPhase,
 };
 pub use reboot::RebootPolicy;
+pub use sudo::{Sudo, SudoPrompt, SudoTerminal};
 
 #[cfg(any(debug_assertions, feature = "test-utils"))]
 pub use backends::deploy::{DeploymentFixture, HostFixture, MockDeployBackend, OperationFixture};

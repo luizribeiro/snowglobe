@@ -216,6 +216,23 @@ pub enum DeployError {
     )]
     RebootNotConfirmed { host: String, reason: String },
 
+    #[error("sudo needs your password, but there is no terminal to ask for it on")]
+    #[diagnostic(
+        code(snow::deploy::sudo_needs_terminal),
+        help("Run snow from a terminal, or let this user run sudo without a password.")
+    )]
+    SudoNeedsTerminal,
+
+    #[error("sudo would not run commands as root")]
+    #[diagnostic(
+        code(snow::deploy::sudo_refused),
+        help("Check that `sudo -v` works for this user.")
+    )]
+    SudoRefused {
+        #[source]
+        source: std::io::Error,
+    },
+
     #[error("SSH connection failed to {destination}")]
     #[diagnostic(
         code(snow::deploy::ssh_failed),
