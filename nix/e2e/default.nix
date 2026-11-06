@@ -22,6 +22,7 @@ let
     "ssh-port"
     "deploy-user"
     "rebuild-sudo"
+    "rebuild-sudo-keepalive"
   ];
 
   files = lib.genAttrs names (name: import ./tests/${name}.nix);
