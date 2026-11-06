@@ -15,10 +15,16 @@ use super::results::{BlockedHost, PushPlan};
 
 /// Strategy for handling a host deployment
 enum ActivationStrategy {
-    /// Deploy with the given activation mode and optional reboot check
-    Deploy(ActivationMode, Option<RebootCheck>),
+    /// Deploy with the given activation mode, rebooting only if the check requires it
+    Deploy(ActivationMode, RebootCheck),
     /// Block deployment with the given reason
     Block(String),
+}
+
+impl ActivationStrategy {
+    fn without_reboot(mode: ActivationMode) -> Self {
+        Self::Deploy(mode, RebootCheck::not_required())
+    }
 }
 
 /// Determine the activation strategy for a single host
@@ -31,19 +37,16 @@ async fn determine_activation_strategy(
     force: bool,
 ) -> Result<ActivationStrategy> {
     match strategy {
-        PushStrategy::DryRun => Ok(ActivationStrategy::Deploy(
+        PushStrategy::DryRun => Ok(ActivationStrategy::without_reboot(
             ActivationMode::DryActivate,
-            None,
         )),
-        PushStrategy::Test => Ok(ActivationStrategy::Deploy(ActivationMode::Test, None)),
-        PushStrategy::Boot => Ok(ActivationStrategy::Deploy(ActivationMode::Boot, None)),
+        PushStrategy::Test => Ok(ActivationStrategy::without_reboot(ActivationMode::Test)),
+        // Like `nixos-rebuild boot`: the new system waits for the next boot
+        PushStrategy::Boot => Ok(ActivationStrategy::without_reboot(ActivationMode::Boot)),
         // nix-darwin can only switch, and push never reboots Darwin hosts,
         // so reboot policies and detection don't apply to them
         PushStrategy::Switch | PushStrategy::Auto if metadata.system_type == SystemType::Darwin => {
-            Ok(ActivationStrategy::Deploy(
-                ActivationMode::Switch,
-                Some(RebootCheck::not_required()),
-            ))
+            Ok(ActivationStrategy::without_reboot(ActivationMode::Switch))
         }
         PushStrategy::Switch => {
             handle_switch_mode(metadata, target, store_path, reboot_backend, force).await
@@ -66,16 +69,13 @@ async fn handle_switch_mode(
         match metadata.reboot_policy {
             RebootPolicy::Never => {
                 // Never policy: use boot mode without reboot
-                return Ok(ActivationStrategy::Deploy(
-                    ActivationMode::Boot,
-                    Some(RebootCheck::not_required()),
-                ));
+                return Ok(ActivationStrategy::without_reboot(ActivationMode::Boot));
             }
             RebootPolicy::Always => {
                 // Always policy: use boot mode and will reboot
                 return Ok(ActivationStrategy::Deploy(
                     ActivationMode::Boot,
-                    Some(RebootCheck::required(RebootReason::Policy)),
+                    RebootCheck::required(RebootReason::Policy),
                 ));
             }
             RebootPolicy::Auto => {
@@ -92,10 +92,7 @@ async fn handle_switch_mode(
         // Reboot required but --force not set - block this host
         Ok(ActivationStrategy::Block(check.summary()))
     } else {
-        Ok(ActivationStrategy::Deploy(
-            ActivationMode::Switch,
-            Some(check),
-        ))
+        Ok(ActivationStrategy::Deploy(ActivationMode::Switch, check))
     }
 }
 
@@ -110,16 +107,13 @@ async fn handle_auto_mode(
     match metadata.reboot_policy {
         RebootPolicy::Never => {
             // Never policy: always use boot mode, never reboot
-            return Ok(ActivationStrategy::Deploy(
-                ActivationMode::Boot,
-                Some(RebootCheck::not_required()),
-            ));
+            return Ok(ActivationStrategy::without_reboot(ActivationMode::Boot));
         }
         RebootPolicy::Always => {
             // Always policy: always use boot mode and always reboot
             return Ok(ActivationStrategy::Deploy(
                 ActivationMode::Boot,
-                Some(RebootCheck::required(RebootReason::Policy)),
+                RebootCheck::required(RebootReason::Policy),
             ));
         }
         RebootPolicy::Auto => {
@@ -137,7 +131,7 @@ async fn handle_auto_mode(
         ActivationMode::Switch
     };
 
-    Ok(ActivationStrategy::Deploy(activation, Some(check)))
+    Ok(ActivationStrategy::Deploy(activation, check))
 }
 
 /// Create deployment plans with reboot detection

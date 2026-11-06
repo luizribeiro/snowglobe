@@ -17,10 +17,9 @@ fn failed_events(run: &HarnessRun) -> Vec<&String> {
 
 #[tokio::test]
 async fn test_deploy_reports_each_step_in_order() {
-    let mut harness = PushHarness::new();
+    let harness = PushHarness::new();
     let mut host = kubernetes_node("samarium");
     host.reboot_policy = RebootPolicy::Always;
-    harness.config.strategy = PushStrategy::Boot;
 
     let run = harness.run(vec![host]).await;
 

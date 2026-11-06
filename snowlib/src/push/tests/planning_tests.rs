@@ -104,8 +104,7 @@ async fn test_create_deployment_plans_auto_mode_no_reboot() {
     assert_eq!(plans.len(), 1);
     assert_eq!(blocked.len(), 0);
     assert_eq!(plans[0].activation_mode, ActivationMode::Switch);
-    assert!(plans[0].reboot_check.is_some());
-    assert!(!plans[0].reboot_check.as_ref().unwrap().is_required());
+    assert!(!plans[0].reboot_check.is_required());
 }
 
 #[tokio::test]
@@ -120,22 +119,32 @@ async fn test_create_deployment_plans_dry_run() {
     assert_eq!(plans.len(), 1);
     assert_eq!(blocked.len(), 0);
     assert_eq!(plans[0].activation_mode, ActivationMode::DryActivate);
-    assert!(plans[0].reboot_check.is_none());
+    assert_eq!(plans[0].reboot_check, RebootCheck::not_required());
 }
 
 #[tokio::test]
-async fn test_create_deployment_plans_boot_mode() {
+async fn test_boot_mode_plans_no_reboot_for_any_policy() {
     let detector = SystemRebootBackend::default();
-    let hosts = vec![make_host("test", None, RebootPolicy::Auto)];
 
-    let (plans, blocked) = create_deployment_plans(hosts, &detector, PushStrategy::Boot, false)
-        .await
-        .unwrap();
+    for policy in [
+        RebootPolicy::Auto,
+        RebootPolicy::Never,
+        RebootPolicy::Always,
+    ] {
+        let hosts = vec![make_host("boron", None, policy.clone())];
 
-    assert_eq!(plans.len(), 1);
-    assert_eq!(blocked.len(), 0);
-    assert_eq!(plans[0].activation_mode, ActivationMode::Boot);
-    assert!(plans[0].reboot_check.is_none());
+        let (plans, blocked) = create_deployment_plans(hosts, &detector, PushStrategy::Boot, false)
+            .await
+            .unwrap();
+
+        let plan = (plans[0].activation_mode, plans[0].reboot_check.clone());
+        assert!(blocked.is_empty(), "{policy:?} blocked");
+        assert_eq!(
+            plan,
+            (ActivationMode::Boot, RebootCheck::not_required()),
+            "{policy:?}"
+        );
+    }
 }
 
 #[tokio::test]
@@ -150,7 +159,7 @@ async fn test_create_deployment_plans_test_mode() {
     assert_eq!(plans.len(), 1);
     assert_eq!(blocked.len(), 0);
     assert_eq!(plans[0].activation_mode, ActivationMode::Test);
-    assert!(plans[0].reboot_check.is_none());
+    assert_eq!(plans[0].reboot_check, RebootCheck::not_required());
 }
 
 #[tokio::test]
@@ -219,8 +228,7 @@ async fn test_reboot_policy_never_uses_boot_mode() {
     assert_eq!(plans.len(), 1);
     assert_eq!(blocked.len(), 0);
     assert_eq!(plans[0].activation_mode, ActivationMode::Boot);
-    assert!(plans[0].reboot_check.is_some());
-    assert!(!plans[0].reboot_check.as_ref().unwrap().is_required());
+    assert!(!plans[0].reboot_check.is_required());
 }
 
 #[tokio::test]
@@ -242,8 +250,7 @@ async fn test_reboot_policy_always_uses_boot_mode_with_reboot() {
     assert_eq!(plans.len(), 1);
     assert_eq!(blocked.len(), 0);
     assert_eq!(plans[0].activation_mode, ActivationMode::Boot);
-    assert!(plans[0].reboot_check.is_some());
-    assert!(plans[0].reboot_check.as_ref().unwrap().is_required());
+    assert!(plans[0].reboot_check.is_required());
 }
 
 #[tokio::test]
@@ -265,8 +272,7 @@ async fn test_reboot_policy_auto_uses_detection() {
     assert_eq!(plans.len(), 1);
     assert_eq!(blocked.len(), 0);
     assert_eq!(plans[0].activation_mode, ActivationMode::Switch);
-    assert!(plans[0].reboot_check.is_some());
-    assert!(!plans[0].reboot_check.as_ref().unwrap().is_required());
+    assert!(!plans[0].reboot_check.is_required());
 }
 
 #[tokio::test]
@@ -288,7 +294,7 @@ async fn test_reboot_policy_never_overrides_switch_mode() {
     assert_eq!(plans.len(), 1);
     assert_eq!(blocked.len(), 0);
     assert_eq!(plans[0].activation_mode, ActivationMode::Boot);
-    assert!(!plans[0].reboot_check.as_ref().unwrap().is_required());
+    assert!(!plans[0].reboot_check.is_required());
 }
 
 #[tokio::test]
@@ -310,7 +316,7 @@ async fn test_reboot_policy_always_overrides_switch_mode() {
     assert_eq!(plans.len(), 1);
     assert_eq!(blocked.len(), 0);
     assert_eq!(plans[0].activation_mode, ActivationMode::Boot);
-    assert!(plans[0].reboot_check.as_ref().unwrap().is_required());
+    assert!(plans[0].reboot_check.is_required());
 }
 
 #[tokio::test]
@@ -389,7 +395,7 @@ async fn test_darwin_hosts_switch_without_reboot_regardless_of_policy() {
 
             assert!(blocked.is_empty(), "{:?}/{:?} blocked", policy, strategy);
             assert_eq!(plans[0].activation_mode, ActivationMode::Switch);
-            assert_eq!(plans[0].reboot_check, Some(RebootCheck::not_required()));
+            assert_eq!(plans[0].reboot_check, RebootCheck::not_required());
         }
     }
 }

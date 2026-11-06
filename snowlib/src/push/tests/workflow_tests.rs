@@ -691,59 +691,45 @@ async fn test_push_skip_reboot_when_not_required() {
 }
 
 #[tokio::test]
-async fn test_push_reboot_with_boot_mode() {
-    // Test explicit Boot mode with reboot required
-    let flake = Flake::test_context();
-    let nix_backend = MockNixBackend::new();
-    let deployer = MockDeployBackend::new();
+async fn test_push_boot_mode_never_reboots() {
+    use crate::backends::reboot::{MockRebootBackend, RebootReason};
 
-    // Configure reboot required
-    use crate::backends::reboot::MockRebootBackend;
-    use crate::backends::reboot::RebootReason;
-    let mut reboot_required = std::collections::HashMap::new();
-    reboot_required.insert(
-        "boot-host.example.com".to_string(),
-        RebootReason::KernelChanged {
-            old: "/nix/store/old-kernel".to_string(),
-            new: "/nix/store/new-kernel".to_string(),
-        },
-    );
-    let reboot_backend = MockRebootBackend::new().with_reboot_required(reboot_required);
-
-    let observer = TestObserver::new();
-
-    let hosts = vec![make_host_metadata(
-        "boot-host",
-        Some("default"),
+    for policy in [
         RebootPolicy::Auto,
-    )];
+        RebootPolicy::Never,
+        RebootPolicy::Always,
+    ] {
+        let harness = PushHarness {
+            reboot_backend: MockRebootBackend::new().with_reboot_required(
+                [(
+                    "boron.example.com".to_string(),
+                    RebootReason::KernelChanged {
+                        old: "/nix/store/old-kernel".to_string(),
+                        new: "/nix/store/new-kernel".to_string(),
+                    },
+                )]
+                .into_iter()
+                .collect(),
+            ),
+            config: create_push_config(PushStrategy::Boot, 1),
+            ..PushHarness::new()
+        };
 
-    let config = create_push_config(PushStrategy::Boot, 1);
+        let run = harness
+            .run(vec![make_host_metadata("boron", None, policy.clone())])
+            .await;
 
-    let results = {
-        let push_ctx = PushContext::new(
-            &flake,
-            &nix_backend,
-            &deployer,
-            &reboot_backend,
-            &config,
-            &observer,
-            None,
+        let boron = run.host("boron");
+        assert!(boron.success, "{:?}: {:?}", policy, boron);
+        assert_eq!(boron.activation_mode, Some(ActivationMode::Boot));
+        assert!(!boron.rebooted, "{:?} rebooted", policy);
+        assert!(
+            !run.has_event_starting_with("reboot_start"),
+            "{:?}: {:?}",
+            policy,
+            run.events
         );
-        push(&push_ctx, hosts).await
     }
-    .unwrap();
-
-    // Should succeed
-    assert!(results.all_succeeded());
-
-    // Check that reboot was executed
-    let events = observer.get_events();
-    assert!(
-        events.iter().any(|e| e.starts_with("reboot_start")),
-        "Boot mode with reboot required should execute reboot"
-    );
-    assert!(events.iter().any(|e| e.starts_with("reboot_complete")));
 }
 
 #[tokio::test]

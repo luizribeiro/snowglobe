@@ -13,7 +13,7 @@ pub struct PushPlan {
     pub target: DeployTarget,
     pub store_path: StorePath,
     pub activation_mode: ActivationMode,
-    pub reboot_check: Option<RebootCheck>,
+    pub reboot_check: RebootCheck,
 }
 
 /// A host that was blocked from deployment
