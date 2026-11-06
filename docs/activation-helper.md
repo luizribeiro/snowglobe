@@ -22,10 +22,12 @@ Snowglobe provides an activation command installed at a stable path that:
 
 1. Accepts the store path and activation mode as arguments
 2. Validates the store path and activation mode
-3. Detects the platform (NixOS vs Darwin) and calls the appropriate activation script
+3. Sets the system profile and runs the system's activation script
 4. Has a stable path for sudoers configuration
 
-**Automatic detection**: Snowglobe automatically detects if `snowglobe-activate` is available on target hosts and uses it when present. If not found, it falls back to direct activation with a warning - no configuration needed.
+The NixOS and nix-darwin modules each install their own version of the script.
+
+**Automatic detection**: snow checks whether `snowglobe-activate` is on the target host and uses it when present. Without it, snow falls back to direct activation with a warning. The fallback works on NixOS only, and needs passwordless sudo for `nix-env` and for `<system>/bin/switch-to-configuration`. On Darwin, the module is required.
 
 ## Installation
 
@@ -72,7 +74,7 @@ Add to your Darwin configuration:
 Rebuild your system:
 
 ```bash
-darwin-rebuild switch
+sudo darwin-rebuild switch --flake .#your-darwin-host
 ```
 
 ## Configuration Options
@@ -83,7 +85,7 @@ Type: `list of strings`
 Default: `[]`
 Example: `[ "deploy" ]`
 
-List of users who can run `snowglobe-activate` without a password, and so activate any system from the Nix store.
+List of users who can run `snowglobe-activate` without a password, and so activate any system from the Nix store. On NixOS, they can also reboot the host with it.
 
 **Users in this list are effectively root on the host.** See [Security](#security).
 
@@ -94,15 +96,13 @@ List of users who can run `snowglobe-activate` without a password, and so activa
 When using `snow push`, snowglobe automatically:
 
 1. Detects if `snowglobe-activate` is available on the target host
-2. Uses it if present
-3. Falls back to direct activation if not found, with a warning
+2. Uses it if present, to activate and, on NixOS, to reboot
+3. Falls back to direct activation if not found, with a warning (NixOS only, see above)
 
 ```bash
 # Automatically uses snowglobe-activate if available
 snow push hostname
 ```
-
-No flags needed - it just works!
 
 ### Manual usage
 
@@ -120,7 +120,12 @@ sudo snowglobe-activate /nix/store/qqz7czg0f46pg7n3f0xqmiv14bampzr7-nixos-system
 
 # Dry run (show what would change)
 sudo snowglobe-activate /nix/store/qqz7czg0f46pg7n3f0xqmiv14bampzr7-nixos-system-25.05 dry-activate
+
+# Reboot the host (NixOS only)
+sudo snowglobe-activate reboot
 ```
+
+On Darwin, only `switch` works.
 
 ## How It Works
 
@@ -132,23 +137,34 @@ The helper validates inputs before execution:
 2. **Mode validation**: Must be one of: `switch`, `boot`, `test`, `dry-activate` (only `switch` on Darwin)
 3. **Activation script existence**: Verifies the system has `bin/switch-to-configuration` (NixOS) or `activate` (Darwin)
 
+After validation, the helper sets the system profile (`nix-env --profile /nix/var/nix/profiles/system --set <path>`), then runs the activation script. snow skips its own profile update when the helper is present.
+
 ### Platform-Specific Behavior
 
 **NixOS**:
 - Uses `/nix/store/<hash>/bin/switch-to-configuration`
 - Supports all four activation modes: switch, boot, test, dry-activate
+- Sets the system profile for `switch` and `boot` only
 - Passes mode argument directly to the activation script
+- `snowglobe-activate reboot` runs `systemctl reboot`
 
 **nix-darwin**:
 - Uses `/nix/store/<hash>/activate`
 - Only supports `switch` mode (Darwin's activate script doesn't support modes)
 - Returns explicit errors for unsupported modes (boot, test, dry-activate)
+- Always sets the system profile, since Darwin's activate doesn't record a generation
+- Has no `reboot` subcommand
 
 ### Sudoers Configuration
 
-The module automatically configures sudo to allow passwordless execution using a stable path:
+The module automatically configures sudo to allow passwordless execution using a stable path.
 
-**NixOS and Darwin**:
+**NixOS** (through `security.sudo.extraRules`, which runs as any user by default):
+```
+user ALL=(ALL:ALL) NOPASSWD: /run/current-system/sw/bin/snowglobe-activate
+```
+
+**Darwin** (through `security.sudo.extraConfig`, written to `/etc/sudoers.d/10-nix-darwin-extra-config`):
 ```
 user ALL=(root) NOPASSWD: /run/current-system/sw/bin/snowglobe-activate
 ```
@@ -191,14 +207,14 @@ A possible future improvement is to only activate systems signed with a deploy k
 
 ## Troubleshooting
 
-### Warning: "snowglobe-activate not found, falling back to direct activation"
+### Warning: "snowglobe-activate not found on <host>, falling back to direct activation"
 
-**Cause**: The snowglobe module isn't installed or configured on the target host yet.
+**Cause**: The snowglobe module isn't installed on the target host yet.
 
-**Solution**: This is normal for first deployments. To use the helper:
-1. Add snowglobe module to your configuration: `imports = [ inputs.snowglobe.nixosModules.default ];`
+**Solution**: To use the helper:
+1. Add the snowglobe module to your configuration: `imports = [ inputs.snowglobe.nixosModules.default ];` (or `darwinModules.default` on nix-darwin)
 2. Add the user snowglobe connects as to `snowglobe.push.allowedUsers`, ideally a dedicated deploy user (see [Security](#security))
-3. Rebuild the system: `nixos-rebuild switch` or `darwin-rebuild switch`
+3. Rebuild the system: `sudo nixos-rebuild switch` or `sudo darwin-rebuild switch`
 
 On subsequent deployments, snowglobe will automatically use `snowglobe-activate`.
 
@@ -220,11 +236,11 @@ On subsequent deployments, snowglobe will automatically use `snowglobe-activate`
 
 **Cause**: You tried to use boot mode on a Darwin system.
 
-**Solution**: Darwin's activate script doesn't support delayed activation. Use switch mode instead, or configure your flake to avoid selecting boot mode for Darwin hosts.
+**Solution**: Darwin's activate script doesn't support delayed activation. Don't pass `--boot`, `--test` or `--dry-run` when pushing to Darwin hosts. Without them, snow always switches Darwin hosts.
 
 ### Helper detection fails
 
-**Cause**: SSH command to check for helper (`command -v snowglobe-activate`) fails or times out.
+**Cause**: The SSH command that checks for the helper (`command -v snowglobe-activate`) fails or times out. snow treats this as an error for that host, not as a missing helper.
 
 **Solution**:
 1. Verify SSH connectivity: `ssh target-host echo test`
@@ -236,11 +252,11 @@ On subsequent deployments, snowglobe will automatically use `snowglobe-activate`
 **Cause**: The sudoers configuration hasn't been applied or doesn't match the helper path.
 
 **Solution**:
-1. Verify the module is imported: `imports = [ inputs.snowglobe.nixosModules.default ];`
+1. Verify the module is imported: `imports = [ inputs.snowglobe.nixosModules.default ];` (or `darwinModules.default`)
 2. Check the user snowglobe connects as is in `allowedUsers`
 3. Rebuild the system to apply sudoers changes
 4. Test manually: `ssh target-host sudo -n -l /run/current-system/sw/bin/snowglobe-activate` prints the path if no password is needed
-5. Check sudoers config: `ssh target-host sudo cat /etc/sudoers` (look for snowglobe-activate rules)
+5. Check sudoers config: `ssh target-host sudo cat /etc/sudoers` on NixOS, or `/etc/sudoers.d/10-nix-darwin-extra-config` on Darwin (look for snowglobe-activate rules)
 
 ## Migration from Manual Configuration
 
@@ -271,10 +287,11 @@ This is a symlink to the actual helper in the Nix store (`/nix/store/<hash>-snow
 ### Source Code
 
 The helper is a simple bash script defined in:
-- NixOS: `modules/nixos.nix`
-- Darwin: `modules/darwin.nix`
+- NixOS: `modules/nixos-activate.nix`
+- Darwin: `modules/darwin-activate.nix`
+- Shared store path check: `modules/store-path-check.nix`
 
-Both versions follow the same logic with platform-specific differences for activation script paths and mode support.
+`modules/nixos.nix` and `modules/darwin.nix` install the script and configure sudo.
 
 ### Detection Logic
 
@@ -284,7 +301,7 @@ Snowglobe detects helper availability by running:
 ssh target-host command -v snowglobe-activate
 ```
 
-This returns exit code 0 if the helper is in PATH, non-zero otherwise. The check runs before each activation and is cached for the duration of the SSH connection.
+Exit code 0 means the helper is installed, and exit code 1 means it isn't, so snow falls back. Any other result, such as an SSH failure, is an error. The check runs before every activation and isn't cached. The reboot command checks for the helper again on its own.
 
 ## Related Documentation
 
