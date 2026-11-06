@@ -21,6 +21,7 @@ let
     "rebuild-reboot"
     "ssh-port"
     "deploy-user"
+    "rebuild-sudo"
   ];
 
   files = lib.genAttrs names (name: import ./tests/${name}.nix);

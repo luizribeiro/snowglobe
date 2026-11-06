@@ -86,6 +86,11 @@ class Demo:
         spec = settings["demo"]
         assert spec, "this test has no demo"
         self.machine = by_name[spec["runOn"]]
+        user = spec.get("user")
+        if user:
+            home, flake = stage_for_user(self.machine, user)
+        else:
+            home, flake = "/root", FLAKE
         record = shlex.join([
             "record", "--prompt", f"luiz@{spec['runOn']}:ops",
             "--name", spec["name"], "--title", spec["title"],
@@ -93,7 +98,7 @@ class Demo:
         ])
         variables = {
             "PATH": "/run/wrappers/bin:/run/current-system/sw/bin",
-            "HOME": "/root",
+            "HOME": home,
             **env,
         }
         setenv = " ".join(
@@ -103,8 +108,9 @@ class Demo:
         self.started = time.monotonic()
         # In its own unit, so a demo that takes its machine down keeps what
         # it recorded
+        run_as = f"--uid={user} " if user else ""
         self.machine.succeed(
-            f"systemd-run --unit=demo --working-directory={FLAKE} {setenv} "
+            f"systemd-run --unit=demo {run_as}--working-directory={flake} {setenv} "
             f"/bin/sh -c {shlex.quote(shell)}"
         )
 
@@ -157,6 +163,16 @@ def demo(wait: bool = True, env: Optional[dict[str, str]] = None) -> Demo:
 
 def stage_flake(machine: BaseMachine) -> None:
     machine.succeed(f"cp -rL {settings['flake']} {FLAKE} && chmod -R u+w {FLAKE}")
+
+
+def stage_for_user(machine: BaseMachine, user: str) -> tuple[str, str]:
+    """A copy of the flake the user owns, and the demo's directory; returns
+    the user's home and the flake's copy"""
+    home = f"/home/{user}"
+    flake = f"{home}/ops"
+    machine.succeed(f"cp -rL {settings['flake']} {flake} && chmod -R u+w {flake}")
+    machine.succeed(f"chown -R {user}: {flake} && install -d -o {user} /var/lib/demo")
+    return home, flake
 
 
 def setup() -> None:

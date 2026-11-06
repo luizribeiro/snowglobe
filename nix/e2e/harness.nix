@@ -149,6 +149,7 @@ pkgs.testers.runNixOSTest ({ config, ... }:
       demo = if demo == null then null else {
         inherit (test) name;
         inherit (demo) title runOn;
+        user = demo.user or null;
         script = demoScript;
       };
     });
