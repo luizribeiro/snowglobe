@@ -59,10 +59,14 @@ impl DeployTarget {
     ///
     /// Returns just the hostname if no user is specified.
     pub fn ssh_destination(&self) -> String {
-        if let Some(ref user) = self.user {
-            format!("{}@{}", user, self.hostname)
-        } else {
-            self.hostname.clone()
+        self.ssh_destination_as(None)
+    }
+
+    /// The SSH destination as `user`, or as the target's own user without one
+    pub fn ssh_destination_as(&self, user: Option<&str>) -> String {
+        match user.or(self.user.as_deref()) {
+            Some(user) => format!("{}@{}", user, self.hostname),
+            None => self.hostname.clone(),
         }
     }
 
@@ -115,6 +119,27 @@ mod tests {
             port: None,
         };
         assert_eq!(target.ssh_destination(), "hydrogen.example.com");
+    }
+
+    #[test]
+    fn test_ssh_destination_as_a_user_overrides_the_targets_own() {
+        let target = DeployTarget::with_user("root", "hydrogen.example.com");
+        assert_eq!(
+            target.ssh_destination_as(Some("deploy")),
+            "deploy@hydrogen.example.com"
+        );
+    }
+
+    #[test]
+    fn test_ssh_destination_as_no_user_keeps_the_targets_own() {
+        let target = DeployTarget::with_user("root", "hydrogen.example.com");
+        assert_eq!(target.ssh_destination_as(None), "root@hydrogen.example.com");
+    }
+
+    #[test]
+    fn test_ssh_destination_as_no_user_leaves_it_to_ssh() {
+        let target = DeployTarget::new("hydrogen.example.com");
+        assert_eq!(target.ssh_destination_as(None), "hydrogen.example.com");
     }
 
     #[test]

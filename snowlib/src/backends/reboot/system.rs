@@ -52,13 +52,8 @@ impl SystemRebootBackend {
         self
     }
 
-    /// Get the effective SSH destination
     fn get_destination(&self, target: &DeployTarget) -> String {
-        if let Some(ref user) = self.ssh_user {
-            format!("{}@{}", user, target.hostname)
-        } else {
-            target.ssh_destination()
-        }
+        target.ssh_destination_as(self.ssh_user.as_deref())
     }
 
     /// Check if kernel or initrd changed (fast check)
