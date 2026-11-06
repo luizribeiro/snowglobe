@@ -1,6 +1,6 @@
 # System Activation
 
-This document describes snowglobe's activation system, which provides secure passwordless deployment for both NixOS and nix-darwin hosts.
+This document describes snowglobe's activation system, which provides passwordless deployment for both NixOS and nix-darwin hosts.
 
 ## Overview
 
@@ -21,7 +21,7 @@ The hash (`qqz7czg0f46pg7n3f0xqmiv14bampzr7`) changes with every configuration u
 Snowglobe provides an activation command installed at a stable path that:
 
 1. Accepts the store path and activation mode as arguments
-2. Validates inputs to prevent command injection
+2. Validates the store path and activation mode
 3. Detects the platform (NixOS vs Darwin) and calls the appropriate activation script
 4. Has a stable path for sudoers configuration
 
@@ -42,7 +42,7 @@ Add to your NixOS configuration:
   imports = [ inputs.snowglobe.nixosModules.default ];
 
   # Configure passwordless deployment users
-  snowglobe.push.allowedUsers = [ "deploy-user" "ci-bot" ];
+  snowglobe.push.allowedUsers = [ "deploy" ];
 }
 ```
 
@@ -65,7 +65,7 @@ Add to your Darwin configuration:
   imports = [ inputs.snowglobe.darwinModules.default ];
 
   # Configure passwordless deployment users
-  snowglobe.push.allowedUsers = [ "your-username" "ci-bot" ];
+  snowglobe.push.allowedUsers = [ "deploy" ];
 }
 ```
 
@@ -81,11 +81,11 @@ darwin-rebuild switch
 
 Type: `list of strings`
 Default: `[]`
-Example: `[ "alice" "deploy-bot" ]`
+Example: `[ "deploy" ]`
 
-List of users who can run `snowglobe-activate` without a password. These users will be able to activate any system configuration from the Nix store, but cannot modify the store itself (which requires root).
+List of users who can run `snowglobe-activate` without a password, and so activate any system from the Nix store.
 
-**Security note**: Only add trusted users and service accounts to this list. While the helper validates inputs, users in this list can still activate arbitrary system configurations from `/nix/store/`.
+**Users in this list are effectively root on the host.** See [Security](#security).
 
 ## Usage
 
@@ -94,7 +94,7 @@ List of users who can run `snowglobe-activate` without a password. These users w
 When using `snow push`, snowglobe automatically:
 
 1. Detects if `snowglobe-activate` is available on the target host
-2. Uses it if present for better security
+2. Uses it if present
 3. Falls back to direct activation if not found, with a warning
 
 ```bash
@@ -158,36 +158,38 @@ This uses `/run/current-system/sw/bin/` which is a stable path that always point
 
 ## Security
 
-### Threat Model
+### Allowed users are root-equivalent
 
-The helper protects against:
+Activating a system runs its activation script as root, and the store path is chosen by the caller. Writing to `/nix/store` directly needs root, but adding to it does not: any user allowed to use the Nix daemon can build or add a path whose `bin/switch-to-configuration` (or `activate` on Darwin) does whatever they want. So a user in `allowedUsers` can run arbitrary code as root.
 
-1. **Arbitrary command execution**: Only validated store paths and modes are accepted
-2. **Path traversal**: Store path must start with `/nix/store/`
-3. **Command injection**: Arguments are properly quoted and validated
-4. **Mode confusion**: Only valid activation modes are accepted
+This is inherent to push deployment. deploy-rs, colmena and `nixos-rebuild --target-host` all need a root-equivalent user on the target too.
 
-The helper does **not** protect against:
+The input validation catches mistakes, such as a wrong mode or a path that isn't a system. It is not a security boundary against an allowed user.
 
-1. **Malicious store paths**: If an attacker can place malicious activation scripts in `/nix/store/`, they can execute them. However, modifying `/nix/store/` requires root access.
-2. **Social engineering**: If an attacker convinces a user to run activation manually with a malicious store path
+### What the helper does offer
+
+- A single, auditable command in sudoers instead of `NOPASSWD: ALL`
+- A stable path that needs no sudoers changes when the system changes, and works around sudoers wildcard limitations on macOS
 
 ### Comparison to Alternatives
 
-| Approach | Security | Reliability | Ease of Use |
-|----------|----------|-------------|-------------|
-| snowglobe-activate helper | ✓ Best | ✓ Excellent | ✓ Simple |
-| `/nix/store/*/activate` wildcard | ⚠️ Moderate | ✗ Unreliable on macOS | ✓ Simple |
-| `NOPASSWD: ALL` | ✗ Dangerous | ✓ Always works | ✓ Very simple |
-| Per-generation sudoers | ✓ Good | ⚠️ Requires automation | ✗ Complex |
+All of these give the allowed user root-equivalent access. They differ in what sudoers exposes and how well they work.
+
+| Approach | Sudo surface | Reliability | Ease of Use |
+|----------|--------------|-------------|-------------|
+| snowglobe-activate helper | One fixed command | ✓ Excellent | ✓ Simple |
+| `/nix/store/*/activate` wildcard | Any matching store path | ✗ Unreliable on macOS | ✓ Simple |
+| `NOPASSWD: ALL` | Every command | ✓ Always works | ✓ Very simple |
+| Per-generation sudoers | One path per generation | ⚠️ Requires automation | ✗ Complex |
+
+A possible future improvement is to only activate systems signed with a deploy key, which would make the helper a real boundary.
 
 ### Best Practices
 
-1. **Minimize allowedUsers**: Only add users who need deployment access
-2. **Use --require-helper in CI**: Ensures configuration is correct
-3. **Monitor helper updates**: Watch for security updates to snowglobe
+1. **Treat the deploy user's SSH key like a root key**: key-only login, and keep the key only on the machine or CI runner that deploys
+2. **Use a dedicated deploy user, and only that one**: a personal account in `allowedUsers` is root-equivalent without a password
+3. **Use --require-helper in CI**: Ensures configuration is correct
 4. **Audit activations**: Check system logs for unexpected activation attempts
-5. **Use dedicated deployment users**: Create separate users for CI/CD rather than using personal accounts
 
 ## Troubleshooting
 
@@ -195,9 +197,9 @@ The helper does **not** protect against:
 
 **Cause**: The snowglobe module isn't installed or configured on the target host yet.
 
-**Solution**: This is normal for first deployments. To enable better security:
+**Solution**: This is normal for first deployments. To use the helper:
 1. Add snowglobe module to your configuration: `imports = [ inputs.snowglobe.nixosModules.default ];`
-2. Add your username to `snowglobe.push.allowedUsers`
+2. Add the user snowglobe connects as to `snowglobe.push.allowedUsers`, ideally a dedicated deploy user (see [Security](#security))
 3. Rebuild the system: `nixos-rebuild switch` or `darwin-rebuild switch`
 
 On subsequent deployments, snowglobe will automatically use `snowglobe-activate`.
@@ -237,7 +239,7 @@ On subsequent deployments, snowglobe will automatically use `snowglobe-activate`
 
 **Solution**:
 1. Verify the module is enabled: `snowglobe.push.enable = true`
-2. Check your username is in `allowedUsers`
+2. Check the user snowglobe connects as is in `allowedUsers`
 3. Rebuild the system to apply sudoers changes
 4. Test manually: `ssh target-host sudo snowglobe-activate --help`
 5. Check sudoers config: `ssh target-host sudo cat /etc/sudoers` (look for snowglobe-activate rules)
