@@ -22,7 +22,7 @@ mod terminal_warnings;
 mod test_utils;
 
 #[derive(Parser)]
-#[command(name = "snow")]
+#[command(name = "snow", version)]
 #[command(about = "NixOS cluster orchestration tool", long_about = None)]
 struct Cli {
     /// Path to the flake directory

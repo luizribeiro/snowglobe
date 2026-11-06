@@ -24,6 +24,15 @@ fn test_help_command() {
 }
 
 #[test]
+fn test_version_flag_prints_the_crate_version() {
+    snow_cmd()
+        .arg("--version")
+        .assert()
+        .success()
+        .stdout(format!("snow {}\n", env!("CARGO_PKG_VERSION")));
+}
+
+#[test]
 fn test_fatal_error_shows_its_help_without_a_std_prefix() {
     assert_cmd::cargo::cargo_bin_cmd!("snow")
         .args(["-f", "/srv/no-such-flake", "list"])
