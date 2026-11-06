@@ -8,6 +8,7 @@ let
   names = [
     "switch"
     "reboot"
+    "push-boot"
     "activation-failure"
     "hook-failure"
     "missing-hook"
