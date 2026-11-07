@@ -2,7 +2,54 @@
 
 # Platform-agnostic push options, imported by both nixos.nix and darwin.nix
 
+let
+  # "default" is the phase snow puts hosts without one in
+  phaseName = lib.types.addCheck (lib.types.strMatching "[A-Za-z0-9_-]+") (name: name != "default")
+    // { description = ''phase name (letters, digits, "-" and "_"), other than "default"''; };
+in
 {
+  options.snowglobe.push.phase = lib.mkOption {
+    type = lib.types.nullOr phaseName;
+    default = null;
+    description = ''
+      The push phase this host deploys in. Phases deploy one after another,
+      in name order. If a host in a phase fails, later phases are skipped.
+    '';
+    example = "p1";
+  };
+
+  options.snowglobe.push.tags = lib.mkOption {
+    type = lib.types.listOf lib.types.str;
+    default = [ ];
+    description = ''
+      Tags that select this host with `snow push --tag` or `--tags`.
+    '';
+    example = [ "web" "database" ];
+  };
+
+  options.snowglobe.push.rebootPolicy = lib.mkOption {
+    type = lib.types.enum [ "auto" "never" "always" ];
+    default = "auto";
+    description = ''
+      When `snow push` reboots this host: `auto` when the new system needs a
+      reboot (a new kernel, initrd or critical service), `always` after
+      every deploy, and `never` not at all, setting the new system for the
+      next boot instead when it needs one. snow never reboots nix-darwin
+      hosts, so it has no effect on them.
+    '';
+  };
+
+  options.snowglobe.push.optional = lib.mkOption {
+    type = lib.types.bool;
+    default = false;
+    description = ''
+      Whether `snow push` may go on without this host. An optional host that
+      fails, for example because it is offline, is reported as failed, but
+      its phase doesn't fail: later phases still run, and the push succeeds
+      if only optional hosts failed.
+    '';
+  };
+
   options.snowglobe.push.serialGroup = lib.mkOption {
     type = lib.types.nullOr (lib.types.strMatching ".+");
     default = null;
