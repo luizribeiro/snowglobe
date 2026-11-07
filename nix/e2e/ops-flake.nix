@@ -18,6 +18,7 @@
       host = _: config: {
         config = {
           networking = { inherit (config) hostName domain; };
+          nixpkgs.hostPlatform = { inherit (config) system; };
           snowglobe = {
             push = { inherit (config) phase tags rebootPolicy optional serialGroup sshPort; };
             hooksFile = hooksFile config.hooksFile;

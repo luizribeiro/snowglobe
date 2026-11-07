@@ -2,7 +2,10 @@
   name = "never-phase";
 
   nodes = {
-    boron.snowglobe.push.tags = [ "web" ];
+    boron.snowglobe.push = {
+      tags = [ "web" ];
+      serialGroup = "web";
+    };
     curium.snowglobe.push = {
       phase = "never";
       tags = [ "web" ];
@@ -10,6 +13,18 @@
   };
 
   testScript = ''
+    import json
+
+    # A bare list shows hosts in the never phase too
+    status, output = deployer.execute(f"cd {FLAKE} && snow list --json")
+    assert status == 0, output
+    system = deployer.succeed("uname -m").strip() + "-linux"
+    host = {"system": system, "rebootPolicy": "auto", "optional": False}
+    assert json.loads(output) == [
+        host | {"name": "boron", "phase": None, "tags": ["web"], "serialGroup": "web"},
+        host | {"name": "curium", "phase": "never", "tags": ["web"], "serialGroup": None},
+    ], output
+
     def push(args: str) -> str:
         status, output = deployer.execute(f"cd {FLAKE} && snow push {args} 2>&1")
         assert status == 0, output
