@@ -25,6 +25,10 @@
     contains(output, ("Pushing 1 host: boron",))
     runs("curium", base("curium"))
 
+    output = push("--phase never --dry-run")
+    contains(output, ("Pushing 1 host in 1 phase:", "never  curium"))
+    runs("curium", base("curium"))
+
     output = push("curium")
     contains(output, ("Pushing 1 host in 1 phase:", "never  curium", "curium: deployed"))
     runs("curium", pushed("curium"))
