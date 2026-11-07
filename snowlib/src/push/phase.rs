@@ -6,6 +6,9 @@ use std::cmp::Ordering;
 /// The phase of hosts without one, so hosts may not set it themselves
 pub const UNPHASED: &str = "default";
 
+/// Hosts in this phase are selected only by name or by phase
+pub const NEVER: &str = "never";
+
 /// The one phase of a push that ignores phases
 pub const ALL_HOSTS: &str = "_all";
 

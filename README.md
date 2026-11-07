@@ -24,9 +24,10 @@ before 1.0.
 
 `build` and `push` take host names, or select hosts with one of
 `-e/--filter` (a Nix expression over the host's config), `--phase`/`--phases`
-or `--tag`/`--tags`. With no hosts, they act on every host. `list` takes
-`-e`. snow finds `flake.nix`
-in the current directory or a parent; `-f` or `FLAKE_PATH` points it elsewhere.
+or `--tag`/`--tags`. With no hosts, they act on every host. Hosts in the phase
+`never` are selected only by name or with `--phase never`. `list` takes `-e`.
+snow finds `flake.nix` in the current directory or a parent; `-f` or
+`FLAKE_PATH` points it elsewhere.
 
 ### `snow push`
 

@@ -29,7 +29,7 @@ pub use config::{PushConfiguration, PushStrategy};
 pub use context::PushContext;
 pub use hooks::HookExecutor;
 pub(crate) use phase::check_phase;
-pub use phase::{is_name_char, ALL_HOSTS, UNPHASED};
+pub use phase::{is_name_char, ALL_HOSTS, NEVER, UNPHASED};
 pub use results::{
     BlockedHost, HostDeploymentResult, PhaseResult, PipelineStep, PushPlan, PushResults,
     SkippedPhase,

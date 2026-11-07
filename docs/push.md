@@ -75,6 +75,11 @@ snowglobe.push.phase = "p1";
 - Phases run one after another, in name order with numbers by value: `p2`
   runs before `p10`.
 - Hosts without a phase run last, together, after every named phase.
+- Hosts in the phase `never` are left out unless named (`snow push curium`)
+  or selected by phase (`--phase never`, or `--phases` with `never`). A bare
+  `snow push`, `--tag`, `-e` or another `--phase` never selects them, even
+  when they match. `snow build` and `snow plan` select hosts the same way;
+  `snow list` shows every host.
 - If any host in a phase fails, later phases are skipped and `snow push`
   exits non-zero.
 - `--ignore-phases` puts every selected host in a single phase.
@@ -534,7 +539,7 @@ To reboot a host whatever changed, use `rebootPolicy = "always"`.
 
 | Flag | Description |
 |------|-------------|
-| `<HOSTS>...` | Hosts to push (default: all hosts) |
+| `<HOSTS>...` | Hosts to push (default: all hosts but those in the phase `never`) |
 | `-e`, `--filter <EXPR>` | Hosts whose config matches a Nix expression, e.g. `config: config.services.nginx.enable or false` |
 | `--phase <PHASE>` | Hosts in one phase |
 | `--phases <A,B>` | Hosts in any of these phases |

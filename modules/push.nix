@@ -16,6 +16,9 @@ in
       in name order with numbers by value (p2 before p10), and hosts
       without a phase deploy last. If a host in a phase fails, later phases
       are skipped.
+
+      Hosts in the phase `never` are pushed (or built) only when named, as
+      in `snow push curium`, or selected with `--phase never`.
     '';
     example = "p1";
   };
