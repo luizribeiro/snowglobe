@@ -56,8 +56,15 @@ build with `cargo build --features unstable`.
   `.rebootPolicy`, no longer from `core.pushPhase`, `core.tags` and
   `core.rebootPolicy`, which your own module had to declare. Move those
   settings to the new options.
-- Phases (`snowglobe.push.phase`) deploy one after another; a failed phase
-  stops the later ones. `--ignore-phases` deploys every selected host at once.
+- Phases (`snowglobe.push.phase`) deploy one after another, in name order
+  with numbers by value (`p2` before `p10`), and hosts without a phase deploy
+  last; a failed phase stops the later ones. `--ignore-phases` deploys every
+  selected host at once. Phase names may contain only letters, digits, `-`
+  and `_`, and `default` is reserved.
+- Hosts in the phase `never` are pushed, built or planned only when named or
+  selected with `--phase never`.
+- Optional hosts (`snowglobe.push.optional`) may fail without failing their
+  phase or the push; the report marks their failures `(optional)`.
 - Each host runs build, copy, plan, activate and reboot on its own, in
   parallel with the others, up to `--concurrency`.
 - Hosts already running and booting the built system are skipped;
