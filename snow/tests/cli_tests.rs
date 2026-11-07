@@ -360,3 +360,15 @@ fn test_push_without_a_terminal_logs_each_step_to_stderr() {
             "in 1 phase:\n  production  hydrogen",
         ));
 }
+
+#[test]
+fn test_list_help_says_it_lists_every_host_by_default() {
+    snow_cmd()
+        .args(["list", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Hosts to list (defaults to every host)",
+        ))
+        .stdout(predicate::str::contains("--phase"));
+}

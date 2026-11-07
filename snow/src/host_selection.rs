@@ -65,6 +65,37 @@ impl HostSelectionArgs {
         )
         .await
     }
+
+    /// Like `resolve`, but selecting nothing selects every host, the phase
+    /// "never" included: listing hosts deploys none, so it can show them all
+    pub async fn resolve_for_listing(
+        &self,
+        flake: &Flake,
+        nix_backend: &dyn NixBackend,
+    ) -> Result<Vec<String>> {
+        if self.selects_nothing() {
+            resolve_hosts(flake, nix_backend, None, None).await
+        } else {
+            self.resolve(flake, nix_backend).await
+        }
+    }
+
+    fn selects_nothing(&self) -> bool {
+        let Self {
+            hosts,
+            filter,
+            phase,
+            phases,
+            tag,
+            tags,
+        } = self;
+        hosts.is_empty()
+            && filter.is_none()
+            && phase.is_none()
+            && phases.is_empty()
+            && tag.is_none()
+            && tags.is_empty()
+    }
 }
 
 /// `filter`, if any, narrowed to hosts outside the `never` phase
@@ -312,6 +343,24 @@ mod tests {
             filter_for(&["--tag", "web", "curium"]).unwrap(),
             r#"config: builtins.elem "web" (config.snowglobe.push.tags or [])"#
         );
+    }
+
+    #[test]
+    fn test_only_an_empty_selection_selects_nothing() {
+        assert!(parse_selection(&[]).unwrap().selects_nothing());
+        for args in [
+            &["curium"][..],
+            &["-e", "c: true"][..],
+            &["--phase", "p1"][..],
+            &["--phases", "p1,p2"][..],
+            &["--tag", "web"][..],
+            &["--tags", "web,database"][..],
+        ] {
+            assert!(
+                !parse_selection(args).unwrap().selects_nothing(),
+                "{args:?}"
+            );
+        }
     }
 
     #[test]

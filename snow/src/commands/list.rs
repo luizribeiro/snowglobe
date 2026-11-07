@@ -1,12 +1,13 @@
+use crate::host_selection::HostSelectionArgs;
 use clap::Args;
 use snowlib::{Flake, Result};
 
 /// List hostnames from nixosConfigurations and darwinConfigurations
 #[derive(Debug, Args)]
+#[command(mut_arg("hosts", |hosts| hosts.help("Hosts to list (defaults to every host)")))]
 pub struct ListArgs {
-    /// Filter hosts using a Nix expression (e.g., "config: config.services.nginx.enable or false")
-    #[arg(short = 'e', long)]
-    pub filter: Option<String>,
+    #[command(flatten)]
+    pub selection: HostSelectionArgs,
 
     #[cfg(debug_assertions)]
     /// Path to fixture file for mock backend (debug builds only)
@@ -21,12 +22,13 @@ impl ListArgs {
             &self.mock_fixture,
         )?;
 
-        let hosts = nix_backend
-            .list_all_hosts(flake, self.filter.as_deref())
+        let hosts = self
+            .selection
+            .resolve_for_listing(flake, nix_backend.as_ref())
             .await?;
 
         for host in hosts {
-            println!("{}", host.name);
+            println!("{host}");
         }
 
         Ok(())
@@ -35,7 +37,7 @@ impl ListArgs {
 
 #[cfg(test)]
 mod tests {
-    use crate::test_utils::snow_cmd;
+    use crate::test_utils::{fixtures_dir, snow_cmd, snow_cmd_on};
     use predicates::prelude::*;
 
     #[test]
@@ -102,5 +104,54 @@ mod tests {
             .stderr(predicate::str::contains(
                 "Failed to evaluate Nix expression",
             ));
+    }
+
+    /// snow list on a flake whose hosts set every push option
+    fn list_cmd(args: &[&str]) -> assert_cmd::Command {
+        let mut cmd = snow_cmd_on(&fixtures_dir().join("list"));
+        cmd.arg("list").args(args);
+        cmd
+    }
+
+    fn listed_lines(args: &[&str]) -> Vec<String> {
+        let output = list_cmd(args)
+            .assert()
+            .success()
+            .get_output()
+            .stdout
+            .clone();
+        String::from_utf8(output)
+            .unwrap()
+            .lines()
+            .map(str::to_string)
+            .collect()
+    }
+
+    #[test]
+    fn test_list_without_a_selection_shows_every_host_even_in_the_never_phase() {
+        assert_eq!(listed_lines(&[]), ["argon", "boron", "curium", "ferrum"]);
+    }
+
+    #[test]
+    fn test_list_selections_leave_out_the_never_phase_like_push() {
+        assert_eq!(listed_lines(&["--tag", "web"]), ["argon", "boron"]);
+        assert_eq!(
+            listed_lines(&["-e", "c: true"]),
+            ["argon", "boron", "ferrum"]
+        );
+    }
+
+    #[test]
+    fn test_list_selects_the_never_phase_by_phase_or_name_like_push() {
+        assert_eq!(listed_lines(&["--phases", "p2,never"]), ["boron", "curium"]);
+        assert_eq!(listed_lines(&["ferrum", "curium"]), ["ferrum", "curium"]);
+    }
+
+    #[test]
+    fn test_list_rejects_unknown_hosts() {
+        list_cmd(&["xenon"])
+            .assert()
+            .failure()
+            .stderr(predicate::str::contains("Unknown host: xenon"));
     }
 }
