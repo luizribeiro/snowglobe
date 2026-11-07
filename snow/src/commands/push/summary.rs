@@ -8,22 +8,32 @@ use super::board::{format_elapsed, plural};
 use super::colors::style;
 use crate::marks;
 use snowlib::error::summary::{error_context, error_summary, truncate};
+use snowlib::push::{ALL_HOSTS, UNPHASED};
 use std::path::Path;
 
 /// Keeps the terminal output scannable; the log has every error in full
 const MAX_CONTEXT_LINES: usize = 10;
 
 /// The phase hosts without a push phase share, which has no name to show
-pub(super) fn is_unnamed_phase(phase: &str) -> bool {
-    matches!(phase, "default" | "_all")
+fn is_unnamed_phase(phase: &str) -> bool {
+    matches!(phase, ALL_HOSTS | UNPHASED)
 }
 
-/// "Phase p2", or "Push" for the phase without a name
-pub(super) fn phase_title(phase: &str) -> String {
-    if is_unnamed_phase(phase) {
-        "Push".to_string()
+/// "Phase p2", or "Push" for a push's only phase when it has no name
+pub(super) fn phase_title(phase: &str, among_other_phases: bool) -> String {
+    match phase {
+        UNPHASED if among_other_phases => "Hosts without a phase".to_string(),
+        ALL_HOSTS | UNPHASED => "Push".to_string(),
+        _ => format!("Phase {phase}"),
+    }
+}
+
+/// How the phase overview lists a phase
+fn overview_label(phase: &str) -> &str {
+    if phase == UNPHASED {
+        "(no phase)"
     } else {
-        format!("Phase {phase}")
+        phase
     }
 }
 
@@ -43,7 +53,7 @@ pub fn phase_overview(phases: &[(String, Vec<String>)]) -> String {
         _ => {
             let width = phases
                 .iter()
-                .map(|(phase, _)| phase.len())
+                .map(|(phase, _)| overview_label(phase).len())
                 .max()
                 .unwrap_or(0);
             let heading = format!(
@@ -55,7 +65,9 @@ pub fn phase_overview(phases: &[(String, Vec<String>)]) -> String {
             for (phase, hosts) in phases {
                 overview.push_str(&format!(
                     "\n  {}  {}",
-                    style(format!("{phase:<width$}")).green().bold(),
+                    style(format!("{:<width$}", overview_label(phase)))
+                        .green()
+                        .bold(),
                     hosts.join(", ")
                 ));
             }
@@ -83,16 +95,21 @@ pub fn print_summary(results: &snowlib::PushResults) {
 ///     warning: the following units failed: storage-agent.service
 ///     … 9 more lines in /tmp/snow-1762255380.log
 /// ```
-pub fn phase_report(phase: &snowlib::PhaseResult, width: usize, log_file: Option<&Path>) -> String {
-    let mut lines = vec![phase_heading(phase)];
+pub fn phase_report(
+    phase: &snowlib::PhaseResult,
+    among_other_phases: bool,
+    width: usize,
+    log_file: Option<&Path>,
+) -> String {
+    let mut lines = vec![phase_heading(phase, among_other_phases)];
     for host in &phase.hosts {
         lines.extend(host_lines(host, width, log_file));
     }
     lines.join("\n")
 }
 
-fn phase_heading(phase: &snowlib::PhaseResult) -> String {
-    let title = phase_title(&phase.phase);
+fn phase_heading(phase: &snowlib::PhaseResult, among_other_phases: bool) -> String {
+    let title = phase_title(&phase.phase, among_other_phases);
     let took = format_elapsed(phase.duration);
     let total = phase.hosts.len();
     if phase.all_succeeded() {
@@ -224,7 +241,8 @@ fn skipped_phase_report(skipped: &snowlib::SkippedPhase) -> String {
     let count = skipped.hostnames.len();
     let heading = marks::skipped_line(&format!(
         "{} ({count} {} skipped)",
-        phase_title(&skipped.phase),
+        // Only a phase after another can be skipped
+        phase_title(&skipped.phase, true),
         plural(count, "host")
     ));
     std::iter::once(heading)
@@ -347,6 +365,60 @@ mod tests {
         assert_eq!(
             phase_overview(&[phase("p2", &["ferrum"])]),
             "Pushing 1 host in 1 phase:\n  p2  ferrum"
+        );
+    }
+
+    #[test]
+    fn test_overview_lists_hosts_without_a_phase_last_as_no_phase() {
+        console::set_colors_enabled(false);
+        assert_eq!(
+            phase_overview(&[
+                phase("p2", &["ferrum"]),
+                phase("default", &["boron", "radon"])
+            ]),
+            "Pushing 3 hosts in 2 phases:\n  p2          ferrum\n  (no phase)  boron, radon"
+        );
+    }
+
+    #[test]
+    fn test_hosts_without_a_phase_after_named_phases_are_titled_so() {
+        assert_eq!(super::phase_title("default", false), "Push");
+        assert_eq!(super::phase_title("default", true), "Hosts without a phase");
+        assert_eq!(super::phase_title("_all", false), "Push");
+        assert_eq!(super::phase_title("p2", true), "Phase p2");
+        assert_eq!(super::phase_title("p2", false), "Phase p2");
+    }
+
+    #[test]
+    fn test_report_of_hosts_without_a_phase_after_named_phases_is_titled_so() {
+        console::set_colors_enabled(false);
+        let phase = PhaseResult {
+            phase: "default".to_string(),
+            duration: Duration::from_secs(41),
+            hosts: vec![make_successful_host(
+                "sodium",
+                ActivationMode::Switch,
+                false,
+            )],
+        };
+
+        assert_eq!(
+            super::phase_report(&phase, true, 100, None),
+            "✓ Hosts without a phase (1 host in 0:41)\n  ✓ sodium (switch)"
+        );
+    }
+
+    #[test]
+    fn test_skipped_hosts_without_a_phase_are_titled_so() {
+        console::set_colors_enabled(false);
+        let skipped = SkippedPhase {
+            phase: "default".to_string(),
+            hostnames: vec!["sodium".to_string()],
+        };
+
+        assert_eq!(
+            super::skipped_phase_report(&skipped),
+            "⊘ Hosts without a phase (1 host skipped)\n  ⊘ sodium"
         );
     }
 
@@ -493,7 +565,7 @@ mod tests {
         };
 
         assert_eq!(
-            super::phase_report(&phase, 100, None),
+            super::phase_report(&phase, false, 100, None),
             "✗ Phase p2 (3/4 failed in 0:52)\n  ✓ boron (switch)\n  ✗ cerium at activate: activation failed\n  ✗ radon at pre-deploy: storage degraded\n  ⊘ lanthanum skipped, serial group 'k8s' halted after cerium failed"
         );
     }
@@ -542,7 +614,7 @@ mod tests {
         };
 
         assert_eq!(
-            super::phase_report(&phase, 100, Some(Path::new("/tmp/snow-1762255380.log"))),
+            super::phase_report(&phase, false, 100, Some(Path::new("/tmp/snow-1762255380.log"))),
             "✗ Phase p2 (3/4 failed in 0:52)\n\
              \x20 ✓ boron (switch)\n\
              \x20 ✗ cerium at activate: warning: the following units failed: storage-agent.service\n\
@@ -585,7 +657,7 @@ mod tests {
             };
 
             assert_eq!(
-                super::phase_report(&phase, 100, None),
+                super::phase_report(&phase, false, 100, None),
                 "✓ Push (1 host in 1:02:07)\n  ✓ sodium (switch)"
             );
         }

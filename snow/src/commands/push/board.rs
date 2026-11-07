@@ -97,6 +97,8 @@ impl HostRow {
 #[derive(Debug)]
 pub(super) struct HostBoard {
     phase: String,
+    /// An unnamed phase is titled apart from named ones only among them
+    among_other_phases: bool,
     started: Instant,
     hosts: Vec<HostRow>,
 }
@@ -114,6 +116,7 @@ impl HostBoard {
         hosts.sort_by(|a, b| a.hostname.cmp(&b.hostname));
         Self {
             phase: phase.to_string(),
+            among_other_phases: false,
             started: now,
             hosts,
         }
@@ -196,8 +199,13 @@ impl HostBoard {
         (finished, self.hosts.len())
     }
 
+    pub fn among_other_phases(mut self, among_other_phases: bool) -> Self {
+        self.among_other_phases = among_other_phases;
+        self
+    }
+
     pub fn title(&self) -> String {
-        super::summary::phase_title(&self.phase)
+        super::summary::phase_title(&self.phase, self.among_other_phases)
     }
 
     pub fn any_failed(&self) -> bool {
@@ -812,6 +820,10 @@ mod tests {
         assert_eq!(board.title(), "Push");
         assert_eq!(board.counts(), "1 host · 1 queued");
         assert_eq!(board.hostname_width(), 12);
+        assert_eq!(
+            board.among_other_phases(true).title(),
+            "Hosts without a phase"
+        );
     }
 
     #[test]

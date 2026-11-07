@@ -166,11 +166,6 @@ impl PushArgs {
             self.user.as_deref(),
             self.reboot_timeout,
         )?;
-        let observer = snowlib::observer::CompositeObserver::new(vec![
-            Box::new(snowlib::LogObserver::default()),
-            Box::new(observer::CliObserver::new(log_file.map(Into::into))),
-        ]);
-
         let hostnames = with_spinner(
             "Finding the hosts to push",
             self.selection.resolve(flake, nix_backend.as_ref()),
@@ -185,10 +180,15 @@ impl PushArgs {
             nix_backend.load_host_metadata(flake, &hostnames),
         )
         .await?;
-        println!(
-            "{}\n",
-            summary::phase_overview(&snowlib::phases(&hosts, self.ignore_phases))
-        );
+        let phases = snowlib::phases(&hosts, self.ignore_phases);
+        println!("{}\n", summary::phase_overview(&phases));
+        let observer = snowlib::observer::CompositeObserver::new(vec![
+            Box::new(snowlib::LogObserver::default()),
+            Box::new(observer::CliObserver::new(
+                log_file.map(Into::into),
+                phases.len() > 1,
+            )),
+        ]);
 
         let config = snowlib::PushConfiguration {
             strategy: self.push_strategy(),

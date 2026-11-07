@@ -15,15 +15,17 @@ use tracing_indicatif::span_ext::IndicatifSpanExt;
 pub struct CliObserver {
     board: SharedBoard,
     log_file: Option<PathBuf>,
+    among_other_phases: bool,
     /// Closing them removes the phase's lines
     spans: Mutex<Vec<tracing::Span>>,
 }
 
 impl CliObserver {
-    pub fn new(log_file: Option<PathBuf>) -> Self {
+    pub fn new(log_file: Option<PathBuf>, among_other_phases: bool) -> Self {
         Self {
             board: SharedBoard::default(),
             log_file,
+            among_other_phases,
             spans: Mutex::new(Vec::new()),
         }
     }
@@ -38,7 +40,8 @@ impl CliObserver {
 
 impl PushObserver for CliObserver {
     fn on_phase_start(&self, phase: &str, hosts: &[String]) {
-        let board = HostBoard::new(phase, hosts, Instant::now());
+        let board = HostBoard::new(phase, hosts, Instant::now())
+            .among_other_phases(self.among_other_phases);
         let lines = board.line_count();
         *self.board.lock() = Some(board);
 
@@ -69,7 +72,12 @@ impl PushObserver for CliObserver {
             tracing_indicatif::suspend_tracing_indicatif(|| {
                 println!(
                     "{}\n",
-                    super::summary::phase_report(result, report_width(), self.log_file.as_deref())
+                    super::summary::phase_report(
+                        result,
+                        self.among_other_phases,
+                        report_width(),
+                        self.log_file.as_deref()
+                    )
                 );
             });
         }
@@ -118,7 +126,7 @@ mod tests {
 
     #[test]
     fn test_phase_start_draws_a_header_and_a_line_per_lane_and_host() {
-        let observer = CliObserver::new(None);
+        let observer = CliObserver::new(None, false);
 
         observer.on_phase_start("p3", &hosts());
 
@@ -128,7 +136,7 @@ mod tests {
 
     #[test]
     fn test_default_phase_is_shown_as_push() {
-        let observer = CliObserver::new(None);
+        let observer = CliObserver::new(None, false);
 
         observer.on_phase_start("default", &hosts());
 
@@ -136,8 +144,20 @@ mod tests {
     }
 
     #[test]
+    fn test_default_phase_after_other_phases_is_shown_as_hosts_without_a_phase() {
+        let observer = CliObserver::new(None, true);
+
+        observer.on_phase_start("default", &hosts());
+
+        assert_eq!(
+            observer.board.lock().as_ref().unwrap().title(),
+            "Hosts without a phase"
+        );
+    }
+
+    #[test]
     fn test_events_and_hooks_update_the_rows() {
-        let observer = CliObserver::new(None);
+        let observer = CliObserver::new(None, false);
         observer.on_phase_start("p3", &hosts());
 
         observer.on_host_event("radon", &HostEvent::Started(PipelineStep::Copy));
@@ -154,7 +174,7 @@ mod tests {
 
     #[test]
     fn test_phase_complete_with_results_clears_the_board_and_spans() {
-        let observer = CliObserver::new(None);
+        let observer = CliObserver::new(None, false);
         observer.on_phase_start("p3", &hosts());
         let result = PhaseResult {
             phase: "p3".to_string(),
@@ -170,7 +190,7 @@ mod tests {
 
     #[test]
     fn test_phase_complete_clears_the_board_and_spans() {
-        let observer = CliObserver::new(None);
+        let observer = CliObserver::new(None, false);
         observer.on_phase_start("p3", &hosts());
 
         observer.on_phase_complete("p3", None);

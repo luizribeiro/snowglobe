@@ -574,8 +574,10 @@ exclusive. Given with host names, they narrow those hosts down.
 ## Examples
 
 Each phase ends with a report: one line per host, with the activation mode
-and whether it rebooted or was unchanged, or the step it failed at. Hosts
-without a phase are reported under `Push`.
+and whether it rebooted or was unchanged, or the step it failed at. A push
+of hosts without a phase is reported under `Push`. When those hosts run after
+named phases, the overview lists them as `(no phase)` and their report is
+titled `Hosts without a phase`.
 
 ### Normal deployment
 
