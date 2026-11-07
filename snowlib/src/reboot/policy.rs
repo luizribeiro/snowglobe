@@ -1,7 +1,8 @@
 use crate::error::Result;
 
 /// Reboot policy for a host
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
 pub enum RebootPolicy {
     /// Never automatically reboot (use boot mode without reboot)
     Never,
@@ -50,6 +51,17 @@ mod tests {
             RebootPolicy::from_str("always").unwrap(),
             RebootPolicy::Always
         ));
+    }
+
+    #[test]
+    fn test_reboot_policy_serializes_as_it_is_written_in_nix() {
+        for (policy, written) in [
+            (RebootPolicy::Auto, "auto"),
+            (RebootPolicy::Never, "never"),
+            (RebootPolicy::Always, "always"),
+        ] {
+            assert_eq!(serde_json::to_value(policy).unwrap(), written);
+        }
     }
 
     #[test]
