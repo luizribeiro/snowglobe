@@ -299,6 +299,7 @@ fn metadata_apply_expr(local_system: &str) -> String {
         in {{
           hostName = config.networking.hostName;
           domain = config.networking.domain or "";
+          system = config.nixpkgs.hostPlatform.system or null;
           phase = config.snowglobe.push.phase or null;
           tags = config.snowglobe.push.tags or [];
           rebootPolicy = config.snowglobe.push.rebootPolicy or "auto";
@@ -336,6 +337,7 @@ fn parse_host_metadata(
         // Domain can be null for hosts that connect to different networks (like laptops)
         // or when not configured in the NixOS/nix-darwin configuration
         domain: Option<String>,
+        system: Option<String>,
         phase: Option<String>,
         tags: Vec<String>,
         #[serde(rename = "rebootPolicy")]
@@ -370,6 +372,7 @@ fn parse_host_metadata(
         fqdn,
         reboot_policy: RebootPolicy::from_str(&meta.reboot_policy)?,
         system_type,
+        system: meta.system,
         serial_group: meta.serial_group,
         ssh_port: meta.ssh_port,
         optional: meta.optional,
@@ -620,6 +623,29 @@ mod tests {
         assert!(!parse(&json("")).optional);
         assert!(metadata_apply_expr("x86_64-linux")
             .contains("optional = config.snowglobe.push.optional or false;"));
+    }
+
+    #[test]
+    fn test_parse_metadata_reads_the_hosts_platform() {
+        let json = |system: &str| {
+            format!(
+                r#"{{"hostName": "web01", "domain": null, "phase": "p1", "tags": [],
+                    "rebootPolicy": "auto"{system}}}"#
+            )
+        };
+
+        assert_eq!(
+            parse(&json(r#", "system": "aarch64-linux""#)).system,
+            Some("aarch64-linux".to_string())
+        );
+        assert_eq!(parse(&json(r#", "system": null"#)).system, None);
+        assert_eq!(parse(&json("")).system, None);
+    }
+
+    #[test]
+    fn test_metadata_apply_expr_reads_the_hosts_platform() {
+        assert!(metadata_apply_expr("x86_64-linux")
+            .contains("system = config.nixpkgs.hostPlatform.system or null;"));
     }
 
     #[test]

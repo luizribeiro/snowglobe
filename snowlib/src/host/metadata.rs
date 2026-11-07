@@ -19,6 +19,8 @@ pub struct HostMetadata {
     pub fqdn: String,
     pub reboot_policy: RebootPolicy,
     pub system_type: SystemType,
+    /// Nix platform, e.g. "aarch64-linux"; None when the config sets none
+    pub system: Option<String>,
     pub hooks: Vec<HookConfig>,
     /// Hosts sharing a group run their disruptive steps one at a time within a phase
     pub serial_group: Option<String>,
@@ -50,6 +52,7 @@ mod tests {
             fqdn: "boron.example.com".to_string(),
             reboot_policy: RebootPolicy::Auto,
             system_type: SystemType::NixOS,
+            system: None,
             hooks: vec![],
             serial_group: None,
             ssh_port,

@@ -70,6 +70,7 @@ mod tests {
             fqdn: "praseodymium.example.com".to_string(),
             reboot_policy: RebootPolicy::Always,
             system_type: SystemType::NixOS,
+            system: None,
             hooks,
             serial_group: None,
             ssh_port: None,

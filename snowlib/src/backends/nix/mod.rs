@@ -253,6 +253,7 @@ mod tests {
                 fqdn: host.to_string(),
                 reboot_policy: crate::reboot::RebootPolicy::Auto,
                 system_type,
+                system: None,
                 hooks: vec![],
                 serial_group: None,
                 ssh_port: None,

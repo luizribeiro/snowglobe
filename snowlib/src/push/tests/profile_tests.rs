@@ -36,6 +36,7 @@ fn create_nixos_host_metadata(name: &str, fqdn: &str) -> HostMetadata {
         tags: vec![],
         reboot_policy: RebootPolicy::Auto,
         system_type: SystemType::NixOS,
+        system: None,
         serial_group: None,
         ssh_port: None,
         optional: false,

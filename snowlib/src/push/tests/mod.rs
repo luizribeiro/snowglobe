@@ -55,6 +55,7 @@ fn make_host_metadata(
         fqdn: format!("{}.example.com", name),
         reboot_policy,
         system_type: SystemType::NixOS,
+        system: None,
         serial_group: None,
         ssh_port: None,
         optional: false,

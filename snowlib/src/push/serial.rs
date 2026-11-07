@@ -191,6 +191,7 @@ mod tests {
             fqdn: format!("{}.example.com", name),
             reboot_policy: RebootPolicy::Always,
             system_type: SystemType::NixOS,
+            system: None,
             hooks: vec![],
             serial_group: group.map(str::to_string),
             ssh_port: None,
