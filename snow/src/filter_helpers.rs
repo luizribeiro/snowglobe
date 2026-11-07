@@ -9,10 +9,10 @@ use snowlib::Result;
 /// # Priority order
 /// The function checks parameters in this order and returns the first match:
 /// 1. `explicit_filter` - If provided, returns it unchanged
-/// 2. `phase` - Single phase match: `config.core.pushPhase == "production"`
-/// 3. `phases` - Multiple phase match (OR): `builtins.elem config.core.pushPhase [...]`
-/// 4. `tag` - Single tag match: `builtins.elem "web" config.core.tags`
-/// 5. `tags` - Multiple tag match (OR): `builtins.any (tag: builtins.elem tag config.core.tags) [...]`
+/// 2. `phase` - Single phase match: `config.snowglobe.push.phase == "production"`
+/// 3. `phases` - Multiple phase match (OR): `builtins.elem config.snowglobe.push.phase [...]`
+/// 4. `tag` - Single tag match: `builtins.elem "web" config.snowglobe.push.tags`
+/// 5. `tags` - Multiple tag match (OR): `builtins.any (tag: builtins.elem tag config.snowglobe.push.tags) [...]`
 /// 6. None - No filter specified
 ///
 /// # Arguments
@@ -31,11 +31,11 @@ use snowlib::Result;
 /// ```ignore
 /// // Single phase filter
 /// let expr = build_filter_expression(None, Some("production"), &[], None, &[])?;
-/// // Returns: Some("config: (config.core.pushPhase or null) == \"production\"")
+/// // Returns: Some("config: (config.snowglobe.push.phase or null) == \"production\"")
 ///
 /// // Multiple tags filter
 /// let expr = build_filter_expression(None, None, &[], None, &["web".to_string(), "api".to_string()])?;
-/// // Returns: Some("config: builtins.any (tag: builtins.elem tag (config.core.tags or [])) [\"web\" \"api\"]")
+/// // Returns: Some("config: builtins.any (tag: builtins.elem tag (config.snowglobe.push.tags or [])) [\"web\" \"api\"]")
 /// ```
 pub fn build_filter_expression(
     explicit_filter: Option<&str>,
@@ -49,7 +49,7 @@ pub fn build_filter_expression(
     } else if let Some(phase) = phase {
         let sanitized = validate_nix_identifier(phase.trim())?;
         Ok(Some(format!(
-            r#"config: (config.core.pushPhase or null) == "{}""#,
+            r#"config: (config.snowglobe.push.phase or null) == "{}""#,
             sanitized
         )))
     } else if !phases.is_empty() {
@@ -62,13 +62,13 @@ pub fn build_filter_expression(
             .collect::<Vec<_>>()
             .join(" ");
         Ok(Some(format!(
-            "config: builtins.elem (config.core.pushPhase or null) [{}]",
+            "config: builtins.elem (config.snowglobe.push.phase or null) [{}]",
             phase_list
         )))
     } else if let Some(tag) = tag {
         let sanitized = validate_nix_identifier(tag.trim())?;
         Ok(Some(format!(
-            r#"config: builtins.elem "{}" (config.core.tags or [])"#,
+            r#"config: builtins.elem "{}" (config.snowglobe.push.tags or [])"#,
             sanitized
         )))
     } else if !tags.is_empty() {
@@ -81,7 +81,7 @@ pub fn build_filter_expression(
             .collect::<Vec<_>>()
             .join(" ");
         Ok(Some(format!(
-            "config: builtins.any (tag: builtins.elem tag (config.core.tags or [])) [{}]",
+            "config: builtins.any (tag: builtins.elem tag (config.snowglobe.push.tags or [])) [{}]",
             tag_list
         )))
     } else {
@@ -129,7 +129,7 @@ mod tests {
         let result = build_filter_expression(None, Some("production"), &[], None, &[]).unwrap();
         assert_eq!(
             result,
-            Some(r#"config: (config.core.pushPhase or null) == "production""#.to_string())
+            Some(r#"config: (config.snowglobe.push.phase or null) == "production""#.to_string())
         );
     }
 
@@ -146,7 +146,7 @@ mod tests {
         assert_eq!(
             result,
             Some(
-                r#"config: builtins.elem (config.core.pushPhase or null) ["production" "staging"]"#
+                r#"config: builtins.elem (config.snowglobe.push.phase or null) ["production" "staging"]"#
                     .to_string()
             )
         );
@@ -157,7 +157,7 @@ mod tests {
         let result = build_filter_expression(None, None, &[], Some("web"), &[]).unwrap();
         assert_eq!(
             result,
-            Some(r#"config: builtins.elem "web" (config.core.tags or [])"#.to_string())
+            Some(r#"config: builtins.elem "web" (config.snowglobe.push.tags or [])"#.to_string())
         );
     }
 
@@ -174,7 +174,7 @@ mod tests {
         assert_eq!(
             result,
             Some(
-                r#"config: builtins.any (tag: builtins.elem tag (config.core.tags or [])) ["web" "frontend"]"#
+                r#"config: builtins.any (tag: builtins.elem tag (config.snowglobe.push.tags or [])) ["web" "frontend"]"#
                     .to_string()
             )
         );
@@ -215,7 +215,7 @@ mod tests {
         assert_eq!(
             result,
             Some(
-                r#"config: builtins.elem (config.core.pushPhase or null) ["production" "staging"]"#
+                r#"config: builtins.elem (config.snowglobe.push.phase or null) ["production" "staging"]"#
                     .to_string()
             )
         );
@@ -303,7 +303,7 @@ mod tests {
         let result = build_filter_expression(None, Some(" production "), &[], None, &[]).unwrap();
         assert_eq!(
             result,
-            Some(r#"config: (config.core.pushPhase or null) == "production""#.to_string())
+            Some(r#"config: (config.snowglobe.push.phase or null) == "production""#.to_string())
         );
     }
 
@@ -312,7 +312,7 @@ mod tests {
         let result = build_filter_expression(None, None, &[], Some(" web "), &[]).unwrap();
         assert_eq!(
             result,
-            Some(r#"config: builtins.elem "web" (config.core.tags or [])"#.to_string())
+            Some(r#"config: builtins.elem "web" (config.snowglobe.push.tags or [])"#.to_string())
         );
     }
 }

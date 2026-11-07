@@ -299,9 +299,9 @@ fn metadata_apply_expr(local_system: &str) -> String {
         in {{
           hostName = config.networking.hostName;
           domain = config.networking.domain or "";
-          phase = config.core.pushPhase or null;
-          tags = config.core.tags or [];
-          rebootPolicy = config.core.rebootPolicy or "auto";
+          phase = config.snowglobe.push.phase or null;
+          tags = config.snowglobe.push.tags or [];
+          rebootPolicy = config.snowglobe.push.rebootPolicy or "auto";
           serialGroup = config.snowglobe.push.serialGroup or null;
           sshPort = config.snowglobe.push.sshPort or null;
           hooksFile = if config ? snowglobe && config.snowglobe ? hooksFile
@@ -571,6 +571,15 @@ mod tests {
         );
 
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_metadata_apply_expr_reads_phase_tags_and_reboot_policy_from_the_module() {
+        let expr = metadata_apply_expr("x86_64-linux");
+
+        assert!(expr.contains("phase = config.snowglobe.push.phase or null;"));
+        assert!(expr.contains("tags = config.snowglobe.push.tags or [];"));
+        assert!(expr.contains(r#"rebootPolicy = config.snowglobe.push.rebootPolicy or "auto";"#));
     }
 
     #[test]

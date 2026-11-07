@@ -2,9 +2,9 @@
   name = "switch";
 
   nodes = {
-    boron.core.pushPhase = "p1";
-    cerium.core.pushPhase = "p2";
-    radon.core.pushPhase = "p2";
+    boron.snowglobe.push.phase = "p1";
+    cerium.snowglobe.push.phase = "p2";
+    radon.snowglobe.push.phase = "p2";
   };
 
   demo = {

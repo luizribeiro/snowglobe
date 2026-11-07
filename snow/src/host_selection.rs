@@ -214,7 +214,7 @@ mod tests {
         assert_eq!(selection.tags, vec!["web", "database"]);
         assert_eq!(
             selection.filter_expression().unwrap().unwrap(),
-            r#"config: builtins.any (tag: builtins.elem tag (config.core.tags or [])) ["web" "database"]"#
+            r#"config: builtins.any (tag: builtins.elem tag (config.snowglobe.push.tags or [])) ["web" "database"]"#
         );
     }
 

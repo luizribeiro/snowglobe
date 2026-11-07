@@ -27,20 +27,8 @@ let
     esac
   '';
 
-  # Declared by the maintainer's ops flake, which snow reads them from
-  coreOptions = {
-    options.core = {
-      pushPhase = lib.mkOption { type = lib.types.nullOr lib.types.str; default = null; };
-      tags = lib.mkOption { type = lib.types.listOf lib.types.str; default = [ ]; };
-      rebootPolicy = lib.mkOption {
-        type = lib.types.enum [ "auto" "never" "always" ];
-        default = "auto";
-      };
-    };
-  };
-
   base = { config, ... }: {
-    imports = [ snowglobeModule coreOptions ];
+    imports = [ snowglobeModule ];
     virtualisation.memorySize = 1024;
     # Test VMs leave it out, but snow activates pushed systems with it
     system.switch.enable = true;
@@ -91,8 +79,7 @@ let
     hosts = lib.mapAttrs
       (_: config: {
         inherit (config.networking) hostName domain;
-        inherit (config.core) pushPhase tags rebootPolicy;
-        inherit (config.snowglobe.push) serialGroup sshPort;
+        inherit (config.snowglobe.push) phase tags rebootPolicy serialGroup sshPort;
         hooksFile = "${config.snowglobe.hooksFile}";
         toplevel = "${config.system.build.toplevel}";
       })

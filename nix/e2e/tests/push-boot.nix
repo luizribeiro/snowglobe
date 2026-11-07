@@ -1,7 +1,7 @@
 {
   name = "push-boot";
 
-  nodes.boron.core.rebootPolicy = "never";
+  nodes.boron.snowglobe.push.rebootPolicy = "never";
 
   demo = {
     title = "snow push --boot sets the new system for the next boot, without rebooting";

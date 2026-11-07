@@ -13,8 +13,8 @@
           nixpkgs.hostPlatform = "x86_64-linux";
 
           # For mock testing
-          core.pushPhase = "production";
-          core.tags = [ "web" "frontend" ];
+          snowglobe.push.phase = "production";
+          snowglobe.push.tags = [ "web" "frontend" ];
         };
       };
 
@@ -28,8 +28,8 @@
           nixpkgs.hostPlatform = "aarch64-linux";
 
           # For mock testing
-          core.pushPhase = "production";
-          core.tags = [ "database" ];
+          snowglobe.push.phase = "production";
+          snowglobe.push.tags = [ "database" ];
         };
       };
 
@@ -43,8 +43,8 @@
           nixpkgs.hostPlatform = "x86_64-linux";
 
           # For mock testing
-          core.pushPhase = "staging";
-          core.tags = [ "web" "backend" ];
+          snowglobe.push.phase = "staging";
+          snowglobe.push.tags = [ "web" "backend" ];
         };
       };
 
@@ -58,8 +58,8 @@
           nixpkgs.hostPlatform = "aarch64-linux";
 
           # For mock testing
-          core.pushPhase = "dev";
-          core.tags = [ "test" ];
+          snowglobe.push.phase = "dev";
+          snowglobe.push.tags = [ "test" ];
         };
       };
     };
