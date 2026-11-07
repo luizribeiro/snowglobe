@@ -73,7 +73,8 @@ one go in a phase named `default`.
 snowglobe.push.phase = "p1";
 ```
 
-- Phases run one after another, in name order.
+- Phases run one after another, in name order with numbers by value: `p2`
+  runs before `p10`.
 - If any host in a phase fails, later phases are skipped and `snow push`
   exits non-zero.
 - `--ignore-phases` puts every selected host in a single phase.

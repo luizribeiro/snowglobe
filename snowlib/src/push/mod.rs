@@ -233,7 +233,7 @@ fn group_by_phase(
 
 fn sorted_phases(by_phase: &HashMap<String, Vec<HostMetadata>>) -> Vec<String> {
     let mut phases: Vec<String> = by_phase.keys().cloned().collect();
-    phases.sort();
+    phases.sort_by(|a, b| phase::natural_cmp(a, b));
     phases
 }
 

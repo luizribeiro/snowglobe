@@ -42,8 +42,25 @@ async fn test_each_phase_reports_its_hosts_when_it_completes() {
 }
 
 #[tokio::test]
+async fn test_phases_run_with_their_numbers_in_order() {
+    let run = PushHarness::new()
+        .run(vec![
+            make_host_metadata("cerium", Some("p10"), RebootPolicy::Auto),
+            make_host_metadata("boron", Some("p2"), RebootPolicy::Auto),
+            make_host_metadata("radon", Some("p1"), RebootPolicy::Auto),
+        ])
+        .await;
+
+    let completed: Vec<&str> = run
+        .completed
+        .iter()
+        .map(|phase| phase.phase.as_str())
+        .collect();
+    assert_eq!(completed, vec!["p1", "p2", "p10"]);
+}
+
+#[tokio::test]
 async fn test_push_with_multiple_phases() {
-    // Test that phases execute in lexicographic order (p1 before p2)
     let flake = Flake::test_context();
     let nix_backend = MockNixBackend::new();
     let deployer = MockDeployBackend::new();
@@ -85,7 +102,6 @@ async fn test_push_with_multiple_phases() {
     let p1_start = events.iter().position(|e| e == "phase_start:p1:1").unwrap();
     let p2_start = events.iter().position(|e| e == "phase_start:p2:1").unwrap();
 
-    // p1 should start before p2 (lexicographic order)
     assert!(p1_start < p2_start);
 }
 
