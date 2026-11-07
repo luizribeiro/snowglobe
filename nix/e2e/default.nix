@@ -23,6 +23,7 @@ let
     "deploy-user"
     "rebuild-sudo"
     "rebuild-sudo-keepalive"
+    "never-phase"
   ];
 
   files = lib.genAttrs names (name: import ./tests/${name}.nix);
