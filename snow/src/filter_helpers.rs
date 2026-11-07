@@ -97,7 +97,10 @@ pub fn build_filter_expression(
 /// - Valid: "production", "staging-1", "web_servers", "dev"
 /// - Invalid: "prod.env" (contains period), "test env" (contains space), "日本" (non-ASCII)
 fn validate_nix_identifier(s: &str) -> Result<String> {
-    let sanitized: String = s.chars().filter(|c| is_filter_name_char(*c)).collect();
+    let sanitized: String = s
+        .chars()
+        .filter(|c| snowlib::push::is_name_char(*c))
+        .collect();
 
     if sanitized.is_empty() {
         return Err(FlakeError::UnusableFilterName {
@@ -114,10 +117,6 @@ fn validate_nix_identifier(s: &str) -> Result<String> {
     }
 
     Ok(s.to_string())
-}
-
-fn is_filter_name_char(c: char) -> bool {
-    c.is_ascii_alphanumeric() || c == '-' || c == '_'
 }
 
 #[cfg(test)]

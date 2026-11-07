@@ -353,6 +353,8 @@ fn parse_host_metadata(
             source: e,
         })?;
 
+    crate::push::check_phase(host, meta.phase.as_deref())?;
+
     let fqdn = match meta.domain {
         Some(domain) if !domain.is_empty() => format!("{}.{}", meta.hostname, domain),
         _ => meta.hostname.clone(),
@@ -571,6 +573,24 @@ mod tests {
         );
 
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_metadata_rejects_an_invalid_phase() {
+        let result = try_parse(
+            r#"{
+            "hostName": "web01",
+            "domain": "example.com",
+            "phase": "p2 k8s",
+            "tags": [],
+            "rebootPolicy": "auto"
+        }"#,
+        );
+
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "web01 has an invalid push phase 'p2 k8s'"
+        );
     }
 
     #[test]

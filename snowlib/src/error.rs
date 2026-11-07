@@ -135,6 +135,13 @@ pub enum FlakeError {
         available_hosts: String,
     },
 
+    #[error("{host} has an invalid push phase '{phase}'")]
+    #[diagnostic(
+        code(snow::flake::invalid_phase),
+        help("A phase name may contain only ASCII letters, digits, dashes and underscores, and 'default' is reserved for hosts without a phase. Set snowglobe.push.phase to a name like 'p1', or leave it unset.")
+    )]
+    InvalidPhase { host: String, phase: String },
+
     #[error("Invalid phase or tag name '{name}'")]
     #[diagnostic(
         code(snow::flake::invalid_filter_name),

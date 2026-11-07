@@ -17,6 +17,7 @@
 mod config;
 mod context;
 mod hooks;
+mod phase;
 mod pipeline;
 mod planning;
 mod preflight;
@@ -27,6 +28,8 @@ mod serial;
 pub use config::{PushConfiguration, PushStrategy};
 pub use context::PushContext;
 pub use hooks::HookExecutor;
+pub(crate) use phase::check_phase;
+pub use phase::is_name_char;
 pub use results::{
     BlockedHost, HostDeploymentResult, PhaseResult, PipelineStep, PushPlan, PushResults,
     SkippedPhase,
