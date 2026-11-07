@@ -66,31 +66,19 @@ compromised host can't use it to reach the others.
 
 ## Phases
 
-A host's phase comes from `core.pushPhase` in its config. Hosts without one
-go in a phase named `default`.
+A host's phase comes from `snowglobe.push.phase` in its config. Hosts without
+one go in a phase named `default`.
+
+```nix
+snowglobe.push.phase = "p1";
+```
 
 - Phases run one after another, in name order.
 - If any host in a phase fails, later phases are skipped and `snow push`
   exits non-zero.
 - `--ignore-phases` puts every selected host in a single phase.
-
-snowglobe's modules don't declare `core.pushPhase`, `core.tags` or
-`core.rebootPolicy`. snow reads them when they exist, so declare them in your
-own module:
-
-```nix
-{ lib, ... }:
-{
-  options.core = {
-    pushPhase = lib.mkOption { type = lib.types.nullOr lib.types.str; default = null; };
-    tags = lib.mkOption { type = lib.types.listOf lib.types.str; default = [ ]; };
-    rebootPolicy = lib.mkOption {
-      type = lib.types.enum [ "auto" "never" "always" ];
-      default = "auto";
-    };
-  };
-}
-```
+- A phase name may contain only letters, digits, `-` and `_`, and can't be
+  `default`.
 
 ---
 
@@ -242,12 +230,11 @@ Snowglobe supports per-host reboot policies that can be configured in your NixOS
 
 ### Configuring Reboot Policy
 
-Set `core.rebootPolicy` in the host's configuration. Your own module must
-declare the option (see [Phases](#phases)):
+Set `snowglobe.push.rebootPolicy` in the host's configuration:
 
 ```nix
 {
-  core.rebootPolicy = "auto";  # or "never" or "always"
+  snowglobe.push.rebootPolicy = "auto";  # or "never" or "always"
 }
 ```
 
@@ -314,13 +301,13 @@ snow push myhost --switch
 
 ```nix
 # hosts/db-prod.nix: never auto-reboot
-{ core.rebootPolicy = "never"; }
+{ snowglobe.push.rebootPolicy = "never"; }
 
 # hosts/web-frontend.nix: stateless, always reboot
-{ core.rebootPolicy = "always"; }
+{ snowglobe.push.rebootPolicy = "always"; }
 
 # hosts/app-server.nix: automatic detection (the default, so it can be omitted)
-{ core.rebootPolicy = "auto"; }
+{ snowglobe.push.rebootPolicy = "auto"; }
 ```
 
 ---
@@ -550,7 +537,7 @@ To reboot a host whatever changed, use `rebootPolicy = "always"`.
 | `-e`, `--filter <EXPR>` | Hosts whose config matches a Nix expression, e.g. `config: config.services.nginx.enable or false` |
 | `--phase <PHASE>` | Hosts in one phase |
 | `--phases <A,B>` | Hosts in any of these phases |
-| `--tag <TAG>` | Hosts with a tag (from `core.tags`) |
+| `--tag <TAG>` | Hosts with a tag (from `snowglobe.push.tags`) |
 | `--tags <A,B>` | Hosts with any of these tags |
 
 `--filter`, `--phase`, `--phases`, `--tag` and `--tags` are mutually

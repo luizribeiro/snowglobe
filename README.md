@@ -166,20 +166,14 @@ snow push                 # deploy every host
 
 `--user` picks the SSH user when your SSH config doesn't.
 
-Phases, tags and reboot policies are read from `core.pushPhase`, `core.tags`
-and `core.rebootPolicy` in each host's config. snowglobe's modules don't
-declare these options yet, so declare them in your own module:
+Each host's push settings live in its own config:
 
 ```nix
-{ lib, ... }:
 {
-  options.core = {
-    pushPhase = lib.mkOption { type = lib.types.nullOr lib.types.str; default = null; };
-    tags = lib.mkOption { type = lib.types.listOf lib.types.str; default = [ ]; };
-    rebootPolicy = lib.mkOption {
-      type = lib.types.enum [ "auto" "never" "always" ];
-      default = "auto";
-    };
+  snowglobe.push = {
+    phase = "p2";                # deploy after the hosts in p1
+    tags = [ "web" ];            # select with snow push --tag web
+    rebootPolicy = "auto";       # or "never" or "always"
   };
 }
 ```

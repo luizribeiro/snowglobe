@@ -165,7 +165,7 @@ See `docs/push.md` for full details on reboot policies and activation modes.
 Hosts can configure per-host reboot policies in NixOS config:
 
 ```nix
-config.core.rebootPolicy = "auto";  # or "never" or "always"
+config.snowglobe.push.rebootPolicy = "auto";  # or "never" or "always"
 ```
 
 - **auto** - Detect if reboot needed, reboot only when necessary (default)

@@ -51,8 +51,13 @@ build with `cargo build --features unstable`.
 
 #### Push
 
-- Phases (`core.pushPhase`) deploy one after another; a failed phase stops
-  the later ones. `--ignore-phases` deploys every selected host at once.
+- **Breaking for pre-release users:** snow reads a host's phase, tags and
+  reboot policy only from the module's `snowglobe.push.phase`, `.tags` and
+  `.rebootPolicy`, no longer from `core.pushPhase`, `core.tags` and
+  `core.rebootPolicy`, which your own module had to declare. Move those
+  settings to the new options.
+- Phases (`snowglobe.push.phase`) deploy one after another; a failed phase
+  stops the later ones. `--ignore-phases` deploys every selected host at once.
 - Each host runs build, copy, plan, activate and reboot on its own, in
   parallel with the others, up to `--concurrency`.
 - Hosts already running and booting the built system are skipped;
@@ -69,7 +74,7 @@ build with `cargo build --features unstable`.
   restart. Hosts that need a reboot are set to boot the new system and
   rebooted, and snow waits (`--reboot-timeout`) until they come back with a
   new boot ID.
-- Per-host reboot policies (`core.rebootPolicy`): `auto`, `never` or
+- Per-host reboot policies (`snowglobe.push.rebootPolicy`): `auto`, `never` or
   `always`. Policies take precedence over `--switch`; `--switch --force`
   overrides them and the reboot detection.
 - Activation modes: `--switch`, `--boot`, `--test` and `--dry-run`, and

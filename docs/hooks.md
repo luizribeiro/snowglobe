@@ -252,7 +252,7 @@ running.
 | Variable | Description | Example |
 |----------|-------------|---------|
 | `SNOW_HOSTNAME` | Target hostname | `web01` |
-| `SNOW_PHASE` | Push phase, set only when the host has one (`core.pushPhase`) | `production` |
+| `SNOW_PHASE` | Push phase, set only when the host has one (`snowglobe.push.phase`) | `production` |
 | `SNOW_STORE_PATH` | Nix store path being deployed | `/nix/store/...` |
 
 Local hooks also inherit the environment `snow` runs in (e.g. `KUBECONFIG`).
