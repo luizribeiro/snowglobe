@@ -14,7 +14,7 @@
     # Restarted without allow_reboot, so a reboot powers radon off
     radon.shutdown()
     radon.start()
-    sodium.wait_until_succeeds("ssh -o BatchMode=yes root@radon true", timeout=60)
+    sodium.wait_until_succeeds("ssh -o BatchMode=yes root@radon true")
     push = demo()
     push.failed()
     push.has("radon")
