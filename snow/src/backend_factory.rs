@@ -37,6 +37,17 @@ pub fn create_push_nix_backend(
     )
 }
 
+/// A Nix backend whose host metadata carries no hooks, so reading it builds nothing
+pub fn create_hookless_nix_backend(
+    #[cfg(debug_assertions)] mock_fixture: &Option<String>,
+) -> Result<Box<dyn NixBackend>> {
+    nix_backend_or_mock(
+        #[cfg(debug_assertions)]
+        mock_fixture,
+        snowlib::SystemNixBackend::new().without_hooks(),
+    )
+}
+
 fn nix_backend_or_mock(
     #[cfg(debug_assertions)] mock_fixture: &Option<String>,
     system: snowlib::SystemNixBackend,

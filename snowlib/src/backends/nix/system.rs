@@ -18,6 +18,7 @@ use std::str::FromStr;
 #[derive(Debug, Clone, Default)]
 pub struct SystemNixBackend {
     gc_roots: Option<PathBuf>,
+    skip_hooks: bool,
 }
 
 impl SystemNixBackend {
@@ -32,6 +33,13 @@ impl SystemNixBackend {
         // nix resolves a relative --out-link against the flake, not our cwd
         assert!(dir.is_absolute(), "GC roots dir must be absolute: {dir:?}");
         self.gc_roots = Some(dir);
+        self
+    }
+
+    /// Leaves hosts' metadata without hooks, so reading it builds nothing:
+    /// building a hooks file builds every local hook's packages
+    pub fn without_hooks(mut self) -> Self {
+        self.skip_hooks = true;
         self
     }
 
@@ -129,7 +137,7 @@ impl NixBackend for SystemNixBackend {
             .map_err(as_metadata_error)?;
 
         let (mut metadata, hooks_file) = parse_host_metadata(host, system_type, &stdout)?;
-        if let Some(drv) = hooks_file {
+        if let Some(drv) = hooks_file.filter(|_| !self.skip_hooks) {
             let path = self
                 .build_hooks_file(flake, host, &drv)
                 .await

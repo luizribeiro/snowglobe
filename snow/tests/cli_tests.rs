@@ -103,7 +103,7 @@ fn test_list_help() {
         .assert()
         .success()
         .stdout(predicate::str::contains(
-            "List hostnames from nixosConfigurations",
+            "List the hosts in nixosConfigurations",
         ));
 }
 

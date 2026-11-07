@@ -22,6 +22,8 @@
           tags = [ "web" ];
           optional = true;
         };
+        # Listing must not build hooks files: this one can't be built
+        snowglobe.hooksFile.drvPath = "/nix/store/00000000000000000000000000000000-snowglobe-hooks.json.drv";
       };
 
       curium.config = {
