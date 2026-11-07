@@ -24,6 +24,7 @@ let
     "rebuild-sudo"
     "rebuild-sudo-keepalive"
     "never-phase"
+    "optional-host"
   ];
 
   files = lib.genAttrs names (name: import ./tests/${name}.nix);
