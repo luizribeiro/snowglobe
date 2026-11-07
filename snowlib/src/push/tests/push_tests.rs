@@ -60,6 +60,75 @@ async fn test_phases_run_with_their_numbers_in_order_then_hosts_without_one() {
     assert_eq!(completed, vec!["p1", "p2", "p10", crate::push::UNPHASED]);
 }
 
+fn optional(mut host: HostMetadata) -> HostMetadata {
+    host.optional = true;
+    host
+}
+
+#[tokio::test]
+async fn test_failed_optional_host_lets_later_phases_run() {
+    let mut harness = PushHarness::new();
+    harness.nix_backend = MockNixBackend::new().with_build_failures(vec!["curium".to_string()]);
+    let run = harness
+        .run(vec![
+            optional(make_host_metadata("curium", Some("p1"), RebootPolicy::Auto)),
+            make_host_metadata("boron", Some("p1"), RebootPolicy::Auto),
+            make_host_metadata("radon", Some("p2"), RebootPolicy::Auto),
+        ])
+        .await;
+
+    let curium = run.host("curium");
+    assert!(!curium.success && curium.optional);
+    assert!(run.host("radon").success);
+    assert!(run.results.skipped_phases.is_empty());
+    assert!(run.has_event("phase_complete:p1:failed"));
+    assert!(run.results.failure_error().is_none());
+    assert_eq!(run.results.optional_failure_count(), 1);
+}
+
+#[tokio::test]
+async fn test_unreachable_optional_host_leaves_its_serial_group_running() {
+    let mut harness = PushHarness::new();
+    harness.deployer =
+        MockDeployBackend::new().with_failures(vec!["curium.example.com".to_string()]);
+    let in_group = |name: &str| HostMetadata {
+        serial_group: Some("storage".to_string()),
+        ..make_host_metadata(name, Some("p1"), RebootPolicy::Auto)
+    };
+    let run = harness
+        .run(vec![
+            optional(in_group("curium")),
+            in_group("boron"),
+            make_host_metadata("radon", Some("p2"), RebootPolicy::Auto),
+        ])
+        .await;
+
+    assert!(!run.host("curium").success);
+    assert!(run.host("boron").success);
+    assert!(run.host("radon").success);
+    assert!(run.results.failure_error().is_none());
+}
+
+#[tokio::test]
+async fn test_failed_host_beside_a_failed_optional_one_still_skips_later_phases() {
+    let mut harness = PushHarness::new();
+    harness.nix_backend =
+        MockNixBackend::new().with_build_failures(vec!["curium".to_string(), "boron".to_string()]);
+    let run = harness
+        .run(vec![
+            optional(make_host_metadata("curium", Some("p1"), RebootPolicy::Auto)),
+            make_host_metadata("boron", Some("p1"), RebootPolicy::Auto),
+            make_host_metadata("radon", Some("p2"), RebootPolicy::Auto),
+        ])
+        .await;
+
+    assert_eq!(run.results.skipped_phases.len(), 1);
+    assert_eq!(
+        run.results.failure_error().unwrap().to_string(),
+        "1 of 3 hosts failed: boron (build)"
+    );
+}
+
 #[tokio::test]
 async fn test_hosts_without_a_phase_are_skipped_when_a_phase_fails() {
     let mut harness = PushHarness::new();

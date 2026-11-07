@@ -304,6 +304,7 @@ fn metadata_apply_expr(local_system: &str) -> String {
           rebootPolicy = config.snowglobe.push.rebootPolicy or "auto";
           serialGroup = config.snowglobe.push.serialGroup or null;
           sshPort = config.snowglobe.push.sshPort or null;
+          optional = config.snowglobe.push.optional or false;
           hooksFile = if config ? snowglobe && config.snowglobe ? hooksFile
             then config.snowglobe.hooksFile.drvPath
             else null;
@@ -345,6 +346,8 @@ fn parse_host_metadata(
         ssh_port: Option<u16>,
         #[serde(default, rename = "hooksFile")]
         hooks_file: Option<String>,
+        #[serde(default)]
+        optional: bool,
     }
 
     let meta: MetadataJson =
@@ -369,6 +372,7 @@ fn parse_host_metadata(
         system_type,
         serial_group: meta.serial_group,
         ssh_port: meta.ssh_port,
+        optional: meta.optional,
         hooks: Vec::new(),
     };
     Ok((metadata, meta.hooks_file))
@@ -600,6 +604,22 @@ mod tests {
         assert!(expr.contains("phase = config.snowglobe.push.phase or null;"));
         assert!(expr.contains("tags = config.snowglobe.push.tags or [];"));
         assert!(expr.contains(r#"rebootPolicy = config.snowglobe.push.rebootPolicy or "auto";"#));
+    }
+
+    #[test]
+    fn test_parse_metadata_reads_whether_the_host_is_optional() {
+        let json = |optional: &str| {
+            format!(
+                r#"{{"hostName": "web01", "domain": null, "phase": "p1", "tags": [],
+                    "rebootPolicy": "auto"{optional}}}"#
+            )
+        };
+
+        assert!(parse(&json(r#", "optional": true"#)).optional);
+        assert!(!parse(&json(r#", "optional": false"#)).optional);
+        assert!(!parse(&json("")).optional);
+        assert!(metadata_apply_expr("x86_64-linux")
+            .contains("optional = config.snowglobe.push.optional or false;"));
     }
 
     #[test]

@@ -108,6 +108,7 @@ impl NixBackend for MockNixBackend {
                 system_type,
                 serial_group: None,
                 ssh_port: None,
+                optional: false,
                 hooks: Vec::new(),
             })
         } else {
@@ -120,6 +121,7 @@ impl NixBackend for MockNixBackend {
                 system_type,
                 serial_group: None,
                 ssh_port: None,
+                optional: false,
                 hooks: Vec::new(),
             })
         }

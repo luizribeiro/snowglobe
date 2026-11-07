@@ -122,7 +122,9 @@ pub async fn push(push_ctx: &PushContext<'_>, hosts: Vec<HostMetadata>) -> Resul
 
         // Execute phase and notify observer (even on failure)
         let phase_result = execute_phase(push_ctx, phase, phase_hosts).await;
-        let phase_success = phase_result.as_ref().is_ok_and(|pr| pr.all_succeeded());
+        let phase_passed = phase_result
+            .as_ref()
+            .is_ok_and(|pr| !pr.has_blocking_failure());
         push_ctx
             .observer
             .on_phase_complete(phase, phase_result.as_ref().ok());
@@ -134,7 +136,7 @@ pub async fn push(push_ctx: &PushContext<'_>, hosts: Vec<HostMetadata>) -> Resul
         executed_phases.push(phase_result);
 
         // If phase had failures, skip remaining phases and stop deployment
-        if !phase_success {
+        if !phase_passed {
             skipped_phases = skip_remaining_phases(&phases, idx, &by_phase);
             break;
         }

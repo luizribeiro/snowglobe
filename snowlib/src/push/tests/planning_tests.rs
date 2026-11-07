@@ -20,6 +20,7 @@ fn test_push_results_counts() {
                     activation_mode: Some(ActivationMode::Switch),
                     rebooted: false,
                     unchanged: false,
+                    optional: false,
                     error_message: None,
                 },
                 HostDeploymentResult {
@@ -29,6 +30,7 @@ fn test_push_results_counts() {
                     activation_mode: None,
                     rebooted: false,
                     unchanged: false,
+                    optional: false,
                     error_message: Some("failed".to_string()),
                 },
                 HostDeploymentResult {
@@ -38,6 +40,7 @@ fn test_push_results_counts() {
                     activation_mode: Some(ActivationMode::Switch),
                     rebooted: false,
                     unchanged: false,
+                    optional: false,
                     error_message: None,
                 },
             ],
@@ -64,6 +67,7 @@ fn test_push_results_all_succeeded() {
                     activation_mode: Some(ActivationMode::Switch),
                     rebooted: false,
                     unchanged: false,
+                    optional: false,
                     error_message: None,
                 },
                 HostDeploymentResult {
@@ -73,6 +77,7 @@ fn test_push_results_all_succeeded() {
                     activation_mode: Some(ActivationMode::Switch),
                     rebooted: false,
                     unchanged: false,
+                    optional: false,
                     error_message: None,
                 },
             ],

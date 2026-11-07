@@ -79,7 +79,7 @@ let
     hosts = lib.mapAttrs
       (_: config: {
         inherit (config.networking) hostName domain;
-        inherit (config.snowglobe.push) phase tags rebootPolicy serialGroup sshPort;
+        inherit (config.snowglobe.push) phase tags rebootPolicy optional serialGroup sshPort;
         hooksFile = "${config.snowglobe.hooksFile}";
         toplevel = "${config.system.build.toplevel}";
       })

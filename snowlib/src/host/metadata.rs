@@ -24,6 +24,8 @@ pub struct HostMetadata {
     pub serial_group: Option<String>,
     /// None leaves the port to the deployer's ssh config
     pub ssh_port: Option<u16>,
+    /// When it fails, its phase and the push still succeed
+    pub optional: bool,
 }
 
 impl HostMetadata {
@@ -51,6 +53,7 @@ mod tests {
             hooks: vec![],
             serial_group: None,
             ssh_port,
+            optional: false,
         }
     }
 

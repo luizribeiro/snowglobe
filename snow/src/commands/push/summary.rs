@@ -433,6 +433,7 @@ mod tests {
             activation_mode: Some(mode),
             rebooted,
             unchanged: false,
+            optional: false,
             failed_at_step: None,
             error_message: None,
         }
@@ -445,6 +446,7 @@ mod tests {
             activation_mode: None,
             rebooted: false,
             unchanged: false,
+            optional: false,
             failed_at_step: Some(step),
             error_message: Some(error.to_string()),
         }

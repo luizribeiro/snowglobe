@@ -40,6 +40,7 @@ pub(super) struct GroupHalted {
 /// so a failure is recorded before the next member can take the slot.
 pub(super) struct Section {
     hostname: String,
+    halts_group_on_failure: bool,
     group: Option<(Arc<SerialGroup>, OwnedMutexGuard<()>)>,
     succeeded: bool,
     _permit: OwnedSemaphorePermit,
@@ -104,6 +105,7 @@ impl PhaseScheduler {
         let Some((name, group)) = self.group_of(host) else {
             return Ok(Section {
                 hostname: host.name.clone(),
+                halts_group_on_failure: halts_group_on_failure(host),
                 group: None,
                 succeeded: false,
                 _permit: self.permit().await,
@@ -127,6 +129,7 @@ impl PhaseScheduler {
         group.state().holder = Some(host.name.clone());
         let section = Section {
             hostname: host.name.clone(),
+            halts_group_on_failure: halts_group_on_failure(host),
             group: Some((Arc::clone(group), guard)),
             succeeded: false,
             _permit: self.permit().await,
@@ -141,10 +144,19 @@ impl PhaseScheduler {
 
     /// Stop the host's serial group from starting any more members
     pub fn halt_group_of(&self, host: &HostMetadata) {
+        if !halts_group_on_failure(host) {
+            return;
+        }
         if let Some((_, group)) = self.group_of(host) {
             group.halt(&host.name);
         }
     }
+}
+
+/// An optional host's failure mustn't fail its phase, which skipping the rest
+/// of its group would
+fn halts_group_on_failure(host: &HostMetadata) -> bool {
+    !host.optional
 }
 
 impl Section {
@@ -156,7 +168,7 @@ impl Section {
 impl Drop for Section {
     fn drop(&mut self) {
         if let Some((group, _guard)) = &self.group {
-            if !self.succeeded {
+            if !self.succeeded && self.halts_group_on_failure {
                 group.halt(&self.hostname);
             }
             group.state().holder = None;
@@ -182,6 +194,7 @@ mod tests {
             hooks: vec![],
             serial_group: group.map(str::to_string),
             ssh_port: None,
+            optional: false,
         }
     }
 
@@ -264,6 +277,28 @@ mod tests {
                 failed_host: "praseodymium".to_string(),
             })
         );
+    }
+
+    #[tokio::test]
+    async fn test_failed_optional_host_lets_the_next_member_in() {
+        let praseodymium = HostMetadata {
+            optional: true,
+            ..host("praseodymium", Some("kubernetes"))
+        };
+        let promethium = host("promethium", Some("kubernetes"));
+        let scheduler = PhaseScheduler::new(3, &[praseodymium.clone(), promethium.clone()]);
+
+        let section = scheduler
+            .enter_section(&praseodymium, no_wait)
+            .await
+            .unwrap();
+        let waiting = scheduler.enter_section(&promethium, no_wait);
+        tokio::pin!(waiting);
+        assert!(is_blocked(&mut waiting).await);
+        drop(section);
+        scheduler.halt_group_of(&praseodymium);
+
+        assert!(without_blocking(waiting).await.is_ok());
     }
 
     #[tokio::test]

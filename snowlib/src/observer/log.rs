@@ -184,6 +184,7 @@ mod tests {
             activation_mode: Some(ActivationMode::Boot),
             rebooted: true,
             unchanged: false,
+            optional: false,
             error_message: None,
         };
         let skipped = HostDeploymentResult::skipped_by_serial_group("samarium", "k8s", "cerium");

@@ -73,6 +73,7 @@ mod tests {
             hooks,
             serial_group: None,
             ssh_port: None,
+            optional: false,
         }
     }
 

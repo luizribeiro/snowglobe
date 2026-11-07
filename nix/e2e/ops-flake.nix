@@ -19,7 +19,7 @@
         config = {
           networking = { inherit (config) hostName domain; };
           snowglobe = {
-            push = { inherit (config) phase tags rebootPolicy serialGroup sshPort; };
+            push = { inherit (config) phase tags rebootPolicy optional serialGroup sshPort; };
             hooksFile = hooksFile config.hooksFile;
           };
           system.build.toplevel = builtins.storePath config.toplevel;

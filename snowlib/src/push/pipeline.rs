@@ -193,6 +193,7 @@ impl HostRun<'_, '_> {
             activation_mode: None,
             rebooted: false,
             unchanged: false,
+            optional: false,
             error_message: Some(reason),
         }
     }
@@ -291,6 +292,7 @@ impl HostRun<'_, '_> {
             activation_mode: Some(plan.activation_mode),
             rebooted,
             unchanged: false,
+            optional: false,
             error_message: None,
         })
     }
@@ -334,7 +336,11 @@ pub(super) async fn execute_host_pipeline(
         scheduler,
         metadata: host_metadata,
     };
-    let result = host.run().await.unwrap_or_else(|stopped| stopped);
+    // Set here rather than wherever a result is made, so none can miss it
+    let result = HostDeploymentResult {
+        optional: host_metadata.optional,
+        ..host.run().await.unwrap_or_else(|stopped| stopped)
+    };
     host.report(HostEvent::Done(result.clone()));
     Ok(result)
 }

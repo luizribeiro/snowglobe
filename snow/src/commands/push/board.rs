@@ -381,6 +381,7 @@ mod tests {
             activation_mode: Some(mode),
             rebooted,
             unchanged: false,
+            optional: false,
             error_message: None,
         }
     }

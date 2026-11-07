@@ -689,6 +689,7 @@ async fn test_push_hook_with_explicit_environment() {
         system_type: SystemType::NixOS,
         serial_group: None,
         ssh_port: None,
+        optional: false,
         hooks: vec![hook],
     }];
 
@@ -745,6 +746,7 @@ async fn test_full_pipeline_all_hook_stages_execute_in_order() {
         system_type: SystemType::NixOS,
         serial_group: None,
         ssh_port: None,
+        optional: false,
         hooks: vec![
             HookConfig::test_fixture(
                 "drain-node",
@@ -940,6 +942,7 @@ async fn test_pipeline_hooks_execute_by_priority_order() {
         system_type: SystemType::NixOS,
         serial_group: None,
         ssh_port: None,
+        optional: false,
         hooks: vec![hook1, hook2, hook3],
     }];
 
@@ -1008,6 +1011,7 @@ async fn test_post_reboot_hooks_not_executed_when_no_reboot_needed() {
         system_type: SystemType::NixOS,
         serial_group: None,
         ssh_port: None,
+        optional: false,
         hooks: vec![
             HookConfig::test_fixture(
                 "pre-deploy-hook",
@@ -1100,6 +1104,7 @@ async fn test_hook_observer_callbacks_invoked_correctly() {
         system_type: SystemType::NixOS,
         serial_group: None,
         ssh_port: None,
+        optional: false,
         hooks: vec![
             HookConfig::test_fixture(
                 "first-hook",
@@ -1244,6 +1249,7 @@ async fn test_hook_observer_callbacks_on_failure() {
         system_type: SystemType::NixOS,
         serial_group: None,
         ssh_port: None,
+        optional: false,
         hooks: vec![HookConfig::test_fixture(
             "failing-hook",
             HookStage::PreDeploy,

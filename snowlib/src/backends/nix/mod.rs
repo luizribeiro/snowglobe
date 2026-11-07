@@ -256,6 +256,7 @@ mod tests {
                 hooks: vec![],
                 serial_group: None,
                 ssh_port: None,
+                optional: false,
             })
         }
 

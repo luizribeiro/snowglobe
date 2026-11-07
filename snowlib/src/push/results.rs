@@ -66,6 +66,8 @@ pub struct HostDeploymentResult {
     /// Host already ran and would boot the built system, so nothing was deployed
     pub unchanged: bool,
     pub error_message: Option<String>,
+    /// From the host's metadata: its failure doesn't fail its phase or the push
+    pub optional: bool,
 }
 
 impl HostDeploymentResult {
@@ -89,10 +91,16 @@ impl HostDeploymentResult {
             activation_mode: None,
             rebooted: false,
             unchanged: false,
+            optional: false,
             error_message: Some(format!(
                 "serial group '{group}' halted after {failed_host} failed"
             )),
         }
+    }
+
+    /// Failed, and not optional, so its phase fails
+    pub fn fails_phase(&self) -> bool {
+        !self.success && !self.optional
     }
 
     /// Never started because its serial group halted
@@ -108,6 +116,7 @@ impl HostDeploymentResult {
             activation_mode: None,
             rebooted: false,
             unchanged: true,
+            optional: false,
             error_message: None,
         }
     }
@@ -134,6 +143,11 @@ impl PhaseResult {
     pub fn all_succeeded(&self) -> bool {
         self.hosts.iter().all(|h| h.success)
     }
+
+    /// Whether a host failed that wasn't optional, so no later phase runs
+    pub fn has_blocking_failure(&self) -> bool {
+        self.hosts.iter().any(HostDeploymentResult::fails_phase)
+    }
 }
 
 /// Skipped phase information
@@ -159,6 +173,15 @@ impl PushResults {
         self.phases.iter().map(|p| p.failure_count()).sum()
     }
 
+    /// The part of `failure_count` that optional hosts make up
+    pub fn optional_failure_count(&self) -> usize {
+        self.phases
+            .iter()
+            .flat_map(|p| &p.hosts)
+            .filter(|h| !h.success && h.optional)
+            .count()
+    }
+
     pub fn skipped_count(&self) -> usize {
         self.skipped_phases.iter().map(|p| p.hostnames.len()).sum()
     }
@@ -171,13 +194,13 @@ impl PushResults {
         self.success_count() + self.failure_count() + self.skipped_count()
     }
 
-    /// `None` when no host failed
+    /// `None` when no host failed, or only optional ones did
     pub fn failure_error(&self) -> Option<DeployError> {
         let failed: Vec<String> = self
             .phases
             .iter()
             .flat_map(|p| &p.hosts)
-            .filter(|h| !h.success)
+            .filter(|h| h.fails_phase())
             .map(HostDeploymentResult::failure_label)
             .collect();
         if failed.is_empty() {
@@ -202,6 +225,7 @@ mod tests {
             activation_mode: failed_at_step.is_none().then_some(ActivationMode::Switch),
             rebooted: false,
             unchanged: false,
+            optional: false,
             error_message: failed_at_step.map(|_| "error".to_string()),
         }
     }
@@ -246,6 +270,39 @@ mod tests {
         let error = p3_results(vec![radon], vec![]).failure_error().unwrap();
 
         assert_eq!(error.to_string(), "1 of 1 host failed: radon");
+    }
+
+    #[test]
+    fn test_optional_failures_neither_block_the_phase_nor_fail_the_push() {
+        let curium = HostDeploymentResult {
+            optional: true,
+            ..host("curium", Some(PipelineStep::Copy))
+        };
+        let results = p3_results(vec![host("boron", None), curium], vec![]);
+
+        assert!(!results.phases[0].all_succeeded());
+        assert!(!results.phases[0].has_blocking_failure());
+        assert_eq!(results.failure_count(), 1);
+        assert_eq!(results.optional_failure_count(), 1);
+        assert!(results.failure_error().is_none());
+    }
+
+    #[test]
+    fn test_failure_error_names_only_hosts_that_are_not_optional() {
+        let curium = HostDeploymentResult {
+            optional: true,
+            ..host("curium", Some(PipelineStep::Copy))
+        };
+        let results = p3_results(
+            vec![curium, host("radon", Some(PipelineStep::Build))],
+            vec![],
+        );
+
+        assert!(results.phases[0].has_blocking_failure());
+        assert_eq!(
+            results.failure_error().unwrap().to_string(),
+            "1 of 2 hosts failed: radon (build)"
+        );
     }
 
     #[test]

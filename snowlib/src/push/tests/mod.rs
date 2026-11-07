@@ -57,6 +57,7 @@ fn make_host_metadata(
         system_type: SystemType::NixOS,
         serial_group: None,
         ssh_port: None,
+        optional: false,
         hooks: Vec::new(),
     }
 }

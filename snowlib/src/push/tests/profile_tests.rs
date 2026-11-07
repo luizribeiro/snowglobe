@@ -38,6 +38,7 @@ fn create_nixos_host_metadata(name: &str, fqdn: &str) -> HostMetadata {
         system_type: SystemType::NixOS,
         serial_group: None,
         ssh_port: None,
+        optional: false,
         hooks: vec![],
     }
 }
