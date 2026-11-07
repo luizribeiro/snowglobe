@@ -23,6 +23,38 @@ fn test_help_command() {
         .stdout(predicate::str::contains("push"));
 }
 
+#[cfg(not(feature = "unstable"))]
+const UNSTABLE_COMMANDS: [&str; 3] = ["bootstrap", "plan", "status"];
+
+#[cfg(not(feature = "unstable"))]
+#[test]
+fn test_unstable_commands_are_unknown_without_the_feature() {
+    for command in UNSTABLE_COMMANDS {
+        snow_cmd()
+            .arg(command)
+            .assert()
+            .failure()
+            .stderr(predicate::str::contains(format!(
+                "unrecognized subcommand '{command}'"
+            )));
+    }
+}
+
+#[cfg(not(feature = "unstable"))]
+#[test]
+fn test_help_leaves_out_unstable_commands() {
+    let help = snow_cmd().arg("--help").assert().success();
+    let stdout = String::from_utf8_lossy(&help.get_output().stdout).into_owned();
+    for command in UNSTABLE_COMMANDS {
+        assert!(
+            !stdout
+                .lines()
+                .any(|line| line.split_whitespace().next() == Some(command)),
+            "--help lists {command}:\n{stdout}"
+        );
+    }
+}
+
 #[test]
 fn test_version_flag_prints_the_crate_version() {
     snow_cmd()
@@ -75,6 +107,7 @@ fn test_list_help() {
         ));
 }
 
+#[cfg(feature = "unstable")]
 #[test]
 fn test_status_help() {
     snow_cmd()

@@ -1,19 +1,25 @@
+#[cfg(feature = "unstable")]
 pub mod bootstrap;
 pub mod build;
 pub mod list;
+#[cfg(feature = "unstable")]
 pub mod plan;
 pub mod push;
 pub mod rebuild;
+#[cfg(feature = "unstable")]
 pub mod status;
 
 use clap::Subcommand;
 
+#[cfg(feature = "unstable")]
 pub use bootstrap::BootstrapArgs;
 pub use build::BuildArgs;
 pub use list::ListArgs;
+#[cfg(feature = "unstable")]
 pub use plan::PlanArgs;
 pub use push::PushArgs;
 pub use rebuild::RebuildArgs;
+#[cfg(feature = "unstable")]
 pub use status::StatusArgs;
 
 /// The `dry_run`, `switch`, `boot` and `test` flags, of which a command takes one at most
@@ -23,10 +29,13 @@ fn activation_modes() -> clap::ArgGroup {
 
 #[derive(Debug, Subcommand)]
 pub enum Commands {
+    #[cfg(feature = "unstable")]
     Bootstrap(BootstrapArgs),
+    #[cfg(feature = "unstable")]
     Status(StatusArgs),
     List(ListArgs),
     Build(BuildArgs),
+    #[cfg(feature = "unstable")]
     Plan(PlanArgs),
     Push(PushArgs),
     Rebuild(RebuildArgs),
@@ -40,10 +49,13 @@ impl Commands {
         log_file: Option<&std::path::Path>,
     ) -> snowlib::Result<()> {
         match self {
+            #[cfg(feature = "unstable")]
             Commands::Bootstrap(args) => args.run(flake).await,
+            #[cfg(feature = "unstable")]
             Commands::Status(args) => args.run(flake).await,
             Commands::List(args) => args.run(flake).await,
             Commands::Build(args) => args.run(flake).await,
+            #[cfg(feature = "unstable")]
             Commands::Plan(args) => args.run(flake).await,
             Commands::Push(args) => args.run(flake, log_file).await,
             Commands::Rebuild(args) => args.run(flake).await,
