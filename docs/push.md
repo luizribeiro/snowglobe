@@ -66,8 +66,7 @@ compromised host can't use it to reach the others.
 
 ## Phases
 
-A host's phase comes from `snowglobe.push.phase` in its config. Hosts without
-one go in a phase named `default`.
+A host's phase comes from `snowglobe.push.phase` in its config.
 
 ```nix
 snowglobe.push.phase = "p1";
@@ -75,11 +74,12 @@ snowglobe.push.phase = "p1";
 
 - Phases run one after another, in name order with numbers by value: `p2`
   runs before `p10`.
+- Hosts without a phase run last, together, after every named phase.
 - If any host in a phase fails, later phases are skipped and `snow push`
   exits non-zero.
 - `--ignore-phases` puts every selected host in a single phase.
 - A phase name may contain only letters, digits, `-` and `_`, and can't be
-  `default`.
+  `default`, which snow keeps for hosts without a phase.
 
 ---
 

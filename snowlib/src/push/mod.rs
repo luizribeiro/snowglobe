@@ -29,7 +29,7 @@ pub use config::{PushConfiguration, PushStrategy};
 pub use context::PushContext;
 pub use hooks::HookExecutor;
 pub(crate) use phase::check_phase;
-pub use phase::is_name_char;
+pub use phase::{is_name_char, ALL_HOSTS, UNPHASED};
 pub use results::{
     BlockedHost, HostDeploymentResult, PhaseResult, PipelineStep, PushPlan, PushResults,
     SkippedPhase,
@@ -221,9 +221,9 @@ fn group_by_phase(
 
     for host in hosts {
         let phase = if ignore_phases {
-            "_all".to_string()
+            ALL_HOSTS.to_string()
         } else {
-            host.phase.clone().unwrap_or_else(|| "default".to_string())
+            host.phase.clone().unwrap_or_else(|| UNPHASED.to_string())
         };
         by_phase.entry(phase).or_default().push(host);
     }
@@ -233,7 +233,7 @@ fn group_by_phase(
 
 fn sorted_phases(by_phase: &HashMap<String, Vec<HostMetadata>>) -> Vec<String> {
     let mut phases: Vec<String> = by_phase.keys().cloned().collect();
-    phases.sort_by(|a, b| phase::natural_cmp(a, b));
+    phases.sort_by(|a, b| phase::run_order(a, b));
     phases
 }
 

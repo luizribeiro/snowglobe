@@ -13,8 +13,9 @@ in
     default = null;
     description = ''
       The push phase this host deploys in. Phases deploy one after another,
-      in name order with numbers by value (p2 before p10). If a host in a
-      phase fails, later phases are skipped.
+      in name order with numbers by value (p2 before p10), and hosts
+      without a phase deploy last. If a host in a phase fails, later phases
+      are skipped.
     '';
     example = "p1";
   };

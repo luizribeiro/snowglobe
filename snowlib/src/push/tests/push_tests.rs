@@ -42,9 +42,10 @@ async fn test_each_phase_reports_its_hosts_when_it_completes() {
 }
 
 #[tokio::test]
-async fn test_phases_run_with_their_numbers_in_order() {
+async fn test_phases_run_with_their_numbers_in_order_then_hosts_without_one() {
     let run = PushHarness::new()
         .run(vec![
+            make_host_metadata("sodium", None, RebootPolicy::Auto),
             make_host_metadata("cerium", Some("p10"), RebootPolicy::Auto),
             make_host_metadata("boron", Some("p2"), RebootPolicy::Auto),
             make_host_metadata("radon", Some("p1"), RebootPolicy::Auto),
@@ -56,7 +57,25 @@ async fn test_phases_run_with_their_numbers_in_order() {
         .iter()
         .map(|phase| phase.phase.as_str())
         .collect();
-    assert_eq!(completed, vec!["p1", "p2", "p10"]);
+    assert_eq!(completed, vec!["p1", "p2", "p10", crate::push::UNPHASED]);
+}
+
+#[tokio::test]
+async fn test_hosts_without_a_phase_are_skipped_when_a_phase_fails() {
+    let mut harness = PushHarness::new();
+    harness.nix_backend = MockNixBackend::new().with_build_failures(vec!["boron".to_string()]);
+    let run = harness
+        .run(vec![
+            make_host_metadata("sodium", None, RebootPolicy::Auto),
+            make_host_metadata("boron", Some("p1"), RebootPolicy::Auto),
+        ])
+        .await;
+
+    assert_eq!(run.results.phases.len(), 1);
+    assert_eq!(run.results.phases[0].phase, "p1");
+    assert_eq!(run.results.skipped_phases.len(), 1);
+    assert_eq!(run.results.skipped_phases[0].phase, crate::push::UNPHASED);
+    assert_eq!(run.results.skipped_phases[0].hostnames, vec!["sodium"]);
 }
 
 #[tokio::test]
@@ -355,12 +374,12 @@ fn test_phases_lists_each_phase_in_order_with_its_hosts() {
     assert_eq!(
         crate::push::phases(&hosts, false),
         vec![
-            ("default".to_string(), vec!["sodium".to_string()]),
             ("p2".to_string(), vec!["ferrum".to_string()]),
             (
                 "p3".to_string(),
                 vec!["cerium".to_string(), "vanadium".to_string()]
             ),
+            ("default".to_string(), vec!["sodium".to_string()]),
         ]
     );
     assert_eq!(

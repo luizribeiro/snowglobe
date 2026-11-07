@@ -37,8 +37,8 @@ runs `pre-deploy` hooks, activates, reboots if needed, then runs
 `on-failure` hooks. Other hosts keep going.
 
 - **Phases.** Each host can have a phase. Phases run one after another, in name
-  order with numbers by value (`p2` before `p10`); hosts without one go in the
-  phase `default`. If any host in a phase fails, later phases are skipped.
+  order with numbers by value (`p2` before `p10`); hosts without one run last.
+  If any host in a phase fails, later phases are skipped.
   `--ignore-phases` pushes everything at once.
 - **Concurrency.** `--concurrency N` (default 3) caps how many hosts are active
   at once. Each host moves through its steps on its own, so fast hosts don't

@@ -6,6 +6,9 @@ use std::cmp::Ordering;
 /// The phase of hosts without one, so hosts may not set it themselves
 pub const UNPHASED: &str = "default";
 
+/// The one phase of a push that ignores phases
+pub const ALL_HOSTS: &str = "_all";
+
 /// Characters allowed in phase and tag names, as in the module's option type
 pub fn is_name_char(c: char) -> bool {
     c.is_ascii_alphanumeric() || c == '-' || c == '_'
@@ -26,6 +29,13 @@ pub(crate) fn check_phase(host: &str, phase: Option<&str>) -> Result<()> {
         .into()),
         _ => Ok(()),
     }
+}
+
+/// The order phases run in: named phases first, then hosts without one
+pub(crate) fn run_order(a: &str, b: &str) -> Ordering {
+    (a == UNPHASED)
+        .cmp(&(b == UNPHASED))
+        .then_with(|| natural_cmp(a, b))
 }
 
 /// Orders names by their text, but by their numbers' values where both have
@@ -76,6 +86,14 @@ mod tests {
         let mut names: Vec<String> = names.iter().map(|n| n.to_string()).collect();
         names.sort_by(|a, b| natural_cmp(a, b));
         names
+    }
+
+    #[test]
+    fn test_hosts_without_a_phase_run_after_every_named_phase() {
+        let mut phases = vec![UNPHASED, "p10", "zone-z", "p2", "aaa"];
+        phases.sort_by(|a, b| run_order(a, b));
+
+        assert_eq!(phases, vec!["aaa", "p2", "p10", "zone-z", UNPHASED]);
     }
 
     #[test]
