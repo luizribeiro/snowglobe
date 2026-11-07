@@ -42,9 +42,6 @@ cargo run --bin snow -- <command>
 # List all NixOS configurations from a flake
 snow list
 
-# Show cluster status
-snow status
-
 # Deploy to specific hosts
 snow push hydrogen oxygen
 
@@ -59,6 +56,10 @@ snow push --skip-reboot       # Never reboot
 snow push --quiet             # Suppress subprocess output
 snow push --concurrency 5     # Control parallelism
 ```
+
+`snow bootstrap`, `snow plan` and `snow status` exist only with the
+`unstable` Cargo feature (`cargo build --features unstable`, or the flake's
+`snow-unstable` package); release builds leave them out.
 
 ### Working with Flakes
 

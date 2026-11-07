@@ -20,27 +20,34 @@ flake, with phases, hooks and reboot handling.
 
 - `snow list` lists the hosts in a flake's `nixosConfigurations` and
   `darwinConfigurations`.
-- `snow status` lists hosts as a table or `--json`; it doesn't query them
-  yet, so every status reads `unknown`.
 - `snow build` builds hosts' systems in parallel without deploying them.
-- `snow plan` shows, without building, what building the selected hosts would
-  compile from source and what it would fetch from a substituter, with
-  download sizes. `--fail-on-build` exits 2 if anything non-trivial would be
-  built. The last plan is saved under `$XDG_STATE_HOME/snowglobe/`.
 - `snow push` deploys hosts over SSH (see below).
 - `snow rebuild` rebuilds the host it runs on, with the same reboot detection
   as `snow push`: it lists why a reboot is needed and asks whether to reboot,
   set the new system for the next boot, or switch anyway.
-- `snow bootstrap` provisions a new host: it generates its SSH host keys,
-  optionally adds its age key to `.sops.yaml` (`--update-sops`), and builds an
-  image with the host's provisioner (`manual`, `sd-image`, `raw` or
-  `proxmox-vma`), which `--target` writes to a block device or deploys to a
-  Proxmox host.
 - Hosts are selected by name, or by `--phase`/`--phases`, `--tag`/`--tags`
   or a Nix expression over a host's config (`--filter`).
 - The flake is found from the current directory upwards, or given with `-f`
   or `FLAKE_PATH`.
 - `snow --version`.
+
+#### Unstable commands
+
+Left out of release builds; they may change or break at any time. Run them
+with `nix run github:luizribeiro/snowglobe#snow-unstable -- <command>` or
+build with `cargo build --features unstable`.
+
+- `snow plan` shows, without building, what building the selected hosts would
+  compile from source and what it would fetch from a substituter, with
+  download sizes. `--fail-on-build` exits 2 if anything non-trivial would be
+  built. The last plan is saved under `$XDG_STATE_HOME/snowglobe/`.
+- `snow status` lists hosts as a table or `--json`; it doesn't query them
+  yet, so every status reads `unknown`.
+- `snow bootstrap` provisions a new host: it generates its SSH host keys,
+  optionally adds its age key to `.sops.yaml` (`--update-sops`), and builds an
+  image with the host's provisioner (`manual`, `sd-image`, `raw` or
+  `proxmox-vma`), which `--target` writes to a block device or deploys to a
+  Proxmox host.
 
 #### Push
 

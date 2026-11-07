@@ -18,17 +18,14 @@ before 1.0.
 | Command | What it does |
 | --- | --- |
 | `snow list` | List hosts in `nixosConfigurations` and `darwinConfigurations` |
-| `snow status` | List hosts (live host state is not implemented yet: every host shows `unknown`) |
 | `snow build` | Build hosts' systems locally, in parallel |
-| `snow plan` | Show what a build would compile from source versus fetch, without building |
 | `snow push` | Deploy hosts over SSH |
 | `snow rebuild` | Rebuild and activate the machine you run it on |
-| `snow bootstrap` | Generate a new host's SSH key, build its image and inject the key |
 
-`build`, `plan` and `push` take host names, or select hosts with one of
+`build` and `push` take host names, or select hosts with one of
 `-e/--filter` (a Nix expression over the host's config), `--phase`/`--phases`
-or `--tag`/`--tags`. With no hosts, they act on every host. `list` and
-`status` take `-e`. snow finds `flake.nix`
+or `--tag`/`--tags`. With no hosts, they act on every host. `list` takes
+`-e`. snow finds `flake.nix`
 in the current directory or a parent; `-f` or `FLAKE_PATH` points it elsewhere.
 
 ### `snow push`
@@ -77,22 +74,38 @@ Like `nixos-rebuild`, for the machine you're on, with the same reboot
 detection. Reboot policies don't apply. When a switch needs a reboot, it asks whether to switch anyway, set
 the new system for the next boot, reboot now, or cancel.
 
-### `snow bootstrap`
-
-For a new NixOS host: snow generates its SSH host key and prints the matching
-age public key. With `--update-sops`, it adds that key to `.sops.yaml` and
-re-encrypts the secrets, so the host can decrypt them on first boot. It then
-builds the image named by `snowglobe.bootstrap.imageAttr` and injects the key.
-Set `snowglobe.bootstrap.provisioner` to `sd-image`, `raw` or `proxmox-vma`;
-the default, `manual`, stops with an error after the build. `--target` writes
-the image to a block device or a Proxmox host.
-
 ### Modules
 
 `nixosModules.default` and `darwinModules.default` install
 `snowglobe-activate`, the helper snow activates and reboots through, and give
 the users in `snowglobe.push.allowedUsers` passwordless sudo for it alone. They
 also define the hook, serial group and bootstrap options.
+
+## Unstable commands
+
+Release builds leave these out. They may change or break at any time. To try
+them, run the `snow-unstable` package, or build with the `unstable` feature:
+
+```bash
+nix run github:luizribeiro/snowglobe#snow-unstable -- plan
+cargo build --features unstable
+```
+
+| Command | What it does |
+| --- | --- |
+| `snow plan` | Show what a build would compile from source versus fetch, without building |
+| `snow status` | List hosts (live host state is not implemented yet: every host shows `unknown`) |
+| `snow bootstrap` | Generate a new host's SSH key, build its image and inject the key |
+
+`plan` selects hosts like `build`; `status` takes `-e`.
+
+`snow bootstrap` is for a new NixOS host: it generates its SSH host key and
+prints the matching age public key. With `--update-sops`, it adds that key to `.sops.yaml` and
+re-encrypts the secrets, so the host can decrypt them on first boot. It then
+builds the image named by `snowglobe.bootstrap.imageAttr` and injects the key.
+Set `snowglobe.bootstrap.provisioner` to `sd-image`, `raw` or `proxmox-vma`;
+the default, `manual`, stops with an error after the build. `--target` writes
+the image to a block device or a Proxmox host.
 
 ## Install
 
