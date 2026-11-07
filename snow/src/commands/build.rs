@@ -82,7 +82,7 @@ fn totals(results: &[BuildResult]) -> String {
 
 impl BuildArgs {
     pub async fn run(self, flake: &Flake) -> Result<()> {
-        let nix_backend = crate::backend_factory::create_nix_backend(
+        let nix_backend = crate::backend_factory::create_hookless_nix_backend(
             #[cfg(debug_assertions)]
             &self.mock_fixture,
         )?;
@@ -159,7 +159,7 @@ fn failure_error(results: &[BuildResult]) -> Option<snowlib::error::DeployError>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_utils::snow_cmd;
+    use crate::test_utils::{fixtures_dir, snow_cmd, snow_cmd_on};
     use predicates::prelude::*;
 
     fn build_result(hostname: &str, ok: bool) -> BuildResult {
@@ -401,5 +401,15 @@ mod tests {
             .assert()
             .failure()
             .stdout(predicate::str::contains("Building 1 host"));
+    }
+
+    #[test]
+    fn test_build_reads_hosts_without_building_their_hooks() {
+        snow_cmd_on(&fixtures_dir().join("list"))
+            .args(["build", "boron"])
+            .assert()
+            .failure()
+            .stdout(predicate::str::contains("Building 1 host"))
+            .stderr(predicate::str::contains("snowglobe-hooks").not());
     }
 }
