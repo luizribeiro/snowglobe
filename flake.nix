@@ -35,11 +35,10 @@
       packages = forEachSystem (system:
         let
           pkgs = nixpkgs.legacyPackages.${system};
-        in
-        {
-          snow = pkgs.rustPlatform.buildRustPackage {
+          snowWith = features: pkgs.rustPlatform.buildRustPackage {
             pname = "snow";
             version = "0.1.0";
+            buildFeatures = map (feature: "snow/${feature}") features;
 
             # Only what cargo reads, so editing docs or tests in nix/ doesn't
             # rebuild snow and every VM test that runs it
@@ -76,8 +75,9 @@
             ];
             buildInputs = [ ];
 
-            # snow plan shells out to nix-eval-jobs; a user's own copy on PATH takes precedence.
-            postInstall = ''
+            # Only snow plan, an unstable command, shells out to nix-eval-jobs;
+            # a user's own copy on PATH takes precedence.
+            postInstall = pkgs.lib.optionalString (builtins.elem "unstable" features) ''
               wrapProgram $out/bin/snow \
                 --suffix PATH : ${pkgs.lib.makeBinPath [ pkgs.nix-eval-jobs ]}
             '';
@@ -89,6 +89,10 @@
               mainProgram = "snow";
             };
           };
+        in
+        {
+          snow = snowWith [ ];
+          snow-unstable = snowWith [ "unstable" ];
 
           default = self.packages.${system}.snow;
         });
@@ -122,6 +126,7 @@
         in
         {
           snow-package = self.packages.${system}.snow;
+          snow-unstable-package = self.packages.${system}.snow-unstable;
           recorder = import ./nix/demos/record.test.nix { inherit pkgs; };
           render-demos = import ./nix/demos/render.test.nix { inherit pkgs; };
           hooks-module = runNixTests "hooks-module" (import ./modules/hooks.test.nix { inherit pkgs; });
