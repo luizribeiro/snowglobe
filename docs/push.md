@@ -79,7 +79,7 @@ snowglobe.push.phase = "p1";
   or selected by phase (`--phase never`, or `--phases` with `never`). A bare
   `snow push`, `--tag`, `-e` or another `--phase` never selects them, even
   when they match. `snow build` and `snow plan` select hosts the same way;
-  `snow list` shows every host.
+  `snow list` does too, except that with no selection it shows every host.
 - If any host in a phase fails, later phases are skipped and `snow push`
   exits non-zero, unless the host is [optional](#optional-hosts).
 - `--ignore-phases` puts every selected host in a single phase.

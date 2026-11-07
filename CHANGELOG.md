@@ -19,7 +19,9 @@ flake, with phases, hooks and reboot handling.
 #### Commands
 
 - `snow list` lists the hosts in a flake's `nixosConfigurations` and
-  `darwinConfigurations`.
+  `darwinConfigurations` with their phase and tags. `--json` prints each
+  host's Nix platform, phase, tags, reboot policy, serial group and optional
+  flag, for scripts.
 - `snow build` builds hosts' systems in parallel without deploying them.
 - `snow push` deploys hosts over SSH (see below).
 - `snow rebuild` rebuilds the host it runs on, with the same reboot detection

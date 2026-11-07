@@ -17,17 +17,30 @@ before 1.0.
 
 | Command | What it does |
 | --- | --- |
-| `snow list` | List hosts in `nixosConfigurations` and `darwinConfigurations` |
+| `snow list` | List hosts with their phase and tags, or their push settings as JSON |
 | `snow build` | Build hosts' systems locally, in parallel |
 | `snow push` | Deploy hosts over SSH |
 | `snow rebuild` | Rebuild and activate the machine you run it on |
 
-`build` and `push` take host names, or select hosts with one of
+`list`, `build` and `push` take host names, or select hosts with one of
 `-e/--filter` (a Nix expression over the host's config), `--phase`/`--phases`
 or `--tag`/`--tags`. With no hosts, they act on every host. Hosts in the phase
-`never` are selected only by name or with `--phase never`. `list` takes `-e`.
+`never` are selected only by name or with `--phase never`, except that a bare
+`snow list` shows them too.
 snow finds `flake.nix` in the current directory or a parent; `-f` or
 `FLAKE_PATH` points it elsewhere.
+
+### `snow list`
+
+`snow list` prints a table of the selected hosts, their phase and tags, with
+`-` in an empty cell. `snow list --json` prints, for each, its `name`,
+`system` (its Nix platform), `phase`, `tags`, `rebootPolicy`, `optional` and
+`serialGroup`; `system`, `phase` and `serialGroup` are `null` when unset:
+
+```bash
+snow list --json | jq -r '.[] | select(.optional) | .name'
+snow list --json | jq -r '.[] | select(.system == "aarch64-linux") | .name'
+```
 
 ### `snow push`
 
