@@ -41,7 +41,8 @@ in
         This should be a path relative to the host's configuration that
         builds a bootable image (e.g., SD card image, raw disk image).
 
-        When set, `snow bootstrap` will build this image first, then
+        When set, `snow bootstrap` (an unstable command, left out of release
+        builds) will build this image first, then
         generate SSH keys and inject them. This ensures keys are only
         created if the build succeeds (avoiding orphaned keys).
       '';
