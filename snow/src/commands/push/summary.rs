@@ -119,9 +119,13 @@ fn phase_heading(phase: &snowlib::PhaseResult, among_other_phases: bool) -> Stri
             style(format!("({total} {} in {took})", plural(total, "host"))).dim()
         )
     } else {
+        let headline = if phase.has_blocking_failure() {
+            failure_headline(&title)
+        } else {
+            warning_headline(&title)
+        };
         format!(
-            "{} {}",
-            failure_headline(&title),
+            "{headline} {}",
             style(format!(
                 "({}/{total} failed in {took})",
                 phase.failure_count()
@@ -137,6 +141,19 @@ fn success_headline(text: &str) -> String {
 
 fn failure_headline(text: &str) -> String {
     format!("{} {}", marks::failure().bold(), style(text).red().bold())
+}
+
+/// For failures that don't fail the push: those of optional hosts
+fn warning_headline(text: &str) -> String {
+    format!("{} {}", marks::warning(), style(text).yellow().bold())
+}
+
+fn host_label(host: &snowlib::HostDeploymentResult) -> String {
+    if host.optional {
+        format!("{} (optional)", host.hostname)
+    } else {
+        host.hostname.clone()
+    }
 }
 
 pub(super) fn success_labels(host: &snowlib::HostDeploymentResult) -> Vec<&'static str> {
@@ -168,7 +185,7 @@ fn host_lines(
         let reason = host.error_message.as_deref().unwrap_or_default();
         vec![format!(
             "  {}",
-            marks::skipped_line(&format!("{} skipped, {reason}", host.hostname))
+            marks::skipped_line(&format!("{} skipped, {reason}", host_label(host)))
         )]
     } else {
         let details = host
@@ -211,7 +228,7 @@ const HOST_INDENT: usize = 2;
 
 /// "✗ cerium at activate: <cause>", the cause cut to fit `width` columns
 fn failure_line(host: &snowlib::HostDeploymentResult, width: usize) -> String {
-    let line = failed_host(&host.hostname, host.failed_at_step);
+    let line = failed_host(&host_label(host), host.failed_at_step);
     match host.error_message.as_deref().map(error_summary) {
         Some(cause) if !cause.is_empty() => {
             // Some terminals wrap a line that reaches the last column
@@ -271,16 +288,22 @@ fn overall_summary(results: &snowlib::PushResults) -> String {
         ));
     }
 
+    let optional = results.optional_failure_count();
+    let failed_label = match optional {
+        0 => "failed".to_string(),
+        n if n == failed => "failed (optional)".to_string(),
+        n => format!("failed ({n} optional)"),
+    };
     let mut text = format!("{succeeded}/{} deployed", results.total_count());
-    for (count, label) in [(failed, "failed"), (skipped, "skipped")] {
+    for (count, label) in [(failed, failed_label.as_str()), (skipped, "skipped")] {
         if count > 0 {
             text.push_str(&format!(", {count} {label}"));
         }
     }
-    if failed > 0 {
+    if failed > optional {
         failure_headline(&text)
     } else {
-        format!("{} {}", marks::warning(), style(text).yellow().bold())
+        warning_headline(&text)
     }
 }
 
@@ -739,6 +762,93 @@ mod tests {
 
         assert_eq!(super::overall_summary(&one), "✓ 1 host deployed");
         assert_eq!(super::overall_summary(&three), "✓ 3 hosts deployed");
+    }
+
+    fn failed_optional_host(name: &str) -> HostDeploymentResult {
+        HostDeploymentResult {
+            optional: true,
+            ..make_failed_host(
+                name,
+                PipelineStep::Check,
+                "ssh: connect to host curium port 22: Connection timed out",
+            )
+        }
+    }
+
+    #[test]
+    fn test_phase_report_marks_a_failed_optional_host_as_a_warning() {
+        console::set_colors_enabled(false);
+        let phase = PhaseResult {
+            phase: "p1".to_string(),
+            duration: Duration::from_secs(41),
+            hosts: vec![
+                make_successful_host("boron", ActivationMode::Switch, false),
+                failed_optional_host("curium"),
+            ],
+        };
+
+        assert_eq!(
+            super::phase_report(&phase, true, 100, None),
+            "! Phase p1 (1/2 failed in 0:41)\n\
+             \x20 ✓ boron (switch)\n\
+             \x20 ✗ curium (optional) at check: ssh: connect to host curium port 22: Connection timed out"
+        );
+    }
+
+    #[test]
+    fn test_phase_report_with_a_failed_host_beside_an_optional_one_is_a_failure() {
+        console::set_colors_enabled(false);
+        let phase = PhaseResult {
+            phase: "p1".to_string(),
+            duration: Duration::from_secs(41),
+            hosts: vec![
+                failed_optional_host("curium"),
+                make_failed_host("radon", PipelineStep::Build, "build failed"),
+            ],
+        };
+
+        assert!(super::phase_report(&phase, true, 100, None).starts_with("✗ Phase p1 (2/2 failed"));
+    }
+
+    #[test]
+    fn test_overall_summary_says_which_failures_were_optional() {
+        console::set_colors_enabled(false);
+        let pushed = |hosts: Vec<HostDeploymentResult>| PushResults {
+            phases: vec![PhaseResult {
+                hosts,
+                ..deployed_phase(&[])
+            }],
+            skipped_phases: vec![],
+        };
+        let boron = || make_successful_host("boron", ActivationMode::Switch, false);
+        let radon = make_failed_host("radon", PipelineStep::Activate, "activation failed");
+
+        assert_eq!(
+            super::overall_summary(&pushed(vec![boron(), failed_optional_host("curium")])),
+            "! 1/2 deployed, 1 failed (optional)"
+        );
+        assert_eq!(
+            super::overall_summary(&pushed(vec![
+                boron(),
+                failed_optional_host("curium"),
+                radon
+            ])),
+            "✗ 1/3 deployed, 2 failed (1 optional)"
+        );
+    }
+
+    #[test]
+    fn test_skipped_optional_host_is_marked_optional() {
+        console::set_colors_enabled(false);
+        let curium = HostDeploymentResult {
+            optional: true,
+            ..HostDeploymentResult::skipped_by_serial_group("curium", "k8s", "radon")
+        };
+
+        assert_eq!(
+            super::host_lines(&curium, 100, None),
+            vec!["  ⊘ curium (optional) skipped, serial group 'k8s' halted after radon failed"]
+        );
     }
 
     #[test]

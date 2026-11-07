@@ -81,10 +81,30 @@ snowglobe.push.phase = "p1";
   when they match. `snow build` and `snow plan` select hosts the same way;
   `snow list` shows every host.
 - If any host in a phase fails, later phases are skipped and `snow push`
-  exits non-zero.
+  exits non-zero, unless the host is [optional](#optional-hosts).
 - `--ignore-phases` puts every selected host in a single phase.
 - A phase name may contain only letters, digits, `-` and `_`, and can't be
   `default`, which snow keeps for hosts without a phase.
+
+### Optional hosts
+
+A host that may be offline, like a laptop, can be marked optional:
+
+```nix
+snowglobe.push.optional = true;
+```
+
+When an optional host fails, at any step, it is reported as failed and marked
+`(optional)`, but its phase doesn't fail: later phases still run, and
+`snow push` exits zero if only optional hosts failed. Its on-failure hooks
+still run. It doesn't stop its serial group either, so the group's next host
+may start while those hooks run.
+
+```
+! Phase p1 (1/2 failed in 0:41)
+  ✓ boron (switch)
+  ✗ curium (optional) at check: ssh: connect to host curium port 22: Connection timed out
+```
 
 ---
 
@@ -172,6 +192,7 @@ snowglobe.push.serialGroup = "kubernetes";
   run no hooks, not even on-failure hooks, since nothing touched them.
 - Hosts outside the group carry on. The phase fails, later phases are skipped,
   and `snow push` exits non-zero.
+- A failed [optional host](#optional-hosts) doesn't stop its group.
 - **Limitation:** only hosts pushed by the same `snow push` invocation
   coordinate. Two concurrent `snow push` runs don't know about each other's
   groups.
