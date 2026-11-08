@@ -972,7 +972,7 @@ async fn test_push_never_reboots_darwin_hosts() {
         .collect(),
     );
 
-    for strategy in [PushStrategy::Auto, PushStrategy::Switch, PushStrategy::Boot] {
+    for strategy in [PushStrategy::Auto, PushStrategy::Switch] {
         let observer = TestObserver::new();
         let mut ferrum = make_host_metadata("ferrum", Some("default"), RebootPolicy::Always);
         ferrum.system_type = SystemType::Darwin;

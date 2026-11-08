@@ -104,6 +104,7 @@ fn skip_remaining_phases(
 /// # }
 /// ```
 pub async fn push(push_ctx: &PushContext<'_>, hosts: Vec<HostMetadata>) -> Result<PushResults> {
+    preflight::check_hosts_support_strategy(push_ctx, &hosts)?;
     preflight::check_local_hooks(push_ctx, &hosts)?;
     preflight::check_ssh_agent(push_ctx).await?;
 

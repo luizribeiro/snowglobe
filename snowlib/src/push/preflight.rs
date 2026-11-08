@@ -4,6 +4,7 @@ use std::path::Path;
 
 use super::config::PushStrategy;
 use super::context::PushContext;
+use crate::backends::deploy::check_mode_supported;
 use crate::error::DeployError;
 use crate::hooks::{find_store_paths, HookLocation};
 use crate::host::HostMetadata;
@@ -20,6 +21,22 @@ pub(super) fn check_local_hooks(
     hosts
         .iter()
         .try_for_each(|host| check_local_hook_paths(host, |path| Path::new(path).exists()))
+}
+
+/// Fails before anything is built if a nix-darwin host can't activate as asked
+pub(super) fn check_hosts_support_strategy(
+    push_ctx: &PushContext<'_>,
+    hosts: &[HostMetadata],
+) -> Result<(), DeployError> {
+    let Some(mode) = push_ctx.config.strategy.fixed_activation_mode() else {
+        return Ok(());
+    };
+    check_mode_supported(
+        mode,
+        hosts
+            .iter()
+            .map(|host| (host.name.as_str(), host.system_type)),
+    )
 }
 
 /// Fails before any host is touched if ssh would hang on the ssh-agent

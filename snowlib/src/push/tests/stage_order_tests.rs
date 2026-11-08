@@ -311,3 +311,54 @@ async fn test_hung_ssh_agent_stops_the_push_before_any_build() {
     );
     assert_eq!(harness.deployer.copy_count("cerium.example.com"), 0);
 }
+
+fn darwin_host(name: &str) -> HostMetadata {
+    let mut host = make_host_metadata(name, Some("p1"), RebootPolicy::Auto);
+    host.system_type = SystemType::Darwin;
+    host.hooks = kubernetes_node_hooks();
+    host
+}
+
+#[tokio::test]
+async fn test_darwin_hosts_stop_a_push_that_does_not_switch_before_any_build() {
+    for strategy in [PushStrategy::Boot, PushStrategy::Test, PushStrategy::DryRun] {
+        let mut harness = PushHarness::new();
+        harness.config.strategy = strategy;
+
+        let (result, observer) = harness
+            .run_push(vec![
+                darwin_host("ferrum"),
+                kubernetes_node("boron"),
+                darwin_host("cobalt"),
+            ])
+            .await;
+
+        assert!(
+            matches!(
+                result,
+                Err(crate::error::SnowError::Deploy(
+                    crate::error::DeployError::DarwinOnlySwitches { ref hosts, .. }
+                )) if hosts == &["ferrum", "cobalt"]
+            ),
+            "{strategy:?}: {result:?}"
+        );
+        assert!(observer.get_events().is_empty(), "{strategy:?}");
+        assert!(harness.hook_backend.get_executed_hooks().is_empty());
+        assert_eq!(harness.deployer.copy_count("boron.example.com"), 0);
+    }
+}
+
+#[tokio::test]
+async fn test_darwin_hosts_join_a_push_that_switches() {
+    for strategy in [PushStrategy::Auto, PushStrategy::Switch] {
+        let mut harness = PushHarness::new();
+        harness.config.strategy = strategy;
+
+        let run = harness
+            .run(vec![darwin_host("ferrum"), kubernetes_node("boron")])
+            .await;
+
+        assert!(run.host("ferrum").success, "{strategy:?}");
+        assert!(run.host("boron").success, "{strategy:?}");
+    }
+}
