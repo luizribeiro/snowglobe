@@ -1,179 +1,179 @@
 # snowglobe
 
-[![CI](https://github.com/luizribeiro/snowglobe/actions/workflows/ci.yml/badge.svg)](https://github.com/luizribeiro/snowglobe/actions/workflows/ci.yml)
+[![CI](https://github.com/luizribeiro/snowglobe/actions/workflows/ci.yml/badge.svg)](https://github.com/luizribeiro/snowglobe/actions/workflows/ci.yml) [![Release](https://img.shields.io/github/v/release/luizribeiro/snowglobe)](https://github.com/luizribeiro/snowglobe/releases) [![License](https://img.shields.io/github/license/luizribeiro/snowglobe)](#license)
 
-snowglobe deploys NixOS and nix-darwin hosts from a flake, over SSH. The CLI
-is `snow`. `snow push` builds every host, copies it over, activates it, and
-reboots the ones that need a reboot. Hosts go in phases, and you watch it
-happen on a board with one row per host.
+Push deployments for NixOS and nix-darwin hosts, in phases.
+
+snowglobe deploys the NixOS and nix-darwin hosts in a flake over SSH. Its
+CLI, `snow`, builds each host, copies it over, activates it, and reboots it
+when the new system needs a reboot. Hosts deploy in phases, and progress
+shows as one row per host.
 
 [![switch](docs/demos/switch.svg)](https://asciinema.org/a/6J8p7HDK0Df1tPSx)
 
-I use it for my homelab: x86 and aarch64 NixOS hosts (some are Raspberry
-Pis) and a few Macs on nix-darwin. The machine running `snow` can be a Mac or
-Linux. CI pushes it phase by phase with `snow push --phase pN`.
+> [!NOTE]
+> snowglobe is pre-1.0. The CLI, module options and flake interface may change between minor releases; see the [changelog](CHANGELOG.md) before upgrading. It is used in production on one homelab of NixOS (x86_64, aarch64) and nix-darwin hosts.
 
-snowglobe is young. We are its only users so far, and the CLI and module
-options will change before 1.0.
+## Features
 
-## Install
+- [Phases](docs/push.md#phases) that roll out by risk and stop at the first failure.
+- [Serial groups](docs/push.md#serial-groups), so cluster nodes deploy one at a time.
+- [Reboot detection](docs/push.md#reboots) with per-host reboot policies.
+- [Hooks](docs/hooks.md) before and after a deploy, after a reboot, and on failure.
+- NixOS and [nix-darwin](docs/darwin.md) hosts in the same push.
+- Reads the flake's existing `nixosConfigurations` and `darwinConfigurations`.
+  No extra flake output is needed.
+
+## Requirements
+
+- Nix with flakes on the deploying machine, Linux or macOS.
+- NixOS or nix-darwin hosts.
+- SSH key authentication to each host, with its host key already in
+  `known_hosts`. `snow` never prompts for a password.
+
+## Installation
 
 ```bash
-nix run github:luizribeiro/snowglobe -- list     # try it
-nix profile install github:luizribeiro/snowglobe # or install it
+nix run github:luizribeiro/snowglobe -- list      # run without installing
+nix profile install github:luizribeiro/snowglobe  # install
 ```
 
-There are also static binaries for Linux and macOS on the
+Static binaries for Linux and macOS are on the
 [releases page](https://github.com/luizribeiro/snowglobe/releases).
 
-## Setup
+## Getting started
 
-Import the module on each host:
+1. Import the module on each host:
 
-```nix
-{
-  inputs.snowglobe.url = "github:luizribeiro/snowglobe";
+   ```nix
+   {
+     inputs.snowglobe.url = "github:luizribeiro/snowglobe";
 
-  outputs = { nixpkgs, snowglobe, ... }: {
-    nixosConfigurations.web1 = nixpkgs.lib.nixosSystem {
-      system = "x86_64-linux";
-      modules = [
-        snowglobe.nixosModules.default
-        ./hosts/web1.nix
-      ];
-    };
-  };
-}
-```
+     outputs = { nixpkgs, snowglobe, ... }: {
+       nixosConfigurations.web1 = nixpkgs.lib.nixosSystem {
+         system = "x86_64-linux";
+         modules = [
+           snowglobe.nixosModules.default
+           ./hosts/web1.nix
+         ];
+       };
+     };
+   }
+   ```
 
-And give your deploy user the activation helper:
+2. Let a deploy user run the activation helper:
 
-```nix
-{
-  snowglobe.push.allowedUsers = [ "deploy" ];
-  # nix copy as a non-root user needs a trusted user (or signed paths)
-  nix.settings.trusted-users = [ "deploy" ];
-}
-```
+   ```nix
+   {
+     snowglobe.push.allowedUsers = [ "deploy" ];
+     # nix copy as a non-root user needs a trusted user (or signed paths)
+     nix.settings.trusted-users = [ "deploy" ];
+   }
+   ```
 
-Macs work the same way with `darwinModules.default`, see
-[docs/darwin.md](docs/darwin.md).
+3. Apply this configuration once with `nixos-rebuild switch`, then from the
+   flake's directory:
 
-`nixos-rebuild` that once by hand, then from the flake's directory:
+   ```bash
+   snow list                 # the hosts snow sees
+   snow push --dry-run web1  # build, copy and show what would change
+   snow push web1            # deploy one host
+   snow push                 # deploy every host
+   ```
 
-```bash
-snow list                 # the hosts snow sees
-snow push --dry-run web1  # build, copy, show what would change
-snow push web1
-snow push                 # every host
-```
+4. Optionally, give hosts a phase, tags or a reboot policy:
 
-snow uses your SSH config to reach `networking.hostName`. It never asks for
-a password, so you need key auth and the host key in `known_hosts`.
+   ```nix
+   {
+     snowglobe.push = {
+       phase = "p2";            # deploys after the p1 hosts
+       tags = [ "web" ];        # snow push --tag web
+       rebootPolicy = "auto";   # or "never" or "always"
+     };
+   }
+   ```
 
-Then give hosts a phase, tags or a reboot policy:
-
-```nix
-{
-  snowglobe.push = {
-    phase = "p2";            # after the p1 hosts
-    tags = [ "web" ];        # snow push --tag web
-    rebootPolicy = "auto";   # or "never" or "always"
-  };
-}
-```
-
-On the machine you're sitting at, `snow rebuild` is `nixos-rebuild switch`
-(or `darwin-rebuild`) with the same reboot check: if the new system needs a
-reboot, it asks what to do.
-
-`snow --help` and the module's option descriptions have the rest.
+Macs use `darwinModules.default`; see [docs/darwin.md](docs/darwin.md).
+`snow rebuild` works like `nixos-rebuild` or `darwin-rebuild` on the local
+machine, with the same reboot check. Everything else is in `snow --help` and
+the module's option descriptions.
 
 ## How it works
 
-- **Phases.** Phases go one after another, and a failure stops the push
-  there. Whatever you put early goes first, and the hosts in later phases
-  aren't touched if it breaks.
-- **Serial groups.** Hosts in a group take turns, so your storage or
-  Kubernetes nodes drain one at a time.
-- **Reboots.** Switching a host to a new kernel, or restarting udev or
-  sysctl, leaves it half old, half new. snow checks for that, and if a reboot
-  is needed, it sets the new system for the next boot, reboots and waits for
-  the host. Per-host policies win over `--switch`, so you can't switch a
-  `never` host by accident.
-- **Nothing is drained for nothing.** Planning runs before any hook, so a
-  host that can't deploy is never drained. Unchanged hosts are skipped.
-- **Hooks.** Drain before, uncordon after, alert on failure, on your machine
-  or on the host. [docs/hooks.md](docs/hooks.md)
+Phases are for rolling out by risk. Low-risk hosts go first, and a
+post-deploy hook can check each one. A failure stops the push before any
+host in a later phase is touched. Spreading a cluster's nodes across phases
+migrates it gradually instead of all at once.
 
-Details in [docs/push.md](docs/push.md).
-
-## Demos
-
-Every demo is a NixOS VM test pushing to real VMs. The test checks the
-result, and the same run records the clip.
-
-A host that needs a reboot gets the new system for next boot, then reboots:
+Hosts reboot only when they need to. Switching to a new kernel, or
+restarting services like udev or sysctl, leaves a host half old and half new,
+so `snow` checks for that before activating. If a reboot is needed, it sets
+the new system for the next boot, reboots and waits for the host. Per-host
+policies cover the rest: `never` for hosts rebooted by hand, `auto` for hosts
+that should reboot only when they must. A policy wins over `--switch`.
 
 [![reboot](docs/demos/reboot.svg)](https://asciinema.org/a/CRvXGdOvXPBkkiDV)
 
-Two hosts in a serial group take turns:
+Planning runs before any hook, so a host that can't deploy is never drained.
+Hosts that already run the built system are skipped.
 
-[![serial-group](docs/demos/serial-group.svg)](https://asciinema.org/a/DfWYNZ7K7KCfiFvg)
+## Comparison with other tools
 
-One host fails to activate, the others keep going:
+These tools overlap heavily, and snowglobe is much newer than all of them.
 
-[![activation-failure](docs/demos/activation-failure.svg)](https://asciinema.org/a/NRfbtSt4AyH53Xsy)
+| | `nixos-rebuild --target-host` | deploy-rs | colmena | snowglobe |
+|---|---|---|---|---|
+| Many hosts per run | — | ✓ | ✓ | ✓ |
+| Ordered phases that stop on failure | — | — | — | ✓ |
+| Serial groups | — | — | — | ✓ |
+| Reboot detection | — | — | `apply --reboot` (unconditional) | ✓ |
+| Pre/post-deploy hooks | — | — | — | ✓ |
+| nix-darwin targets | — | ✓ | — | ✓ |
+| Automatic rollback | — | ✓ | — | — |
+| Build on target | `--build-host` | `remoteBuild` | `buildOnTarget` | — |
+| Secrets upload | — | — | `deployment.keys` | — |
+| Sudo password prompt | `--ask-sudo-password` | `interactiveSudo` | — | not for remote hosts |
+| Works without flakes | ✓ | partial | `hive.nix` | — |
+| Extra flake output needed | no | `deploy.nodes` | `colmenaHive` | no |
 
-`snow rebuild` reboots into the new system:
-
-[![rebuild-reboot](docs/demos/rebuild-reboot.svg)](https://asciinema.org/a/HrREagz2DZPhuXDC)
-
-All of them on [the demos page](docs/demos.md).
-
-## Compared to
-
-- `nixos-rebuild --target-host`: one host per run. snowglobe does many, with
-  phases, hooks, reboots, and Macs in the same push.
-- deploy-rs: many hosts, nix-darwin too, magic rollback (it rolls back if it
-  can't reach the host after activating), building on the target, profiles
-  other than the system, no flake required.
-- colmena: parallel, tags, building on the target, secrets uploaded outside
-  the store, no flake required. `apply --reboot` always reboots.
-
-What snowglobe has that they don't: phases that stop on failure, serial
-groups, hooks, and knowing when a host needs a reboot.
-
-What it doesn't have: rollback, secrets, building on the target, non-flake
-setups, and a sudo password prompt for remote hosts. It's also a lot newer than all of them.
+Use deploy-rs if you need magic rollback or non-system profiles, or colmena
+if you need secrets upload or building on the target.
+[Corrections welcome](https://github.com/luizribeiro/snowglobe/issues).
 
 ## Security
 
-- Push only, over SSH. No agent or daemon on the hosts.
-- One helper on each host, `snowglobe-activate`. Deploy users get
-  passwordless sudo for that, and nothing else.
-- Every push tool needs a user that can become root on the host. deploy-rs
-  and `nixos-rebuild --target-host` can ask for that user's sudo password.
-  `snow push` can't yet, so its deploy user is root without one. Use a dedicated
-  deploy user and treat its SSH key like a root key.
-- Local hooks run on your machine, as you. Pushing someone else's flake runs
-  their code.
+- Push-only over SSH, with no agent or daemon on the hosts.
+- One helper, `snowglobe-activate`, gets passwordless sudo, not
+  `NOPASSWD: ALL`.
+- The deploy user is still root-equivalent on the host. Use a dedicated
+  deploy user and guard its SSH key like a root key.
+- Local hooks run code from the flake on the deploying machine.
 
-Details: [docs/activation-helper.md](docs/activation-helper.md#security).
+Details in [docs/activation-helper.md](docs/activation-helper.md#security).
+
+## Documentation
+
+- [docs/push.md](docs/push.md): phases, serial groups, reboots and modes
+- [docs/hooks.md](docs/hooks.md): hooks, and secrets in hooks
+- [docs/darwin.md](docs/darwin.md): nix-darwin hosts
+- [docs/activation-helper.md](docs/activation-helper.md): the activation helper and its security model
+- [docs/demos.md](docs/demos.md): every clip is a NixOS VM test pushing to real VMs
+- [CHANGELOG.md](CHANGELOG.md)
+- [CONTRIBUTING.md](CONTRIBUTING.md)
 
 ## Roadmap
 
 Not built yet:
 
-- Signed deployments. The host checks a signature before it activates, so a
-  deploy user is no longer root. Ideally without having to buy hardware like
-  a YubiKey, and easy to set up.
-- `snow init`, an onboarding flow that sets up your flake and hosts.
-- Pull mode: each host fetches and applies its own config.
+- Signed deployments: hosts verify a signature before activating, so a
+  deploy user is no longer root-equivalent. The goal is to not require a
+  hardware token.
+- `snow init`, an onboarding flow for new flakes and hosts.
+- Pull mode, where each host fetches and applies its own configuration.
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md).
+Issues and pull requests are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
