@@ -3,9 +3,14 @@
 # Platform-agnostic push options, imported by both nixos.nix and darwin.nix
 
 let
+  # The characters snow's --phase and --tag filters keep
+  filterName = lib.types.strMatching "[A-Za-z0-9_-]+";
+
   # "default" is the phase snow puts hosts without one in
-  phaseName = lib.types.addCheck (lib.types.strMatching "[A-Za-z0-9_-]+") (name: name != "default")
+  phaseName = lib.types.addCheck filterName (name: name != "default")
     // { description = ''phase name (letters, digits, "-" and "_"), other than "default"''; };
+
+  tagName = filterName // { description = ''tag (letters, digits, "-" and "_")''; };
 in
 {
   options.snowglobe.push.phase = lib.mkOption {
@@ -24,7 +29,7 @@ in
   };
 
   options.snowglobe.push.tags = lib.mkOption {
-    type = lib.types.listOf lib.types.str;
+    type = lib.types.listOf tagName;
     default = [ ];
     description = ''
       Tags that select this host with `snow push --tag` or `--tags`.

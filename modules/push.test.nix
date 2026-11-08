@@ -39,6 +39,16 @@ in
     expected = [ "web" "database" ];
   };
 
+  testTagsAcceptNames = {
+    expr = accepts "tags" [ "etcd" "kubernetes" "dns-master" "storage_nodes" "k8s2" ];
+    expected = true;
+  };
+
+  testTagsRejectOtherCharacters = {
+    expr = map (tag: accepts "tags" [ "web" tag ]) [ "" "dns master" "dns.master" "web!" "web\n" "日本" ];
+    expected = [ false false false false false false ];
+  };
+
   testTagsRejectNonStrings = {
     expr = map (accepts "tags") [ "web" [ "web" 1 ] ];
     expected = [ false false ];
