@@ -110,6 +110,7 @@
             name = "upload-demos";
             runtimeInputs = [ pkgs.asciinema ];
             text = ''
+              export ASCIINEMA_SERVER_URL=https://asciinema.org
               ${pkgs.writers.writePython3 "upload-demos" { } (builtins.readFile ./nix/e2e/upload_demos.py)} \
                 ${self.legacyPackages.${system}.push-recordings} "$@"
             '';
