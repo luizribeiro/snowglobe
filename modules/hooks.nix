@@ -56,16 +56,22 @@ let
         type = types.listOf types.path;
         default = [];
         description = ''
-          List of files containing environment variables (one per line,
-          KEY=VALUE format). Useful for secrets management.
+          Files of KEY=VALUE lines whose variables are added to the hook's
+          environment, for secrets kept out of the Nix store.
 
-          Files are sourced in order before executing the hook command.
-          Later files override earlier ones.
+          snow reads them on the machine running snow, for local and
+          remote hooks alike, so they must exist there, not on the host
+          being deployed. They are parsed, not sourced: blank lines and
+          lines starting with `#` are skipped, and values are only trimmed:
+          quotes are kept and variables are not expanded.
+
+          Later files override earlier ones, and `environment` overrides
+          them all. Give paths as strings: a Nix path such as `./deploy.env`
+          is copied into the world-readable Nix store.
         '';
         example = literalExpression ''
           [
-            config.age.secrets.slack-webhook.path
-            /run/secrets/deploy-tokens
+            "/home/deployer/.config/snowglobe/slack-webhook.env"
           ]
         '';
       };
