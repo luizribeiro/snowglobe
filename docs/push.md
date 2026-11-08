@@ -34,9 +34,11 @@ Phases run one after another, in name order, with numbers sorted by value
 (`p2` before `p10`). Hosts without a phase go last. If a host fails, later
 phases don't run, unless it's [optional](#hosts-that-may-be-off).
 
-The point is controlling how far a bad push gets. Whatever you put in the
-early phases goes first, and if something breaks there, the hosts in later
-phases are never touched. `--ignore-phases` pushes everything at once.
+Phases are for rolling out by risk. Low-risk hosts go first, and a
+post-deploy [hook](hooks.md) can check each one; if a host or its check
+fails, the push stops before the higher-risk hosts in later phases are
+touched. Spreading a cluster's nodes across phases migrates it gradually
+instead of all at once. `--ignore-phases` pushes everything at once.
 
 ### Hosts you only push on purpose
 
@@ -131,6 +133,9 @@ snowglobe.push.rebootPolicy = "auto";  # or "never" or "always"
 | `auto` (default) | reboot only when needed |
 | `never` | boot the new system next time, and leave the reboot to you |
 | `always` | always reboot after deploying (unchanged hosts are still skipped) |
+
+For example, `never` suits a dev box you reboot when it's convenient, and
+`auto` a router that should reboot only when it has to.
 
 A host's policy wins over `--switch`. A host that should never be switched
 live isn't, even if you forget. `--switch --force` is the explicit override.
