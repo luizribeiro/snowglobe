@@ -11,105 +11,92 @@ options.
 
 ## [0.1.0] - YYYY-MM-DD
 
-The first release: push-based deployment of NixOS and nix-darwin hosts from a
-flake, with phases, hooks and reboot handling.
+First release. We are the only users so far (my homelab: x86 and aarch64
+NixOS hosts, a few Raspberry Pis, and Macs on nix-darwin), so expect rough
+edges and breaking changes before 1.0.
+
+Release binaries: static Linux (x86_64 and aarch64, musl) and macOS (x86_64
+and aarch64), with `SHA256SUMS`.
 
 ### Added
 
 #### Commands
 
-- `snow list` lists the hosts in a flake's `nixosConfigurations` and
-  `darwinConfigurations` with their phase and tags. `--json` prints each
-  host's Nix platform, phase, tags, reboot policy, serial group and optional
-  flag, for scripts.
-- `snow build` builds hosts' systems in parallel without deploying them.
-- `snow push` deploys hosts over SSH (see below).
-- `snow rebuild` rebuilds the host it runs on, with the same reboot detection
-  as `snow push`: it lists why a reboot is needed and asks whether to reboot,
-  set the new system for the next boot, or switch anyway.
-- Hosts are selected by name, or by `--phase`/`--phases`, `--tag`/`--tags`
-  or a Nix expression over a host's config (`--filter`).
-- The flake is found from the current directory upwards, or given with `-f`
-  or `FLAKE_PATH`.
+- `snow list`: hosts in the flake, with phase and tags. `--json` for
+  scripts.
+- `snow build`: build, don't deploy.
+- `snow push`: deploy over SSH. See [Push](#push).
+- `snow rebuild`: `nixos-rebuild` for the machine you're on. Asks for sudo
+  once at the start. If a switch needs a reboot, you get a menu: reboot
+  now, next boot, switch anyway, or cancel.
+- Hosts by name, `--phase(s)`, `--tag(s)` or `-e <nix expression>`.
+- `-f` or `FLAKE_PATH` if `flake.nix` isn't in the current directory or
+  above it.
+- Logs go to `/tmp/snow-<timestamp>.log` in a terminal, stderr otherwise.
 - `snow --version`.
 
 #### Unstable commands
 
-Left out of release builds; they may change or break at any time. Run them
-with `nix run github:luizribeiro/snowglobe#snow-unstable -- <command>` or
-build with `cargo build --features unstable`.
+Not in release builds. May change or break any time. Try them with
+`nix run github:luizribeiro/snowglobe#snow-unstable -- <command>` or
+`cargo build --features unstable`.
 
-- `snow plan` shows, without building, what building the selected hosts would
-  compile from source and what it would fetch from a substituter, with
-  download sizes. `--fail-on-build` exits 2 if anything non-trivial would be
-  built. The last plan is saved under `$XDG_STATE_HOME/snowglobe/`.
-- `snow status` lists hosts as a table or `--json`; it doesn't query them
-  yet, so every status reads `unknown`.
-- `snow bootstrap` provisions a new host: it generates its SSH host keys,
-  optionally adds its age key to `.sops.yaml` (`--update-sops`), and builds an
+- `snow plan`: what a build would compile from source vs. fetch from a
+  substituter, with download sizes, without building. `--fail-on-build`
+  exits 2 if anything non-trivial would build. The last plan is saved under
+  `$XDG_STATE_HOME/snowglobe/`.
+- `snow status`: hosts as a table or `--json`. Doesn't query hosts yet, so
+  every status is `unknown`.
+- `snow bootstrap`: new host setup. Generates its ed25519 SSH host key,
+  optionally adds its age key to `.sops.yaml` (`--update-sops`), builds its
   image with the host's provisioner (`manual`, `sd-image`, `raw` or
-  `proxmox-vma`), which `--target` writes to a block device or deploys to a
-  Proxmox host.
+  `proxmox-vma`). `--target` writes it to a block device or a Proxmox host.
 
 #### Push
 
-- **Breaking for pre-release users:** snow reads a host's phase, tags and
-  reboot policy only from the module's `snowglobe.push.phase`, `.tags` and
-  `.rebootPolicy`, no longer from `core.pushPhase`, `core.tags` and
-  `core.rebootPolicy`, which your own module had to declare. Move those
-  settings to the new options.
-- Phases (`snowglobe.push.phase`) deploy one after another, in name order
-  with numbers by value (`p2` before `p10`), and hosts without a phase deploy
-  last; a failed phase stops the later ones. `--ignore-phases` deploys every
-  selected host at once. Phase names may contain only letters, digits, `-`
-  and `_`, and `default` is reserved.
-- Hosts in the phase `never` are pushed, built or planned only when named or
-  selected with `--phase never`.
-- Optional hosts (`snowglobe.push.optional`) may fail without failing their
-  phase or the push; the report marks their failures `(optional)`.
-- Each host runs build, copy, plan, activate and reboot on its own, in
-  parallel with the others, up to `--concurrency`.
-- Hosts already running and booting the built system are skipped;
-  `--redeploy` deploys them anyway.
-- Serial groups (`snowglobe.push.serialGroup`) deploy their hosts one at a
-  time within a phase, and stop the group when one of them fails.
-- Lifecycle hooks (`snowglobe.hooks`): `pre-deploy`, `post-deploy`,
-  `post-reboot` and `on-failure`, run on the deploying machine or on the
-  host, with timeouts, retries, priorities, environment files and
-  `continueOnFailure`. Local hooks can use packages built for the deploying
-  machine through `localPkgs`.
-- Reboot detection compares the booted kernel, initrd and init with the new
-  system, then checks with `dry-activate` whether critical services would
-  restart. Hosts that need a reboot are set to boot the new system and
-  rebooted, and snow waits (`--reboot-timeout`) until they come back with a
-  new boot ID.
-- Per-host reboot policies (`snowglobe.push.rebootPolicy`): `auto`, `never` or
-  `always`. Policies take precedence over `--switch`; `--switch --force`
-  overrides them and the reboot detection.
-- Activation modes: `--switch`, `--boot`, `--test` and `--dry-run`, and
-  `--skip-reboot` to only report that a reboot is needed.
-- A live terminal view with one row per host, its current step and a
-  progress bar per phase, followed by a report per phase that says why each
-  failed host failed. `--quiet` hides subprocess output.
-- Every run is logged in full to `/tmp/snow-<timestamp>.log`.
-- snow checks that the ssh-agent answers before connecting to any host.
+Details in [docs/push.md](docs/push.md) and [docs/hooks.md](docs/hooks.md).
+
+- Phases (`snowglobe.push.phase`), in order. A failed phase stops the rest.
+  `--ignore-phases` to push all at once.
+- `never` phase, for hosts you only push by name.
+- Optional hosts (`snowglobe.push.optional`), e.g. a laptop that's often off.
+- Serial groups (`snowglobe.push.serialGroup`).
+- Hooks (`snowglobe.hooks`): `pre-deploy`, `post-deploy`, `post-reboot`,
+  `on-failure`, local or remote.
+- Reboot detection (new kernel or initrd, or a critical service would
+  restart), plus `auto`/`never`/`always` reboot policies per host. Policies
+  win over `--switch`. `--boot`, `--test` and `--dry-run` ignore them.
+- `--switch`, `--boot`, `--test`, `--dry-run`, `--skip-reboot`, `--force`.
+- Unchanged hosts are skipped. `--redeploy` to push them anyway.
+- `--concurrency` (default 3). Hosts don't wait on each other.
+- `--reboot-timeout` (default 600 seconds).
+- `--user` for the SSH user, `snowglobe.push.sshPort` for another port.
+- ssh runs with `BatchMode=yes` and never forwards your agent.
+- Live board with a row per host, and a report at the end of each phase.
 
 #### Modules
 
-- A NixOS module (`nixosModules.default`) and a nix-darwin module
-  (`darwinModules.default`) with the push, hooks and bootstrap options.
-- The `snowglobe-activate` helper lets the users in
-  `snowglobe.push.allowedUsers` activate a system (and, on NixOS, reboot)
-  through passwordless sudo for that one command. It accepts only
-  `/nix/store/<hash>-<name>` paths that contain a system to activate.
-  Hosts without the module are activated directly, with a warning.
+- `nixosModules.default` and `darwinModules.default`.
+- `snowglobe-activate` on each host. Users in `snowglobe.push.allowedUsers`
+  can sudo it without a password, nothing else. Takes only store paths that
+  are a system.
+- NixOS hosts without the module still work, activated directly, with a
+  warning. Macs need it.
 
 #### Testing
 
-- End-to-end NixOS VM tests that run `snow push` and `snow rebuild` against
-  VMs, covering reboots, failures and serial groups. They also record the
-  terminal demos; the recorder is exposed as the flake's `lib`.
-- Unit tests for the Nix modules, run as flake checks.
+- NixOS VM tests that run `snow push` and `snow rebuild` against real VMs:
+  reboots, failures, serial groups. The same tests record the terminal demos.
+  The recorder is exposed as the flake's `lib`.
+- Unit tests for the Nix modules, as flake checks.
+
+### Migrating from pre-release versions
+
+- Phase, tags and reboot policy are read only from `snowglobe.push.phase`,
+  `.tags` and `.rebootPolicy`, not from `core.pushPhase`, `core.tags` and
+  `core.rebootPolicy`.
+- The hook stages `pre-activate` and `post-activate` are now `pre-deploy` and
+  `post-deploy`. The old names fail evaluation and point to the new ones.
 
 [Unreleased]: https://github.com/luizribeiro/snowglobe/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/luizribeiro/snowglobe/releases/tag/v0.1.0
