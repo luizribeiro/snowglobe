@@ -42,9 +42,10 @@ in
         builds a bootable image (e.g., SD card image, raw disk image).
 
         When set, `snow bootstrap` (an unstable command, left out of release
-        builds) will build this image first, then
-        generate SSH keys and inject them. This ensures keys are only
-        created if the build succeeds (avoiding orphaned keys).
+        builds) generates the host's SSH key, updates .sops.yaml with
+        `--update-sops`, then builds this image and injects the key into
+        it. The key comes first so the image's secrets can be encrypted
+        for the new host; if the build fails, the key is left behind.
       '';
       example = "config.system.build.sdImage";
     };
