@@ -79,8 +79,8 @@ want, then activate it.
 
 Every push tool needs a user that can become root on the host, since
 activation runs as root. deploy-rs and `nixos-rebuild --target-host` can ask
-for that user's sudo password. snow can't yet, so its deploy user becomes
-root without one.
+for that user's sudo password. `snow push` can't yet, so its deploy user
+becomes root without one.
 
 What the helper does give you: one command in sudoers, which you can read,
 instead of `NOPASSWD: ALL`, at a path that doesn't change when the system
