@@ -1,309 +1,171 @@
-# System Activation
+# snowglobe-activate
 
-This document describes snowglobe's activation system, which provides passwordless deployment for both NixOS and nix-darwin hosts.
+`snowglobe-activate` is a tiny script the module installs on every host.
+snow goes through it to activate, to check if a reboot is needed, and on
+NixOS to reboot. So your deploy user gets passwordless sudo for one command,
+not for everything.
 
-## Overview
+## Why
 
-The `snowglobe-activate` command is a small shell script that acts as a stable entry point for system activation. It solves a fundamental challenge with push-based NixOS/Darwin deployments: the activation binary path changes with every system update because it contains the Nix store hash.
-
-### The Problem
-
-Traditional NixOS/Darwin deployment requires running activation commands like:
+Activating a system means running something like:
 
 ```bash
-sudo /nix/store/qqz7czg0f46pg7n3f0xqmiv14bampzr7-darwin-system-25.05/activate switch
+sudo /nix/store/qqz7czg0f46pg7n3f0xqmiv14bampzr7-nixos-system-25.05/bin/switch-to-configuration switch
 ```
 
-The hash (`qqz7czg0f46pg7n3f0xqmiv14bampzr7`) changes with every configuration update, making it impossible to create stable sudoers rules. Wildcard patterns like `/nix/store/*/activate` don't work reliably, especially on macOS.
+The hash changes with every build, so that path can't go in sudoers, and
+people end up with `NOPASSWD: ALL`. The helper sits at a fixed path,
+`/run/current-system/sw/bin/snowglobe-activate`, takes the store path and
+mode as arguments, checks them, sets the system profile and runs the
+activation script. sudoers gets one rule for that one path.
 
-### The Solution
+The rule points at the running system's helper. That helper activates the
+new system, and then `/run/current-system` points at the new one, new
+helper included. So updating the helper itself is fine.
 
-Snowglobe provides an activation command installed at a stable path that:
+## Setup
 
-1. Accepts the store path and activation mode as arguments
-2. Validates the store path and activation mode
-3. Sets the system profile and runs the system's activation script
-4. Has a stable path for sudoers configuration
-
-The NixOS and nix-darwin modules each install their own version of the script.
-
-**Automatic detection**: snow checks whether `snowglobe-activate` is on the target host and uses it when present. Without it, snow falls back to direct activation with a warning. The fallback works on NixOS only, and needs passwordless sudo for `nix-env` and for `<system>/bin/switch-to-configuration`. On Darwin, the module is required.
-
-## Installation
-
-### NixOS
-
-Add to your NixOS configuration:
+Import the module and list your deploy users:
 
 ```nix
 {
-  # Add snowglobe to your flake inputs
-  inputs.snowglobe.url = "github:luizribeiro/snowglobe";
-
-  # In your system configuration:
-  imports = [ inputs.snowglobe.nixosModules.default ];
-
-  # Configure passwordless deployment users
   snowglobe.push.allowedUsers = [ "deploy" ];
 }
 ```
 
-Rebuild your system:
+The flake side is in the [README quickstart](../README.md#quickstart) for
+NixOS and in [darwin.md](darwin.md#setup) for Macs. Apply it once by hand
+(`sudo nixos-rebuild switch`, or `sudo darwin-rebuild switch --flake .#your-mac`).
+
+The helper is always installed. The sudo rule is only added when
+`allowedUsers` isn't empty:
+
+```
+# NixOS, through security.sudo.extraRules
+deploy ALL=(ALL:ALL) NOPASSWD: /run/current-system/sw/bin/snowglobe-activate
+
+# nix-darwin, through security.sudo.extraConfig, in /etc/sudoers.d/10-nix-darwin-extra-config
+deploy ALL=(root) NOPASSWD: /run/current-system/sw/bin/snowglobe-activate
+```
+
+Hosts on sudo-rs get no rule.
+
+## How snow uses it
+
+Before the reboot check and before activating, snow runs
+`command -v snowglobe-activate` on the host over SSH:
+
+- exit 0: the helper is there, snow uses it.
+- exit 1: it isn't. On NixOS, snow runs things directly with `sudo`. For
+  activation it also warns
+  (`snowglobe-activate not found on <host>, falling back to direct activation…`).
+  This needs passwordless sudo for `nix-env` (switch and boot) and
+  `<system>/bin/switch-to-configuration` (activation and the dry-activate
+  check). On Darwin it fails, see [darwin.md](darwin.md#without-the-module).
+- anything else (SSH failed or timed out): the host fails.
+
+To reboot, snow runs one command on the host that uses
+`sudo snowglobe-activate reboot` when the helper is there, and
+`sudo systemctl reboot` when it isn't. Without the helper, that needs
+passwordless sudo for `systemctl reboot` too.
+
+With the helper, snow doesn't set the profile itself.
+
+## Running it by hand
 
 ```bash
-sudo nixos-rebuild switch
+P=/nix/store/qqz7czg0f46pg7n3f0xqmiv14bampzr7-nixos-system-25.05
+sudo snowglobe-activate $P switch
+sudo snowglobe-activate $P boot          # next boot only
+sudo snowglobe-activate $P test          # until the next reboot
+sudo snowglobe-activate $P dry-activate  # show what would change
+sudo snowglobe-activate reboot           # NixOS only
 ```
 
-### nix-darwin
+On Darwin only `switch` works.
 
-Add to your Darwin configuration:
+## What it checks
 
-```nix
-{
-  # Add snowglobe to your flake inputs
-  inputs.snowglobe.url = "github:luizribeiro/snowglobe";
+1. The path is one top-level store path, `/nix/store/<hash>-<name>`. Not
+   `/run/current-system`, not a path inside a store path, no `..`.
+2. The mode is `switch`, `boot`, `test` or `dry-activate` (only `switch` on
+   Darwin).
+3. The system has an activation script: `bin/switch-to-configuration` on
+   NixOS, `activate` on Darwin.
 
-  # In your Darwin configuration:
-  imports = [ inputs.snowglobe.darwinModules.default ];
+Then:
 
-  # Configure passwordless deployment users
-  snowglobe.push.allowedUsers = [ "deploy" ];
-}
-```
-
-Rebuild your system:
-
-```bash
-sudo darwin-rebuild switch --flake .#your-darwin-host
-```
-
-## Configuration Options
-
-### `snowglobe.push.allowedUsers`
-
-Type: `list of strings`
-Default: `[]`
-Example: `[ "deploy" ]`
-
-List of users who can run `snowglobe-activate` without a password, and so activate any system from the Nix store. On NixOS, they can also reboot the host with it.
-
-**Users in this list are effectively root on the host.** See [Security](#security).
-
-## Usage
-
-### With snowglobe (automatic)
-
-When using `snow push`, snowglobe automatically:
-
-1. Detects if `snowglobe-activate` is available on the target host
-2. Uses it if present, to activate and, on NixOS, to reboot
-3. Falls back to direct activation if not found, with a warning (NixOS only, see above)
-
-```bash
-# Automatically uses snowglobe-activate if available
-snow push hostname
-```
-
-### Manual usage
-
-The helper can be called directly:
-
-```bash
-# Activate a system in switch mode
-sudo snowglobe-activate /nix/store/qqz7czg0f46pg7n3f0xqmiv14bampzr7-nixos-system-25.05 switch
-
-# Set for next boot only
-sudo snowglobe-activate /nix/store/qqz7czg0f46pg7n3f0xqmiv14bampzr7-nixos-system-25.05 boot
-
-# Test activation (non-permanent)
-sudo snowglobe-activate /nix/store/qqz7czg0f46pg7n3f0xqmiv14bampzr7-nixos-system-25.05 test
-
-# Dry run (show what would change)
-sudo snowglobe-activate /nix/store/qqz7czg0f46pg7n3f0xqmiv14bampzr7-nixos-system-25.05 dry-activate
-
-# Reboot the host (NixOS only)
-sudo snowglobe-activate reboot
-```
-
-On Darwin, only `switch` works.
-
-## How It Works
-
-### Input Validation
-
-The helper validates inputs before execution:
-
-1. **Store path validation**: Must be a single top-level store path, `/nix/store/<hash>-<name>`, so `/run/current-system` or `/nix/store/../…` are rejected
-2. **Mode validation**: Must be one of: `switch`, `boot`, `test`, `dry-activate` (only `switch` on Darwin)
-3. **Activation script existence**: Verifies the system has `bin/switch-to-configuration` (NixOS) or `activate` (Darwin)
-
-After validation, the helper sets the system profile (`nix-env --profile /nix/var/nix/profiles/system --set <path>`), then runs the activation script. snow skips its own profile update when the helper is present.
-
-### Platform-Specific Behavior
-
-**NixOS**:
-- Uses `/nix/store/<hash>/bin/switch-to-configuration`
-- Supports all four activation modes: switch, boot, test, dry-activate
-- Sets the system profile for `switch` and `boot` only
-- Passes mode argument directly to the activation script
-- `snowglobe-activate reboot` runs `systemctl reboot`
-
-**nix-darwin**:
-- Uses `/nix/store/<hash>/activate`
-- Only supports `switch` mode (Darwin's activate script doesn't support modes)
-- Returns explicit errors for unsupported modes (boot, test, dry-activate)
-- Always sets the system profile, since Darwin's activate doesn't record a generation
-- Has no `reboot` subcommand
-
-### Sudoers Configuration
-
-The module automatically configures sudo to allow passwordless execution using a stable path.
-
-**NixOS** (through `security.sudo.extraRules`, which runs as any user by default):
-```
-user ALL=(ALL:ALL) NOPASSWD: /run/current-system/sw/bin/snowglobe-activate
-```
-
-**Darwin** (through `security.sudo.extraConfig`, written to `/etc/sudoers.d/10-nix-darwin-extra-config`):
-```
-user ALL=(root) NOPASSWD: /run/current-system/sw/bin/snowglobe-activate
-```
-
-This uses `/run/current-system/sw/bin/` which is a stable path that always points to the currently active system's binaries. This solves the chicken-and-egg problem: when pushing a new system, the helper from the **current** system is used to activate the **new** system. After activation completes, `/run/current-system` is updated to point to the new system.
+- NixOS: sets the system profile for `switch` and `boot`, and passes the
+  mode to `switch-to-configuration`. `reboot` runs `systemctl reboot`.
+- Darwin: always sets the profile (nix-darwin's `activate` doesn't record a
+  generation), then runs `<system>/activate` with no argument. No `reboot`.
 
 ## Security
 
 ### Allowed users are root-equivalent
 
-Activating a system runs its activation script as root, and the store path is chosen by the caller. Writing to `/nix/store` directly needs root, but adding to it does not: any user allowed to use the Nix daemon can build or add a path whose `bin/switch-to-configuration` (or `activate` on Darwin) does whatever they want. So a user in `allowedUsers` can run arbitrary code as root.
+Any user who can push without a password is effectively root. Activation
+runs the system's activation script as root, and whoever calls the helper
+picks the store path. Writing to `/nix/store` needs root, but adding a path
+to it doesn't: anyone who can use the Nix daemon can build a path whose
+`bin/switch-to-configuration` does whatever they want.
 
-This is inherent to push deployment. deploy-rs, colmena and `nixos-rebuild --target-host` all need a root-equivalent user on the target too.
+Every push tool needs a user that can become root on the host, since
+activation runs as root. deploy-rs (`interactiveSudo`) and
+`nixos-rebuild --target-host` (`--ask-sudo-password`) can ask for that user's
+sudo password. snow can't yet, so its deploy user becomes root without one.
 
-The input validation catches mistakes, such as a wrong mode or a path that isn't a system. It is not a security boundary against an allowed user.
+The checks above catch mistakes, like a wrong mode or a path that isn't a
+system. They are not a security boundary against an allowed user.
 
-### What the helper does offer
+What the helper does give you: one command in sudoers, which you can read,
+instead of `NOPASSWD: ALL`, at a path that doesn't change when the system
+does.
 
-- A single, auditable command in sudoers instead of `NOPASSWD: ALL`
-- A stable path that needs no sudoers changes when the system changes, and works around sudoers wildcard limitations on macOS
+Signed deployments are on the roadmap: the host would only activate systems
+signed with a deploy key, and the deploy user would no longer be
+root-equivalent. Not built yet.
 
-### Comparison to Alternatives
+### Advice
 
-All of these give the allowed user root-equivalent access. They differ in what sudoers exposes and how well they work.
-
-| Approach | Sudo surface | Reliability | Ease of Use |
-|----------|--------------|-------------|-------------|
-| snowglobe-activate helper | One fixed command | ✓ Excellent | ✓ Simple |
-| `/nix/store/*/activate` wildcard | Any matching store path | ✗ Unreliable on macOS | ✓ Simple |
-| `NOPASSWD: ALL` | Every command | ✓ Always works | ✓ Very simple |
-| Per-generation sudoers | One path per generation | ⚠️ Requires automation | ✗ Complex |
-
-A possible future improvement is to only activate systems signed with a deploy key, which would make the helper a real boundary.
-
-### Best Practices
-
-1. **Treat the deploy user's SSH key like a root key**: key-only login, and keep the key only on the machine or CI runner that deploys
-2. **Use a dedicated deploy user, and only that one**: a personal account in `allowedUsers` is root-equivalent without a password
-3. **Audit activations**: Check system logs for unexpected activation attempts
+1. A dedicated deploy user, and only that one. A personal account in
+   `allowedUsers` is root without a password.
+2. Treat its SSH key like a root key. Key-only login, and the key only on the
+   machine or CI runner that deploys.
+3. Keep an eye on activations in the system logs.
 
 ## Troubleshooting
 
-### Warning: "snowglobe-activate not found on <host>, falling back to direct activation"
+**`snowglobe-activate not found on <host>, falling back to direct activation`**
+The module isn't active on the host yet. Import it, add the SSH user to
+`allowedUsers`, rebuild by hand once.
 
-**Cause**: The snowglobe module isn't installed on the target host yet.
+**`Invalid store path '…' (must be /nix/store/<hash>-<name>)`**
+Pass the resolved path, e.g. `"$(readlink -f /run/current-system)"`.
 
-**Solution**: To use the helper:
-1. Add the snowglobe module to your configuration: `imports = [ inputs.snowglobe.nixosModules.default ];` (or `darwinModules.default` on nix-darwin)
-2. Add the user snowglobe connects as to `snowglobe.push.allowedUsers`, ideally a dedicated deploy user (see [Security](#security))
-3. Rebuild the system: `sudo nixos-rebuild switch` or `sudo darwin-rebuild switch`
+**`Activation script not found`**
+The path isn't a system. Look for `<path>/bin/switch-to-configuration`
+(NixOS) or `<path>/activate` (Darwin).
 
-On subsequent deployments, snowglobe will automatically use `snowglobe-activate`.
+**The helper check fails**
+That's SSH. Try `ssh -o BatchMode=yes host echo test`.
 
-### Error: "Invalid store path '…' (must be /nix/store/<hash>-<name>)"
+**sudo asks for a password** (`sudo: a password is required`)
 
-**Cause**: The first argument isn't a single top-level store path. Symlinks like `/run/current-system`, paths inside a store path, and paths with `..` are all rejected.
+1. Is the module imported, and the SSH user in `allowedUsers`?
+2. Did you rebuild by hand after adding them?
+3. `ssh host sudo -n -l /run/current-system/sw/bin/snowglobe-activate`
+   prints the path if the rule applies, and fails without prompting if not.
+4. Look for the rule in `/etc/sudoers` (NixOS) or
+   `/etc/sudoers.d/10-nix-darwin-extra-config` (Darwin).
+5. sudo-rs? It gets no rule.
 
-**Solution**: Pass the system's resolved store path, e.g. `"$(readlink -f /run/current-system)"`.
+## Moving off `NOPASSWD: ALL`
 
-### Error: "Activation script not found"
+1. Add the module. Keep your old sudoers rule for now.
+2. Rebuild.
+3. Try the helper: `ssh host 'sudo snowglobe-activate "$(readlink -f /run/current-system)" switch'`
+4. `snow push host`. It picks the helper up on its own.
+5. Remove the old rule and rebuild again.
 
-**Cause**: The store path doesn't contain an activation script.
-
-**Solution**: Verify the store path points to a valid system configuration:
-- NixOS: Check for `<path>/bin/switch-to-configuration`
-- Darwin: Check for `<path>/activate`
-
-### Error: "Boot mode is not supported on Darwin"
-
-**Cause**: You tried to use boot mode on a Darwin system.
-
-**Solution**: Darwin's activate script doesn't support delayed activation. Don't pass `--boot`, `--test` or `--dry-run` when pushing to Darwin hosts. Without them, snow always switches Darwin hosts.
-
-### Helper detection fails
-
-**Cause**: The SSH command that checks for the helper (`command -v snowglobe-activate`) fails or times out. snow treats this as an error for that host, not as a missing helper.
-
-**Solution**:
-1. Verify SSH connectivity: `ssh target-host echo test`
-2. Check that the helper is in PATH: `ssh target-host which snowglobe-activate`
-3. Ensure SSH batch mode works: `ssh -o BatchMode=yes target-host echo test`
-
-### Sudo still prompts for password
-
-**Cause**: The sudoers configuration hasn't been applied or doesn't match the helper path.
-
-**Solution**:
-1. Verify the module is imported: `imports = [ inputs.snowglobe.nixosModules.default ];` (or `darwinModules.default`)
-2. Check the user snowglobe connects as is in `allowedUsers`
-3. Rebuild the system to apply sudoers changes
-4. Test manually: `ssh target-host sudo -n -l /run/current-system/sw/bin/snowglobe-activate` prints the path if no password is needed
-5. Check sudoers config: `ssh target-host sudo cat /etc/sudoers` on NixOS, or `/etc/sudoers.d/10-nix-darwin-extra-config` on Darwin (look for snowglobe-activate rules)
-
-## Migration from Manual Configuration
-
-If you're currently using manual sudoers configuration (`NOPASSWD: ALL` or wildcards), here's how to migrate:
-
-1. **Add the module** to your configuration (don't remove old sudoers yet)
-2. **Rebuild the system** to install the helper
-3. **Test the helper** manually: `ssh target 'sudo snowglobe-activate "$(readlink -f /run/current-system)" switch'`
-4. **Deploy with snowglobe**: `snow push target` (should use helper automatically)
-5. **Remove old sudoers config** from your configuration
-6. **Rebuild again** to clean up old sudoers rules
-
-## Implementation Details
-
-### Helper Script Location
-
-The helper is installed via `environment.systemPackages`, making it available at a stable path:
-
-```bash
-/run/current-system/sw/bin/snowglobe-activate
-```
-
-This is a symlink to the actual helper in the Nix store (`/nix/store/<hash>-snowglobe-activate/bin/snowglobe-activate`). The sudoers configuration references the stable `/run/current-system/sw/bin/` path rather than the store path, which ensures that:
-- The helper from the currently active system can be used to activate new systems
-- No chicken-and-egg problem when the helper script itself is updated
-- The sudoers rule doesn't need to change with every system update
-
-### Source Code
-
-The helper is a simple bash script defined in:
-- NixOS: `modules/nixos-activate.nix`
-- Darwin: `modules/darwin-activate.nix`
-- Shared store path check: `modules/store-path-check.nix`
-
-`modules/nixos.nix` and `modules/darwin.nix` install the script and configure sudo.
-
-### Detection Logic
-
-Snowglobe detects helper availability by running:
-
-```bash
-ssh target-host command -v snowglobe-activate
-```
-
-Exit code 0 means the helper is installed, and exit code 1 means it isn't, so snow falls back. Any other result, such as an SSH failure, is an error. The check runs before every activation and isn't cached. The reboot command checks for the helper again on its own.
-
-## Related Documentation
-
-- [darwin.md](darwin.md) - Darwin-specific deployment guide
-- [push.md](push.md) - Complete push command documentation
+See also [push.md](push.md) and [darwin.md](darwin.md).
