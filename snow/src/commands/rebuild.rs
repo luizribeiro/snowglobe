@@ -76,6 +76,14 @@ impl RebuildArgs {
         }
     }
 
+    /// Fails before the build if this machine can't activate in the asked mode
+    fn check_mode(&self, hostname: &str, system_type: SystemType) -> Result<()> {
+        Ok(snowlib::check_mode_supported(
+            self.activation_mode(),
+            [(hostname, system_type)],
+        )?)
+    }
+
     /// Asks what to do about a needed reboot, unless a flag already said
     fn prompt_reboot_action(&self, check: &RebootCheck) -> Result<RebootAction> {
         println!("{}", reboot_notice(check));
@@ -148,6 +156,9 @@ impl RebuildArgs {
         line: &Arc<HostLine>,
         report: &dyn Fn(Ending),
     ) -> Result<Option<Ending>> {
+        let system_type = SystemType::detect_current();
+        self.check_mode(hostname, system_type)?;
+
         let nix_backend = crate::backend_factory::create_nix_backend(
             #[cfg(debug_assertions)]
             &self.mock_fixture,
@@ -171,7 +182,7 @@ impl RebuildArgs {
 
         line.start(PipelineStep::Build);
         let store_path = nix_backend
-            .build_host(flake, hostname, SystemType::detect_current(), output_mode)
+            .build_host(flake, hostname, system_type, output_mode)
             .await?;
         tracing::info!("{hostname}: built {}", store_path.as_str());
 
@@ -474,6 +485,30 @@ mod tests {
 
             assert!(args.unwrap().force, "{mode} --force");
         }
+    }
+
+    #[test]
+    fn test_darwin_rebuild_refuses_modes_other_than_switch() {
+        let parse =
+            |flags: &[&str]| crate::test_utils::try_parse_args::<RebuildArgs>(flags).unwrap();
+
+        for mode in ["--boot", "--test", "--dry-run"] {
+            let result = parse(&[mode]).check_mode("ferrum", SystemType::Darwin);
+
+            assert!(
+                matches!(
+                    result,
+                    Err(snowlib::error::SnowError::Deploy(
+                        snowlib::error::DeployError::DarwinOnlySwitches { .. }
+                    ))
+                ),
+                "{mode}: {result:?}"
+            );
+        }
+        assert!(parse(&[]).check_mode("ferrum", SystemType::Darwin).is_ok());
+        assert!(parse(&["--boot"])
+            .check_mode("boron", SystemType::NixOS)
+            .is_ok());
     }
 
     #[test]
