@@ -126,7 +126,7 @@ fn test_build_help() {
         .assert()
         .success()
         .stdout(predicate::str::contains(
-            "Build NixOS configurations for one or more hosts",
+            "Build the NixOS and nix-darwin configurations of one or more hosts",
         ));
 }
 

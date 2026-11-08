@@ -8,7 +8,7 @@ use snowlib::{Flake, NixBackend, OutputMode, Result, StorePath};
 use std::sync::Arc;
 use tokio::sync::Semaphore;
 
-/// Build NixOS configurations for one or more hosts
+/// Build the NixOS and nix-darwin configurations of one or more hosts
 #[derive(Debug, Args)]
 pub struct BuildArgs {
     #[command(flatten)]
