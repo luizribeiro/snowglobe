@@ -36,22 +36,19 @@ async fn determine_activation_strategy(
     strategy: PushStrategy,
     force: bool,
 ) -> Result<ActivationStrategy> {
+    if let Some(mode) = strategy.fixed_activation_mode() {
+        return Ok(ActivationStrategy::without_reboot(mode));
+    }
+    // nix-darwin can only switch, and push never reboots Darwin hosts,
+    // so reboot policies and detection don't apply to them
+    if metadata.system_type == SystemType::Darwin {
+        return Ok(ActivationStrategy::without_reboot(ActivationMode::Switch));
+    }
     match strategy {
-        PushStrategy::DryRun => Ok(ActivationStrategy::without_reboot(
-            ActivationMode::DryActivate,
-        )),
-        PushStrategy::Test => Ok(ActivationStrategy::without_reboot(ActivationMode::Test)),
-        // Like `nixos-rebuild boot`: the new system waits for the next boot
-        PushStrategy::Boot => Ok(ActivationStrategy::without_reboot(ActivationMode::Boot)),
-        // nix-darwin can only switch, and push never reboots Darwin hosts,
-        // so reboot policies and detection don't apply to them
-        PushStrategy::Switch | PushStrategy::Auto if metadata.system_type == SystemType::Darwin => {
-            Ok(ActivationStrategy::without_reboot(ActivationMode::Switch))
-        }
         PushStrategy::Switch => {
             handle_switch_mode(metadata, target, store_path, reboot_backend, force).await
         }
-        PushStrategy::Auto => handle_auto_mode(metadata, target, store_path, reboot_backend).await,
+        _ => handle_auto_mode(metadata, target, store_path, reboot_backend).await,
     }
 }
 

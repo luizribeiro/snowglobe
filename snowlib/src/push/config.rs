@@ -1,3 +1,4 @@
+use crate::nix::ActivationMode;
 use crate::process::OutputMode;
 
 /// Configuration for push operations
@@ -49,4 +50,17 @@ pub enum PushStrategy {
     Test,
     /// Dry run - preview only
     DryRun,
+}
+
+impl PushStrategy {
+    /// The mode every host activates in, or None when it depends on the host
+    pub fn fixed_activation_mode(self) -> Option<ActivationMode> {
+        match self {
+            Self::DryRun => Some(ActivationMode::DryActivate),
+            Self::Test => Some(ActivationMode::Test),
+            // Like `nixos-rebuild boot`: the new system waits for the next boot
+            Self::Boot => Some(ActivationMode::Boot),
+            Self::Auto | Self::Switch => None,
+        }
+    }
 }
