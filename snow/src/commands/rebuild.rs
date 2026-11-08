@@ -15,7 +15,7 @@ use std::time::{Duration, Instant};
 #[derive(Debug, Args)]
 #[command(group = super::activation_modes())]
 pub struct RebuildArgs {
-    /// Host to rebuild (defaults to auto-detected hostname from /etc/hostname)
+    /// Host to rebuild (defaults to this machine's hostname: /etc/hostname on NixOS, `hostname -s` on macOS)
     #[arg(long)]
     pub host: Option<String>,
 
@@ -23,7 +23,7 @@ pub struct RebuildArgs {
     #[arg(long)]
     pub dry_run: bool,
 
-    /// Force immediate activation (switch mode)
+    /// Switch to the new system now, asking first if it needs a reboot (the default)
     #[arg(long)]
     pub switch: bool,
 
@@ -35,11 +35,11 @@ pub struct RebuildArgs {
     #[arg(long)]
     pub test: bool,
 
-    /// Skip automatic reboot execution (still respects reboot policies for activation mode)
+    /// When switching to a system that needs a reboot, use it from the next boot without asking
     #[arg(long)]
     pub skip_reboot: bool,
 
-    /// Override policies and safety checks (skip interactive prompts and force requested mode)
+    /// When switching to a system that needs a reboot, switch now without asking
     #[arg(long)]
     pub force: bool,
 
