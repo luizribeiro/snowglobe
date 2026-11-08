@@ -1,7 +1,7 @@
 //! Common deployment primitives shared between local and SSH backends
 
 use crate::error::{DeployError, Result};
-use crate::nix::ActivationMode;
+use crate::nix::{ActivationMode, SystemType};
 use crate::process::{CommandResult, OutputMode};
 use crate::sudo::Sudo;
 
@@ -12,6 +12,28 @@ pub fn activation_mode_to_string(mode: ActivationMode) -> &'static str {
         ActivationMode::Test => "test",
         ActivationMode::DryActivate => "dry-activate",
     }
+}
+
+/// Fails, naming every Darwin host, unless all of `hosts` can activate in `mode`
+pub fn check_mode_supported<'a>(
+    mode: ActivationMode,
+    hosts: impl IntoIterator<Item = (&'a str, SystemType)>,
+) -> std::result::Result<(), DeployError> {
+    if mode == ActivationMode::Switch {
+        return Ok(());
+    }
+    let darwin_hosts: Vec<String> = hosts
+        .into_iter()
+        .filter(|(_, system_type)| *system_type == SystemType::Darwin)
+        .map(|(name, _)| name.to_string())
+        .collect();
+    if darwin_hosts.is_empty() {
+        return Ok(());
+    }
+    Err(DeployError::DarwinOnlySwitches {
+        mode: activation_mode_to_string(mode),
+        hosts: darwin_hosts,
+    })
 }
 
 /// Profile generations are required for rollbacks and appear in nixos-rebuild list-generations.
@@ -94,6 +116,53 @@ mod tests {
             activation_mode_to_string(ActivationMode::DryActivate),
             "dry-activate"
         );
+    }
+
+    #[test]
+    fn test_check_mode_supported_names_every_darwin_host() {
+        let hosts = [
+            ("ferrum", SystemType::Darwin),
+            ("boron", SystemType::NixOS),
+            ("cobalt", SystemType::Darwin),
+        ];
+
+        let error = check_mode_supported(ActivationMode::Boot, hosts).unwrap_err();
+
+        assert_eq!(
+            error.to_string(),
+            "nix-darwin can only switch, so ferrum, cobalt can't boot"
+        );
+    }
+
+    #[test]
+    fn test_check_mode_supported_rejects_every_mode_but_switch_on_darwin() {
+        for mode in [
+            ActivationMode::Boot,
+            ActivationMode::Test,
+            ActivationMode::DryActivate,
+        ] {
+            let result = check_mode_supported(mode, [("ferrum", SystemType::Darwin)]);
+
+            assert!(
+                matches!(result, Err(DeployError::DarwinOnlySwitches { .. })),
+                "{mode:?}"
+            );
+        }
+        assert!(
+            check_mode_supported(ActivationMode::Switch, [("ferrum", SystemType::Darwin)]).is_ok()
+        );
+    }
+
+    #[test]
+    fn test_check_mode_supported_allows_any_mode_on_nixos() {
+        for mode in [
+            ActivationMode::Switch,
+            ActivationMode::Boot,
+            ActivationMode::Test,
+            ActivationMode::DryActivate,
+        ] {
+            assert!(check_mode_supported(mode, [("boron", SystemType::NixOS)]).is_ok());
+        }
     }
 
     #[test]

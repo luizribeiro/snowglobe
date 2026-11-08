@@ -7,8 +7,9 @@ use std::path::Path;
 use std::sync::Arc;
 
 use super::{
-    activation_mode_to_string, run_as_root, should_update_profile, store_path_from_resolved,
-    DeployBackend, DeployTarget, HostSystems, CURRENT_SYSTEM_LINK, SYSTEM_PROFILE_LINK,
+    activation_mode_to_string, check_mode_supported, run_as_root, should_update_profile,
+    store_path_from_resolved, DeployBackend, DeployTarget, HostSystems, CURRENT_SYSTEM_LINK,
+    SYSTEM_PROFILE_LINK,
 };
 
 /// Local deployment backend for rebuilding the current host
@@ -73,24 +74,7 @@ impl DeployBackend for LocalDeployBackend {
     ) -> Result<()> {
         let system_type = SystemType::detect_current();
 
-        // Validate mode is supported on Darwin before doing any work
-        if system_type == SystemType::Darwin && mode != ActivationMode::Switch {
-            let msg = match mode {
-                ActivationMode::Boot => {
-                    "Boot mode not supported on Darwin - use switch mode instead"
-                }
-                ActivationMode::Test => {
-                    "Test mode not supported on Darwin - use switch mode instead"
-                }
-                ActivationMode::DryActivate => "Dry-activate mode not supported on Darwin",
-                ActivationMode::Switch => unreachable!(),
-            };
-            return Err(DeployError::Failed {
-                host: target.hostname.clone(),
-                source: std::io::Error::other(msg),
-            }
-            .into());
-        }
+        check_mode_supported(mode, [(target.hostname.as_str(), system_type)])?;
 
         // Create system profile generation for rollback support (persistent modes only)
         if should_update_profile(mode) {
@@ -113,7 +97,6 @@ impl DeployBackend for LocalDeployBackend {
                 ],
                 "execute switch-to-configuration",
             ),
-            // Only Switch mode reaches here - others rejected at top of function
             SystemType::Darwin => (
                 vec![format!("{}/activate", store_path.as_str())],
                 "execute activate script",
@@ -194,7 +177,7 @@ mod tests {
 
     #[tokio::test]
     #[cfg(target_os = "macos")]
-    async fn test_activate_darwin_boot_mode_errors() {
+    async fn test_activate_darwin_rejects_modes_other_than_switch() {
         let (_sudo, backend) = create_test_backend();
         let target = DeployTarget {
             user: None,
@@ -203,56 +186,19 @@ mod tests {
         };
         let store_path = StorePath::new("/nix/store/test-darwin-system".to_string());
 
-        let result = backend
-            .activate(&target, &store_path, ActivationMode::Boot)
-            .await;
+        for mode in [ActivationMode::Boot, ActivationMode::DryActivate] {
+            let result = backend.activate(&target, &store_path, mode).await;
 
-        assert!(result.is_err());
-        let err = result.unwrap_err();
-
-        let err_display = err.to_string();
-        let err_debug = format!("{:?}", err);
-
-        let contains_boot_error = err_display.contains("Boot mode not supported on Darwin")
-            || err_debug.contains("Boot mode not supported on Darwin");
-
-        assert!(
-            contains_boot_error,
-            "Error should mention Boot mode not supported. Display: {}, Debug: {}",
-            err_display, err_debug
-        );
-    }
-
-    #[tokio::test]
-    #[cfg(target_os = "macos")]
-    async fn test_activate_darwin_dry_activate_errors() {
-        let (_sudo, backend) = create_test_backend();
-        let target = DeployTarget {
-            user: None,
-            hostname: "localhost".to_string(),
-            port: None,
-        };
-        let store_path = StorePath::new("/nix/store/test-darwin-system".to_string());
-
-        let result = backend
-            .activate(&target, &store_path, ActivationMode::DryActivate)
-            .await;
-
-        assert!(result.is_err());
-        let err = result.unwrap_err();
-
-        let err_display = err.to_string();
-        let err_debug = format!("{:?}", err);
-
-        let contains_dry_activate_error = err_display
-            .contains("Dry-activate mode not supported on Darwin")
-            || err_debug.contains("Dry-activate mode not supported on Darwin");
-
-        assert!(
-            contains_dry_activate_error,
-            "Error should mention Dry-activate mode not supported. Display: {}, Debug: {}",
-            err_display, err_debug
-        );
+            assert!(
+                matches!(
+                    result,
+                    Err(crate::error::SnowError::Deploy(
+                        DeployError::DarwinOnlySwitches { .. }
+                    ))
+                ),
+                "{mode:?}: {result:?}"
+            );
+        }
     }
 
     use super::super::common::test_utils::{create_test_store_path, create_test_target};

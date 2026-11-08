@@ -209,6 +209,19 @@ pub enum DeployError {
         path: String,
     },
 
+    #[error(
+        "nix-darwin can only switch, so {} can't {mode}",
+        hosts.join(", ")
+    )]
+    #[diagnostic(
+        code(snow::deploy::darwin_only_switches),
+        help("Deploy nix-darwin hosts without --boot, --test or --dry-run.")
+    )]
+    DarwinOnlySwitches {
+        mode: &'static str,
+        hosts: Vec<String>,
+    },
+
     #[error("The ssh-agent did not answer within {seconds}s")]
     #[diagnostic(
         code(snow::deploy::ssh_agent_not_responding),
