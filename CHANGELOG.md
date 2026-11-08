@@ -66,12 +66,11 @@ Details in [docs/push.md](docs/push.md) and [docs/hooks.md](docs/hooks.md).
 - Reboot detection (new kernel or initrd, or a critical service would
   restart), plus `auto`/`never`/`always` reboot policies per host. Policies
   win over `--switch`. `--boot`, `--test` and `--dry-run` ignore them.
-- `--switch`, `--boot`, `--test`, `--dry-run`, `--skip-reboot`, `--force`.
+- Modes to switch, boot next time, test or dry-run.
 - Unchanged hosts are skipped. `--redeploy` to push them anyway.
-- `--concurrency` (default 3). Hosts don't wait on each other.
-- `--reboot-timeout` (default 600 seconds).
-- `--user` for the SSH user, `snowglobe.push.sshPort` for another port.
-- ssh runs with `BatchMode=yes` and never forwards your agent.
+- Hosts don't wait on each other.
+- `snowglobe.push.sshPort` for hosts on another port. ssh never forwards
+  your agent.
 - Live board with a row per host, and a report at the end of each phase.
 
 #### Modules
