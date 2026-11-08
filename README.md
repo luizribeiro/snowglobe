@@ -8,7 +8,7 @@ reboots the host when the new system needs it. Hosts deploy in ordered phases,
 in parallel within a phase, with optional serial groups and lifecycle hooks.
 Progress shows as a live board with one row per host.
 
-[![snow push: three hosts in two phases](docs/demos/switch.svg)](https://asciinema.org/a/FG9AARHrB4eEO1jq)
+[![snow push: three hosts in two phases](docs/demos/switch.svg)](https://asciinema.org/a/6J8p7HDK0Df1tPSx)
 
 snowglobe is young. Expect breaking changes to the CLI and module options
 before 1.0.
@@ -200,19 +200,19 @@ Recorded from real pushes between VMs in the NixOS tests.
 
 A host that must reboot is set to boot the new system, then rebooted:
 
-[![reboot](docs/demos/reboot.svg)](https://asciinema.org/a/C3DbCPc7hX4bzUiW)
+[![reboot](docs/demos/reboot.svg)](https://asciinema.org/a/CRvXGdOvXPBkkiDV)
 
 Two hosts in a serial group take turns:
 
-[![serial-group](docs/demos/serial-group.svg)](https://asciinema.org/a/6mFMCpWYPMuoNSfW)
+[![serial-group](docs/demos/serial-group.svg)](https://asciinema.org/a/DfWYNZ7K7KCfiFvg)
 
 One host fails to activate while the others succeed:
 
-[![activation-failure](docs/demos/activation-failure.svg)](https://asciinema.org/a/Dr9UFyXxR6QaisGD)
+[![activation-failure](docs/demos/activation-failure.svg)](https://asciinema.org/a/NRfbtSt4AyH53Xsy)
 
 `snow rebuild` reboots into the new system:
 
-[![rebuild-reboot](docs/demos/rebuild-reboot.svg)](https://asciinema.org/a/7Tlyl2BUHoinFGZK)
+[![rebuild-reboot](docs/demos/rebuild-reboot.svg)](https://asciinema.org/a/HrREagz2DZPhuXDC)
 
 More on [the demos page](docs/demos.md).
 
