@@ -35,7 +35,7 @@ pub struct PushArgs {
     #[arg(long)]
     pub dry_run: bool,
 
-    /// Force immediate activation (switch mode)
+    /// Switch now, blocking hosts that need a reboot instead of rebooting them; --force switches them anyway and ignores reboot policies
     #[arg(long)]
     pub switch: bool,
 

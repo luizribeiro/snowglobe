@@ -42,7 +42,7 @@ impl Default for PushConfiguration {
 pub enum PushStrategy {
     /// Auto mode - detect reboot need and choose appropriate activation mode
     Auto,
-    /// Force immediate activation (switch mode)
+    /// Switch now, blocking hosts that need a reboot instead of rebooting them; force switches them anyway and ignores reboot policies
     Switch,
     /// Set for next boot only
     Boot,
