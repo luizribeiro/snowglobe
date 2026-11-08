@@ -21,8 +21,9 @@ from pathlib import Path
 URL = re.compile(r"https://asciinema\.org/a/\w+")
 HEADER = """# Demos
 
-Recorded by the NixOS VM tests in `nix/e2e`: real pushes and rebuilds
-between VMs. Click a demo to open it in the asciinema player.
+Every clip below is one of the NixOS VM tests in `nix/e2e`. Real pushes and
+rebuilds between VMs, and the test checks they worked, so what you see here
+is tested. Click a demo to open it in the asciinema player.
 """
 
 
