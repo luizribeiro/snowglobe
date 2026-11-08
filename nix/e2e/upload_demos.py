@@ -53,19 +53,26 @@ def main() -> None:
     recordings = Path(sys.argv[1])
     page = Path(sys.argv[2] if len(sys.argv) > 2 else "docs/demos.md")
     demos = json.loads((recordings / "demos.json").read_text())
+    missing = [d["name"] for d in demos
+               if not (recordings / f"{d['name']}.svg").exists()]
+    if missing:
+        sys.exit(f"upload-demos: no SVG for {', '.join(missing)}")
+    urls = {}
+    with tempfile.TemporaryDirectory() as tmp:
+        for demo in demos:
+            name = demo["name"]
+            cast = recordings / f"{name}.cast"
+            urls[name] = upload(titled(cast, demo["title"], Path(tmp)))
+            print(f"{name}: {urls[name]}")
     svgs = page.parent / "demos"
     svgs.mkdir(exist_ok=True)
     for old in svgs.glob("*.svg"):
         old.unlink()
     sections = []
-    with tempfile.TemporaryDirectory() as tmp:
-        for demo in demos:
-            cast = recordings / f"{demo['name']}.cast"
-            url = upload(titled(cast, demo["title"], Path(tmp)))
-            print(f"{demo['name']}: {url}")
-            svg = f"{demo['name']}.svg"
-            shutil.copyfile(recordings / svg, svgs / svg)
-            sections.append(section(demo, f"demos/{svg}", url))
+    for demo in demos:
+        svg = f"{demo['name']}.svg"
+        shutil.copyfile(recordings / svg, svgs / svg)
+        sections.append(section(demo, f"demos/{svg}", urls[demo["name"]]))
     page.write_text("\n".join([HEADER, *sections]))
 
 
