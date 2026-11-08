@@ -1,132 +1,35 @@
-# Deploying to nix-darwin Hosts
+# nix-darwin hosts
 
-This guide covers deploying to macOS hosts managed by nix-darwin.
+snow pushes to Macs running nix-darwin too. It works like NixOS, minus the
+reboot stuff. The machine running `snow` can be a Mac as well.
 
-## Prerequisites
+Less tested than NixOS, though: Darwin only has a module test, no VM tests.
 
-### The snowglobe module
+## Differences
 
-nix-darwin needs `sudo` to activate a system. snowglobe connects over
-non-interactive SSH, so the deploy user needs passwordless sudo for the
-activation command. The snowglobe nix-darwin module sets this up:
+| | NixOS | nix-darwin |
+|---|---|---|
+| Modes | switch, boot, test, dry-activate | switch only. `--boot`, `--test` and `--dry-run` fail before anything is built |
+| Reboots | detected, done when needed | never. Detection and `rebootPolicy` don't apply |
+| `post-reboot` hooks | after a reboot | never run |
+| Address | `networking.hostName` + `networking.domain` | the same, but `networking.domain` is unset by default, so usually just the hostName |
+| Without the snowglobe module | falls back to `switch-to-configuration` | fails (see below) |
 
-```nix
-{
-  imports = [ inputs.snowglobe.darwinModules.default ];
+## Setup
 
-  snowglobe.push.allowedUsers = [ "deploy" ];
-}
-```
-
-This module:
-- Installs the `snowglobe-activate` command system-wide
-- Configures passwordless sudo for that one command, for the listed users only
-
-The module is required for remote pushes to Darwin hosts. Without
-`snowglobe-activate`, snow falls back to running
-`<system>/bin/switch-to-configuration`, which nix-darwin systems don't have,
-so activation fails.
-
-Deploy the module once by hand (you'll need to enter your password):
-
-```bash
-sudo darwin-rebuild switch --flake .#your-darwin-host
-```
-
-After that, snowglobe deploys without password prompts:
-
-```bash
-snow push your-darwin-host
-```
-
-### Why Passwordless Sudo?
-
-Snowglobe uses SSH in batch mode (`-o BatchMode=yes`) for reliable, non-interactive deployments. This is essential for:
-- Deploying to multiple hosts in parallel
-- Running deployments from CI/CD
-- Consistent behavior across all hosts
-
-Since batch mode SSH cannot prompt for passwords, the target host must allow passwordless sudo for the specific activation command.
-
-## Security Considerations
-
-Any user who can activate systems without a password is root-equivalent, as with any push deployment tool. Use a dedicated deploy user and treat its SSH key like a root key.
-
-The snowglobe module puts one fixed command in sudoers, with an exact path that sudo matches reliably.
-
-See [activation-helper.md](activation-helper.md#security) for details.
-
-## Troubleshooting
-
-### "sudo: a password is required"
-
-If you see this error:
-
-```
-sudo: a terminal is required to read the password; either use the -S option to read from standard input or configure an askpass helper
-sudo: a password is required
-```
-
-**Solution**: Import the snowglobe module, add the SSH user to `snowglobe.push.allowedUsers`, and rebuild.
-
-### Testing Sudo Configuration
-
-Check that the deploy user may run the helper without a password:
-
-```bash
-ssh your-darwin-host sudo -n -l /run/current-system/sw/bin/snowglobe-activate
-```
-
-This prints the command's path if the rule applies, and fails without
-prompting if it doesn't.
-
-If it fails:
-1. Check that the SSH user is in `snowglobe.push.allowedUsers`
-2. Check that the active configuration includes the module: `command -v snowglobe-activate`
-3. Check the rule in `/etc/sudoers.d/10-nix-darwin-extra-config`, where nix-darwin writes `security.sudo.extraConfig`
-
-## Differences from NixOS
-
-| Aspect | NixOS | nix-darwin |
-|--------|-------|------------|
-| Activation modes | switch, boot, test, dry-activate | switch only; `--boot`, `--test` and `--dry-run` fail |
-| Reboot | Detected, and done when needed | Never; detection and `rebootPolicy` are ignored |
-| Without the snowglobe module | Falls back to `switch-to-configuration` | Activation fails |
-
-See [push.md](push.md) for full documentation on activation modes and reboot detection.
-
-## Example Configuration
-
-Here's a complete minimal nix-darwin host configuration for snowglobe:
-
-```nix
-{
-  snowglobe.push.allowedUsers = [ "deploy" ];
-
-  services.openssh = {
-    enable = true;
-    extraConfig = ''
-      PermitRootLogin no
-      PasswordAuthentication no
-    '';
-  };
-
-  # Your other configuration...
-}
-```
-
-Add snowglobe to your flake inputs and import its module once, here:
+`flake.nix`:
 
 ```nix
 {
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
-    darwin.url = "github:LnL7/nix-darwin";
+    darwin.url = "github:nix-darwin/nix-darwin";
+    darwin.inputs.nixpkgs.follows = "nixpkgs";
     snowglobe.url = "github:luizribeiro/snowglobe";
   };
 
-  outputs = { self, nixpkgs, darwin, snowglobe }: {
-    darwinConfigurations.your-host = darwin.lib.darwinSystem {
+  outputs = { nixpkgs, darwin, snowglobe, ... }: {
+    darwinConfigurations.your-mac = darwin.lib.darwinSystem {
       modules = [
         snowglobe.darwinModules.default
         ./configuration.nix
@@ -136,24 +39,85 @@ Add snowglobe to your flake inputs and import its module once, here:
 }
 ```
 
-## CI/CD Deployments
+`configuration.nix`:
 
-For automated deployments (GitHub Actions, etc.):
+```nix
+{
+  nixpkgs.hostPlatform = "aarch64-darwin";
+  networking.hostName = "your-mac";   # snow connects to this
 
-1. Add the snowglobe module with a CI user in `allowedUsers`
-2. Set up SSH key authentication for the CI runner
-3. Add the target host's SSH key to known_hosts
+  snowglobe.push.allowedUsers = [ "deploy" ];
+  # nix copy as a non-root user needs a trusted user (or signed paths)
+  nix.settings.trusted-users = [ "deploy" ];
 
-Example GitHub Actions workflow:
+  services.openssh = {
+    enable = true;
+    extraConfig = ''
+      PermitRootLogin no
+      PasswordAuthentication no
+    '';
+  };
+}
+```
+
+`allowedUsers` lets those users run `snowglobe-activate` with sudo and no
+password, and nothing else. snow can't type a password over SSH, so on a Mac
+the module is required. Those users are root-equivalent on the Mac: use a
+dedicated one and guard its SSH key like a root key. More in
+[activation-helper.md](activation-helper.md#security).
+
+Apply it once by hand (this one asks for your password):
+
+```bash
+sudo darwin-rebuild switch --flake .#your-mac
+```
+
+Then:
+
+```bash
+snow push your-mac
+```
+
+### Determinate Nix
+
+With Determinate (`nix.enable = false`), the helper uses
+`/nix/var/nix/profiles/default/bin/nix-env`. Nothing to set for that.
+`nix.settings` isn't available then, so add the deploy user to
+`trusted-users` in `/etc/nix/nix.custom.conf` instead.
+
+### Without the module
+
+snow runs `sudo nix-env --profile … --set <new system>` first, and only then
+fails, since nix-darwin systems have no `switch-to-configuration`. If that
+sudo works without a password, the profile is left pointing at a system that
+was never activated. Install the module before pushing.
+
+## snow rebuild
+
+On a Mac, `snow rebuild` builds `darwinConfigurations.<hostname -s>` and
+switches. No reboot check, no hooks. `--host` to pick another config.
+
+## From CI
+
+1. Put the CI user in `allowedUsers`.
+2. Give the runner an SSH key for it.
+3. Add the Mac's host key to the runner's `known_hosts`.
 
 ```yaml
-- name: Deploy to Darwin hosts
+- name: Deploy Macs
   env:
     SSH_AUTH_SOCK: /tmp/ssh_agent.sock
   run: |
     ssh-agent -a $SSH_AUTH_SOCK > /dev/null
     ssh-add - <<< "${{ secrets.DEPLOY_SSH_KEY }}"
-    snow push darwin-host-1 darwin-host-2
+    snow push mac-1 mac-2
 ```
 
-See [activation-helper.md](activation-helper.md) for complete documentation on the activation system.
+## Troubleshooting
+
+`sudo: a password is required` means the module isn't active on the Mac or
+the SSH user isn't in `allowedUsers`. Fix the config and run `darwin-rebuild`
+by hand again. To check the rule, and for the rest:
+[activation-helper.md](activation-helper.md#troubleshooting).
+
+Modes and reboots on NixOS: [push.md](push.md).
