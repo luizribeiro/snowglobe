@@ -11,6 +11,10 @@ use std::sync::{Arc, Mutex};
 // MockDeployBackend
 // ============================================================================
 
+fn to_strings(units: &[&str]) -> Vec<String> {
+    units.iter().map(|unit| unit.to_string()).collect()
+}
+
 /// Mock deployer for testing
 ///
 /// Can operate in two modes:
@@ -33,6 +37,12 @@ pub struct MockDeployBackend {
     host_systems: HashMap<String, HostSystems>,
     host_systems_failures: Vec<String>,
     host_systems_timeouts: Vec<String>,
+    /// Units failing before activation per target hostname
+    failing_units: HashMap<String, Vec<String>>,
+    unreadable_failing_units: Vec<String>,
+    failing_units_reads: Arc<Mutex<usize>>,
+    /// Units whose failure makes activation exit 4, per target hostname
+    units_failing_activation: HashMap<String, Vec<String>>,
 }
 
 impl Default for MockDeployBackend {
@@ -48,6 +58,10 @@ impl Default for MockDeployBackend {
             host_systems: HashMap::new(),
             host_systems_failures: Vec::new(),
             host_systems_timeouts: Vec::new(),
+            failing_units: HashMap::new(),
+            unreadable_failing_units: Vec::new(),
+            failing_units_reads: Arc::new(Mutex::new(0)),
+            units_failing_activation: HashMap::new(),
         }
     }
 }
@@ -129,6 +143,31 @@ impl MockDeployBackend {
     /// Hosts whose installed-systems probe times out, as with a hung ssh-agent
     pub fn with_host_systems_timeouts(mut self, hostnames: Vec<String>) -> Self {
         self.host_systems_timeouts = hostnames;
+        self
+    }
+
+    /// Units failing on `hostname` before activation
+    pub fn with_failing_units(mut self, hostname: &str, units: &[&str]) -> Self {
+        self.failing_units
+            .insert(hostname.to_string(), to_strings(units));
+        self
+    }
+
+    /// Reading the units failing on `hostname` fails
+    pub fn with_unreadable_failing_units(mut self, hostname: &str) -> Self {
+        self.unreadable_failing_units.push(hostname.to_string());
+        self
+    }
+
+    /// How many times the units failing on any host were read
+    pub fn failing_units_reads(&self) -> usize {
+        *self.failing_units_reads.lock().unwrap()
+    }
+
+    /// Activating `hostname` exits 4, as switch-to-configuration does when `units` fail
+    pub fn with_units_failing_activation(mut self, hostname: &str, units: &[&str]) -> Self {
+        self.units_failing_activation
+            .insert(hostname.to_string(), to_strings(units));
         self
     }
 
@@ -282,6 +321,22 @@ impl DeployBackend for MockDeployBackend {
         Ok(String::new())
     }
 
+    async fn failing_units(&self, target: &DeployTarget) -> Result<Vec<String>> {
+        *self.failing_units_reads.lock().unwrap() += 1;
+        if self.unreadable_failing_units.contains(&target.hostname) {
+            return Err(crate::error::DeployError::Failed {
+                host: target.hostname.clone(),
+                source: std::io::Error::other("Mock: failing units unreadable"),
+            }
+            .into());
+        }
+        Ok(self
+            .failing_units
+            .get(&target.hostname)
+            .cloned()
+            .unwrap_or_default())
+    }
+
     async fn activate(
         &self,
         target: &DeployTarget,
@@ -323,6 +378,17 @@ impl DeployBackend for MockDeployBackend {
             return Err(crate::error::DeployError::Failed {
                 host: target.hostname.clone(),
                 source: std::io::Error::other("Mock: activation failed"),
+            }
+            .into());
+        }
+
+        if let Some(units) = self.units_failing_activation.get(&target.hostname) {
+            return Err(crate::error::DeployError::CommandFailed {
+                host: target.hostname.clone(),
+                command: "sudo switch-to-configuration switch".to_string(),
+                exit_code: 4,
+                stderr: format!("warning: the following units failed: {}", units.join(", ")),
+                stdout: String::new(),
             }
             .into());
         }

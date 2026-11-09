@@ -186,6 +186,16 @@ pub enum DeployError {
         failed: Vec<String>,
     },
 
+    #[error("{}", activated_but_failing(units))]
+    #[diagnostic(
+        code(snow::deploy::units_failing),
+        help("The new system is activated. Look at the failing units with `systemctl status <unit>` on the host before pushing again.")
+    )]
+    UnitsFailing {
+        host: String,
+        units: Vec<FailingUnit>,
+    },
+
     #[error("Command failed on host '{host}'\n\nCommand: {command}\nExit code: {exit_code}\n\nStderr:\n{stderr}{}", if stdout.is_empty() { String::new() } else { format!("\n\nStdout:\n{}", stdout) })]
     #[diagnostic(code(snow::deploy::command_failed))]
     CommandFailed {
@@ -569,6 +579,40 @@ pub enum ProvisionerError {
     #[error("Provisioner '{provisioner}' deployment to '{target}' was cancelled")]
     #[diagnostic(code(snow::provisioner::deployment_cancelled))]
     DeploymentCancelled { provisioner: String, target: String },
+}
+
+/// A unit failing after a host activated its new system
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FailingUnit {
+    pub name: String,
+    /// It was failing before the push too; false when that's unknown
+    pub already_failing: bool,
+}
+
+/// One unit fits on the line; several go under it as its details
+fn activated_but_failing(units: &[FailingUnit]) -> String {
+    match units {
+        [unit] if unit.already_failing => format!(
+            "activated, but {} is failing (it was already failing before this push)",
+            unit.name
+        ),
+        [unit] => format!("activated, but {} is failing", unit.name),
+        _ => std::iter::once(format!(
+            "activated, but {} units are failing\n{}",
+            units.len(),
+            summary::DETAILS_HEADER
+        ))
+        .chain(units.iter().map(|unit| {
+            let before = if unit.already_failing {
+                " (already failing before this push)"
+            } else {
+                ""
+            };
+            format!("{}{before}", unit.name)
+        }))
+        .collect::<Vec<_>>()
+        .join("\n"),
+    }
 }
 
 /// The error's message followed by each of its `error_causes`, joined with ": "

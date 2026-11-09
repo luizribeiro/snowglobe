@@ -3,8 +3,65 @@
 //! it starts every active target again, which reruns units that were
 //! already failing.
 
-use crate::error::{DeployError, SnowError};
-use std::collections::HashMap;
+use super::{DeployBackend, DeployTarget};
+use crate::error::{error_chain, DeployError, FailingUnit, Result, SnowError};
+use crate::nix::{ActivationMode, StorePath, SystemType};
+use std::collections::{HashMap, HashSet};
+
+/// Activates `system`. If units are failing afterwards, the error says the
+/// system did activate, which units are failing, and which of them were
+/// already failing before.
+pub async fn activate_reporting_failed_units(
+    backend: &dyn DeployBackend,
+    target: &DeployTarget,
+    system: &StorePath,
+    mode: ActivationMode,
+    system_type: SystemType,
+) -> Result<()> {
+    if !reports_failing_units(mode, system_type) {
+        return backend.activate(target, system, mode).await;
+    }
+    let failing_before: HashSet<String> = backend
+        .failing_units(target)
+        .await
+        .inspect_err(|e| {
+            tracing::debug!(
+                "{}: could not read which units are failing: {}",
+                target.hostname,
+                error_chain(e)
+            )
+        })
+        .unwrap_or_default()
+        .into_iter()
+        .collect();
+    let Err(error) = backend.activate(target, system, mode).await else {
+        return Ok(());
+    };
+    let Some(failed) = units_failed(&error) else {
+        return Err(error);
+    };
+    tracing::info!("{}: {}", target.hostname, error_chain(&error));
+    Err(DeployError::UnitsFailing {
+        host: target.hostname.clone(),
+        units: failed
+            .units
+            .into_iter()
+            .map(|name| FailingUnit {
+                already_failing: failing_before.contains(&name),
+                name,
+            })
+            .collect(),
+    }
+    .into())
+}
+
+/// Whether activating may exit 4 for failing units: NixOS's
+/// switch-to-configuration does, after a switch or a test, which both
+/// start units.
+fn reports_failing_units(mode: ActivationMode, system_type: SystemType) -> bool {
+    system_type == SystemType::NixOS
+        && matches!(mode, ActivationMode::Switch | ActivationMode::Test)
+}
 
 /// `systemctl` arguments that list what switch-to-configuration counts as
 /// failed: units in the failed state, and services waiting to restart
@@ -267,5 +324,126 @@ Nov 08 22:43:02 boron systemd[1]: Failed to start stale-job.service.";
         assert_eq!(units_failed(&switch_failed(4, user_activation)), None);
         assert_eq!(units_failed(&switch_failed(1, BORON_SWITCH)), None);
         assert_eq!(units_failed(&unreachable.into()), None);
+    }
+
+    use super::super::MockDeployBackend;
+
+    const BORON: &str = "boron.example.com";
+
+    /// A boron whose stale-job failed before the push
+    fn boron() -> MockDeployBackend {
+        MockDeployBackend::new().with_failing_units(BORON, &["stale-job.service"])
+    }
+
+    async fn activate_with(
+        backend: &MockDeployBackend,
+        mode: ActivationMode,
+        system_type: SystemType,
+    ) -> Result<()> {
+        let target = DeployTarget {
+            user: None,
+            hostname: BORON.to_string(),
+            port: None,
+        };
+        let system = StorePath::new("/nix/store/7y4n-nixos-system-boron".to_string());
+        activate_reporting_failed_units(backend, &target, &system, mode, system_type).await
+    }
+
+    async fn switch(backend: &MockDeployBackend) -> String {
+        activate_with(backend, ActivationMode::Switch, SystemType::NixOS)
+            .await
+            .unwrap_err()
+            .to_string()
+    }
+
+    #[tokio::test]
+    async fn test_a_unit_failing_after_activation_fails_saying_it_was_already_failing() {
+        let boron = boron().with_units_failing_activation(BORON, &["stale-job.service"]);
+
+        assert_eq!(
+            switch(&boron).await,
+            "activated, but stale-job.service is failing (it was already failing before this push)"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_several_failing_units_are_listed_as_details() {
+        let boron =
+            boron().with_units_failing_activation(BORON, &["nginx.service", "stale-job.service"]);
+
+        let reason = switch(&boron).await;
+
+        assert_eq!(
+            reason,
+            "activated, but 2 units are failing\n\
+             Details:\n\
+             nginx.service\n\
+             stale-job.service (already failing before this push)"
+        );
+        assert_eq!(
+            crate::error::summary::error_summary(&reason),
+            "activated, but 2 units are failing"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_without_the_units_from_before_the_failure_is_plain() {
+        let boron = boron()
+            .with_unreadable_failing_units(BORON)
+            .with_units_failing_activation(BORON, &["stale-job.service"]);
+
+        assert_eq!(
+            switch(&boron).await,
+            "activated, but stale-job.service is failing"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_test_mode_reports_failing_units_too() {
+        let boron = boron().with_units_failing_activation(BORON, &["nginx.service"]);
+
+        let error = activate_with(&boron, ActivationMode::Test, SystemType::NixOS)
+            .await
+            .unwrap_err();
+
+        assert_eq!(error.to_string(), "activated, but nginx.service is failing");
+    }
+
+    #[tokio::test]
+    async fn test_other_activation_failures_are_left_as_they_are() {
+        let boron = boron().with_activate_failures(vec![BORON.to_string()]);
+
+        assert_eq!(
+            switch(&boron).await,
+            "Failed to deploy to host 'boron.example.com'"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_an_activation_without_failures_succeeds() {
+        let result = activate_with(&boron(), ActivationMode::Switch, SystemType::NixOS).await;
+
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_boot_and_darwin_leave_units_unread_and_failures_as_they_are() {
+        for (mode, system_type) in [
+            (ActivationMode::Boot, SystemType::NixOS),
+            (ActivationMode::Switch, SystemType::Darwin),
+        ] {
+            let boron = boron().with_units_failing_activation(BORON, &["stale-job.service"]);
+
+            let error = activate_with(&boron, mode, system_type).await.unwrap_err();
+
+            assert!(
+                matches!(
+                    error,
+                    SnowError::Deploy(DeployError::CommandFailed { exit_code: 4, .. })
+                ),
+                "{mode:?} {system_type:?}: {error:?}"
+            );
+            assert_eq!(boron.failing_units_reads(), 0);
+        }
     }
 }

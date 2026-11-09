@@ -685,6 +685,50 @@ mod tests {
     }
 
     #[test]
+    fn test_phase_report_lists_the_units_failing_after_activation() {
+        console::set_colors_enabled(false);
+        let unit = |name: &str, already_failing| snowlib::error::FailingUnit {
+            name: name.to_string(),
+            already_failing,
+        };
+        let failing = |units| {
+            snowlib::error::DeployError::UnitsFailing {
+                host: "boron".to_string(),
+                units,
+            }
+            .to_string()
+        };
+        let phase = PhaseResult {
+            phase: "p1".to_string(),
+            duration: Duration::from_secs(41),
+            hosts: vec![
+                make_failed_host(
+                    "boron",
+                    PipelineStep::Activate,
+                    &failing(vec![unit("stale-job.service", true)]),
+                ),
+                make_failed_host(
+                    "cerium",
+                    PipelineStep::Activate,
+                    &failing(vec![
+                        unit("nginx.service", false),
+                        unit("unifi.service", true),
+                    ]),
+                ),
+            ],
+        };
+
+        assert_eq!(
+            super::phase_report(&phase, false, 120, None),
+            "✗ Phase p1 (2/2 failed in 0:41)\n\
+             \x20 ✗ boron at activate: activated, but stale-job.service is failing (it was already failing before this push)\n\
+             \x20 ✗ cerium at activate: activated, but 2 units are failing\n\
+             \x20   nginx.service\n\
+             \x20   unifi.service (already failing before this push)"
+        );
+    }
+
+    #[test]
     fn test_failure_without_a_reason_shows_only_where_it_failed() {
         console::set_colors_enabled(false);
         let mut cerium = make_failed_host("cerium", PipelineStep::Copy, "");

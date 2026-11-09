@@ -5,7 +5,7 @@
 //!
 //! The pipeline is fully async, using tokio for concurrent execution of hosts.
 
-use crate::backends::deploy::DeployTarget;
+use crate::backends::deploy::{activate_reporting_failed_units, DeployTarget};
 use crate::error::summary::error_summary;
 use crate::error::{error_chain, DeployError, Result, SnowError};
 use crate::hooks::HookStage;
@@ -270,9 +270,13 @@ impl HostRun<'_, '_> {
         self.step(
             PipelineStep::Activate,
             deployable,
-            push_ctx
-                .deploy_backend
-                .activate(&target, &store_path, plan.activation_mode),
+            activate_reporting_failed_units(
+                push_ctx.deploy_backend,
+                &target,
+                &store_path,
+                plan.activation_mode,
+                self.metadata.system_type,
+            ),
         )
         .await?;
 

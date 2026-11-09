@@ -263,6 +263,33 @@ async fn test_push_with_default_phase() {
 }
 
 #[tokio::test]
+async fn test_units_failing_after_activation_fail_the_host_and_halt_later_phases() {
+    let mut harness = PushHarness::new();
+    harness.deployer = MockDeployBackend::new()
+        .with_failing_units("boron.example.com", &["stale-job.service"])
+        .with_units_failing_activation("boron.example.com", &["stale-job.service"]);
+
+    let run = harness
+        .run(vec![
+            make_host_metadata("boron", Some("p1"), RebootPolicy::Auto),
+            make_host_metadata("cerium", Some("p2"), RebootPolicy::Auto),
+        ])
+        .await;
+
+    let boron = run.host("boron");
+    assert_eq!(boron.failed_at_step, Some(PipelineStep::Activate));
+    assert_eq!(
+        boron.error_message.as_deref(),
+        Some(
+            "activated, but stale-job.service is failing (it was already failing before this push)"
+        )
+    );
+    assert!(!run.results.all_succeeded());
+    assert_eq!(run.results.skipped_phases.len(), 1, "{:?}", run.results);
+    assert!(!run.has_event_starting_with("build_start:cerium"));
+}
+
+#[tokio::test]
 async fn test_push_with_partial_failure_in_phase() {
     let mut harness = PushHarness::new();
     harness.deployer =
