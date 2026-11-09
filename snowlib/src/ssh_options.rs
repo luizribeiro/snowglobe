@@ -180,9 +180,9 @@ mod tests {
 
     #[test]
     fn test_nix_sshopts_keeps_the_users_options() {
-        let sshopts = nix_sshopts(Some("-i /home/luiz/.ssh/deploy"), None);
+        let sshopts = nix_sshopts(Some("-i /home/alice/.ssh/deploy"), None);
 
-        assert!(sshopts.starts_with("-i /home/luiz/.ssh/deploy -o BatchMode=yes"));
+        assert!(sshopts.starts_with("-i /home/alice/.ssh/deploy -o BatchMode=yes"));
         assert_eq!(sshopts.matches("-o ForwardAgent=no").count(), 1);
         assert!(sshopts.ends_with("-o ServerAliveCountMax=3 -o ForwardAgent=no"));
         assert_eq!(nix_sshopts(Some("  "), None), nix_sshopts(None, None));
@@ -200,9 +200,9 @@ mod tests {
 
     #[test]
     fn test_nix_sshopts_copies_to_the_hosts_port() {
-        let sshopts = nix_sshopts(Some("-i /home/luiz/.ssh/deploy"), Some(2222));
+        let sshopts = nix_sshopts(Some("-i /home/alice/.ssh/deploy"), Some(2222));
 
-        assert!(sshopts.starts_with("-i /home/luiz/.ssh/deploy -o BatchMode=yes"));
+        assert!(sshopts.starts_with("-i /home/alice/.ssh/deploy -o BatchMode=yes"));
         assert!(sshopts.ends_with("-o ForwardAgent=no -p 2222"), "{sshopts}");
     }
 
@@ -255,7 +255,7 @@ mod tests {
     #[tokio::test]
     async fn test_agent_with_or_without_keys_is_responsive() {
         let with_keys =
-            status_from_fake_ssh_add("echo '256 SHA256:Xq0x luiz@sodium (ED25519)'; exit 0").await;
+            status_from_fake_ssh_add("echo '256 SHA256:Xq0x alice@laptop (ED25519)'; exit 0").await;
         let without_keys =
             status_from_fake_ssh_add("echo 'The agent has no identities.'; exit 1").await;
 

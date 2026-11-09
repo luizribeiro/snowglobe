@@ -242,8 +242,8 @@ mod tests {
     fn test_insert_age_key_simple() {
         let content = r#"---
 keys:
-  - &luiz 97A0AE5E03F3499B7D7A65C676A4143237EF5817
-  - &oxygen age1gdwx7nfe6gzzu7gxm95adt3kqvwlzkmgryrvh46sz646ns0g2yaqql56hd
+  - &alice 0123456789ABCDEF0123456789ABCDEF01234567
+  - &osprey age1gdwx7nfe6gzzu7gxm95adt3kqvwlzkmgryrvh46sz646ns0g2yaqql56hd
 creation_rules:
   - path_regex: secrets/.*
 "#;
@@ -256,12 +256,12 @@ creation_rules:
         .unwrap();
 
         assert!(result.contains("- &carbon age1newkey"));
-        assert!(result.contains("- &oxygen age1gdwx7nfe"));
-        // Ensure carbon comes after oxygen but before creation_rules
+        assert!(result.contains("- &osprey age1gdwx7nfe"));
+        // Ensure carbon comes after osprey but before creation_rules
         let carbon_pos = result.find("- &carbon").unwrap();
-        let oxygen_pos = result.find("- &oxygen").unwrap();
+        let osprey_pos = result.find("- &osprey").unwrap();
         let creation_pos = result.find("creation_rules:").unwrap();
-        assert!(carbon_pos > oxygen_pos);
+        assert!(carbon_pos > osprey_pos);
         assert!(carbon_pos < creation_pos);
     }
 
@@ -269,9 +269,9 @@ creation_rules:
     fn test_insert_age_key_preserves_comments() {
         let content = r#"keys:
   # GPG keys
-  - &luiz 97A0AE5E03F3499B7D7A65C676A4143237EF5817
+  - &alice 0123456789ABCDEF0123456789ABCDEF01234567
   # age keys
-  - &oxygen age1gdwx7nfe6gzzu7gxm95adt3kqvwlzkmgryrvh46sz646ns0g2yaqql56hd
+  - &osprey age1gdwx7nfe6gzzu7gxm95adt3kqvwlzkmgryrvh46sz646ns0g2yaqql56hd
 creation_rules:
 "#;
 
@@ -336,16 +336,16 @@ creation_rules:
         // Keys section at end of file with no creation_rules following
         let content = r#"---
 keys:
-  - &oxygen age1oxygen0000000000000000000000000000000000000000000000000
+  - &osprey age1osprey0000000000000000000000000000000000000000000000000
 "#;
 
         let result = insert_age_key(content, "carbon", "age1carbon").unwrap();
         assert!(result.contains("- &carbon age1carbon"));
-        assert!(result.contains("- &oxygen age1oxygen"));
-        // Carbon should come after oxygen
+        assert!(result.contains("- &osprey age1osprey"));
+        // Carbon should come after osprey
         let carbon_pos = result.find("- &carbon").unwrap();
-        let oxygen_pos = result.find("- &oxygen").unwrap();
-        assert!(carbon_pos > oxygen_pos);
+        let osprey_pos = result.find("- &osprey").unwrap();
+        assert!(carbon_pos > osprey_pos);
     }
 
     #[test]
@@ -416,7 +416,7 @@ mod integration_tests {
     fn test_host_exists_returns_false_for_new_host() {
         let temp_dir = TempDir::new().unwrap();
         let content = r#"keys:
-  - &oxygen age1gdwx7nfe6gzzu7gxm95adt3kqvwlzkmgryrvh46sz646ns0g2yaqql56hd
+  - &osprey age1gdwx7nfe6gzzu7gxm95adt3kqvwlzkmgryrvh46sz646ns0g2yaqql56hd
 "#;
         fs::write(temp_dir.path().join(".sops.yaml"), content).unwrap();
 
@@ -428,7 +428,7 @@ mod integration_tests {
     fn test_host_exists_returns_true_for_existing_host() {
         let temp_dir = TempDir::new().unwrap();
         let content = r#"keys:
-  - &oxygen age1gdwx7nfe6gzzu7gxm95adt3kqvwlzkmgryrvh46sz646ns0g2yaqql56hd
+  - &osprey age1gdwx7nfe6gzzu7gxm95adt3kqvwlzkmgryrvh46sz646ns0g2yaqql56hd
   - &carbon age1carbon00000000000000000000000000000000000000000000000000
 "#;
         fs::write(temp_dir.path().join(".sops.yaml"), content).unwrap();
@@ -441,7 +441,7 @@ mod integration_tests {
     fn test_add_host_key_creates_entry() {
         let temp_dir = TempDir::new().unwrap();
         let content = r#"keys:
-  - &oxygen age1gdwx7nfe6gzzu7gxm95adt3kqvwlzkmgryrvh46sz646ns0g2yaqql56hd
+  - &osprey age1gdwx7nfe6gzzu7gxm95adt3kqvwlzkmgryrvh46sz646ns0g2yaqql56hd
 creation_rules:
   - path_regex: secrets/.*
 "#;

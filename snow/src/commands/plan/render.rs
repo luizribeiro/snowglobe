@@ -226,8 +226,8 @@ mod tests {
 
     fn ops_report(s3_reachable: bool) -> PlanReport {
         let mut evals = parse_eval_jobs(OPS_EVAL_JOBS.as_bytes()).unwrap();
-        if let snowlib::plan::EvalOutcome::Evaluated(radon) = &mut evals[1].outcome {
-            radon.needed_builds.push(WINE.to_string());
+        if let snowlib::plan::EvalOutcome::Evaluated(raven) = &mut evals[1].outcome {
+            raven.needed_builds.push(WINE.to_string());
         }
         // Every derivation in the real fixture is a trivial NixOS config build.
         let mut derivations: Vec<DerivationInfo> = evals
@@ -268,14 +268,14 @@ mod tests {
         assert!(rendered.starts_with(
             "Plan for 4 hosts\n\nWill build: 1 derivation (+11 trivial local builds, --all to list)\n"
         ));
-        assert!(rendered.contains("  wine-wow-staging-10.12  x86_64-linux  radon\n"));
+        assert!(rendered.contains("  wine-wow-staging-10.12  x86_64-linux  raven\n"));
         assert!(!rendered.contains("stage-2-init.sh"));
         assert!(rendered.contains("--all to list"));
         assert!(rendered.contains("  https://cache.nixos.org       1 path   3.0 MiB / 12.0 MiB\n"));
-        assert!(rendered.contains("  boron    0 builds, 0 trivial, 1 fetch\n"));
-        assert!(rendered.contains("  radon    1 build, 5 trivial, 4 fetches\n"));
+        assert!(rendered.contains("  bravo    0 builds, 0 trivial, 1 fetch\n"));
+        assert!(rendered.contains("  raven    1 build, 5 trivial, 4 fetches\n"));
         assert!(
-            rendered.contains("  krypton  ✗ evaluation failed: attribute 'doesNotExist' missing\n")
+            rendered.contains("  kestrel  ✗ evaluation failed: attribute 'doesNotExist' missing\n")
         );
         assert!(!rendered.contains("Warnings"));
     }
@@ -312,7 +312,7 @@ mod tests {
     #[test]
     fn test_local_host_is_up_to_date() {
         let status = HostStatus::Evaluated {
-            drv_path: "/nix/store/aaa-nixos-system-oxygen.drv".to_string(),
+            drv_path: "/nix/store/aaa-nixos-system-osprey.drv".to_string(),
             system: "x86_64-linux".to_string(),
             cache_status: CacheStatus::Local,
             builds: 0,

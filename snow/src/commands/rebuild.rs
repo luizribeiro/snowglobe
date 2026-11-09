@@ -379,27 +379,27 @@ mod tests {
     fn test_endings_read_as_deploy_reports_a_host() {
         console::set_colors_enabled(false);
         let took = Duration::from_secs(41);
-        let line = |ending: Ending| ending.line("boron", took);
+        let line = |ending: Ending| ending.line("bravo", took);
 
         assert_eq!(
             line(Ending::Activated {
                 mode: ActivationMode::Switch,
                 rebooting: false
             }),
-            "✓ boron (switch) in 0:41"
+            "✓ bravo (switch) in 0:41"
         );
         assert_eq!(
             line(Ending::Activated {
                 mode: ActivationMode::Boot,
                 rebooting: true
             }),
-            "✓ boron (boot, rebooting) in 0:41"
+            "✓ bravo (boot, rebooting) in 0:41"
         );
         assert_eq!(
             line(Ending::SwitchedBeforeReboot),
-            "✓ boron (switch, reboot to finish) in 0:41"
+            "✓ bravo (switch, reboot to finish) in 0:41"
         );
-        assert_eq!(line(Ending::Cancelled), "⊘ boron (cancelled) in 0:41");
+        assert_eq!(line(Ending::Cancelled), "⊘ bravo (cancelled) in 0:41");
     }
 
     #[test]
@@ -408,10 +408,10 @@ mod tests {
         let took = Duration::from_secs(72);
 
         assert_eq!(
-            failed_line("boron", Some(PipelineStep::Activate), took),
-            "✗ boron at activate in 1:12"
+            failed_line("bravo", Some(PipelineStep::Activate), took),
+            "✗ bravo at activate in 1:12"
         );
-        assert_eq!(failed_line("boron", None, took), "✗ boron in 1:12");
+        assert_eq!(failed_line("bravo", None, took), "✗ bravo in 1:12");
     }
 
     #[test]
@@ -496,7 +496,7 @@ mod tests {
             |flags: &[&str]| crate::test_utils::try_parse_args::<RebuildArgs>(flags).unwrap();
 
         for mode in ["--boot", "--test", "--dry-run"] {
-            let result = parse(&[mode]).check_mode("ferrum", SystemType::Darwin);
+            let result = parse(&[mode]).check_mode("falcon", SystemType::Darwin);
 
             assert!(
                 matches!(
@@ -508,9 +508,9 @@ mod tests {
                 "{mode}: {result:?}"
             );
         }
-        assert!(parse(&[]).check_mode("ferrum", SystemType::Darwin).is_ok());
+        assert!(parse(&[]).check_mode("falcon", SystemType::Darwin).is_ok());
         assert!(parse(&["--boot"])
-            .check_mode("boron", SystemType::NixOS)
+            .check_mode("bravo", SystemType::NixOS)
             .is_ok());
     }
 

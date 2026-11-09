@@ -1,8 +1,8 @@
 {
   "name": "Partial deployment failure",
-  "description": "Nitrogen fails during activation",
+  "description": "Nuthatch fails during activation",
   "failures": {
-    "nitrogen": {
+    "nuthatch": {
       "phase": "activate",
       "error": "failed to start nginx.service: port already in use"
     }

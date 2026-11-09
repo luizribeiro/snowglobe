@@ -117,36 +117,36 @@ mod tests {
     #[test]
     fn test_store_path_from_resolved_store_path() {
         let resolved = store_path_from_resolved(
-            "hydrogen",
+            "hedgehog",
             CURRENT_SYSTEM_LINK,
-            "/nix/store/abc123-nixos-system-hydrogen-25.11\n",
+            "/nix/store/abc123-nixos-system-hedgehog-25.11\n",
         )
         .unwrap();
 
         assert_eq!(
             resolved,
-            path("/nix/store/abc123-nixos-system-hydrogen-25.11")
+            path("/nix/store/abc123-nixos-system-hedgehog-25.11")
         );
     }
 
     #[test]
     fn test_store_path_from_resolved_rejects_non_store_path() {
         for resolved in ["/run/current-system\n", "", "/nix/store/"] {
-            assert!(store_path_from_resolved("hydrogen", CURRENT_SYSTEM_LINK, resolved).is_err());
+            assert!(store_path_from_resolved("hedgehog", CURRENT_SYSTEM_LINK, resolved).is_err());
         }
     }
 
     #[test]
     fn test_store_path_from_resolved_rejects_extra_output() {
-        let with_banner = "/nix/store/abc123-nixos-system-hydrogen\nWelcome to hydrogen!\n";
+        let with_banner = "/nix/store/abc123-nixos-system-hedgehog\nWelcome to hedgehog!\n";
 
-        assert!(store_path_from_resolved("hydrogen", CURRENT_SYSTEM_LINK, with_banner).is_err());
+        assert!(store_path_from_resolved("hedgehog", CURRENT_SYSTEM_LINK, with_banner).is_err());
     }
 
     #[test]
     fn test_host_systems_are_target_only_when_running_and_booting_it() {
-        let target = path("/nix/store/new-nixos-system-hydrogen");
-        let old = path("/nix/store/old-nixos-system-hydrogen");
+        let target = path("/nix/store/new-nixos-system-hedgehog");
+        let old = path("/nix/store/old-nixos-system-hedgehog");
 
         assert!(HostSystems::both(target.clone()).are(&target));
         assert!(!HostSystems::both(old.clone()).are(&target));

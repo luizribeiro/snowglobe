@@ -141,7 +141,7 @@ async fn test_boot_mode_plans_no_reboot_for_any_policy() {
         RebootPolicy::Never,
         RebootPolicy::Always,
     ] {
-        let hosts = vec![make_host("boron", None, policy.clone())];
+        let hosts = vec![make_host("bravo", None, policy.clone())];
 
         let (plans, blocked) =
             create_deployment_plans(hosts, &detector, DeployStrategy::Boot, false)
@@ -381,7 +381,7 @@ async fn test_darwin_hosts_switch_without_reboot_regardless_of_policy() {
         new: "/nix/store/new-kernel".to_string(),
     };
     let detector = MockRebootBackend::new().with_reboot_required(
-        [("ferrum.example.com".to_string(), kernel_changed)]
+        [("falcon.example.com".to_string(), kernel_changed)]
             .into_iter()
             .collect(),
     );
@@ -392,7 +392,7 @@ async fn test_darwin_hosts_switch_without_reboot_regardless_of_policy() {
         RebootPolicy::Always,
     ] {
         for strategy in [DeployStrategy::Auto, DeployStrategy::Switch] {
-            let (mut metadata, target, store_path) = make_host("ferrum", None, policy.clone());
+            let (mut metadata, target, store_path) = make_host("falcon", None, policy.clone());
             metadata.system_type = SystemType::Darwin;
 
             let (plans, blocked) = create_deployment_plans(

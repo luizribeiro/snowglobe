@@ -300,15 +300,15 @@ mod tests {
     #[tokio::test]
     async fn test_load_host_metadata_picks_system_type_from_flake() {
         let flake = FakeFlake {
-            nixos: Some(vec!["praseodymium", "curium"]),
-            darwin: Some(vec!["ferrum"]),
+            nixos: Some(vec!["pomegranates", "condor"]),
+            darwin: Some(vec!["falcon"]),
             ..FakeFlake::default()
         };
 
         let metadata = flake
             .load_host_metadata(
                 &Flake::test_context(),
-                &names(&["praseodymium", "ferrum", "curium"]),
+                &names(&["pomegranates", "falcon", "condor"]),
             )
             .await
             .unwrap();
@@ -320,26 +320,26 @@ mod tests {
         assert_eq!(
             types,
             vec![
-                ("praseodymium", SystemType::NixOS),
-                ("ferrum", SystemType::Darwin),
-                ("curium", SystemType::NixOS),
+                ("pomegranates", SystemType::NixOS),
+                ("falcon", SystemType::Darwin),
+                ("condor", SystemType::NixOS),
             ]
         );
     }
 
     const TWELVE_HOSTS: [&str; 12] = [
-        "argon",
-        "boron",
-        "cerium",
-        "curium",
-        "hydrogen",
-        "krypton",
-        "lanthanum",
-        "mercury",
-        "neodymium",
-        "nitrogen",
-        "oxygen",
-        "radon",
+        "alpha",
+        "bravo",
+        "cactus",
+        "condor",
+        "hedgehog",
+        "kestrel",
+        "limestone",
+        "mallard",
+        "nightfall",
+        "nuthatch",
+        "osprey",
+        "raven",
     ];
 
     /// Earlier hosts take longer, so they finish last
@@ -376,7 +376,7 @@ mod tests {
     async fn test_load_host_metadata_fails_when_one_of_many_hosts_fails() {
         let flake = FakeFlake {
             nixos: Some(TWELVE_HOSTS.to_vec()),
-            broken_as_nixos: vec!["oxygen"],
+            broken_as_nixos: vec!["osprey"],
             eval_delays: slower_first(&TWELVE_HOSTS),
             ..FakeFlake::default()
         };
@@ -386,20 +386,20 @@ mod tests {
             .await
             .unwrap_err();
 
-        assert!(err.to_string().contains("oxygen"), "{err}");
+        assert!(err.to_string().contains("osprey"), "{err}");
     }
 
     #[tokio::test]
     async fn test_load_host_metadata_reports_errors_instead_of_trying_darwin() {
         let flake = FakeFlake {
-            nixos: Some(vec!["praseodymium"]),
-            darwin: Some(vec!["ferrum"]),
-            broken_as_nixos: vec!["praseodymium"],
+            nixos: Some(vec!["pomegranates"]),
+            darwin: Some(vec!["falcon"]),
+            broken_as_nixos: vec!["pomegranates"],
             ..FakeFlake::default()
         };
 
         let err = flake
-            .load_host_metadata(&Flake::test_context(), &names(&["praseodymium"]))
+            .load_host_metadata(&Flake::test_context(), &names(&["pomegranates"]))
             .await
             .unwrap_err();
 
@@ -413,12 +413,12 @@ mod tests {
     #[tokio::test]
     async fn test_load_host_metadata_without_nixos_configurations() {
         let flake = FakeFlake {
-            darwin: Some(vec!["ferrum"]),
+            darwin: Some(vec!["falcon"]),
             ..FakeFlake::default()
         };
 
         let metadata = flake
-            .load_host_metadata(&Flake::test_context(), &names(&["ferrum"]))
+            .load_host_metadata(&Flake::test_context(), &names(&["falcon"]))
             .await
             .unwrap();
 
@@ -434,7 +434,7 @@ mod tests {
         let context = Flake::test_context();
 
         assert!(flake
-            .load_host_metadata(&context, &names(&["ferrum"]))
+            .load_host_metadata(&context, &names(&["falcon"]))
             .await
             .is_err());
         assert!(flake.list_all_hosts(&context, None).await.is_err());
@@ -443,12 +443,12 @@ mod tests {
     #[tokio::test]
     async fn test_list_all_hosts_combines_present_configuration_sets() {
         let both = FakeFlake {
-            nixos: Some(vec!["praseodymium"]),
-            darwin: Some(vec!["ferrum"]),
+            nixos: Some(vec!["pomegranates"]),
+            darwin: Some(vec!["falcon"]),
             ..FakeFlake::default()
         };
         let darwin_only = FakeFlake {
-            darwin: Some(vec!["ferrum"]),
+            darwin: Some(vec!["falcon"]),
             ..FakeFlake::default()
         };
         let flake = Flake::test_context();
@@ -456,11 +456,11 @@ mod tests {
         let names_of = |hosts: Vec<Host>| hosts.into_iter().map(|h| h.name).collect::<Vec<_>>();
         assert_eq!(
             names_of(both.list_all_hosts(&flake, None).await.unwrap()),
-            ["praseodymium", "ferrum"]
+            ["pomegranates", "falcon"]
         );
         assert_eq!(
             names_of(darwin_only.list_all_hosts(&flake, None).await.unwrap()),
-            ["ferrum"]
+            ["falcon"]
         );
         assert!(matches!(
             FakeFlake::default().list_all_hosts(&flake, None).await,

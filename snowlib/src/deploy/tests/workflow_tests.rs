@@ -702,7 +702,7 @@ async fn test_deploy_boot_mode_never_reboots() {
         let harness = DeployHarness {
             reboot_backend: MockRebootBackend::new().with_reboot_required(
                 [(
-                    "boron.example.com".to_string(),
+                    "bravo.example.com".to_string(),
                     RebootReason::KernelChanged {
                         old: "/nix/store/old-kernel".to_string(),
                         new: "/nix/store/new-kernel".to_string(),
@@ -716,13 +716,13 @@ async fn test_deploy_boot_mode_never_reboots() {
         };
 
         let run = harness
-            .run(vec![make_host_metadata("boron", None, policy.clone())])
+            .run(vec![make_host_metadata("bravo", None, policy.clone())])
             .await;
 
-        let boron = run.host("boron");
-        assert!(boron.success, "{:?}: {:?}", policy, boron);
-        assert_eq!(boron.activation_mode, Some(ActivationMode::Boot));
-        assert!(!boron.rebooted, "{:?} rebooted", policy);
+        let bravo = run.host("bravo");
+        assert!(bravo.success, "{:?}: {:?}", policy, bravo);
+        assert_eq!(bravo.activation_mode, Some(ActivationMode::Boot));
+        assert!(!bravo.rebooted, "{:?} rebooted", policy);
         assert!(
             !run.has_event_starting_with("reboot_start"),
             "{:?}: {:?}",
@@ -965,7 +965,7 @@ async fn test_deploy_never_reboots_darwin_hosts() {
     let deployer = MockDeployBackend::new();
     let reboot_backend = MockRebootBackend::new().with_reboot_required(
         [(
-            "ferrum.example.com".to_string(),
+            "falcon.example.com".to_string(),
             RebootReason::CriticalService("audit.service".to_string()),
         )]
         .into_iter()
@@ -974,8 +974,8 @@ async fn test_deploy_never_reboots_darwin_hosts() {
 
     for strategy in [DeployStrategy::Auto, DeployStrategy::Switch] {
         let observer = TestObserver::new();
-        let mut ferrum = make_host_metadata("ferrum", Some("default"), RebootPolicy::Always);
-        ferrum.system_type = SystemType::Darwin;
+        let mut falcon = make_host_metadata("falcon", Some("default"), RebootPolicy::Always);
+        falcon.system_type = SystemType::Darwin;
 
         let config = create_deploy_config(strategy, 1);
 
@@ -989,7 +989,7 @@ async fn test_deploy_never_reboots_darwin_hosts() {
                 &observer,
                 None,
             );
-            deploy(&deploy_ctx, vec![ferrum]).await
+            deploy(&deploy_ctx, vec![falcon]).await
         }
         .unwrap();
 
@@ -1010,12 +1010,12 @@ async fn test_each_host_gets_its_closure_copied_once() {
 
     let run = harness
         .run(vec![
-            make_host_metadata("boron", Some("p1"), RebootPolicy::Never),
-            make_host_metadata("radon", Some("p1"), RebootPolicy::Never),
+            make_host_metadata("bravo", Some("p1"), RebootPolicy::Never),
+            make_host_metadata("raven", Some("p1"), RebootPolicy::Never),
         ])
         .await;
 
     assert_eq!(run.results.success_count(), 2);
-    assert_eq!(harness.deployer.copy_count("boron.example.com"), 1);
-    assert_eq!(harness.deployer.copy_count("radon.example.com"), 1);
+    assert_eq!(harness.deployer.copy_count("bravo.example.com"), 1);
+    assert_eq!(harness.deployer.copy_count("raven.example.com"), 1);
 }

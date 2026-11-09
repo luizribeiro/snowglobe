@@ -145,7 +145,7 @@ mod tests {
     #[tokio::test]
     async fn test_out_link_roots_the_built_path() {
         let dir = tempfile::tempdir().unwrap();
-        let link = dir.path().join("radon-hooks");
+        let link = dir.path().join("raven-hooks");
 
         let stdout = NixCommand::tool(
             "nix",

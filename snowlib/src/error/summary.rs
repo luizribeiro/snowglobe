@@ -132,7 +132,7 @@ mod tests {
     #[test]
     fn test_error_summary_of_a_failed_command_is_its_last_stderr_line() {
         let error = "Command failed\n\n\
-                     Command: ssh sudo snowglobe-activate /nix/store/yzxw-cerium switch\n\
+                     Command: ssh sudo snowglobe-activate /nix/store/yzxw-cactus switch\n\
                      Exit code: 4\n\n\
                      Stderr:\n\
                      updating GRUB 2 menu...\n\
@@ -150,9 +150,9 @@ mod tests {
 
     #[test]
     fn test_error_summary_finds_stderr_in_an_indented_error() {
-        let error = "  Command failed\n  Stderr: \n    storage on radon is degraded\n";
+        let error = "  Command failed\n  Stderr: \n    storage on raven is degraded\n";
 
-        assert_eq!(error_summary(error), "storage on radon is degraded");
+        assert_eq!(error_summary(error), "storage on raven is degraded");
     }
 
     #[test]
@@ -163,7 +163,7 @@ mod tests {
     }
 
     const ACTIVATION_FAILURE: &str = "Command failed\n\n\
-        Command: ssh sudo snowglobe-activate /nix/store/yzxw-cerium switch\n\
+        Command: ssh sudo snowglobe-activate /nix/store/yzxw-cactus switch\n\
         Exit code: 4\n\n\
         Stderr:\n\
         updating GRUB 2 menu...\n\
@@ -171,8 +171,8 @@ mod tests {
         setting up /etc...\n\
         warning: the following units failed: storage-agent.service\n\n\
         Stdout:\n\
-        Nov 04 10:12:03 cerium systemd[1]: Starting storage-agent.service...\n\
-        Nov 04 10:12:04 cerium storage-agent[812]: disk sdb missing";
+        Nov 04 10:12:03 cactus systemd[1]: Starting storage-agent.service...\n\
+        Nov 04 10:12:04 cactus storage-agent[812]: disk sdb missing";
 
     #[test]
     fn test_error_context_of_a_failed_command_is_its_stderr_up_to_the_cause() {
@@ -180,7 +180,7 @@ mod tests {
             error_context(ACTIVATION_FAILURE, 10),
             ErrorContext {
                 lines: vec![
-                    "Command: ssh sudo snowglobe-activate /nix/store/yzxw-cerium switch",
+                    "Command: ssh sudo snowglobe-activate /nix/store/yzxw-cactus switch",
                     "updating GRUB 2 menu...",
                     "activating the configuration...",
                     "setting up /etc...",
@@ -197,7 +197,7 @@ mod tests {
             error_context(ACTIVATION_FAILURE, 3),
             ErrorContext {
                 lines: vec![
-                    "Command: ssh sudo snowglobe-activate /nix/store/yzxw-cerium switch",
+                    "Command: ssh sudo snowglobe-activate /nix/store/yzxw-cactus switch",
                     "setting up /etc...",
                     "warning: the following units failed: storage-agent.service",
                 ],
@@ -212,14 +212,14 @@ mod tests {
             Command: Hook 'wait-storage-healthy' (pre-deploy): /nix/store/abc-wait-storage-healthy\n\
             Exit code: 1\n\n\
             Stderr:\n\
-            storage on radon is degraded";
+            storage on raven is degraded";
 
         assert_eq!(
             error_context(error, 10),
             ErrorContext {
                 lines: vec![
                     "Command: Hook 'wait-storage-healthy' (pre-deploy): /nix/store/abc-wait-storage-healthy",
-                    "storage on radon is degraded",
+                    "storage on raven is degraded",
                 ],
                 hidden: 3,
             }
@@ -236,7 +236,7 @@ mod tests {
     #[test]
     fn test_error_context_of_a_nix_error_ends_at_its_last_error_line() {
         let error = "error:\n       … while evaluating 'toplevel'\n\n       \
-                     error: attribute 'wine' missing\n       at /nix/store/abc-source/hosts/cerium.nix:12:5";
+                     error: attribute 'wine' missing\n       at /nix/store/abc-source/hosts/cactus.nix:12:5";
 
         assert_eq!(
             error_context(error, 10),
@@ -255,7 +255,7 @@ mod tests {
         Details:\n\
         nginx.service\n\
         stale-job.service (already failing before this deployment)\n\
-        unifi.service";
+        vault.service";
 
     #[test]
     fn test_error_details_are_the_lines_under_the_header() {
@@ -265,7 +265,7 @@ mod tests {
                 lines: vec![
                     "nginx.service",
                     "stale-job.service (already failing before this deployment)",
-                    "unifi.service",
+                    "vault.service",
                 ],
                 hidden: 0,
             })

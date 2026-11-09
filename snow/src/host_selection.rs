@@ -263,9 +263,9 @@ mod tests {
 
     #[test]
     fn test_selection_parses_hosts_and_comma_separated_tags() {
-        let selection = parse_selection(&["--tags", "web,database", "hydrogen", "oxygen"]).unwrap();
+        let selection = parse_selection(&["--tags", "web,database", "hedgehog", "osprey"]).unwrap();
 
-        assert_eq!(selection.hosts, vec!["hydrogen", "oxygen"]);
+        assert_eq!(selection.hosts, vec!["hedgehog", "osprey"]);
         assert_eq!(selection.tags, vec!["web", "database"]);
         assert_eq!(
             selection.filter_expression().unwrap().unwrap(),
@@ -327,7 +327,7 @@ mod tests {
             r#"config: (config.snowglobe.deploy.phase or null) == "never""#
         );
         assert_eq!(
-            filter_for(&["--phase", "never", "curium"]).unwrap(),
+            filter_for(&["--phase", "never", "condor"]).unwrap(),
             r#"config: (config.snowglobe.deploy.phase or null) == "never""#
         );
         assert_eq!(
@@ -338,9 +338,9 @@ mod tests {
 
     #[test]
     fn test_named_hosts_are_selected_whatever_their_phase() {
-        assert_eq!(filter_for(&["curium"]), None);
+        assert_eq!(filter_for(&["condor"]), None);
         assert_eq!(
-            filter_for(&["--tag", "web", "curium"]).unwrap(),
+            filter_for(&["--tag", "web", "condor"]).unwrap(),
             r#"config: builtins.elem "web" (config.snowglobe.deploy.tags or [])"#
         );
     }
@@ -349,7 +349,7 @@ mod tests {
     fn test_only_an_empty_selection_selects_nothing() {
         assert!(parse_selection(&[]).unwrap().selects_nothing());
         for args in [
-            &["curium"][..],
+            &["condor"][..],
             &["-e", "c: true"][..],
             &["--phase", "p1"][..],
             &["--phases", "p1,p2"][..],
@@ -376,7 +376,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_selection_resolve_without_hosts_returns_all_hosts() {
-        let backend = create_mock_backend_with_hosts(vec!["hydrogen", "oxygen"]);
+        let backend = create_mock_backend_with_hosts(vec!["hedgehog", "osprey"]);
         let flake = fixture_flake();
 
         let result = parse_selection(&[])
@@ -385,18 +385,18 @@ mod tests {
             .await;
 
         let hosts: HashSet<String> = result.unwrap().into_iter().collect();
-        assert_eq!(hosts, HashSet::from(["hydrogen".into(), "oxygen".into()]));
+        assert_eq!(hosts, HashSet::from(["hedgehog".into(), "osprey".into()]));
     }
 
     #[tokio::test]
     async fn test_selection_resolve_validates_explicit_hosts() {
-        let backend = create_mock_backend_with_hosts(vec!["hydrogen", "oxygen"]);
+        let backend = create_mock_backend_with_hosts(vec!["hedgehog", "osprey"]);
         let flake = fixture_flake();
-        let selection = parse_selection(&["hydrogen", "radon"]).unwrap();
+        let selection = parse_selection(&["hedgehog", "raven"]).unwrap();
 
         let result = selection.resolve(&flake, &backend).await;
 
-        assert!(result.unwrap_err().to_string().contains("radon"));
+        assert!(result.unwrap_err().to_string().contains("raven"));
     }
 
     #[tokio::test]
@@ -453,9 +453,9 @@ mod tests {
     #[tokio::test]
     async fn test_resolve_hosts_names_every_unknown_host() {
         let flake = fixture_flake();
-        let backend = create_mock_backend_with_hosts(vec!["argon", "boron"]);
+        let backend = create_mock_backend_with_hosts(vec!["alpha", "bravo"]);
 
-        let explicit = vec!["argon".to_string(), "xenon".to_string(), "neon".to_string()];
+        let explicit = vec!["alpha".to_string(), "xenon".to_string(), "neon".to_string()];
         let result = resolve_hosts(&flake, &backend, None, Some(&explicit)).await;
 
         assert_eq!(
@@ -467,9 +467,9 @@ mod tests {
     #[tokio::test]
     async fn test_resolve_hosts_lists_the_available_hosts_in_order() {
         let flake = fixture_flake();
-        let backend = create_mock_backend_with_hosts(vec!["radon", "argon", "neon", "boron"]);
+        let backend = create_mock_backend_with_hosts(vec!["raven", "alpha", "neon", "bravo"]);
 
-        let explicit = vec!["xenon".to_string(), "argon".to_string()];
+        let explicit = vec!["xenon".to_string(), "alpha".to_string()];
         for filter in [None, Some("c: true")] {
             let err = resolve_hosts(&flake, &backend, filter, Some(&explicit))
                 .await
@@ -478,7 +478,7 @@ mod tests {
             assert_eq!(err.to_string(), "Unknown host: xenon");
             assert_eq!(
                 miette::Diagnostic::help(&err).unwrap().to_string(),
-                "The flake's hosts are argon, boron, neon, radon. Run `snow list` to see them."
+                "The flake's hosts are alpha, bravo, neon, raven. Run `snow list` to see them."
             );
         }
     }

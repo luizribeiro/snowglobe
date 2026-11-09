@@ -132,13 +132,13 @@ mod tests {
         build_report(&evals, &[], &[])
     }
 
-    const RADON_BUILDS_WINE: &str = r#"{"attr":"radon","drvPath":"/nix/store/aaa-nixos-system-radon.drv","system":"x86_64-linux","cacheStatus":"cached","neededBuilds":["/nix/store/bbb-wine-wow-staging-10.12.drv"],"neededSubstitutes":[]}"#;
-    const KRYPTON_FAILS: &str =
-        r#"{"attr":"krypton","error":"error: attribute 'doesNotExist' missing"}"#;
+    const RAVEN_BUILDS_WINE: &str = r#"{"attr":"raven","drvPath":"/nix/store/aaa-nixos-system-raven.drv","system":"x86_64-linux","cacheStatus":"cached","neededBuilds":["/nix/store/bbb-wine-wow-staging-10.12.drv"],"neededSubstitutes":[]}"#;
+    const KESTREL_FAILS: &str =
+        r#"{"attr":"kestrel","error":"error: attribute 'doesNotExist' missing"}"#;
 
     #[test]
     fn test_exit_code_fails_on_build_only_when_asked() {
-        let report = report(RADON_BUILDS_WINE);
+        let report = report(RAVEN_BUILDS_WINE);
 
         assert_eq!(args(false).exit_code(&report), 0);
         assert_eq!(args(true).exit_code(&report), EXIT_WOULD_BUILD);
@@ -146,7 +146,7 @@ mod tests {
 
     #[test]
     fn test_exit_code_for_eval_failure_wins() {
-        let report = report(&format!("{RADON_BUILDS_WINE}\n{KRYPTON_FAILS}"));
+        let report = report(&format!("{RAVEN_BUILDS_WINE}\n{KESTREL_FAILS}"));
 
         assert_eq!(args(true).exit_code(&report), EXIT_EVAL_FAILED);
     }
@@ -154,7 +154,7 @@ mod tests {
     #[test]
     fn test_exit_code_when_nothing_to_build() {
         let report = report(
-            r#"{"attr":"boron","drvPath":"/nix/store/ccc-nixos-system-boron.drv","system":"x86_64-linux","cacheStatus":"cached","neededBuilds":[],"neededSubstitutes":["/nix/store/ddd-glibc"]}"#,
+            r#"{"attr":"bravo","drvPath":"/nix/store/ccc-nixos-system-bravo.drv","system":"x86_64-linux","cacheStatus":"cached","neededBuilds":[],"neededSubstitutes":["/nix/store/ddd-glibc"]}"#,
         );
 
         assert_eq!(args(true).exit_code(&report), 0);

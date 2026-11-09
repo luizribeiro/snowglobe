@@ -224,7 +224,7 @@ impl MockDeployBackend {
                 }
             }
 
-            // Try hostname without domain (e.g., "nitrogen.example.com" -> "nitrogen")
+            // Try hostname without domain (e.g., "nuthatch.example.com" -> "nuthatch")
             let short_hostname = hostname.split('.').next().unwrap_or(hostname);
             if let Some(failure_spec) = fixture.failures.get(short_hostname) {
                 if failure_spec.phase == phase {
@@ -539,16 +539,16 @@ mod tests {
     #[tokio::test]
     async fn test_host_systems_returns_configured_systems() {
         let systems = HostSystems {
-            running: StorePath::new("/nix/store/abc-nixos-system-hydrogen".to_string()),
-            next_boot: StorePath::new("/nix/store/def-nixos-system-hydrogen".to_string()),
+            running: StorePath::new("/nix/store/abc-nixos-system-hedgehog".to_string()),
+            next_boot: StorePath::new("/nix/store/def-nixos-system-hedgehog".to_string()),
         };
         let deployer = MockDeployBackend::new().with_host_systems(HashMap::from([(
-            "hydrogen.example.com".to_string(),
+            "hedgehog.example.com".to_string(),
             systems.clone(),
         )]));
 
         let reported = deployer
-            .host_systems(&target("hydrogen.example.com"))
+            .host_systems(&target("hedgehog.example.com"))
             .await
             .unwrap();
 
@@ -563,14 +563,14 @@ mod tests {
         let built = MockNixBackend::new()
             .build_host(
                 &Flake::test_context(),
-                "oxygen.example.com",
+                "osprey.example.com",
                 SystemType::NixOS,
                 crate::process::OutputMode::Capture,
             )
             .await
             .unwrap();
         let systems = MockDeployBackend::new()
-            .host_systems(&target("oxygen.example.com"))
+            .host_systems(&target("osprey.example.com"))
             .await
             .unwrap();
 

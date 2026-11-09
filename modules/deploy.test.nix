@@ -111,7 +111,7 @@ in
 
   testIgnoredFailedUnitsAcceptUnitNames = {
     expr = accepts "ignoredFailedUnits" [
-      "unifi.service"
+      "vault.service"
       "mnt-data.mount"
       "logrotate.timer"
       "systemd-fsck@dev-disk-by\\x2dlabel-data.service"
@@ -121,7 +121,7 @@ in
 
   testIgnoredFailedUnitsRejectNamesWithoutAType = {
     expr = map (unit: accepts "ignoredFailedUnits" [ unit ])
-      [ "unifi" "unifi.services" ".service" "" "unifi service" "units/unifi.service" ];
+      [ "vault" "vault.services" ".service" "" "vault service" "units/vault.service" ];
     expected = [ false false false false false false ];
   };
 

@@ -74,33 +74,33 @@ mod tests {
     fn test_warnings_are_shown_with_the_warning_mark() {
         let output = shown(|| {
             tracing::warn!(
-                "snowglobe-activate not found on radon, falling back to direct activation"
+                "snowglobe-activate not found on raven, falling back to direct activation"
             );
         });
 
         assert_eq!(
             output,
-            "! snowglobe-activate not found on radon, falling back to direct activation\n"
+            "! snowglobe-activate not found on raven, falling back to direct activation\n"
         );
     }
 
     #[test]
     fn test_later_lines_of_a_warning_sit_under_its_text() {
         let output = shown(|| {
-            tracing::warn!("sops updatekeys failed for secrets/radon.yaml:\nno key could decrypt")
+            tracing::warn!("sops updatekeys failed for secrets/raven.yaml:\nno key could decrypt")
         });
 
         assert_eq!(
             output,
-            "! sops updatekeys failed for secrets/radon.yaml:\n  no key could decrypt\n"
+            "! sops updatekeys failed for secrets/raven.yaml:\n  no key could decrypt\n"
         );
     }
 
     #[test]
     fn test_other_levels_are_left_to_the_log() {
         let output = shown(|| {
-            tracing::info!("radon: build started");
-            tracing::error!("radon: failed at build: error: builder for wine failed");
+            tracing::info!("raven: build started");
+            tracing::error!("raven: failed at build: error: builder for wine failed");
         });
 
         assert_eq!(output, "");

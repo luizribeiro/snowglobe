@@ -3,16 +3,16 @@
   "description": "One host fails to build, one succeeds",
   "hosts": [
     {
-      "hostname": "hydrogen",
+      "hostname": "hedgehog",
       "metadata": {
-        "fqdn": "hydrogen.example.com",
+        "fqdn": "hedgehog.example.com",
         "phase": "production",
         "tags": ["web", "frontend"]
       },
       "build": {
         "success": false,
-        "stdout": "building '/nix/store/...-hydrogen.drv'...\n",
-        "stderr": "error: builder for '/nix/store/xyz-hydrogen.drv' failed with exit code 1\nerror: attribute 'services.nginx.virtualHosts' already defined at /etc/nixos/nginx.nix:12\n",
+        "stdout": "building '/nix/store/...-hedgehog.drv'...\n",
+        "stderr": "error: builder for '/nix/store/xyz-hedgehog.drv' failed with exit code 1\nerror: attribute 'services.nginx.virtualHosts' already defined at /etc/nixos/nginx.nix:12\n",
         "duration_ms": 500
       },
       "copy_closure": {
@@ -29,22 +29,22 @@
       }
     },
     {
-      "hostname": "nitrogen",
+      "hostname": "nuthatch",
       "metadata": {
-        "fqdn": "nitrogen.example.com",
+        "fqdn": "nuthatch.example.com",
         "phase": "production",
         "tags": ["database"]
       },
       "build": {
         "success": true,
-        "stdout": "building '/nix/store/...-nitrogen.drv'...\n",
+        "stdout": "building '/nix/store/...-nuthatch.drv'...\n",
         "stderr": "",
         "duration_ms": 2000,
-        "store_path": "/nix/store/abc123-nitrogen"
+        "store_path": "/nix/store/abc123-nuthatch"
       },
       "copy_closure": {
         "success": true,
-        "stdout": "copying 18 paths to ssh://root@nitrogen.example.com...\n",
+        "stdout": "copying 18 paths to ssh://root@nuthatch.example.com...\n",
         "stderr": "",
         "duration_ms": 1500
       },

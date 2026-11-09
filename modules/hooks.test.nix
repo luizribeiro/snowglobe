@@ -341,7 +341,7 @@ in
         messages = failedAssertionMessages {
           snowglobe.hooks.pre-activate.drain-node = {
             location = "local";
-            command = "kubectl drain hydrogen";
+            command = "kubectl drain hedgehog";
           };
         };
       in
@@ -353,7 +353,7 @@ in
     expr = builtins.any (m: pkgs.lib.hasInfix "snowglobe.hooks.post-deploy" m) (failedAssertionMessages {
       snowglobe.hooks.post-activate.uncordon-node = {
         location = "local";
-        command = "kubectl uncordon hydrogen";
+        command = "kubectl uncordon hedgehog";
       };
     });
     expected = true;
@@ -363,7 +363,7 @@ in
     expr = failedAssertionMessages {
         snowglobe.hooks.pre-deploy.drain-node = {
           location = "local";
-          command = "kubectl drain hydrogen";
+          command = "kubectl drain hedgehog";
         };
       } == [];
     expected = true;

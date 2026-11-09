@@ -89,8 +89,8 @@ pub fn print_summary(results: &snowlib::DeployResults) {
 ///
 /// ```text
 /// ✗ Phase p2 (1/3 failed in 0:52)
-///   ✓ boron (switch)
-///   ✗ cerium at activate: warning: the following units failed: storage-agent.service
+///   ✓ bravo (switch)
+///   ✗ cactus at activate: warning: the following units failed: storage-agent.service
 ///     activating the configuration...
 ///     warning: the following units failed: storage-agent.service
 ///     … 9 more lines in /tmp/snow-1762255380.log
@@ -173,7 +173,7 @@ pub(super) fn success_labels(host: &snowlib::HostDeploymentResult) -> Vec<String
     labels
 }
 
-/// "ignored failing unifi.service"
+/// "ignored failing vault.service"
 fn ignored_failing_label(units: &[String]) -> String {
     format!("ignored failing {}", units.join(", "))
 }
@@ -221,7 +221,7 @@ pub(in crate::commands) fn mode_label(mode: snowlib::ActivationMode) -> &'static
     }
 }
 
-/// "✓ boron (switch, rebooted)"
+/// "✓ bravo (switch, rebooted)"
 pub(in crate::commands) fn success_line(hostname: &str, labels: &[impl AsRef<str>]) -> String {
     let status = if labels.is_empty() {
         String::new()
@@ -235,7 +235,7 @@ pub(in crate::commands) fn success_line(hostname: &str, labels: &[impl AsRef<str
 /// What a phase's report indents its hosts by
 const HOST_INDENT: usize = 2;
 
-/// "✗ cerium at activate: <cause>", the cause cut to fit `width` columns
+/// "✗ cactus at activate: <cause>", the cause cut to fit `width` columns
 fn failure_line(host: &snowlib::HostDeploymentResult, width: usize) -> String {
     let line = failed_host(&host_label(host), host.failed_at_step);
     match host.error_message.as_deref().map(error_summary) {
@@ -248,7 +248,7 @@ fn failure_line(host: &snowlib::HostDeploymentResult, width: usize) -> String {
     }
 }
 
-/// "✗ cerium at activate"
+/// "✗ cactus at activate"
 pub(in crate::commands) fn failed_host(
     hostname: &str,
     step: Option<snowlib::PipelineStep>,
@@ -379,13 +379,13 @@ mod tests {
     fn test_overview_lists_each_phase_with_its_hosts() {
         console::set_colors_enabled(false);
         let overview = phase_overview(&[
-            phase("p2", &["argon", "curium", "ferrum"]),
-            phase("p3-k8s", &["cerium", "lanthanum"]),
+            phase("p2", &["alpha", "condor", "falcon"]),
+            phase("p3-k8s", &["cactus", "limestone"]),
         ]);
 
         assert_eq!(
             overview,
-            "Deploying 5 hosts in 2 phases:\n  p2      argon, curium, ferrum\n  p3-k8s  cerium, lanthanum"
+            "Deploying 5 hosts in 2 phases:\n  p2      alpha, condor, falcon\n  p3-k8s  cactus, limestone"
         );
     }
 
@@ -393,12 +393,12 @@ mod tests {
     fn test_overview_of_a_deploy_without_phases_is_one_line() {
         console::set_colors_enabled(false);
         assert_eq!(
-            phase_overview(&[phase("default", &["boron", "radon"])]),
-            "Deploying 2 hosts: boron, radon"
+            phase_overview(&[phase("default", &["bravo", "raven"])]),
+            "Deploying 2 hosts: bravo, raven"
         );
         assert_eq!(
-            phase_overview(&[phase("_all", &["sodium"])]),
-            "Deploying 1 host: sodium"
+            phase_overview(&[phase("_all", &["spruce"])]),
+            "Deploying 1 host: spruce"
         );
     }
 
@@ -406,8 +406,8 @@ mod tests {
     fn test_overview_names_a_single_real_phase() {
         console::set_colors_enabled(false);
         assert_eq!(
-            phase_overview(&[phase("p2", &["ferrum"])]),
-            "Deploying 1 host in 1 phase:\n  p2  ferrum"
+            phase_overview(&[phase("p2", &["falcon"])]),
+            "Deploying 1 host in 1 phase:\n  p2  falcon"
         );
     }
 
@@ -416,10 +416,10 @@ mod tests {
         console::set_colors_enabled(false);
         assert_eq!(
             phase_overview(&[
-                phase("p2", &["ferrum"]),
-                phase("default", &["boron", "radon"])
+                phase("p2", &["falcon"]),
+                phase("default", &["bravo", "raven"])
             ]),
-            "Deploying 3 hosts in 2 phases:\n  p2          ferrum\n  (no phase)  boron, radon"
+            "Deploying 3 hosts in 2 phases:\n  p2          falcon\n  (no phase)  bravo, raven"
         );
     }
 
@@ -439,7 +439,7 @@ mod tests {
             phase: "default".to_string(),
             duration: Duration::from_secs(41),
             hosts: vec![make_successful_host(
-                "sodium",
+                "spruce",
                 ActivationMode::Switch,
                 false,
             )],
@@ -447,7 +447,7 @@ mod tests {
 
         assert_eq!(
             super::phase_report(&phase, true, 100, None),
-            "✓ Hosts without a phase (1 host in 0:41)\n  ✓ sodium (switch)"
+            "✓ Hosts without a phase (1 host in 0:41)\n  ✓ spruce (switch)"
         );
     }
 
@@ -456,12 +456,12 @@ mod tests {
         console::set_colors_enabled(false);
         let skipped = SkippedPhase {
             phase: "default".to_string(),
-            hostnames: vec!["sodium".to_string()],
+            hostnames: vec!["spruce".to_string()],
         };
 
         assert_eq!(
             super::skipped_phase_report(&skipped),
-            "⊘ Hosts without a phase (1 host skipped)\n  ⊘ sodium"
+            "⊘ Hosts without a phase (1 host skipped)\n  ⊘ spruce"
         );
     }
 
@@ -504,8 +504,8 @@ mod tests {
                 phase: "default".to_string(),
                 duration: Duration::ZERO,
                 hosts: vec![
-                    make_successful_host("hydrogen", ActivationMode::Switch, false),
-                    make_successful_host("oxygen", ActivationMode::Switch, true),
+                    make_successful_host("hedgehog", ActivationMode::Switch, false),
+                    make_successful_host("osprey", ActivationMode::Switch, true),
                 ],
             }],
             skipped_phases: vec![],
@@ -523,8 +523,8 @@ mod tests {
                 phase: "production".to_string(),
                 duration: Duration::ZERO,
                 hosts: vec![
-                    make_successful_host("hydrogen", ActivationMode::Switch, false),
-                    make_failed_host("nitrogen", PipelineStep::Activate, "activation failed"),
+                    make_successful_host("hedgehog", ActivationMode::Switch, false),
+                    make_failed_host("nuthatch", PipelineStep::Activate, "activation failed"),
                 ],
             }],
             skipped_phases: vec![],
@@ -604,16 +604,16 @@ mod tests {
             phase: "p2".to_string(),
             duration: Duration::from_secs(52),
             hosts: vec![
-                make_successful_host("boron", ActivationMode::Switch, false),
-                make_failed_host("cerium", PipelineStep::Activate, "activation failed"),
-                make_failed_host("radon", PipelineStep::PreDeploy, "storage degraded"),
-                HostDeploymentResult::skipped_by_serial_group("lanthanum", "k8s", "cerium"),
+                make_successful_host("bravo", ActivationMode::Switch, false),
+                make_failed_host("cactus", PipelineStep::Activate, "activation failed"),
+                make_failed_host("raven", PipelineStep::PreDeploy, "storage degraded"),
+                HostDeploymentResult::skipped_by_serial_group("limestone", "k8s", "cactus"),
             ],
         };
 
         assert_eq!(
             super::phase_report(&phase, false, 100, None),
-            "✗ Phase p2 (3/4 failed in 0:52)\n  ✓ boron (switch)\n  ✗ cerium at activate: activation failed\n  ✗ radon at pre-deploy: storage degraded\n  ⊘ lanthanum skipped, serial group 'k8s' halted after cerium failed"
+            "✗ Phase p2 (3/4 failed in 0:52)\n  ✓ bravo (switch)\n  ✗ cactus at activate: activation failed\n  ✗ raven at pre-deploy: storage degraded\n  ⊘ limestone skipped, serial group 'k8s' halted after cactus failed"
         );
     }
 
@@ -621,20 +621,20 @@ mod tests {
     fn test_failure_line_cuts_the_cause_to_the_terminal() {
         console::set_colors_enabled(false);
         let error = "Command failed\n\n\
-                     Command: ssh cerium sudo snowglobe-activate /nix/store/yzxw-cerium switch\n\
+                     Command: ssh cactus sudo snowglobe-activate /nix/store/yzxw-cactus switch\n\
                      Exit code: 4\n\n\
                      Stderr:\n\
                      activating the configuration...\n\
                      warning: the following units failed: storage-agent.service";
-        let cerium = make_failed_host("cerium", PipelineStep::Activate, error);
+        let cactus = make_failed_host("cactus", PipelineStep::Activate, error);
 
         assert_eq!(
-            super::failure_line(&cerium, 100),
-            "✗ cerium at activate: warning: the following units failed: storage-agent.service"
+            super::failure_line(&cactus, 100),
+            "✗ cactus at activate: warning: the following units failed: storage-agent.service"
         );
         assert_eq!(
-            super::failure_line(&cerium, 48),
-            "✗ cerium at activate: warning: the following u…"
+            super::failure_line(&cactus, 48),
+            "✗ cactus at activate: warning: the following u…"
         );
     }
 
@@ -642,35 +642,35 @@ mod tests {
     fn test_phase_report_shows_what_led_to_a_failure_under_its_host() {
         console::set_colors_enabled(false);
         let error = "Command failed\n\n\
-                     Command: ssh sudo snowglobe-activate /nix/store/yzxw-cerium switch\n\
+                     Command: ssh sudo snowglobe-activate /nix/store/yzxw-cactus switch\n\
                      Exit code: 4\n\n\
                      Stderr:\n\
                      activating the configuration...\n\
                      warning: the following units failed: storage-agent.service\n\n\
                      Stdout:\n\
-                     Nov 04 10:12:04 cerium storage-agent[812]: disk sdb missing";
+                     Nov 04 10:12:04 cactus storage-agent[812]: disk sdb missing";
         let phase = PhaseResult {
             phase: "p2".to_string(),
             duration: Duration::from_secs(52),
             hosts: vec![
-                make_successful_host("boron", ActivationMode::Switch, false),
-                make_failed_host("cerium", PipelineStep::Activate, error),
-                make_failed_host("radon", PipelineStep::PreDeploy, "storage degraded"),
-                HostDeploymentResult::skipped_by_serial_group("lanthanum", "k8s", "cerium"),
+                make_successful_host("bravo", ActivationMode::Switch, false),
+                make_failed_host("cactus", PipelineStep::Activate, error),
+                make_failed_host("raven", PipelineStep::PreDeploy, "storage degraded"),
+                HostDeploymentResult::skipped_by_serial_group("limestone", "k8s", "cactus"),
             ],
         };
 
         assert_eq!(
             super::phase_report(&phase, false, 100, Some(Path::new("/tmp/snow-1762255380.log"))),
             "✗ Phase p2 (3/4 failed in 0:52)\n\
-             \x20 ✓ boron (switch)\n\
-             \x20 ✗ cerium at activate: warning: the following units failed: storage-agent.service\n\
-             \x20   Command: ssh sudo snowglobe-activate /nix/store/yzxw-cerium switch\n\
+             \x20 ✓ bravo (switch)\n\
+             \x20 ✗ cactus at activate: warning: the following units failed: storage-agent.service\n\
+             \x20   Command: ssh sudo snowglobe-activate /nix/store/yzxw-cactus switch\n\
              \x20   activating the configuration...\n\
              \x20   warning: the following units failed: storage-agent.service\n\
              \x20   … 5 more lines in /tmp/snow-1762255380.log\n\
-             \x20 ✗ radon at pre-deploy: storage degraded\n\
-             \x20 ⊘ lanthanum skipped, serial group 'k8s' halted after cerium failed"
+             \x20 ✗ raven at pre-deploy: storage degraded\n\
+             \x20 ⊘ limestone skipped, serial group 'k8s' halted after cactus failed"
         );
     }
 
@@ -680,19 +680,19 @@ mod tests {
         let error = "activated, but 2 units are failing\n\
                      Details:\n\
                      nginx.service\n\
-                     unifi.service (already failing before this deployment)";
+                     vault.service (already failing before this deployment)";
         let phase = PhaseResult {
             phase: "p1".to_string(),
             duration: Duration::from_secs(41),
-            hosts: vec![make_failed_host("cerium", PipelineStep::Activate, error)],
+            hosts: vec![make_failed_host("cactus", PipelineStep::Activate, error)],
         };
 
         assert_eq!(
             super::phase_report(&phase, false, 100, None),
             "✗ Phase p1 (1/1 failed in 0:41)\n\
-             \x20 ✗ cerium at activate: activated, but 2 units are failing\n\
+             \x20 ✗ cactus at activate: activated, but 2 units are failing\n\
              \x20   nginx.service\n\
-             \x20   unifi.service (already failing before this deployment)"
+             \x20   vault.service (already failing before this deployment)"
         );
     }
 
@@ -705,7 +705,7 @@ mod tests {
         };
         let failing = |units| {
             snowlib::error::DeployError::UnitsFailing {
-                host: "boron".to_string(),
+                host: "bravo".to_string(),
                 units,
             }
             .to_string()
@@ -715,16 +715,16 @@ mod tests {
             duration: Duration::from_secs(41),
             hosts: vec![
                 make_failed_host(
-                    "boron",
+                    "bravo",
                     PipelineStep::Activate,
                     &failing(vec![unit("stale-job.service", true)]),
                 ),
                 make_failed_host(
-                    "cerium",
+                    "cactus",
                     PipelineStep::Activate,
                     &failing(vec![
                         unit("nginx.service", false),
-                        unit("unifi.service", true),
+                        unit("vault.service", true),
                     ]),
                 ),
             ],
@@ -733,26 +733,26 @@ mod tests {
         assert_eq!(
             super::phase_report(&phase, false, 120, None),
             "✗ Phase p1 (2/2 failed in 0:41)\n\
-             \x20 ✗ boron at activate: activated, but stale-job.service is failing (it was already failing before this deployment)\n\
-             \x20 ✗ cerium at activate: activated, but 2 units are failing\n\
+             \x20 ✗ bravo at activate: activated, but stale-job.service is failing (it was already failing before this deployment)\n\
+             \x20 ✗ cactus at activate: activated, but 2 units are failing\n\
              \x20   nginx.service\n\
-             \x20   unifi.service (already failing before this deployment)"
+             \x20   vault.service (already failing before this deployment)"
         );
     }
 
     #[test]
     fn test_failure_without_a_reason_shows_only_where_it_failed() {
         console::set_colors_enabled(false);
-        let mut cerium = make_failed_host("cerium", PipelineStep::Copy, "");
-        let radon = HostDeploymentResult {
+        let mut cactus = make_failed_host("cactus", PipelineStep::Copy, "");
+        let raven = HostDeploymentResult {
             error_message: None,
-            ..make_failed_host("radon", PipelineStep::Build, "")
+            ..make_failed_host("raven", PipelineStep::Build, "")
         };
 
-        assert_eq!(super::failure_line(&cerium, 100), "✗ cerium at copy");
-        assert_eq!(super::failure_line(&radon, 100), "✗ radon at build");
-        cerium.failed_at_step = None;
-        assert_eq!(super::failure_line(&cerium, 100), "✗ cerium");
+        assert_eq!(super::failure_line(&cactus, 100), "✗ cactus at copy");
+        assert_eq!(super::failure_line(&raven, 100), "✗ raven at build");
+        cactus.failed_at_step = None;
+        assert_eq!(super::failure_line(&cactus, 100), "✗ cactus");
     }
 
     #[test]
@@ -763,7 +763,7 @@ mod tests {
                 phase: name.to_string(),
                 duration: Duration::from_secs(3727),
                 hosts: vec![make_successful_host(
-                    "sodium",
+                    "spruce",
                     ActivationMode::Switch,
                     false,
                 )],
@@ -771,7 +771,7 @@ mod tests {
 
             assert_eq!(
                 super::phase_report(&phase, false, 100, None),
-                "✓ Deploy (1 host in 1:02:07)\n  ✓ sodium (switch)"
+                "✓ Deploy (1 host in 1:02:07)\n  ✓ spruce (switch)"
             );
         }
     }
@@ -779,7 +779,7 @@ mod tests {
     #[test]
     fn test_failure_details_lead_up_to_the_cause_then_point_at_the_log() {
         let error = "Command failed\n\n\
-                     Command: ssh sudo snowglobe-activate /nix/store/yzxw-cerium switch\n\
+                     Command: ssh sudo snowglobe-activate /nix/store/yzxw-cactus switch\n\
                      Exit code: 4\n\n\
                      Stderr:\n\
                      activating the configuration...\n\
@@ -794,7 +794,7 @@ mod tests {
                 .map(|line| console::strip_ansi_codes(line))
                 .collect::<Vec<_>>(),
             vec![
-                "Command: ssh sudo snowglobe-activate /nix/store/yzxw-cerium switch",
+                "Command: ssh sudo snowglobe-activate /nix/store/yzxw-cactus switch",
                 "activating the configuration...",
                 "warning: the following units failed: storage-agent.service",
                 "… 3 more lines in /tmp/snow-1762255380.log",
@@ -840,11 +840,11 @@ mod tests {
     fn test_overall_summary_pluralizes_deployed_hosts() {
         console::set_colors_enabled(false);
         let one = DeployResults {
-            phases: vec![deployed_phase(&["sodium"])],
+            phases: vec![deployed_phase(&["spruce"])],
             skipped_phases: vec![],
         };
         let three = DeployResults {
-            phases: vec![deployed_phase(&["boron", "cerium", "radon"])],
+            phases: vec![deployed_phase(&["bravo", "cactus", "raven"])],
             skipped_phases: vec![],
         };
 
@@ -858,7 +858,7 @@ mod tests {
             ..make_failed_host(
                 name,
                 PipelineStep::Check,
-                "ssh: connect to host curium port 22: Connection timed out",
+                "ssh: connect to host condor port 22: Connection timed out",
             )
         }
     }
@@ -870,16 +870,16 @@ mod tests {
             phase: "p1".to_string(),
             duration: Duration::from_secs(41),
             hosts: vec![
-                make_successful_host("boron", ActivationMode::Switch, false),
-                failed_optional_host("curium"),
+                make_successful_host("bravo", ActivationMode::Switch, false),
+                failed_optional_host("condor"),
             ],
         };
 
         assert_eq!(
             super::phase_report(&phase, true, 100, None),
             "! Phase p1 (1/2 failed in 0:41)\n\
-             \x20 ✓ boron (switch)\n\
-             \x20 ✗ curium (optional) at check: ssh: connect to host curium port 22: Connection timed out"
+             \x20 ✓ bravo (switch)\n\
+             \x20 ✗ condor (optional) at check: ssh: connect to host condor port 22: Connection timed out"
         );
     }
 
@@ -890,8 +890,8 @@ mod tests {
             phase: "p1".to_string(),
             duration: Duration::from_secs(41),
             hosts: vec![
-                failed_optional_host("curium"),
-                make_failed_host("radon", PipelineStep::Build, "build failed"),
+                failed_optional_host("condor"),
+                make_failed_host("raven", PipelineStep::Build, "build failed"),
             ],
         };
 
@@ -908,18 +908,18 @@ mod tests {
             }],
             skipped_phases: vec![],
         };
-        let boron = || make_successful_host("boron", ActivationMode::Switch, false);
-        let radon = make_failed_host("radon", PipelineStep::Activate, "activation failed");
+        let bravo = || make_successful_host("bravo", ActivationMode::Switch, false);
+        let raven = make_failed_host("raven", PipelineStep::Activate, "activation failed");
 
         assert_eq!(
-            super::overall_summary(&deployed(vec![boron(), failed_optional_host("curium")])),
+            super::overall_summary(&deployed(vec![bravo(), failed_optional_host("condor")])),
             "! 1/2 deployed, 1 failed (optional)"
         );
         assert_eq!(
             super::overall_summary(&deployed(vec![
-                boron(),
-                failed_optional_host("curium"),
-                radon
+                bravo(),
+                failed_optional_host("condor"),
+                raven
             ])),
             "✗ 1/3 deployed, 2 failed (1 optional)"
         );
@@ -928,29 +928,29 @@ mod tests {
     #[test]
     fn test_skipped_optional_host_is_marked_optional() {
         console::set_colors_enabled(false);
-        let curium = HostDeploymentResult {
+        let condor = HostDeploymentResult {
             optional: true,
-            ..HostDeploymentResult::skipped_by_serial_group("curium", "k8s", "radon")
+            ..HostDeploymentResult::skipped_by_serial_group("condor", "k8s", "raven")
         };
 
         assert_eq!(
-            super::host_lines(&curium, 100, None),
-            vec!["  ⊘ curium (optional) skipped, serial group 'k8s' halted after radon failed"]
+            super::host_lines(&condor, 100, None),
+            vec!["  ⊘ condor (optional) skipped, serial group 'k8s' halted after raven failed"]
         );
     }
 
     #[test]
     fn test_overall_summary_shows_failures_next_to_skipped_hosts() {
         console::set_colors_enabled(false);
-        let mut p2 = deployed_phase(&["boron", "radon"]);
+        let mut p2 = deployed_phase(&["bravo", "raven"]);
         p2.hosts.push(make_failed_host(
-            "cerium",
+            "cactus",
             PipelineStep::Activate,
             "activation failed",
         ));
         let skipped_phases = vec![SkippedPhase {
             phase: "p3".to_string(),
-            hostnames: vec!["lanthanum".to_string(), "sodium".to_string()],
+            hostnames: vec!["limestone".to_string(), "spruce".to_string()],
         }];
         let failed_and_skipped = DeployResults {
             phases: vec![p2.clone()],
@@ -961,7 +961,7 @@ mod tests {
             skipped_phases: vec![],
         };
         let skipped_only = DeployResults {
-            phases: vec![deployed_phase(&["boron"])],
+            phases: vec![deployed_phase(&["bravo"])],
             skipped_phases,
         };
 
@@ -984,33 +984,33 @@ mod tests {
         console::set_colors_enabled(false);
         let one = SkippedPhase {
             phase: "p3".to_string(),
-            hostnames: vec!["lanthanum".to_string()],
+            hostnames: vec!["limestone".to_string()],
         };
         let two = SkippedPhase {
             phase: "p3-k8s".to_string(),
-            hostnames: vec!["cerium".to_string(), "lanthanum".to_string()],
+            hostnames: vec!["cactus".to_string(), "limestone".to_string()],
         };
 
         assert_eq!(
             super::skipped_phase_report(&one),
-            "⊘ Phase p3 (1 host skipped)\n  ⊘ lanthanum"
+            "⊘ Phase p3 (1 host skipped)\n  ⊘ limestone"
         );
         assert_eq!(
             super::skipped_phase_report(&two),
-            "⊘ Phase p3-k8s (2 hosts skipped)\n  ⊘ cerium\n  ⊘ lanthanum"
+            "⊘ Phase p3-k8s (2 hosts skipped)\n  ⊘ cactus\n  ⊘ limestone"
         );
     }
 
     #[test]
     fn test_phase_report_notes_the_failing_units_a_host_ignored() {
-        let cerium = HostDeploymentResult {
-            ignored_failing: vec!["unifi.service".to_string()],
-            ..make_successful_host("cerium", ActivationMode::Switch, false)
+        let cactus = HostDeploymentResult {
+            ignored_failing: vec!["vault.service".to_string()],
+            ..make_successful_host("cactus", ActivationMode::Switch, false)
         };
 
         assert_eq!(
-            super::host_lines(&cerium, 80, None),
-            vec!["  ✓ cerium (switch, ignored failing unifi.service)"]
+            super::host_lines(&cactus, 80, None),
+            vec!["  ✓ cactus (switch, ignored failing vault.service)"]
         );
     }
 

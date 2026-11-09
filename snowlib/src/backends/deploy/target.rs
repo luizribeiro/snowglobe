@@ -95,71 +95,71 @@ mod tests {
     fn test_ssh_url_with_port() {
         let target = DeployTarget {
             user: Some("deploy".to_string()),
-            hostname: "hydrogen.example.com".to_string(),
+            hostname: "hedgehog.example.com".to_string(),
             port: Some(2222),
         };
-        assert_eq!(target.ssh_url(), "ssh://deploy@hydrogen.example.com:2222");
+        assert_eq!(target.ssh_url(), "ssh://deploy@hedgehog.example.com:2222");
     }
 
     #[test]
     fn test_ssh_destination_with_user() {
         let target = DeployTarget {
             user: Some("deploy".to_string()),
-            hostname: "hydrogen.example.com".to_string(),
+            hostname: "hedgehog.example.com".to_string(),
             port: None,
         };
-        assert_eq!(target.ssh_destination(), "deploy@hydrogen.example.com");
+        assert_eq!(target.ssh_destination(), "deploy@hedgehog.example.com");
     }
 
     #[test]
     fn test_ssh_destination_without_user() {
         let target = DeployTarget {
             user: None,
-            hostname: "hydrogen.example.com".to_string(),
+            hostname: "hedgehog.example.com".to_string(),
             port: None,
         };
-        assert_eq!(target.ssh_destination(), "hydrogen.example.com");
+        assert_eq!(target.ssh_destination(), "hedgehog.example.com");
     }
 
     #[test]
     fn test_ssh_destination_as_a_user_overrides_the_targets_own() {
-        let target = DeployTarget::with_user("root", "hydrogen.example.com");
+        let target = DeployTarget::with_user("root", "hedgehog.example.com");
         assert_eq!(
             target.ssh_destination_as(Some("deploy")),
-            "deploy@hydrogen.example.com"
+            "deploy@hedgehog.example.com"
         );
     }
 
     #[test]
     fn test_ssh_destination_as_no_user_keeps_the_targets_own() {
-        let target = DeployTarget::with_user("root", "hydrogen.example.com");
-        assert_eq!(target.ssh_destination_as(None), "root@hydrogen.example.com");
+        let target = DeployTarget::with_user("root", "hedgehog.example.com");
+        assert_eq!(target.ssh_destination_as(None), "root@hedgehog.example.com");
     }
 
     #[test]
     fn test_ssh_destination_as_no_user_leaves_it_to_ssh() {
-        let target = DeployTarget::new("hydrogen.example.com");
-        assert_eq!(target.ssh_destination_as(None), "hydrogen.example.com");
+        let target = DeployTarget::new("hedgehog.example.com");
+        assert_eq!(target.ssh_destination_as(None), "hedgehog.example.com");
     }
 
     #[test]
     fn test_ssh_url_without_user() {
         let target = DeployTarget {
             user: None,
-            hostname: "hydrogen.example.com".to_string(),
+            hostname: "hedgehog.example.com".to_string(),
             port: None,
         };
-        assert_eq!(target.ssh_url(), "ssh://hydrogen.example.com");
+        assert_eq!(target.ssh_url(), "ssh://hedgehog.example.com");
     }
 
     #[test]
     fn test_ssh_url_without_user_with_port() {
         let target = DeployTarget {
             user: None,
-            hostname: "hydrogen.example.com".to_string(),
+            hostname: "hedgehog.example.com".to_string(),
             port: Some(2222),
         };
-        assert_eq!(target.ssh_url(), "ssh://hydrogen.example.com:2222");
+        assert_eq!(target.ssh_url(), "ssh://hedgehog.example.com:2222");
     }
 
     #[test]

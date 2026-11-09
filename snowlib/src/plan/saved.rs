@@ -100,7 +100,7 @@ mod tests {
         }];
         SavedPlan {
             saved_at: 1_793_262_060,
-            flake: PathBuf::from("/home/luiz/ops"),
+            flake: PathBuf::from("/home/alice/ops"),
             revision: Some("f6b7cddd0ffa200cc14834f3aa516908095dcb94".to_string()),
             report: build_report(&evals, &derivations, &substituters),
         }
@@ -207,7 +207,7 @@ mod tests {
     #[test]
     fn test_last_plan_path_prefers_xdg_state_home() {
         assert_eq!(
-            last_plan_path(Some("/var/lib/ci/state"), Some("/home/luiz")),
+            last_plan_path(Some("/var/lib/ci/state"), Some("/home/alice")),
             Some(PathBuf::from("/var/lib/ci/state/snowglobe/last-plan.json"))
         );
     }
@@ -215,9 +215,9 @@ mod tests {
     #[test]
     fn test_last_plan_path_falls_back_to_home_when_xdg_is_empty() {
         assert_eq!(
-            last_plan_path(Some(""), Some("/home/luiz")),
+            last_plan_path(Some(""), Some("/home/alice")),
             Some(PathBuf::from(
-                "/home/luiz/.local/state/snowglobe/last-plan.json"
+                "/home/alice/.local/state/snowglobe/last-plan.json"
             ))
         );
     }

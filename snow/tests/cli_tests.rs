@@ -333,7 +333,7 @@ fn test_mock_deploy_keeps_stdout_for_the_report() {
         .failure()
         .stderr(predicate::str::contains("Using the mock deployer from"))
         .stderr(predicate::str::contains(
-            "building '/nix/store/...-nitrogen.drv'",
+            "building '/nix/store/...-nuthatch.drv'",
         ))
         .stderr(predicate::str::contains("copying "))
         .stdout(predicate::str::contains("Deploying 4 hosts"))
@@ -353,11 +353,11 @@ fn test_deploy_without_a_terminal_logs_each_step_to_stderr() {
         .arg(fixtures_dir().join("deploy_scenarios/build_failure.json"))
         .assert()
         .failure()
-        .stderr(predicate::str::contains("nitrogen: build started"))
-        .stderr(predicate::str::contains("nitrogen: build finished in "))
-        .stderr(predicate::str::contains("hydrogen: failed at build: "))
+        .stderr(predicate::str::contains("nuthatch: build started"))
+        .stderr(predicate::str::contains("nuthatch: build finished in "))
+        .stderr(predicate::str::contains("hedgehog: failed at build: "))
         .stdout(predicate::str::contains(
-            "in 1 phase:\n  production  hydrogen",
+            "in 1 phase:\n  production  hedgehog",
         ));
 }
 

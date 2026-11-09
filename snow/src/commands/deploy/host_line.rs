@@ -104,7 +104,7 @@ mod tests {
 
     #[test]
     fn test_row_shows_from_the_first_step_until_hidden() {
-        let line = HostLine::new("boron");
+        let line = HostLine::new("bravo");
         assert!(!line.is_drawn());
 
         line.start(PipelineStep::Build);
@@ -116,7 +116,7 @@ mod tests {
 
     #[test]
     fn test_paused_row_comes_back_only_if_it_was_shown() {
-        let line = HostLine::new("boron");
+        let line = HostLine::new("bravo");
         line.paused(|| ());
         assert!(!line.is_drawn());
 
@@ -129,7 +129,7 @@ mod tests {
 
     #[test]
     fn test_row_stays_away_until_the_outer_pause_ends() {
-        let line = HostLine::new("boron");
+        let line = HostLine::new("bravo");
         line.start(PipelineStep::Check);
 
         line.pause();
@@ -142,7 +142,7 @@ mod tests {
 
     #[test]
     fn test_step_started_while_paused_shows_once_resumed() {
-        let line = HostLine::new("boron");
+        let line = HostLine::new("bravo");
         line.pause();
 
         line.start(PipelineStep::Build);

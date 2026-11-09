@@ -191,10 +191,10 @@ mod tests {
     use super::*;
     use crate::sudo::test_utils::FakeSudo;
 
-    fn boron() -> DeployTarget {
+    fn bravo() -> DeployTarget {
         DeployTarget {
             user: None,
-            hostname: "boron".to_string(),
+            hostname: "bravo".to_string(),
             port: None,
         }
     }
@@ -205,7 +205,7 @@ mod tests {
         let sudo = FakeSudo::new().with("pretends");
         let backend = LocalRebootBackend::new(sudo.session());
 
-        backend.reboot_and_wait(&boron()).await.unwrap();
+        backend.reboot_and_wait(&bravo()).await.unwrap();
 
         assert_eq!(sudo.calls().last().unwrap(), "-n systemctl reboot");
     }
@@ -214,17 +214,17 @@ mod tests {
     async fn test_failed_dry_activate_fails_the_check() {
         let sudo = FakeSudo::new().with("fails");
         let backend = LocalRebootBackend::new(sudo.session());
-        let new_system = StorePath::new("/nix/store/36vm-nixos-system-boron".to_string());
+        let new_system = StorePath::new("/nix/store/36vm-nixos-system-bravo".to_string());
 
         let error = backend
-            .check_critical_services(&boron(), &new_system)
+            .check_critical_services(&bravo(), &new_system)
             .await
             .unwrap_err();
 
-        assert!(error.to_string().contains("Command failed on host 'boron'"));
+        assert!(error.to_string().contains("Command failed on host 'bravo'"));
         assert_eq!(
             sudo.calls().last().unwrap(),
-            "-n /nix/store/36vm-nixos-system-boron/bin/switch-to-configuration dry-activate"
+            "-n /nix/store/36vm-nixos-system-bravo/bin/switch-to-configuration dry-activate"
         );
     }
 
@@ -233,9 +233,9 @@ mod tests {
         let sudo = FakeSudo::new().with("fails");
         let backend = LocalRebootBackend::new(sudo.session());
 
-        let error = backend.reboot_and_wait(&boron()).await.unwrap_err();
+        let error = backend.reboot_and_wait(&bravo()).await.unwrap_err();
 
-        assert!(error.to_string().contains("Command failed on host 'boron'"));
+        assert!(error.to_string().contains("Command failed on host 'bravo'"));
     }
 
     #[test]

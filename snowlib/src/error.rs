@@ -182,7 +182,7 @@ pub enum DeployError {
     )]
     HostsFailed {
         total: usize,
-        /// Each failed host with the step it failed at, e.g. "lanthanum (plan)"
+        /// Each failed host with the step it failed at, e.g. "limestone (plan)"
         failed: Vec<String>,
     },
 
@@ -665,7 +665,7 @@ mod tests {
     #[test]
     fn test_is_timeout_finds_a_timeout_behind_ssh_failure() {
         let error = SnowError::from(DeployError::SshFailed {
-            destination: "pusher@curium.example.com".to_string(),
+            destination: "pusher@condor.example.com".to_string(),
             source: std::io::Error::new(
                 std::io::ErrorKind::TimedOut,
                 "The ssh command did not finish within 60s",
@@ -678,7 +678,7 @@ mod tests {
     #[test]
     fn test_is_timeout_ignores_other_failures() {
         let error = SnowError::from(DeployError::SshFailed {
-            destination: "pusher@curium.example.com".to_string(),
+            destination: "pusher@condor.example.com".to_string(),
             source: std::io::Error::other("Connection refused"),
         });
 
@@ -688,7 +688,7 @@ mod tests {
     #[test]
     fn test_error_chain_includes_the_reason_behind_a_deploy_failure() {
         let error = SnowError::from(DeployError::Failed {
-            host: "lanthanum".to_string(),
+            host: "limestone".to_string(),
             source: std::io::Error::other(
                 "Reboot required (kernel changed) but host policy is 'never'",
             ),
@@ -696,14 +696,14 @@ mod tests {
 
         assert_eq!(
             error_chain(&error),
-            "Failed to deploy to host 'lanthanum': Reboot required (kernel changed) but host policy is 'never'"
+            "Failed to deploy to host 'limestone': Reboot required (kernel changed) but host policy is 'never'"
         );
     }
 
     #[test]
     fn test_error_chain_follows_nested_sources() {
         let error = SnowError::from(NixError::MetadataFailed {
-            host: "ferrum".to_string(),
+            host: "falcon".to_string(),
             source: Box::new(NixError::CommandFailed {
                 source: std::io::Error::other("nix: command not found"),
             }),
@@ -711,40 +711,40 @@ mod tests {
 
         assert_eq!(
             error_chain(&error),
-            "Failed to get metadata for host 'ferrum': Nix command execution failed: nix: command not found"
+            "Failed to get metadata for host 'falcon': Nix command execution failed: nix: command not found"
         );
     }
 
     #[test]
     fn test_error_chain_skips_sources_already_in_the_message() {
         let error = DeployError::SshFailed {
-            destination: "pusher@curium.example.com".to_string(),
+            destination: "pusher@condor.example.com".to_string(),
             source: std::io::Error::other("SSH connection failed"),
         };
 
         assert_eq!(
             error_chain(&error),
-            "SSH connection failed to pusher@curium.example.com"
+            "SSH connection failed to pusher@condor.example.com"
         );
     }
 
     #[test]
     fn test_error_chain_of_a_failed_build_ends_with_its_stderr() {
         let error = NixError::BuildFailed {
-            host: "radon".to_string(),
+            host: "raven".to_string(),
             stderr: "error: builder for wine failed".to_string(),
         };
 
         assert_eq!(
             error_chain(&error),
-            "Failed to build host configuration for 'radon':\nerror: builder for wine failed"
+            "Failed to build host configuration for 'raven':\nerror: builder for wine failed"
         );
     }
 
     #[test]
     fn test_error_causes_skip_a_source_an_earlier_one_quotes() {
         let error = NixError::MetadataFailed {
-            host: "ferrum".to_string(),
+            host: "falcon".to_string(),
             source: Box::new(NixError::CommandFailed {
                 source: std::io::Error::other("execution failed"),
             }),
@@ -756,7 +756,7 @@ mod tests {
     #[test]
     fn test_error_chain_of_error_without_source() {
         let error = DeployError::HookPathMissing {
-            host: "samarium".to_string(),
+            host: "seahorse".to_string(),
             hook: "wait-storage-healthy".to_string(),
             path: "/nix/store/715sqm-kubernetes-storage-healthy".to_string(),
         };
@@ -933,9 +933,9 @@ mod tests {
     #[test]
     fn test_no_image_attr_error() {
         let error = ProvisionerError::NoImageAttr {
-            host: "hydrogen".to_string(),
+            host: "hedgehog".to_string(),
         };
-        assert!(error.to_string().contains("hydrogen"));
+        assert!(error.to_string().contains("hedgehog"));
         assert!(error.to_string().contains("No image attribute"));
     }
 

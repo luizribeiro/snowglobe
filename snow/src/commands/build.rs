@@ -186,16 +186,16 @@ mod tests {
     #[test]
     fn test_report_shows_each_failure_by_its_cause() {
         let results = vec![
-            build_result("boron", true),
-            build_result("radon", false),
-            build_result("sodium", true),
+            build_result("bravo", true),
+            build_result("raven", false),
+            build_result("spruce", true),
         ];
 
         assert_eq!(
             plain_report(&results),
-            "  ✓ boron /nix/store/3xv9d1x5qzl1-nixos-system-boron-26.05\n\
-             \x20 ✗ radon: builder for wine-wow-staging-10.12 failed\n\
-             \x20 ✓ sodium /nix/store/3xv9d1x5qzl1-nixos-system-sodium-26.05\n\
+            "  ✓ bravo /nix/store/3xv9d1x5qzl1-nixos-system-bravo-26.05\n\
+             \x20 ✗ raven: builder for wine-wow-staging-10.12 failed\n\
+             \x20 ✓ spruce /nix/store/3xv9d1x5qzl1-nixos-system-spruce-26.05\n\
              \n\
              ✗ 2/3 built, 1 failed"
         );
@@ -203,8 +203,8 @@ mod tests {
 
     #[test]
     fn test_report_totals_when_every_build_succeeds() {
-        let one = vec![build_result("boron", true)];
-        let two = vec![build_result("boron", true), build_result("sodium", true)];
+        let one = vec![build_result("bravo", true)];
+        let two = vec![build_result("bravo", true), build_result("spruce", true)];
 
         assert!(plain_report(&one).ends_with("\n\n✓ 1 host built"));
         assert!(plain_report(&two).ends_with("\n\n✓ All 2 hosts built"));
@@ -213,34 +213,34 @@ mod tests {
     #[test]
     fn test_failure_error_names_failed_builds() {
         let results = vec![
-            build_result("boron", true),
-            build_result("radon", false),
-            build_result("sodium", true),
+            build_result("bravo", true),
+            build_result("raven", false),
+            build_result("spruce", true),
         ];
 
         assert_eq!(
             failure_error(&results).unwrap().to_string(),
-            "1 of 3 hosts failed: radon (build)"
+            "1 of 3 hosts failed: raven (build)"
         );
     }
 
     #[test]
     fn test_failure_error_lists_every_failed_build() {
         let results = vec![
-            build_result("boron", false),
-            build_result("radon", false),
-            build_result("sodium", true),
+            build_result("bravo", false),
+            build_result("raven", false),
+            build_result("spruce", true),
         ];
 
         assert_eq!(
             failure_error(&results).unwrap().to_string(),
-            "2 of 3 hosts failed: boron (build), radon (build)"
+            "2 of 3 hosts failed: bravo (build), raven (build)"
         );
     }
 
     #[test]
     fn test_no_failure_error_when_all_builds_succeed() {
-        let results = vec![build_result("boron", true), build_result("sodium", true)];
+        let results = vec![build_result("bravo", true), build_result("spruce", true)];
 
         assert!(failure_error(&results).is_none());
     }
@@ -285,16 +285,16 @@ mod tests {
     #[test]
     fn test_build_intersection_filter_and_explicit_hosts() {
         // Test that combining filter with explicit hosts returns intersection
-        // hydrogen and oxygen have postgresql, nitrogen does not
+        // hedgehog and osprey have postgresql, nuthatch does not
         snow_cmd()
             .arg("build")
             .arg("-e")
             .arg("config: config.services.postgresql.enable or false")
-            .arg("hydrogen")
-            .arg("nitrogen")
+            .arg("hedgehog")
+            .arg("nuthatch")
             .assert()
             .failure() // Build will fail (unbuildable test flake), but we can check the host selection
-            .stdout(predicate::str::contains("Building 1 host")); // Only hydrogen matches both filter AND explicit list
+            .stdout(predicate::str::contains("Building 1 host")); // Only hedgehog matches both filter AND explicit list
     }
 
     #[test]
@@ -314,7 +314,7 @@ mod tests {
 
     #[test]
     fn test_build_with_phase_production() {
-        // hydrogen and nitrogen have phase=production
+        // hedgehog and nuthatch have phase=production
         snow_cmd()
             .arg("build")
             .arg("--phase")
@@ -326,7 +326,7 @@ mod tests {
 
     #[test]
     fn test_build_with_phase_staging() {
-        // Only oxygen has phase=staging
+        // Only osprey has phase=staging
         snow_cmd()
             .arg("build")
             .arg("--phase")
@@ -338,7 +338,7 @@ mod tests {
 
     #[test]
     fn test_build_with_multiple_phases() {
-        // production (hydrogen, nitrogen) + staging (oxygen) = 3 hosts
+        // production (hedgehog, nuthatch) + staging (osprey) = 3 hosts
         snow_cmd()
             .arg("build")
             .arg("--phases")
@@ -350,7 +350,7 @@ mod tests {
 
     #[test]
     fn test_build_with_tag_web() {
-        // hydrogen and oxygen have tag=web
+        // hedgehog and osprey have tag=web
         snow_cmd()
             .arg("build")
             .arg("--tag")
@@ -362,7 +362,7 @@ mod tests {
 
     #[test]
     fn test_build_with_multiple_tags() {
-        // web (hydrogen, oxygen) + database (nitrogen) = 3 hosts
+        // web (hedgehog, osprey) + database (nuthatch) = 3 hosts
         snow_cmd()
             .arg("build")
             .arg("--tags")
@@ -374,13 +374,13 @@ mod tests {
 
     #[test]
     fn test_build_phase_with_explicit_hosts() {
-        // Test intersection: --phase production + explicit hosts (hydrogen, helium)
-        // Only hydrogen matches both (helium is dev phase)
+        // Test intersection: --phase production + explicit hosts (hedgehog, helium)
+        // Only hedgehog matches both (helium is dev phase)
         snow_cmd()
             .arg("build")
             .arg("--phase")
             .arg("production")
-            .arg("hydrogen")
+            .arg("hedgehog")
             .arg("helium")
             .assert()
             .failure()
@@ -389,14 +389,14 @@ mod tests {
 
     #[test]
     fn test_build_tag_with_explicit_hosts() {
-        // Test intersection: --tag web + explicit hosts (hydrogen, nitrogen, helium)
-        // Only hydrogen matches both (nitrogen has database tag, helium has test tag)
+        // Test intersection: --tag web + explicit hosts (hedgehog, nuthatch, helium)
+        // Only hedgehog matches both (nuthatch has database tag, helium has test tag)
         snow_cmd()
             .arg("build")
             .arg("--tag")
             .arg("web")
-            .arg("hydrogen")
-            .arg("nitrogen")
+            .arg("hedgehog")
+            .arg("nuthatch")
             .arg("helium")
             .assert()
             .failure()
@@ -406,7 +406,7 @@ mod tests {
     #[test]
     fn test_build_reads_hosts_without_building_their_hooks() {
         snow_cmd_on(&fixtures_dir().join("list"))
-            .args(["build", "boron"])
+            .args(["build", "bravo"])
             .assert()
             .failure()
             .stdout(predicate::str::contains("Building 1 host"))

@@ -45,7 +45,7 @@ mod tests {
 
     #[test]
     fn test_finds_leading_store_path() {
-        let command = format!("{}/bin/kubectl drain praseodymium", KUBECTL);
+        let command = format!("{}/bin/kubectl drain pomegranates", KUBECTL);
 
         assert_eq!(find_store_paths(&command), vec![KUBECTL]);
     }
@@ -62,7 +62,7 @@ mod tests {
 
     #[test]
     fn test_ignores_commands_without_store_paths() {
-        assert!(find_store_paths("kubectl uncordon praseodymium").is_empty());
+        assert!(find_store_paths("kubectl uncordon pomegranates").is_empty());
         assert!(find_store_paths("ls /nix/store/").is_empty());
     }
 

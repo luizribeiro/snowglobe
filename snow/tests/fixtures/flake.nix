@@ -3,12 +3,12 @@
 
   outputs = { self, ... }: {
     nixosConfigurations = {
-      hydrogen = {
+      hedgehog = {
         config = {
           services.openssh.enable = true;
           services.postgresql.enable = true;
           services.nginx.enable = true;
-          networking.hostName = "hydrogen";
+          networking.hostName = "hedgehog";
           networking.domain = "example.com";
           nixpkgs.hostPlatform = "x86_64-linux";
 
@@ -18,12 +18,12 @@
         };
       };
 
-      nitrogen = {
+      nuthatch = {
         config = {
           services.openssh.enable = true;
           services.postgresql.enable = false;
           services.nginx.enable = true;
-          networking.hostName = "nitrogen";
+          networking.hostName = "nuthatch";
           networking.domain = "example.com";
           nixpkgs.hostPlatform = "aarch64-linux";
 
@@ -33,12 +33,12 @@
         };
       };
 
-      oxygen = {
+      osprey = {
         config = {
           services.openssh.enable = true;
           services.postgresql.enable = true;
           services.nginx.enable = false;
-          networking.hostName = "oxygen";
+          networking.hostName = "osprey";
           networking.domain = "";
           nixpkgs.hostPlatform = "x86_64-linux";
 

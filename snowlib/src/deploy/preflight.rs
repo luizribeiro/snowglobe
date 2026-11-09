@@ -81,10 +81,10 @@ mod tests {
 
     fn host_with_hooks(hooks: Vec<HookConfig>) -> HostMetadata {
         HostMetadata {
-            name: "praseodymium".to_string(),
+            name: "pomegranates".to_string(),
             phase: Some("p2".to_string()),
             tags: vec![],
-            fqdn: "praseodymium.example.com".to_string(),
+            fqdn: "pomegranates.example.com".to_string(),
             reboot_policy: RebootPolicy::Always,
             system_type: SystemType::NixOS,
             system: None,

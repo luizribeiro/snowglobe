@@ -478,13 +478,13 @@ mod tests {
     fn test_ssh_shell_command_never_prompts_and_bounds_the_connection() {
         let backend = SystemHookBackend::new(Some("deploy".to_string()), OutputMode::Capture);
         let command = backend.ssh_shell_command(
-            &DeployTarget::new("curium.example.com"),
-            "kubectl uncordon curium",
+            &DeployTarget::new("condor.example.com"),
+            "kubectl uncordon condor",
         );
 
         assert_eq!(
             command,
-            "ssh -o BatchMode=yes -o ConnectTimeout=10 -o ForwardAgent=no 'deploy@curium.example.com' 'kubectl uncordon curium'"
+            "ssh -o BatchMode=yes -o ConnectTimeout=10 -o ForwardAgent=no 'deploy@condor.example.com' 'kubectl uncordon condor'"
         );
     }
 
@@ -492,12 +492,12 @@ mod tests {
     fn test_ssh_shell_command_connects_as_the_targets_own_user() {
         let backend = SystemHookBackend::new(None, OutputMode::Capture);
         let command = backend.ssh_shell_command(
-            &DeployTarget::with_user("pusher", "curium.example.com"),
-            "kubectl uncordon curium",
+            &DeployTarget::with_user("pusher", "condor.example.com"),
+            "kubectl uncordon condor",
         );
 
         assert!(
-            command.ends_with(" 'pusher@curium.example.com' 'kubectl uncordon curium'"),
+            command.ends_with(" 'pusher@condor.example.com' 'kubectl uncordon condor'"),
             "{command}"
         );
     }
@@ -505,12 +505,12 @@ mod tests {
     #[test]
     fn test_ssh_shell_command_connects_to_the_hosts_port() {
         let backend = SystemHookBackend::new(None, OutputMode::Capture);
-        let mut target = DeployTarget::with_user("pusher", "curium.example.com");
+        let mut target = DeployTarget::with_user("pusher", "condor.example.com");
         target.port = Some(2222);
-        let command = backend.ssh_shell_command(&target, "kubectl uncordon curium");
+        let command = backend.ssh_shell_command(&target, "kubectl uncordon condor");
 
         assert!(
-            command.contains("-o ForwardAgent=no -p 2222 'pusher@curium.example.com'"),
+            command.contains("-o ForwardAgent=no -p 2222 'pusher@condor.example.com'"),
             "{command}"
         );
     }
@@ -519,12 +519,12 @@ mod tests {
     fn test_ssh_shell_command_without_a_user_leaves_it_to_ssh_as_deploy_does() {
         let backend = SystemHookBackend::new(None, OutputMode::Capture);
         let command = backend.ssh_shell_command(
-            &DeployTarget::new("curium.example.com"),
-            "kubectl uncordon curium",
+            &DeployTarget::new("condor.example.com"),
+            "kubectl uncordon condor",
         );
 
         assert!(
-            command.ends_with(" curium.example.com 'kubectl uncordon curium'"),
+            command.ends_with(" condor.example.com 'kubectl uncordon condor'"),
             "{command}"
         );
     }

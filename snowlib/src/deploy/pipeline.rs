@@ -425,7 +425,7 @@ mod tests {
     #[test]
     fn test_failure_reason_leaves_out_the_host_of_a_failed_deploy() {
         let error = SnowError::from(DeployError::Failed {
-            host: "neodymium".to_string(),
+            host: "nightfall".to_string(),
             source: std::io::Error::other("kernel linux-6.12.58 → linux-6.12.60"),
         });
 
@@ -438,8 +438,8 @@ mod tests {
     #[test]
     fn test_failure_reason_keeps_a_failed_command_without_its_host() {
         let error = SnowError::from(DeployError::CommandFailed {
-            host: "cerium".to_string(),
-            command: "ssh cerium sudo snowglobe-activate /nix/store/yzxw-cerium switch".to_string(),
+            host: "cactus".to_string(),
+            command: "ssh cactus sudo snowglobe-activate /nix/store/yzxw-cactus switch".to_string(),
             exit_code: 4,
             stderr: "warning: the following units failed: storage-agent.service".to_string(),
             stdout: String::new(),
@@ -448,7 +448,7 @@ mod tests {
         assert_eq!(
             failure_reason(&error),
             "Command failed\n\n\
-             Command: ssh cerium sudo snowglobe-activate /nix/store/yzxw-cerium switch\n\
+             Command: ssh cactus sudo snowglobe-activate /nix/store/yzxw-cactus switch\n\
              Exit code: 4\n\n\
              Stderr:\n\
              warning: the following units failed: storage-agent.service"
@@ -458,42 +458,42 @@ mod tests {
     #[test]
     fn test_failure_summary_of_an_unreachable_host_is_the_ssh_error() {
         let error = SnowError::from(DeployError::CommandFailed {
-            host: "cerium".to_string(),
+            host: "cactus".to_string(),
             command: "readlink -f /run/current-system /nix/var/nix/profiles/system".to_string(),
             exit_code: 255,
-            stderr: "ssh: connect to host cerium port 22: No route to host\n".to_string(),
+            stderr: "ssh: connect to host cactus port 22: No route to host\n".to_string(),
             stdout: String::new(),
         });
 
         assert_eq!(
             failure_summary(&error),
-            "ssh: connect to host cerium port 22: No route to host"
+            "ssh: connect to host cactus port 22: No route to host"
         );
     }
 
     #[test]
     fn test_failure_summary_of_a_one_line_error_is_its_reason() {
         let error = SnowError::from(DeployError::SshFailed {
-            destination: "root@cerium".to_string(),
+            destination: "root@cactus".to_string(),
             source: std::io::Error::other("Connection timed out"),
         });
 
         assert_eq!(
             failure_summary(&error),
-            "SSH connection failed to root@cerium: Connection timed out"
+            "SSH connection failed to root@cactus: Connection timed out"
         );
     }
 
     #[test]
     fn test_failure_reason_of_other_errors_is_their_chain() {
         let error = SnowError::from(DeployError::SshFailed {
-            destination: "root@cerium".to_string(),
+            destination: "root@cactus".to_string(),
             source: std::io::Error::other("Connection timed out"),
         });
 
         assert_eq!(
             failure_reason(&error),
-            "SSH connection failed to root@cerium: Connection timed out"
+            "SSH connection failed to root@cactus: Connection timed out"
         );
     }
 }

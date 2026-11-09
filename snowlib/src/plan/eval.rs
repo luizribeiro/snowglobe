@@ -120,22 +120,22 @@ mod tests {
         let evals = fixture_evals();
 
         let hosts: Vec<&str> = evals.iter().map(|e| e.host.as_str()).collect();
-        assert_eq!(hosts, vec!["boron", "radon", "sodium", "krypton"]);
+        assert_eq!(hosts, vec!["bravo", "raven", "spruce", "kestrel"]);
 
-        let sodium = evaluated(&evals, "sodium");
-        assert_eq!(sodium.cache_status, CacheStatus::NotBuilt);
-        assert_eq!(sodium.system, "x86_64-linux");
-        assert_eq!(sodium.needed_builds.len(), 5);
-        assert_eq!(sodium.needed_substitutes.len(), 5);
-        assert!(sodium.drv_path.contains("-nixos-system-sodium-"));
+        let spruce = evaluated(&evals, "spruce");
+        assert_eq!(spruce.cache_status, CacheStatus::NotBuilt);
+        assert_eq!(spruce.system, "x86_64-linux");
+        assert_eq!(spruce.needed_builds.len(), 5);
+        assert_eq!(spruce.needed_substitutes.len(), 5);
+        assert!(spruce.drv_path.contains("-nixos-system-spruce-"));
     }
 
     #[test]
     fn test_parse_eval_failure_keeps_other_hosts() {
         let evals = fixture_evals();
 
-        let krypton = evals.iter().find(|e| e.host == "krypton").unwrap();
-        match &krypton.outcome {
+        let kestrel = evals.iter().find(|e| e.host == "kestrel").unwrap();
+        match &kestrel.outcome {
             EvalOutcome::Failed { error } => {
                 assert!(error.contains("attribute 'doesNotExist' missing"))
             }
@@ -147,33 +147,33 @@ mod tests {
     #[test]
     fn test_builds_include_root_when_not_built() {
         let evals = fixture_evals();
-        let sodium = evaluated(&evals, "sodium");
+        let spruce = evaluated(&evals, "spruce");
 
-        let builds: Vec<&str> = sodium.builds().collect();
+        let builds: Vec<&str> = spruce.builds().collect();
 
         assert_eq!(builds.len(), 6);
-        assert_eq!(builds.last().unwrap(), &sodium.drv_path);
+        assert_eq!(builds.last().unwrap(), &spruce.drv_path);
     }
 
     #[test]
     fn test_builds_exclude_root_when_cached() {
         let evals = fixture_evals();
-        let boron = evaluated(&evals, "boron");
+        let bravo = evaluated(&evals, "bravo");
 
-        assert_eq!(boron.cache_status, CacheStatus::Cached);
-        assert_eq!(boron.builds().count(), 0);
-        assert_eq!(boron.needed_substitutes.len(), 1);
+        assert_eq!(bravo.cache_status, CacheStatus::Cached);
+        assert_eq!(bravo.builds().count(), 0);
+        assert_eq!(bravo.needed_substitutes.len(), 1);
     }
 
     #[test]
     fn test_parse_local_cache_status() {
-        let line = r#"{"attr":"oxygen","drvPath":"/nix/store/aaa-nixos-system-oxygen.drv","system":"aarch64-linux","cacheStatus":"local","neededBuilds":[],"neededSubstitutes":[]}"#;
+        let line = r#"{"attr":"osprey","drvPath":"/nix/store/aaa-nixos-system-osprey.drv","system":"aarch64-linux","cacheStatus":"local","neededBuilds":[],"neededSubstitutes":[]}"#;
 
         let evals = parse_eval_jobs(line.as_bytes()).unwrap();
 
-        let oxygen = evaluated(&evals, "oxygen");
-        assert_eq!(oxygen.cache_status, CacheStatus::Local);
-        assert_eq!(oxygen.builds().count(), 0);
+        let osprey = evaluated(&evals, "osprey");
+        assert_eq!(osprey.cache_status, CacheStatus::Local);
+        assert_eq!(osprey.builds().count(), 0);
     }
 
     #[test]
@@ -197,7 +197,7 @@ mod tests {
 
     #[test]
     fn test_parse_without_cache_status_is_an_error() {
-        let line = r#"{"attr":"oxygen","drvPath":"/nix/store/aaa.drv","system":"x86_64-linux"}"#;
+        let line = r#"{"attr":"osprey","drvPath":"/nix/store/aaa.drv","system":"x86_64-linux"}"#;
 
         let err = parse_eval_jobs(line.as_bytes()).unwrap_err();
 

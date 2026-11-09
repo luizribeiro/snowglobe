@@ -171,22 +171,22 @@ mod tests {
             Some("never"),
             Some("storage_nodes"),
         ] {
-            assert!(check_phase("cerium", phase).is_ok(), "{phase:?}");
+            assert!(check_phase("cactus", phase).is_ok(), "{phase:?}");
         }
     }
 
     #[test]
     fn test_check_phase_rejects_other_characters_and_default() {
         for phase in ["", "p 1", "p1.k8s", "prod!", "日本", "default"] {
-            assert!(check_phase("cerium", Some(phase)).is_err(), "{phase:?}");
+            assert!(check_phase("cactus", Some(phase)).is_err(), "{phase:?}");
         }
     }
 
     #[test]
     fn test_invalid_phase_names_the_host_and_how_to_fix_it() {
-        let error = check_phase("cerium", Some("p1.k8s")).unwrap_err();
+        let error = check_phase("cactus", Some("p1.k8s")).unwrap_err();
 
-        assert_eq!(error.to_string(), "cerium has an invalid phase 'p1.k8s'");
+        assert_eq!(error.to_string(), "cactus has an invalid phase 'p1.k8s'");
         assert_eq!(
             miette::Diagnostic::help(&error).unwrap().to_string(),
             "A phase name may contain only ASCII letters, digits, dashes and underscores, and 'default' is reserved for hosts without a phase. Set snowglobe.deploy.phase to a name like 'p1', or leave it unset."

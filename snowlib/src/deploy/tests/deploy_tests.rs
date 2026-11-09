@@ -45,10 +45,10 @@ async fn test_each_phase_reports_its_hosts_when_it_completes() {
 async fn test_phases_run_with_their_numbers_in_order_then_hosts_without_one() {
     let run = DeployHarness::new()
         .run(vec![
-            make_host_metadata("sodium", None, RebootPolicy::Auto),
-            make_host_metadata("cerium", Some("p10"), RebootPolicy::Auto),
-            make_host_metadata("boron", Some("p2"), RebootPolicy::Auto),
-            make_host_metadata("radon", Some("p1"), RebootPolicy::Auto),
+            make_host_metadata("spruce", None, RebootPolicy::Auto),
+            make_host_metadata("cactus", Some("p10"), RebootPolicy::Auto),
+            make_host_metadata("bravo", Some("p2"), RebootPolicy::Auto),
+            make_host_metadata("raven", Some("p1"), RebootPolicy::Auto),
         ])
         .await;
 
@@ -68,18 +68,18 @@ fn optional(mut host: HostMetadata) -> HostMetadata {
 #[tokio::test]
 async fn test_failed_optional_host_lets_later_phases_run() {
     let mut harness = DeployHarness::new();
-    harness.nix_backend = MockNixBackend::new().with_build_failures(vec!["curium".to_string()]);
+    harness.nix_backend = MockNixBackend::new().with_build_failures(vec!["condor".to_string()]);
     let run = harness
         .run(vec![
-            optional(make_host_metadata("curium", Some("p1"), RebootPolicy::Auto)),
-            make_host_metadata("boron", Some("p1"), RebootPolicy::Auto),
-            make_host_metadata("radon", Some("p2"), RebootPolicy::Auto),
+            optional(make_host_metadata("condor", Some("p1"), RebootPolicy::Auto)),
+            make_host_metadata("bravo", Some("p1"), RebootPolicy::Auto),
+            make_host_metadata("raven", Some("p2"), RebootPolicy::Auto),
         ])
         .await;
 
-    let curium = run.host("curium");
-    assert!(!curium.success && curium.optional);
-    assert!(run.host("radon").success);
+    let condor = run.host("condor");
+    assert!(!condor.success && condor.optional);
+    assert!(run.host("raven").success);
     assert!(run.results.skipped_phases.is_empty());
     assert!(run.has_event("phase_complete:p1:failed"));
     assert!(run.results.failure_error().is_none());
@@ -90,22 +90,22 @@ async fn test_failed_optional_host_lets_later_phases_run() {
 async fn test_unreachable_optional_host_leaves_its_serial_group_running() {
     let mut harness = DeployHarness::new();
     harness.deployer =
-        MockDeployBackend::new().with_failures(vec!["curium.example.com".to_string()]);
+        MockDeployBackend::new().with_failures(vec!["condor.example.com".to_string()]);
     let in_group = |name: &str| HostMetadata {
         serial_group: Some("storage".to_string()),
         ..make_host_metadata(name, Some("p1"), RebootPolicy::Auto)
     };
     let run = harness
         .run(vec![
-            optional(in_group("curium")),
-            in_group("boron"),
-            make_host_metadata("radon", Some("p2"), RebootPolicy::Auto),
+            optional(in_group("condor")),
+            in_group("bravo"),
+            make_host_metadata("raven", Some("p2"), RebootPolicy::Auto),
         ])
         .await;
 
-    assert!(!run.host("curium").success);
-    assert!(run.host("boron").success);
-    assert!(run.host("radon").success);
+    assert!(!run.host("condor").success);
+    assert!(run.host("bravo").success);
+    assert!(run.host("raven").success);
     assert!(run.results.failure_error().is_none());
 }
 
@@ -113,30 +113,30 @@ async fn test_unreachable_optional_host_leaves_its_serial_group_running() {
 async fn test_failed_host_beside_a_failed_optional_one_still_skips_later_phases() {
     let mut harness = DeployHarness::new();
     harness.nix_backend =
-        MockNixBackend::new().with_build_failures(vec!["curium".to_string(), "boron".to_string()]);
+        MockNixBackend::new().with_build_failures(vec!["condor".to_string(), "bravo".to_string()]);
     let run = harness
         .run(vec![
-            optional(make_host_metadata("curium", Some("p1"), RebootPolicy::Auto)),
-            make_host_metadata("boron", Some("p1"), RebootPolicy::Auto),
-            make_host_metadata("radon", Some("p2"), RebootPolicy::Auto),
+            optional(make_host_metadata("condor", Some("p1"), RebootPolicy::Auto)),
+            make_host_metadata("bravo", Some("p1"), RebootPolicy::Auto),
+            make_host_metadata("raven", Some("p2"), RebootPolicy::Auto),
         ])
         .await;
 
     assert_eq!(run.results.skipped_phases.len(), 1);
     assert_eq!(
         run.results.failure_error().unwrap().to_string(),
-        "1 of 3 hosts failed: boron (build)"
+        "1 of 3 hosts failed: bravo (build)"
     );
 }
 
 #[tokio::test]
 async fn test_hosts_without_a_phase_are_skipped_when_a_phase_fails() {
     let mut harness = DeployHarness::new();
-    harness.nix_backend = MockNixBackend::new().with_build_failures(vec!["boron".to_string()]);
+    harness.nix_backend = MockNixBackend::new().with_build_failures(vec!["bravo".to_string()]);
     let run = harness
         .run(vec![
-            make_host_metadata("sodium", None, RebootPolicy::Auto),
-            make_host_metadata("boron", Some("p1"), RebootPolicy::Auto),
+            make_host_metadata("spruce", None, RebootPolicy::Auto),
+            make_host_metadata("bravo", Some("p1"), RebootPolicy::Auto),
         ])
         .await;
 
@@ -144,7 +144,7 @@ async fn test_hosts_without_a_phase_are_skipped_when_a_phase_fails() {
     assert_eq!(run.results.phases[0].phase, "p1");
     assert_eq!(run.results.skipped_phases.len(), 1);
     assert_eq!(run.results.skipped_phases[0].phase, crate::deploy::UNPHASED);
-    assert_eq!(run.results.skipped_phases[0].hostnames, vec!["sodium"]);
+    assert_eq!(run.results.skipped_phases[0].hostnames, vec!["spruce"]);
 }
 
 #[tokio::test]
@@ -266,50 +266,50 @@ async fn test_deploy_with_default_phase() {
 async fn test_units_failing_after_activation_fail_the_host_and_halt_later_phases() {
     let mut harness = DeployHarness::new();
     harness.deployer = MockDeployBackend::new()
-        .with_failing_units("boron.example.com", &["stale-job.service"])
-        .with_units_failing_activation("boron.example.com", &["stale-job.service"]);
+        .with_failing_units("bravo.example.com", &["stale-job.service"])
+        .with_units_failing_activation("bravo.example.com", &["stale-job.service"]);
 
     let run = harness
         .run(vec![
-            make_host_metadata("boron", Some("p1"), RebootPolicy::Auto),
-            make_host_metadata("cerium", Some("p2"), RebootPolicy::Auto),
+            make_host_metadata("bravo", Some("p1"), RebootPolicy::Auto),
+            make_host_metadata("cactus", Some("p2"), RebootPolicy::Auto),
         ])
         .await;
 
-    let boron = run.host("boron");
-    assert_eq!(boron.failed_at_step, Some(PipelineStep::Activate));
+    let bravo = run.host("bravo");
+    assert_eq!(bravo.failed_at_step, Some(PipelineStep::Activate));
     assert_eq!(
-        boron.error_message.as_deref(),
+        bravo.error_message.as_deref(),
         Some(
             "activated, but stale-job.service is failing (it was already failing before this deployment)"
         )
     );
     assert!(!run.results.all_succeeded());
     assert_eq!(run.results.skipped_phases.len(), 1, "{:?}", run.results);
-    assert!(!run.has_event_starting_with("build_start:cerium"));
+    assert!(!run.has_event_starting_with("build_start:cactus"));
 }
 
 #[tokio::test]
 async fn test_a_host_whose_only_failing_units_are_ignored_is_deployed() {
     let mut harness = DeployHarness::new();
     harness.deployer = MockDeployBackend::new()
-        .with_units_failing_activation("cerium.example.com", &["unifi.service"]);
-    let cerium = HostMetadata {
-        ignored_failed_units: vec!["unifi.service".to_string()],
-        ..make_host_metadata("cerium", Some("p1"), RebootPolicy::Auto)
+        .with_units_failing_activation("cactus.example.com", &["vault.service"]);
+    let cactus = HostMetadata {
+        ignored_failed_units: vec!["vault.service".to_string()],
+        ..make_host_metadata("cactus", Some("p1"), RebootPolicy::Auto)
     };
 
     let run = harness
         .run(vec![
-            cerium,
-            make_host_metadata("radon", Some("p2"), RebootPolicy::Auto),
+            cactus,
+            make_host_metadata("raven", Some("p2"), RebootPolicy::Auto),
         ])
         .await;
 
-    let cerium = run.host("cerium");
-    assert!(cerium.success, "{cerium:?}");
-    assert_eq!(cerium.ignored_failing, ["unifi.service"]);
-    assert!(run.host("radon").success);
+    let cactus = run.host("cactus");
+    assert!(cactus.success, "{cactus:?}");
+    assert_eq!(cactus.ignored_failing, ["vault.service"]);
+    assert!(run.host("raven").success);
 }
 
 #[tokio::test]
@@ -484,21 +484,21 @@ async fn test_deploy_error_message_format_with_activation_failure() {
 #[test]
 fn test_phases_lists_each_phase_in_order_with_its_hosts() {
     let hosts = vec![
-        make_host_metadata("vanadium", Some("p3"), RebootPolicy::Auto),
-        make_host_metadata("ferrum", Some("p2"), RebootPolicy::Auto),
-        make_host_metadata("cerium", Some("p3"), RebootPolicy::Auto),
-        make_host_metadata("sodium", None, RebootPolicy::Auto),
+        make_host_metadata("vineyard", Some("p3"), RebootPolicy::Auto),
+        make_host_metadata("falcon", Some("p2"), RebootPolicy::Auto),
+        make_host_metadata("cactus", Some("p3"), RebootPolicy::Auto),
+        make_host_metadata("spruce", None, RebootPolicy::Auto),
     ];
 
     assert_eq!(
         crate::deploy::phases(&hosts, false),
         vec![
-            ("p2".to_string(), vec!["ferrum".to_string()]),
+            ("p2".to_string(), vec!["falcon".to_string()]),
             (
                 "p3".to_string(),
-                vec!["cerium".to_string(), "vanadium".to_string()]
+                vec!["cactus".to_string(), "vineyard".to_string()]
             ),
-            ("default".to_string(), vec!["sodium".to_string()]),
+            ("default".to_string(), vec!["spruce".to_string()]),
         ]
     );
     assert_eq!(
@@ -506,10 +506,10 @@ fn test_phases_lists_each_phase_in_order_with_its_hosts() {
         vec![(
             "_all".to_string(),
             vec![
-                "cerium".to_string(),
-                "ferrum".to_string(),
-                "sodium".to_string(),
-                "vanadium".to_string()
+                "cactus".to_string(),
+                "falcon".to_string(),
+                "spruce".to_string(),
+                "vineyard".to_string()
             ]
         )]
     );

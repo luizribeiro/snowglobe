@@ -73,7 +73,7 @@ pub struct HostDeploymentResult {
 }
 
 impl HostDeploymentResult {
-    /// The hostname with the step it failed at, e.g. "lanthanum (plan)"
+    /// The hostname with the step it failed at, e.g. "limestone (plan)"
     pub fn failure_label(&self) -> String {
         match self.failed_at_step {
             Some(step) => format!("{} ({step})", self.hostname),
@@ -250,40 +250,40 @@ mod tests {
     fn test_failure_error_names_failed_hosts_and_steps() {
         let results = p3_results(
             vec![
-                host("boron", None),
-                host("lanthanum", Some(PipelineStep::Plan)),
-                host("samarium", Some(PipelineStep::Plan)),
-                HostDeploymentResult::skipped_by_serial_group("vanadium", "k8s", "lanthanum"),
+                host("bravo", None),
+                host("limestone", Some(PipelineStep::Plan)),
+                host("seahorse", Some(PipelineStep::Plan)),
+                HostDeploymentResult::skipped_by_serial_group("vineyard", "k8s", "limestone"),
             ],
             vec![SkippedPhase {
                 phase: "p4".to_string(),
-                hostnames: vec!["cerium".to_string(), "neodymium".to_string()],
+                hostnames: vec!["cactus".to_string(), "nightfall".to_string()],
             }],
         );
 
         assert_eq!(
             results.failure_error().unwrap().to_string(),
-            "3 of 6 hosts failed: lanthanum (plan), samarium (plan), vanadium (serial group)"
+            "3 of 6 hosts failed: limestone (plan), seahorse (plan), vineyard (serial group)"
         );
     }
 
     #[test]
     fn test_failure_error_for_host_without_step() {
-        let mut radon = host("radon", None);
-        radon.success = false;
+        let mut raven = host("raven", None);
+        raven.success = false;
 
-        let error = p3_results(vec![radon], vec![]).failure_error().unwrap();
+        let error = p3_results(vec![raven], vec![]).failure_error().unwrap();
 
-        assert_eq!(error.to_string(), "1 of 1 host failed: radon");
+        assert_eq!(error.to_string(), "1 of 1 host failed: raven");
     }
 
     #[test]
     fn test_optional_failures_neither_block_the_phase_nor_fail_the_deploy() {
-        let curium = HostDeploymentResult {
+        let condor = HostDeploymentResult {
             optional: true,
-            ..host("curium", Some(PipelineStep::Copy))
+            ..host("condor", Some(PipelineStep::Copy))
         };
-        let results = p3_results(vec![host("boron", None), curium], vec![]);
+        let results = p3_results(vec![host("bravo", None), condor], vec![]);
 
         assert!(!results.phases[0].all_succeeded());
         assert!(!results.phases[0].has_blocking_failure());
@@ -294,25 +294,25 @@ mod tests {
 
     #[test]
     fn test_failure_error_names_only_hosts_that_are_not_optional() {
-        let curium = HostDeploymentResult {
+        let condor = HostDeploymentResult {
             optional: true,
-            ..host("curium", Some(PipelineStep::Copy))
+            ..host("condor", Some(PipelineStep::Copy))
         };
         let results = p3_results(
-            vec![curium, host("radon", Some(PipelineStep::Build))],
+            vec![condor, host("raven", Some(PipelineStep::Build))],
             vec![],
         );
 
         assert!(results.phases[0].has_blocking_failure());
         assert_eq!(
             results.failure_error().unwrap().to_string(),
-            "1 of 2 hosts failed: radon (build)"
+            "1 of 2 hosts failed: raven (build)"
         );
     }
 
     #[test]
     fn test_failure_error_when_all_succeeded() {
-        let results = p3_results(vec![host("boron", None), host("radon", None)], vec![]);
+        let results = p3_results(vec![host("bravo", None), host("raven", None)], vec![]);
 
         assert!(results.failure_error().is_none());
     }

@@ -48,10 +48,10 @@ mod tests {
 
     fn host(ssh_port: Option<u16>) -> HostMetadata {
         HostMetadata {
-            name: "boron".to_string(),
+            name: "bravo".to_string(),
             phase: None,
             tags: vec![],
-            fqdn: "boron.example.com".to_string(),
+            fqdn: "bravo.example.com".to_string(),
             reboot_policy: RebootPolicy::Auto,
             system_type: SystemType::NixOS,
             system: None,
@@ -67,7 +67,7 @@ mod tests {
     fn test_deploy_target_connects_to_the_hosts_ssh_port() {
         let target = host(Some(2222)).deploy_target(Some("deploy".to_string()));
 
-        assert_eq!(target.ssh_destination(), "deploy@boron.example.com");
+        assert_eq!(target.ssh_destination(), "deploy@bravo.example.com");
         assert_eq!(target.port, Some(2222));
     }
 
@@ -75,7 +75,7 @@ mod tests {
     fn test_deploy_target_without_ssh_port_leaves_it_to_ssh() {
         let target = host(None).deploy_target(None);
 
-        assert_eq!(target.ssh_destination(), "boron.example.com");
+        assert_eq!(target.ssh_destination(), "bravo.example.com");
         assert_eq!(target.port, None);
     }
 }

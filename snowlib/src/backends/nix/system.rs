@@ -534,7 +534,7 @@ mod tests {
     fn test_parse_metadata_with_serial_group() {
         let meta = parse(
             r#"{
-            "hostName": "praseodymium",
+            "hostName": "pomegranates",
             "domain": "example.com",
             "phase": "p2",
             "tags": ["kubernetes"],
@@ -550,7 +550,7 @@ mod tests {
     fn test_parse_metadata_with_ssh_port() {
         let meta = parse(
             r#"{
-            "hostName": "praseodymium",
+            "hostName": "pomegranates",
             "domain": "example.com",
             "phase": "p2",
             "tags": [],
@@ -566,23 +566,23 @@ mod tests {
     fn test_parse_metadata_with_ignored_failed_units() {
         let meta = parse(
             r#"{
-            "hostName": "boron",
+            "hostName": "bravo",
             "domain": "example.com",
             "phase": null,
             "tags": [],
             "rebootPolicy": "auto",
-            "ignoredFailedUnits": ["unifi.service"]
+            "ignoredFailedUnits": ["vault.service"]
         }"#,
         );
 
-        assert_eq!(meta.ignored_failed_units, ["unifi.service"]);
+        assert_eq!(meta.ignored_failed_units, ["vault.service"]);
     }
 
     #[test]
     fn test_parse_metadata_without_ignored_failed_units_ignores_none() {
         let meta = parse(
             r#"{
-            "hostName": "boron",
+            "hostName": "bravo",
             "domain": "example.com",
             "phase": null,
             "tags": [],
@@ -603,7 +603,7 @@ mod tests {
     fn test_parse_metadata_without_ssh_port_leaves_it_to_ssh_config() {
         let meta = parse(
             r#"{
-            "hostName": "praseodymium",
+            "hostName": "pomegranates",
             "domain": "example.com",
             "phase": "p2",
             "tags": [],
@@ -619,7 +619,7 @@ mod tests {
     fn test_parse_metadata_rejects_an_out_of_range_ssh_port() {
         let result = try_parse(
             r#"{
-            "hostName": "praseodymium",
+            "hostName": "pomegranates",
             "domain": "example.com",
             "phase": "p2",
             "tags": [],
@@ -733,7 +733,7 @@ mod tests {
         let path = dir.path().join("snowglobe-hooks.json");
         std::fs::write(
             &path,
-            r#"{"post-deploy": {"uncordon-node": {"location": "local", "command": "kubectl uncordon samarium"}}}"#,
+            r#"{"post-deploy": {"uncordon-node": {"location": "local", "command": "kubectl uncordon seahorse"}}}"#,
         )
         .unwrap();
 
@@ -741,7 +741,7 @@ mod tests {
 
         assert_eq!(hooks.len(), 1);
         assert_eq!(hooks[0].stage, HookStage::PostDeploy);
-        assert_eq!(hooks[0].command, "kubectl uncordon samarium");
+        assert_eq!(hooks[0].command, "kubectl uncordon seahorse");
     }
 
     #[test]
@@ -757,9 +757,9 @@ mod tests {
     #[test]
     fn test_parse_metadata_returns_hooks_file_derivation() {
         let (meta, hooks_file) = parse_host_metadata(
-            "praseodymium",
+            "pomegranates",
             SystemType::NixOS,
-            br#"{"hostName": "praseodymium", "domain": "example.com", "phase": "p2", "tags": [],
+            br#"{"hostName": "pomegranates", "domain": "example.com", "phase": "p2", "tags": [],
                 "rebootPolicy": "always", "hooksFile": "/nix/store/abc-snowglobe-hooks.json.drv"}"#,
         )
         .unwrap();
@@ -788,7 +788,7 @@ mod tests {
         let hooks = parse_hooks(
             br#"{
             "pre-deploy": {
-                "drain-node": { "location": "local", "command": "kubectl drain praseodymium", "timeout": 900 }
+                "drain-node": { "location": "local", "command": "kubectl drain pomegranates", "timeout": 900 }
             },
             "post-deploy": {},
             "post-reboot": {},
@@ -837,9 +837,9 @@ mod tests {
     }
 
     fn link_args(backend: &SystemNixBackend, kind: GcRootKind) -> Vec<String> {
-        let target = ".#nixosConfigurations.radon.config.system.build.toplevel";
+        let target = ".#nixosConfigurations.raven.config.system.build.toplevel";
         let command = NixCommand::build(&Flake::test_context(), target);
-        backend.link_output(command, "radon", kind).args()[1..].to_vec()
+        backend.link_output(command, "raven", kind).args()[1..].to_vec()
     }
 
     #[test]
@@ -849,17 +849,17 @@ mod tests {
         assert_eq!(
             link_args(&backend, GcRootKind::System),
             [
-                ".#nixosConfigurations.radon.config.system.build.toplevel",
+                ".#nixosConfigurations.raven.config.system.build.toplevel",
                 "--out-link",
-                "/tmp/snow-deploy-x1/radon-system"
+                "/tmp/snow-deploy-x1/raven-system"
             ]
         );
     }
 
     #[test]
     fn test_hooks_and_system_get_separate_roots() {
-        assert_eq!(gc_root_name("radon", GcRootKind::Hooks), "radon-hooks");
-        assert_eq!(gc_root_name("radon", GcRootKind::System), "radon-system");
+        assert_eq!(gc_root_name("raven", GcRootKind::Hooks), "raven-hooks");
+        assert_eq!(gc_root_name("raven", GcRootKind::System), "raven-system");
     }
 
     #[test]
@@ -867,7 +867,7 @@ mod tests {
         assert_eq!(
             link_args(&SystemNixBackend::new(), GcRootKind::Hooks),
             [
-                ".#nixosConfigurations.radon.config.system.build.toplevel",
+                ".#nixosConfigurations.raven.config.system.build.toplevel",
                 "--no-link"
             ]
         );

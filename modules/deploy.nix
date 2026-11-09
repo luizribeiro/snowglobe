@@ -14,7 +14,7 @@ let
 
   unitName = lib.types.strMatching
     "[^/[:space:]]+[.](service|socket|target|device|mount|automount|swap|path|timer|slice|scope)"
-    // { description = ''systemd unit name with its type, as in "unifi.service"''; };
+    // { description = ''systemd unit name with its type, as in "vault.service"''; };
 in
 {
   options.snowglobe.deploy.phase = lib.mkOption {
@@ -102,7 +102,7 @@ in
       Listed units are ignored even if this deployment broke them. nix-darwin
       hosts aren't affected.
     '';
-    example = [ "unifi.service" ];
+    example = [ "vault.service" ];
   };
 
   options.snowglobe.deploy.sshPort = lib.mkOption {

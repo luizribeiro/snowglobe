@@ -3,8 +3,8 @@
 
   outputs = { self, ... }: {
     nixosConfigurations = {
-      argon.config = {
-        networking.hostName = "argon";
+      alpha.config = {
+        networking.hostName = "alpha";
         nixpkgs.hostPlatform.system = "x86_64-linux";
         snowglobe.deploy = {
           phase = "p1";
@@ -14,8 +14,8 @@
         };
       };
 
-      boron.config = {
-        networking.hostName = "boron";
+      bravo.config = {
+        networking.hostName = "bravo";
         nixpkgs.hostPlatform.system = "aarch64-linux";
         snowglobe.deploy = {
           phase = "p2";
@@ -26,8 +26,8 @@
         snowglobe.hooksFile.drvPath = "/nix/store/00000000000000000000000000000000-snowglobe-hooks.json.drv";
       };
 
-      curium.config = {
-        networking.hostName = "curium";
+      condor.config = {
+        networking.hostName = "condor";
         nixpkgs.hostPlatform.system = "x86_64-linux";
         snowglobe.deploy = {
           phase = "never";
@@ -37,8 +37,8 @@
     };
 
     darwinConfigurations = {
-      ferrum.config = {
-        networking.hostName = "ferrum";
+      falcon.config = {
+        networking.hostName = "falcon";
         nixpkgs.hostPlatform.system = "aarch64-darwin";
       };
     };

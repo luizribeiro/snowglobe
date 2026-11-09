@@ -84,14 +84,14 @@ async fn test_same_group_deploys_never_overlap() {
 
     let run = harness
         .run(vec![
-            node("praseodymium", Some("kubernetes")),
-            node("promethium", Some("kubernetes")),
-            node("samarium", Some("kubernetes")),
+            node("pomegranates", Some("kubernetes")),
+            node("pufferfish", Some("kubernetes")),
+            node("seahorse", Some("kubernetes")),
         ])
         .await;
 
     assert!(run.results.all_succeeded(), "{:?}", run.results);
-    let spans: Vec<_> = ["praseodymium", "promethium", "samarium"]
+    let spans: Vec<_> = ["pomegranates", "pufferfish", "seahorse"]
         .iter()
         .map(|host| deploy_span(&run, host))
         .collect();
@@ -114,21 +114,21 @@ async fn test_different_groups_and_ungrouped_hosts_overlap() {
 
     let run = harness
         .run(vec![
-            node("praseodymium", Some("kubernetes")),
-            node("argon", Some("consul")),
-            node("hydrogen", None),
+            node("pomegranates", Some("kubernetes")),
+            node("alpha", Some("consul")),
+            node("hedgehog", None),
         ])
         .await;
 
     assert!(run.results.all_succeeded());
-    let kubernetes = deploy_span(&run, "praseodymium");
+    let kubernetes = deploy_span(&run, "pomegranates");
     assert!(
-        overlap(&kubernetes, &deploy_span(&run, "argon")),
+        overlap(&kubernetes, &deploy_span(&run, "alpha")),
         "{:?}",
         run.events
     );
     assert!(
-        overlap(&kubernetes, &deploy_span(&run, "hydrogen")),
+        overlap(&kubernetes, &deploy_span(&run, "hedgehog")),
         "{:?}",
         run.events
     );
@@ -140,18 +140,18 @@ async fn test_unchanged_host_never_takes_the_group_slot() {
     let mut harness = DeployHarness::new();
     harness.hook_backend = Arc::new(hooks_taking(Duration::from_millis(30)));
     harness.deployer = MockDeployBackend::new().with_host_systems(HashMap::from([(
-        "neodymium.example.com".to_string(),
-        HostSystems::both(mock_built_system("neodymium")),
+        "nightfall.example.com".to_string(),
+        HostSystems::both(mock_built_system("nightfall")),
     )]));
 
     let run = harness
         .run(vec![
-            node("neodymium", Some("kubernetes")),
-            node("praseodymium", Some("kubernetes")),
+            node("nightfall", Some("kubernetes")),
+            node("pomegranates", Some("kubernetes")),
         ])
         .await;
 
-    assert!(run.host("neodymium").unchanged);
+    assert!(run.host("nightfall").unchanged);
     assert!(run.results.all_succeeded());
     assert!(
         !run.has_event_starting_with("serial_wait:"),
@@ -167,26 +167,26 @@ async fn test_failed_deploy_skips_the_rest_of_its_group_only() {
         hooks_taking(Duration::from_millis(30))
             .with_local_failures(vec!["--simulate-failure".to_string()]),
     );
-    harness.nix_backend = builds_delayed(&["promethium", "samarium"], Duration::from_millis(20));
+    harness.nix_backend = builds_delayed(&["pufferfish", "seahorse"], Duration::from_millis(20));
 
     let run = harness
         .run(vec![
-            node_with_failing_drain("praseodymium", Some("kubernetes")),
-            node("promethium", Some("kubernetes")),
-            node("samarium", Some("kubernetes")),
-            node("hydrogen", None),
+            node_with_failing_drain("pomegranates", Some("kubernetes")),
+            node("pufferfish", Some("kubernetes")),
+            node("seahorse", Some("kubernetes")),
+            node("hedgehog", None),
         ])
         .await;
 
-    let failed = run.host("praseodymium");
+    let failed = run.host("pomegranates");
     assert_eq!(failed.failed_at_step, Some(PipelineStep::PreDeploy));
-    assert!(run.has_event("hooks_complete:praseodymium:on-failure:ok"));
-    assert_skipped_after(&run, "promethium", "praseodymium");
-    assert_skipped_after(&run, "samarium", "praseodymium");
-    assert!(run.host("hydrogen").success);
+    assert!(run.has_event("hooks_complete:pomegranates:on-failure:ok"));
+    assert_skipped_after(&run, "pufferfish", "pomegranates");
+    assert_skipped_after(&run, "seahorse", "pomegranates");
+    assert!(run.host("hedgehog").success);
     assert_done_with_final_results(
         &run,
-        &["hydrogen", "praseodymium", "promethium", "samarium"],
+        &["hedgehog", "pomegranates", "pufferfish", "seahorse"],
     );
 }
 
@@ -196,23 +196,23 @@ async fn test_failure_before_deploy_halts_group_before_on_failure_hooks_finish()
     // on-failure hooks of the failed build outlast the other members' builds,
     // so they would start deploying if the halt waited for those hooks
     harness.hook_backend = Arc::new(hooks_taking(Duration::from_millis(80)));
-    harness.nix_backend = builds_delayed(&["promethium", "samarium"], Duration::from_millis(20))
-        .with_build_failures(vec!["praseodymium".to_string()]);
+    harness.nix_backend = builds_delayed(&["pufferfish", "seahorse"], Duration::from_millis(20))
+        .with_build_failures(vec!["pomegranates".to_string()]);
 
     let run = harness
         .run(vec![
-            node("praseodymium", Some("kubernetes")),
-            node("promethium", Some("kubernetes")),
-            node("samarium", Some("kubernetes")),
+            node("pomegranates", Some("kubernetes")),
+            node("pufferfish", Some("kubernetes")),
+            node("seahorse", Some("kubernetes")),
         ])
         .await;
 
     assert_eq!(
-        run.host("praseodymium").failed_at_step,
+        run.host("pomegranates").failed_at_step,
         Some(PipelineStep::Build)
     );
-    assert_skipped_after(&run, "promethium", "praseodymium");
-    assert_skipped_after(&run, "samarium", "praseodymium");
+    assert_skipped_after(&run, "pufferfish", "pomegranates");
+    assert_skipped_after(&run, "seahorse", "pomegranates");
 }
 
 #[tokio::test]
@@ -238,20 +238,20 @@ async fn test_waiting_for_the_group_does_not_consume_hook_timeouts() {
         host.serial_group = Some("kubernetes".to_string());
         host
     };
-    harness.nix_backend = builds_delayed(&["promethium"], Duration::from_millis(500));
+    harness.nix_backend = builds_delayed(&["pufferfish"], Duration::from_millis(500));
 
     let run = harness
         .run(vec![
-            host("praseodymium", "sleep 1.5", 10),
-            host("promethium", "sleep 0.1", 1),
+            host("pomegranates", "sleep 1.5", 10),
+            host("pufferfish", "sleep 0.1", 1),
         ])
         .await;
 
-    // promethium queues ~1.5s behind praseodymium, past its own 1s timeout,
+    // pufferfish queues ~1.5s behind pomegranates, past its own 1s timeout,
     // so it only succeeds if the timeout starts when its hook does
     assert!(run.results.all_succeeded(), "{:?}", run.results);
     assert!(
-        run.has_event_starting_with("serial_wait:promethium:"),
+        run.has_event_starting_with("serial_wait:pufferfish:"),
         "{:?}",
         run.events
     );

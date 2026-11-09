@@ -181,7 +181,7 @@ mod tests {
     fn test_mock_existing_host() {
         let backend = MockSopsBackend::new().with_existing_host("carbon");
         assert!(backend.host_exists(Path::new("/tmp"), "carbon").unwrap());
-        assert!(!backend.host_exists(Path::new("/tmp"), "oxygen").unwrap());
+        assert!(!backend.host_exists(Path::new("/tmp"), "osprey").unwrap());
     }
 
     #[test]
@@ -206,13 +206,13 @@ mod tests {
             .add_host_key(Path::new("/tmp"), "carbon", "age1carbon")
             .unwrap();
         backend
-            .add_host_key(Path::new("/tmp"), "oxygen", "age1oxygen")
+            .add_host_key(Path::new("/tmp"), "osprey", "age1osprey")
             .unwrap();
 
         let calls = backend.get_add_key_calls();
         assert_eq!(calls.len(), 2);
         assert_eq!(calls[0], ("carbon".to_string(), "age1carbon".to_string()));
-        assert_eq!(calls[1], ("oxygen".to_string(), "age1oxygen".to_string()));
+        assert_eq!(calls[1], ("osprey".to_string(), "age1osprey".to_string()));
     }
 
     #[test]

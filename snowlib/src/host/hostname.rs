@@ -52,7 +52,7 @@ mod tests {
 
     #[test]
     fn test_hostname_from_trims_the_output() {
-        assert_eq!(hostname_from(Ok("radon\n".to_string())).unwrap(), "radon");
+        assert_eq!(hostname_from(Ok("raven\n".to_string())).unwrap(), "raven");
     }
 
     #[test]

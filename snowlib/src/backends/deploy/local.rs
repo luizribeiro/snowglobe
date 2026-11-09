@@ -236,7 +236,7 @@ mod tests {
 
         let printed = backend
             .inspect(
-                &create_test_target("boron"),
+                &create_test_target("bravo"),
                 "printf",
                 &["Id=stale-job.service".to_string()],
             )
@@ -251,11 +251,11 @@ mod tests {
         let (_sudo, backend) = create_test_backend();
 
         let error = backend
-            .inspect(&create_test_target("boron"), "false", &[])
+            .inspect(&create_test_target("bravo"), "false", &[])
             .await
             .unwrap_err();
 
-        assert!(error.to_string().contains("Command failed on host 'boron'"));
+        assert!(error.to_string().contains("Command failed on host 'bravo'"));
     }
 
     /// Its sudo fails every command, as running the made-up store paths would
@@ -270,11 +270,11 @@ mod tests {
     async fn test_switch_sets_the_profile_then_switches_through_sudo() {
         let sudo = FakeSudo::new().with("pretends");
         let backend = LocalDeployBackend::new(sudo.session()).with_quiet();
-        let system = create_test_store_path("/nix/store/36vm-nixos-system-boron");
+        let system = create_test_store_path("/nix/store/36vm-nixos-system-bravo");
 
         backend
             .activate(
-                &create_test_target("boron"),
+                &create_test_target("bravo"),
                 &system,
                 ActivationMode::Switch,
             )
@@ -284,8 +284,8 @@ mod tests {
         assert_eq!(
             commands_run(&sudo),
             vec![
-                "-n nix-env --profile /nix/var/nix/profiles/system --set /nix/store/36vm-nixos-system-boron",
-                "-n /nix/store/36vm-nixos-system-boron/bin/switch-to-configuration switch",
+                "-n nix-env --profile /nix/var/nix/profiles/system --set /nix/store/36vm-nixos-system-bravo",
+                "-n /nix/store/36vm-nixos-system-bravo/bin/switch-to-configuration switch",
             ]
         );
     }
@@ -294,14 +294,14 @@ mod tests {
     #[cfg(not(target_os = "macos"))]
     async fn test_failed_profile_update_skips_the_switch() {
         let (sudo, backend) = create_test_backend();
-        let system = create_test_store_path("/nix/store/36vm-nixos-system-boron");
+        let system = create_test_store_path("/nix/store/36vm-nixos-system-bravo");
 
         let error = backend
-            .activate(&create_test_target("boron"), &system, ActivationMode::Boot)
+            .activate(&create_test_target("bravo"), &system, ActivationMode::Boot)
             .await
             .unwrap_err();
 
-        assert!(error.to_string().contains("Command failed on host 'boron'"));
+        assert!(error.to_string().contains("Command failed on host 'bravo'"));
         assert!(!sudo
             .calls()
             .iter()
@@ -443,9 +443,9 @@ mod tests {
     #[cfg(not(target_os = "macos"))]
     async fn test_activate_with_realistic_store_paths() {
         let (_sudo, backend) = create_test_backend();
-        let target = create_test_target("hydrogen");
+        let target = create_test_target("hedgehog");
         let store_path =
-            create_test_store_path("/nix/store/abc123def456-nixos-system-hydrogen-24.05");
+            create_test_store_path("/nix/store/abc123def456-nixos-system-hedgehog-24.05");
 
         let result = backend
             .activate(&target, &store_path, ActivationMode::Switch)

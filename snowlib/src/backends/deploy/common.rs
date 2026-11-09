@@ -135,8 +135,8 @@ mod tests {
     #[test]
     fn test_check_mode_supported_names_every_darwin_host() {
         let hosts = [
-            ("ferrum", SystemType::Darwin),
-            ("boron", SystemType::NixOS),
+            ("falcon", SystemType::Darwin),
+            ("bravo", SystemType::NixOS),
             ("cobalt", SystemType::Darwin),
         ];
 
@@ -144,7 +144,7 @@ mod tests {
 
         assert_eq!(
             error.to_string(),
-            "nix-darwin can only switch, so ferrum, cobalt can't boot"
+            "nix-darwin can only switch, so falcon, cobalt can't boot"
         );
     }
 
@@ -155,7 +155,7 @@ mod tests {
             ActivationMode::Test,
             ActivationMode::DryActivate,
         ] {
-            let result = check_mode_supported(mode, [("ferrum", SystemType::Darwin)]);
+            let result = check_mode_supported(mode, [("falcon", SystemType::Darwin)]);
 
             assert!(
                 matches!(result, Err(DeployError::DarwinOnlySwitches { .. })),
@@ -163,7 +163,7 @@ mod tests {
             );
         }
         assert!(
-            check_mode_supported(ActivationMode::Switch, [("ferrum", SystemType::Darwin)]).is_ok()
+            check_mode_supported(ActivationMode::Switch, [("falcon", SystemType::Darwin)]).is_ok()
         );
     }
 
@@ -175,7 +175,7 @@ mod tests {
             ActivationMode::Test,
             ActivationMode::DryActivate,
         ] {
-            assert!(check_mode_supported(mode, [("boron", SystemType::NixOS)]).is_ok());
+            assert!(check_mode_supported(mode, [("bravo", SystemType::NixOS)]).is_ok());
         }
     }
 
@@ -193,7 +193,7 @@ mod tests {
         let result = test_utils::command_result(4, "setting up /etc...\n", &stderr.join("\n"));
 
         let error = command_failed(
-            "cerium",
+            "cactus",
             "sudo switch-to-configuration switch".into(),
             &result,
         );

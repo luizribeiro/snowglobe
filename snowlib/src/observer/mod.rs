@@ -237,7 +237,7 @@ mod tests {
     fn test_noop_observer_accepts_every_event() {
         let observer = NoopObserver;
         observer.on_phase_start("p1", &[]);
-        observer.on_host_event("cerium", &HostEvent::Started(PipelineStep::Build));
+        observer.on_host_event("cactus", &HostEvent::Started(PipelineStep::Build));
         observer.on_phase_complete("p1", None);
     }
 
@@ -248,34 +248,34 @@ mod tests {
         let composite =
             CompositeObserver::new(vec![Box::new(first.clone()), Box::new(second.clone())]);
 
-        composite.on_phase_start("p3", &["lanthanum".to_string()]);
+        composite.on_phase_start("p3", &["limestone".to_string()]);
         composite.on_host_event(
-            "lanthanum",
+            "limestone",
             &HostEvent::Failed {
                 step: PipelineStep::Plan,
                 reason: "Kernel changed".to_string(),
             },
         );
-        composite.on_hooks_start("lanthanum", HookStage::OnFailure);
-        composite.on_hook_start("lanthanum", HookStage::OnFailure, "recover-uncordon");
-        composite.on_hook_complete("lanthanum", HookStage::OnFailure, "recover-uncordon", true);
-        composite.on_hooks_complete("lanthanum", HookStage::OnFailure, true);
+        composite.on_hooks_start("limestone", HookStage::OnFailure);
+        composite.on_hook_start("limestone", HookStage::OnFailure, "recover-uncordon");
+        composite.on_hook_complete("limestone", HookStage::OnFailure, "recover-uncordon", true);
+        composite.on_hooks_complete("limestone", HookStage::OnFailure, true);
         composite.on_phase_complete(
             "p3",
             Some(&PhaseResult {
                 phase: "p3".to_string(),
-                hosts: vec![HostDeploymentResult::unchanged("lanthanum")],
+                hosts: vec![HostDeploymentResult::unchanged("limestone")],
                 duration: std::time::Duration::from_secs(42),
             }),
         );
 
         let expected = vec![
             "phase_start:p3:1".to_string(),
-            "lanthanum:Failed { step: Plan, reason: \"Kernel changed\" }".to_string(),
-            "hooks_start:lanthanum:on-failure".to_string(),
-            "hook_start:lanthanum:on-failure:recover-uncordon".to_string(),
-            "hook_complete:lanthanum:on-failure:recover-uncordon:true".to_string(),
-            "hooks_complete:lanthanum:on-failure:true".to_string(),
+            "limestone:Failed { step: Plan, reason: \"Kernel changed\" }".to_string(),
+            "hooks_start:limestone:on-failure".to_string(),
+            "hook_start:limestone:on-failure:recover-uncordon".to_string(),
+            "hook_complete:limestone:on-failure:recover-uncordon:true".to_string(),
+            "hooks_complete:limestone:on-failure:true".to_string(),
             "phase_complete:p3:1".to_string(),
         ];
         assert_eq!(first.get_events(), expected);

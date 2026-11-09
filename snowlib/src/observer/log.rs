@@ -96,11 +96,11 @@ mod tests {
 
     #[test]
     fn test_finished_phase_logs_how_long_it_took_and_how_it_went() {
-        let mut failed = HostDeploymentResult::unchanged("radon");
+        let mut failed = HostDeploymentResult::unchanged("raven");
         failed.success = false;
         let result = PhaseResult {
             phase: "p2".to_string(),
-            hosts: vec![HostDeploymentResult::unchanged("cerium"), failed],
+            hosts: vec![HostDeploymentResult::unchanged("cactus"), failed],
             duration: Duration::from_millis(83_460),
         };
 
@@ -116,15 +116,15 @@ mod tests {
         let log = LogObserver::default();
         let t0 = Instant::now();
 
-        let started = log.line("cerium", &HostEvent::Started(PipelineStep::Copy), t0);
+        let started = log.line("cactus", &HostEvent::Started(PipelineStep::Copy), t0);
         let finished = log.line(
-            "cerium",
+            "cactus",
             &HostEvent::Finished(PipelineStep::Copy),
             t0 + Duration::from_millis(12_340),
         );
 
-        assert_eq!(started.as_deref(), Some("cerium: copy started"));
-        assert_eq!(finished.as_deref(), Some("cerium: copy finished in 12.3s"));
+        assert_eq!(started.as_deref(), Some("cactus: copy started"));
+        assert_eq!(finished.as_deref(), Some("cactus: copy finished in 12.3s"));
     }
 
     #[test]
@@ -132,25 +132,25 @@ mod tests {
         let log = LogObserver::default();
         let t0 = Instant::now();
 
-        log.line("cerium", &HostEvent::Started(PipelineStep::Build), t0);
+        log.line("cactus", &HostEvent::Started(PipelineStep::Build), t0);
         log.line(
-            "radon",
+            "raven",
             &HostEvent::Started(PipelineStep::Build),
             t0 + Duration::from_secs(30),
         );
-        let radon = log.line(
-            "radon",
+        let raven = log.line(
+            "raven",
             &HostEvent::Finished(PipelineStep::Build),
             t0 + Duration::from_secs(40),
         );
-        let cerium = log.line(
-            "cerium",
+        let cactus = log.line(
+            "cactus",
             &HostEvent::Finished(PipelineStep::Build),
             t0 + Duration::from_secs(45),
         );
 
-        assert_eq!(radon.as_deref(), Some("radon: build finished in 10.0s"));
-        assert_eq!(cerium.as_deref(), Some("cerium: build finished in 45.0s"));
+        assert_eq!(raven.as_deref(), Some("raven: build finished in 10.0s"));
+        assert_eq!(cactus.as_deref(), Some("cactus: build finished in 45.0s"));
     }
 
     #[test]
@@ -158,19 +158,19 @@ mod tests {
         let log = LogObserver::default();
         let t0 = Instant::now();
 
-        log.line("cerium", &HostEvent::Started(PipelineStep::Copy), t0);
-        log.line("radon", &HostEvent::Started(PipelineStep::Copy), t0);
-        let failure = log.line("cerium", &failed(PipelineStep::Copy), t0);
-        let after_failure = log.line("cerium", &HostEvent::Finished(PipelineStep::Copy), t0);
-        let radon = log.line(
-            "radon",
+        log.line("cactus", &HostEvent::Started(PipelineStep::Copy), t0);
+        log.line("raven", &HostEvent::Started(PipelineStep::Copy), t0);
+        let failure = log.line("cactus", &failed(PipelineStep::Copy), t0);
+        let after_failure = log.line("cactus", &HostEvent::Finished(PipelineStep::Copy), t0);
+        let raven = log.line(
+            "raven",
             &HostEvent::Finished(PipelineStep::Copy),
             t0 + Duration::from_secs(3),
         );
 
         assert_eq!(failure, None);
-        assert_eq!(after_failure.as_deref(), Some("cerium: copy finished"));
-        assert_eq!(radon.as_deref(), Some("radon: copy finished in 3.0s"));
+        assert_eq!(after_failure.as_deref(), Some("cactus: copy finished"));
+        assert_eq!(raven.as_deref(), Some("raven: copy finished in 3.0s"));
     }
 
     #[test]
@@ -178,7 +178,7 @@ mod tests {
         let log = LogObserver::default();
         let now = Instant::now();
         let deployed = HostDeploymentResult {
-            hostname: "radon".to_string(),
+            hostname: "raven".to_string(),
             success: true,
             failed_at_step: None,
             activation_mode: Some(ActivationMode::Boot),
@@ -188,15 +188,15 @@ mod tests {
             ignored_failing: Vec::new(),
             error_message: None,
         };
-        let skipped = HostDeploymentResult::skipped_by_serial_group("samarium", "k8s", "cerium");
+        let skipped = HostDeploymentResult::skipped_by_serial_group("seahorse", "k8s", "cactus");
         let failed = HostDeploymentResult {
-            hostname: "cerium".to_string(),
+            hostname: "cactus".to_string(),
             success: false,
             failed_at_step: Some(PipelineStep::Copy),
             error_message: Some("Copy closure failed".to_string()),
             ..deployed.clone()
         };
-        let unchanged = HostDeploymentResult::unchanged("sodium");
+        let unchanged = HostDeploymentResult::unchanged("spruce");
 
         let lines: Vec<_> = [deployed, skipped, failed, unchanged]
             .into_iter()
@@ -209,9 +209,9 @@ mod tests {
         assert_eq!(
             lines,
             vec![
-                Some("radon: deployed".to_string()),
+                Some("raven: deployed".to_string()),
                 Some(
-                    "samarium: skipped, serial group 'k8s' halted after cerium failed".to_string()
+                    "seahorse: skipped, serial group 'k8s' halted after cactus failed".to_string()
                 ),
                 None,
                 None,
@@ -225,16 +225,16 @@ mod tests {
         let now = Instant::now();
 
         let lines: Vec<_> = [
-            ("sodium", HostEvent::Unchanged),
+            ("spruce", HostEvent::Unchanged),
             (
-                "neodymium",
+                "nightfall",
                 HostEvent::WaitingForSerialGroup {
                     group: "k8s".to_string(),
-                    holder: Some("cerium".to_string()),
+                    holder: Some("cactus".to_string()),
                 },
             ),
             (
-                "samarium",
+                "seahorse",
                 HostEvent::WaitingForSerialGroup {
                     group: "k8s".to_string(),
                     holder: None,
@@ -248,9 +248,9 @@ mod tests {
         assert_eq!(
             lines,
             vec![
-                "sodium: already running the built system, skipping",
-                "neodymium: waiting for serial group 'k8s' (held by cerium)",
-                "samarium: waiting for serial group 'k8s' (held by another host)",
+                "spruce: already running the built system, skipping",
+                "nightfall: waiting for serial group 'k8s' (held by cactus)",
+                "seahorse: waiting for serial group 'k8s' (held by another host)",
             ]
         );
     }

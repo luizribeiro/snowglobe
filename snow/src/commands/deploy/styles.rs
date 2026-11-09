@@ -131,7 +131,7 @@ fn drawn_from(
         )
 }
 
-/// The first host's row, coloured, as "⠋ boron  build      0:12"
+/// The first host's row, coloured, as "⠋ bravo  build      0:12"
 pub(super) fn render_lone_host(
     board: &HostBoard,
     now: Instant,
@@ -270,43 +270,43 @@ mod tests {
 
     #[test]
     fn test_rows_line_up_with_elapsed_at_the_right_edge() {
-        let cerium = row(RowKind::Active, "cerium", "reboot", "", Some(192));
-        let neodymium = row(
+        let cactus = row(RowKind::Active, "cactus", "reboot", "", Some(192));
+        let nightfall = row(
             RowKind::Queued,
-            "neodymium",
+            "nightfall",
             "queued",
-            "serial group 'k8s' (held by cerium)",
+            "serial group 'k8s' (held by cactus)",
             Some(160),
         );
 
-        let cerium = row_text(&cerium, ROW_INDENT, 9, 60, "⠋");
-        let neodymium = row_text(&neodymium, ROW_INDENT, 9, 60, "⠋");
+        let cactus = row_text(&cactus, ROW_INDENT, 9, 60, "⠋");
+        let nightfall = row_text(&nightfall, ROW_INDENT, 9, 60, "⠋");
 
         assert_eq!(
-            cerium,
-            "    ⠋ cerium     reboot                                3:12"
+            cactus,
+            "    ⠋ cactus     reboot                                3:12"
         );
         assert_eq!(
-            neodymium,
-            "    ◷ neodymium  queued      serial group 'k8s' (held… 2:40"
+            nightfall,
+            "    ◷ nightfall  queued      serial group 'k8s' (held… 2:40"
         );
-        assert_eq!(cerium.chars().count(), 59);
-        assert_eq!(neodymium.chars().count(), 59);
+        assert_eq!(cactus.chars().count(), 59);
+        assert_eq!(nightfall.chars().count(), 59);
     }
 
     #[test]
     fn test_failed_row_without_elapsed_is_cut_to_the_terminal() {
-        let lanthanum = row(
+        let limestone = row(
             RowKind::Failed,
-            "lanthanum",
+            "limestone",
             "plan",
             "hook 'wait-storage-healthy': /nix/store/715s-kubernetes-storage-healthy missing",
             None,
         );
 
-        let text = row_text(&lanthanum, ROW_INDENT, 9, 50, "⠋");
+        let text = row_text(&limestone, ROW_INDENT, 9, 50, "⠋");
 
-        assert_eq!(text, "    ✗ lanthanum  plan        hook 'wait-storage-…");
+        assert_eq!(text, "    ✗ limestone  plan        hook 'wait-storage-…");
         assert_eq!(text.chars().count(), 49);
     }
 
@@ -314,10 +314,10 @@ mod tests {
     fn test_slots_list_each_lane_then_its_hosts_and_end_with_the_last() {
         console::set_colors_enabled(false);
         let t0 = Instant::now();
-        let hosts = vec!["radon".to_string(), "cerium".to_string()];
+        let hosts = vec!["raven".to_string(), "cactus".to_string()];
         let mut board = HostBoard::new("p3", &hosts, t0);
         board.apply(
-            "radon",
+            "raven",
             &snowlib::HostEvent::Failed {
                 step: snowlib::PipelineStep::Build,
                 reason: "error: attribute 'wine' missing".to_string(),
@@ -333,14 +333,14 @@ mod tests {
             slots,
             vec![
                 Some("  ◷ Queued".to_string()),
-                Some(format!("    ◷ cerium  queued{}0:00", " ".repeat(35))),
+                Some(format!("    ◷ cactus  queued{}0:00", " ".repeat(35))),
                 Some("  ⚙ Build".to_string()),
                 Some("  ⇢ Copy".to_string()),
                 Some("  ★ Activate".to_string()),
                 Some("  ⟳ Reboot".to_string()),
                 Some("  ✓ Done".to_string()),
                 Some("  ✗ Failed".to_string()),
-                Some("    ✗ radon   build       attribute 'wine' missing".to_string()),
+                Some("    ✗ raven   build       attribute 'wine' missing".to_string()),
                 None,
             ]
         );
@@ -350,15 +350,15 @@ mod tests {
     fn test_header_shows_how_much_of_the_phase_is_finished() {
         console::set_colors_enabled(false);
         let t0 = Instant::now();
-        let hosts: Vec<String> = ["boron", "cerium", "radon"].map(String::from).to_vec();
+        let hosts: Vec<String> = ["bravo", "cactus", "raven"].map(String::from).to_vec();
         let mut board = HostBoard::new("p2", &hosts, t0);
         board.apply(
-            "cerium",
+            "cactus",
             &snowlib::HostEvent::Started(snowlib::PipelineStep::Copy),
             t0,
         );
         board.apply(
-            "radon",
+            "raven",
             &snowlib::HostEvent::Failed {
                 step: snowlib::PipelineStep::Activate,
                 reason: "storage-agent.service failed".to_string(),
@@ -397,12 +397,12 @@ mod tests {
     #[test]
     fn test_header_turns_red_once_a_host_fails() {
         let t0 = Instant::now();
-        let hosts: Vec<String> = ["boron", "cerium"].map(String::from).to_vec();
+        let hosts: Vec<String> = ["bravo", "cactus"].map(String::from).to_vec();
         let mut board = HostBoard::new("p2", &hosts, t0);
         let before = header_color(&board);
 
         board.apply(
-            "cerium",
+            "cactus",
             &snowlib::HostEvent::Failed {
                 step: snowlib::PipelineStep::Copy,
                 reason: "Copy closure failed".to_string(),
@@ -429,26 +429,26 @@ mod tests {
     fn test_lone_host_is_drawn_without_a_lane_to_sit_under() {
         console::set_colors_enabled(false);
         let t0 = Instant::now();
-        let mut board = HostBoard::new("rebuild", &["boron".to_string()], t0);
+        let mut board = HostBoard::new("rebuild", &["bravo".to_string()], t0);
         board.apply(
-            "boron",
+            "bravo",
             &snowlib::HostEvent::Started(snowlib::PipelineStep::Check),
             t0,
         );
 
         assert_eq!(
             render_lone_host(&board, t0 + Duration::from_secs(12), 40, "⠋"),
-            Some(format!("⠋ boron  check{}0:12", " ".repeat(21)))
+            Some(format!("⠋ bravo  check{}0:12", " ".repeat(21)))
         );
     }
 
     #[test]
     fn test_short_rows_are_not_padded_without_elapsed() {
-        let sodium = row(RowKind::Unchanged, "sodium", "unchanged", "", None);
+        let spruce = row(RowKind::Unchanged, "spruce", "unchanged", "", None);
 
         assert_eq!(
-            row_text(&sodium, ROW_INDENT, 9, 80, "⠋"),
-            "    = sodium     unchanged"
+            row_text(&spruce, ROW_INDENT, 9, 80, "⠋"),
+            "    = spruce     unchanged"
         );
     }
 }

@@ -31,9 +31,9 @@ pkgs.runCommand "nixos-activate-test" { } ''
   expect_failure
   expect_failure /nix/store/abc-system
   expect_error "Invalid store path" /tmp/evil switch
-  expect_error "Invalid mode" /nix/store/$hash-nixos-system-boron poweroff
-  expect_error "Invalid mode" /nix/store/$hash-nixos-system-boron reboot
-  expect_error "Activation script not found" /nix/store/$hash-nixos-system-boron test
+  expect_error "Invalid mode" /nix/store/$hash-nixos-system-bravo poweroff
+  expect_error "Invalid mode" /nix/store/$hash-nixos-system-bravo reboot
+  expect_error "Activation script not found" /nix/store/$hash-nixos-system-bravo test
   expect_error "Activation script not found" ${packageNotSystem} switch
   expect_error "Activation script not found" ${packageNotSystem} boot
   expect_traversal_rejected bin/switch-to-configuration test

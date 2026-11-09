@@ -75,7 +75,7 @@ mod tests {
     #[test]
     fn test_render_indents_the_causes_under_the_headline() {
         let error = SnowError::from(NixError::MetadataFailed {
-            host: "ferrum".to_string(),
+            host: "falcon".to_string(),
             source: Box::new(NixError::CommandFailed {
                 source: std::io::Error::other("nix: command not found\n\nis nix installed?"),
             }),
@@ -83,7 +83,7 @@ mod tests {
 
         assert_eq!(
             styled(&error, false),
-            "✗ Failed to get metadata for host 'ferrum'\n    \
+            "✗ Failed to get metadata for host 'falcon'\n    \
              Nix command execution failed\n    \
              nix: command not found\n\n    \
              is nix installed?\n  \
@@ -94,16 +94,16 @@ mod tests {
     #[test]
     fn test_render_indents_later_message_and_help_lines() {
         let error = SnowError::from(NixError::BuildFailed {
-            host: "radon".to_string(),
+            host: "raven".to_string(),
             stderr: "error: builder for wine failed".to_string(),
         });
 
         assert_eq!(
             styled(&error, false),
-            "✗ Failed to build host configuration for 'radon':\n    \
+            "✗ Failed to build host configuration for 'raven':\n    \
              error: builder for wine failed\n  \
              help: Check that the host exists in your flake's nixosConfigurations and can be built:\n    \
-             \x20 nix build .#nixosConfigurations.radon.config.system.build.toplevel"
+             \x20 nix build .#nixosConfigurations.raven.config.system.build.toplevel"
         );
     }
 }

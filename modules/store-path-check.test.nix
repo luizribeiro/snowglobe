@@ -19,7 +19,7 @@ pkgs.runCommand "store-path-check-test" { } ''
     grep -q "Invalid store path" "$TMPDIR/err" || fail "'$1' failed for another reason: $(cat "$TMPDIR/err")"
   }
 
-  expect_valid /nix/store/${hash}-nixos-system-boron-26.05
+  expect_valid /nix/store/${hash}-nixos-system-bravo-26.05
   expect_valid "/nix/store/${hash}-a+b_c?d=e.f"
   expect_valid ${check}
 

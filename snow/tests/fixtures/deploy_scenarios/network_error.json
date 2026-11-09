@@ -2,9 +2,9 @@
   "name": "Network failure during copy",
   "description": "SSH connection fails during closure copy",
   "failures": {
-    "hydrogen": {
+    "hedgehog": {
       "phase": "copy_closure",
-      "error": "ssh: connect to host hydrogen.example.com port 22: Connection refused"
+      "error": "ssh: connect to host hedgehog.example.com port 22: Connection refused"
     }
   }
 }

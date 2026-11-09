@@ -152,7 +152,7 @@ mod tests {
     const OPS_EVAL_JOBS: &str = include_str!("../../tests/fixtures/plan/eval-jobs.jsonl");
     const S3: &str = "s3://nix-store-cache";
     const CACHE_NIXOS_ORG: &str = "https://cache.nixos.org";
-    const SODIUM_STAGE2: &str = "/nix/store/my8fv7s5hvjgjqfa3j18bajh4hymlzz0-stage-2-init.sh.drv";
+    const SPRUCE_STAGE2: &str = "/nix/store/my8fv7s5hvjgjqfa3j18bajh4hymlzz0-stage-2-init.sh.drv";
     const DIE_HOOK: &str = "/nix/store/cni8h48r0c96xjlndndabai63hz9dmzr-die-hook";
 
     fn substituter(url: &str, priority: u32) -> ConfiguredSubstituter {
@@ -174,7 +174,7 @@ mod tests {
                 parse_eval_jobs(OPS_EVAL_JOBS.as_bytes()).unwrap(),
             )]),
             derivations: vec![DerivationInfo {
-                drv_path: SODIUM_STAGE2.to_string(),
+                drv_path: SPRUCE_STAGE2.to_string(),
                 name: "stage-2-init.sh".to_string(),
                 pname: None,
                 version: None,
@@ -208,22 +208,22 @@ mod tests {
     async fn test_plan_for_ops_hosts() {
         let report = plan(
             &ops_backend(),
-            &nixos(&["boron", "radon", "sodium", "krypton"]),
+            &nixos(&["bravo", "raven", "spruce", "kestrel"]),
         )
         .await
         .unwrap();
 
         let names: Vec<&str> = report.hosts.iter().map(|h| h.name.as_str()).collect();
-        assert_eq!(names, vec!["boron", "krypton", "radon", "sodium"]);
+        assert_eq!(names, vec!["bravo", "kestrel", "raven", "spruce"]);
         assert!(report.has_eval_failures());
 
         let stage2 = report
             .builds
             .iter()
-            .find(|b| b.derivation.drv_path == SODIUM_STAGE2)
+            .find(|b| b.derivation.drv_path == SPRUCE_STAGE2)
             .unwrap();
         assert!(stage2.derivation.trivial);
-        assert_eq!(stage2.hosts, vec!["sodium"]);
+        assert_eq!(stage2.hosts, vec!["spruce"]);
 
         let die_hook = report.fetches.iter().find(|f| f.path == DIE_HOOK).unwrap();
         assert_eq!(die_hook.substituter.as_deref(), Some(CACHE_NIXOS_ORG));
@@ -232,7 +232,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_plan_only_evaluates_selected_hosts() {
-        let report = plan(&ops_backend(), &nixos(&["boron"])).await.unwrap();
+        let report = plan(&ops_backend(), &nixos(&["bravo"])).await.unwrap();
 
         assert_eq!(report.hosts.len(), 1);
         assert!(report.builds.is_empty());
@@ -253,7 +253,7 @@ mod tests {
         let mut backend = ops_backend();
         backend.unreachable = vec![CACHE_NIXOS_ORG.to_string()];
 
-        let report = plan(&backend, &nixos(&["sodium"])).await.unwrap();
+        let report = plan(&backend, &nixos(&["spruce"])).await.unwrap();
 
         let unreachable: Vec<&str> = report
             .unreachable_substituters()
@@ -268,7 +268,7 @@ mod tests {
         let mut backend = ops_backend();
         backend.failing_queries = vec![CACHE_NIXOS_ORG.to_string()];
 
-        let report = plan(&backend, &nixos(&["sodium"])).await.unwrap();
+        let report = plan(&backend, &nixos(&["spruce"])).await.unwrap();
 
         assert!(!report.substituters[1].reachable);
         assert_eq!(report.totals.unattributed_fetches, report.totals.fetches);
@@ -277,14 +277,14 @@ mod tests {
     #[tokio::test]
     async fn test_hosts_of_each_system_type_are_evaluated() {
         let mut backend = ops_backend();
-        let ferrum = parse_eval_jobs(
-            br#"{"attr":"ferrum","drvPath":"/nix/store/ddd-darwin-system-26.05.drv","system":"aarch64-darwin","cacheStatus":"local","neededBuilds":[],"neededSubstitutes":[]}"#,
+        let falcon = parse_eval_jobs(
+            br#"{"attr":"falcon","drvPath":"/nix/store/ddd-darwin-system-26.05.drv","system":"aarch64-darwin","cacheStatus":"local","neededBuilds":[],"neededSubstitutes":[]}"#,
         )
         .unwrap();
-        backend.evals.insert(SystemType::Darwin, ferrum);
-        let mut targets = nixos(&["boron"]);
+        backend.evals.insert(SystemType::Darwin, falcon);
+        let mut targets = nixos(&["bravo"]);
         targets.push(PlanTarget {
-            host: "ferrum".to_string(),
+            host: "falcon".to_string(),
             system_type: SystemType::Darwin,
         });
 
@@ -300,7 +300,7 @@ mod tests {
             .collect();
         assert_eq!(
             systems,
-            vec![("boron", "x86_64-linux"), ("ferrum", "aarch64-darwin")]
+            vec![("bravo", "x86_64-linux"), ("falcon", "aarch64-darwin")]
         );
     }
 
@@ -308,15 +308,15 @@ mod tests {
     async fn test_shared_paths_are_requested_once() {
         let mut backend = ops_backend();
         let nixos_evals = backend.evals.get_mut(&SystemType::NixOS).unwrap();
-        let mut sodium_twin = nixos_evals
+        let mut spruce_twin = nixos_evals
             .iter()
-            .find(|e| e.host == "sodium")
+            .find(|e| e.host == "spruce")
             .unwrap()
             .clone();
-        sodium_twin.host = "sodium-twin".to_string();
-        nixos_evals.push(sodium_twin);
+        spruce_twin.host = "spruce-twin".to_string();
+        nixos_evals.push(spruce_twin);
 
-        plan(&backend, &nixos(&["sodium", "sodium-twin"]))
+        plan(&backend, &nixos(&["spruce", "spruce-twin"]))
             .await
             .unwrap();
 
@@ -325,7 +325,7 @@ mod tests {
             panic!("expected derivations to be described first, got {calls:?}");
         };
         assert_eq!(drvs.len(), 6);
-        assert!(drvs.contains(&SODIUM_STAGE2.to_string()));
+        assert!(drvs.contains(&SPRUCE_STAGE2.to_string()));
         for call in &calls[1..] {
             let MockPlanCall::QuerySubstituter { paths, .. } = call else {
                 panic!("unexpected call {call:?}");
@@ -340,12 +340,12 @@ mod tests {
         backend.evals.insert(
             SystemType::NixOS,
             parse_eval_jobs(
-                br#"{"attr":"oxygen","drvPath":"/nix/store/eee-nixos-system-oxygen.drv","system":"x86_64-linux","cacheStatus":"local","neededBuilds":[],"neededSubstitutes":[]}"#,
+                br#"{"attr":"osprey","drvPath":"/nix/store/eee-nixos-system-osprey.drv","system":"x86_64-linux","cacheStatus":"local","neededBuilds":[],"neededSubstitutes":[]}"#,
             )
             .unwrap(),
         );
 
-        let report = plan(&backend, &nixos(&["oxygen"])).await.unwrap();
+        let report = plan(&backend, &nixos(&["osprey"])).await.unwrap();
 
         assert!(backend.calls.lock().is_empty());
         assert!(report.substituters.iter().all(|s| s.reachable));
@@ -356,7 +356,7 @@ mod tests {
         let mut backend = ops_backend();
         backend.unreachable = vec![S3.to_string()];
 
-        plan(&backend, &nixos(&["sodium"])).await.unwrap();
+        plan(&backend, &nixos(&["spruce"])).await.unwrap();
 
         let queried: Vec<String> = backend
             .calls
@@ -372,7 +372,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_host_missing_from_evaluation_is_reported_as_failed() {
-        let report = plan(&ops_backend(), &nixos(&["boron", "xenon"]))
+        let report = plan(&ops_backend(), &nixos(&["bravo", "xenon"]))
             .await
             .unwrap();
 
@@ -386,16 +386,16 @@ mod tests {
         let mut backend = ops_backend();
         backend.failing_eval = Some(SystemType::NixOS);
 
-        assert!(plan(&backend, &nixos(&["boron"])).await.is_err());
+        assert!(plan(&backend, &nixos(&["bravo"])).await.is_err());
     }
 
     #[tokio::test]
     async fn test_eval_failure_of_one_host_keeps_the_others() {
-        let report = plan(&ops_backend(), &nixos(&["krypton", "sodium"]))
+        let report = plan(&ops_backend(), &nixos(&["kestrel", "spruce"]))
             .await
             .unwrap();
 
         assert!(report.has_eval_failures());
-        assert!(report.builds.iter().any(|b| b.hosts == vec!["sodium"]));
+        assert!(report.builds.iter().any(|b| b.hosts == vec!["spruce"]));
     }
 }

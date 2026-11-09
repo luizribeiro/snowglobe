@@ -284,7 +284,7 @@ mod tests {
             description: Some("Test scenario".to_string()),
             failures: std::collections::HashMap::new(),
             hosts: vec![HostFixture {
-                hostname: "hydrogen.example.com".to_string(),
+                hostname: "hedgehog.example.com".to_string(),
                 metadata: None,
                 build: None,
                 copy_closure: OperationFixture {
@@ -305,7 +305,7 @@ mod tests {
         let deployer = MockDeployBackend::from_fixture(fixture);
         let target = DeployTarget {
             user: Some("root".to_string()),
-            hostname: "hydrogen.example.com".to_string(),
+            hostname: "hedgehog.example.com".to_string(),
             port: None,
         };
         let store_path = StorePath::new("/nix/store/test".to_string());
@@ -326,10 +326,10 @@ mod tests {
 
         let deployer = MockDeployBackend::from_file(&fixture_path).unwrap();
 
-        // Test with hydrogen
+        // Test with hedgehog
         let target = DeployTarget {
             user: Some("root".to_string()),
-            hostname: "hydrogen.example.com".to_string(),
+            hostname: "hedgehog.example.com".to_string(),
             port: None,
         };
         let store_path = StorePath::new("/nix/store/test".to_string());
@@ -350,36 +350,36 @@ mod tests {
 
         let deployer = MockDeployBackend::from_file(&fixture_path).unwrap();
 
-        // Hydrogen should succeed
-        let target_hydrogen = DeployTarget {
+        // Hedgehog should succeed
+        let target_hedgehog = DeployTarget {
             user: Some("root".to_string()),
-            hostname: "hydrogen.example.com".to_string(),
+            hostname: "hedgehog.example.com".to_string(),
             port: None,
         };
         let store_path = StorePath::new("/nix/store/test".to_string());
 
         assert!(deployer
-            .copy_closure(&target_hydrogen, &store_path)
+            .copy_closure(&target_hedgehog, &store_path)
             .await
             .is_ok());
         assert!(deployer
-            .activate(&target_hydrogen, &store_path, ActivationMode::Switch)
+            .activate(&target_hedgehog, &store_path, ActivationMode::Switch)
             .await
             .is_ok());
 
-        // Nitrogen should fail on activation
-        let target_nitrogen = DeployTarget {
+        // Nuthatch should fail on activation
+        let target_nuthatch = DeployTarget {
             user: Some("root".to_string()),
-            hostname: "nitrogen.example.com".to_string(),
+            hostname: "nuthatch.example.com".to_string(),
             port: None,
         };
 
         assert!(deployer
-            .copy_closure(&target_nitrogen, &store_path)
+            .copy_closure(&target_nuthatch, &store_path)
             .await
             .is_ok());
         assert!(deployer
-            .activate(&target_nitrogen, &store_path, ActivationMode::Switch)
+            .activate(&target_nuthatch, &store_path, ActivationMode::Switch)
             .await
             .is_err());
     }
@@ -452,7 +452,7 @@ mod tests {
 
     #[test]
     fn test_redeploy_flag() {
-        assert!(deploy_args(&["--redeploy", "hydrogen"]).redeploy);
-        assert!(!deploy_args(&["hydrogen"]).redeploy);
+        assert!(deploy_args(&["--redeploy", "hedgehog"]).redeploy);
+        assert!(!deploy_args(&["hedgehog"]).redeploy);
     }
 }

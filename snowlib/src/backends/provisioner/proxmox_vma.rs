@@ -867,8 +867,8 @@ mod tests {
         VmaDeployer::new(
             &provisioner,
             &DeployTarget::parse("root@proxmox:2222"),
-            Path::new("/tmp/hydrogen.vma.zst"),
-            "hydrogen",
+            Path::new("/tmp/hedgehog.vma.zst"),
+            "hedgehog",
         )
         .unwrap();
 
@@ -881,8 +881,8 @@ mod tests {
                 "--progress",
                 "-e",
                 "ssh -o ForwardAgent=no -p 2222",
-                "/tmp/hydrogen.vma.zst",
-                "root@proxmox:/tmp/hydrogen.vma.zst"
+                "/tmp/hedgehog.vma.zst",
+                "root@proxmox:/tmp/hedgehog.vma.zst"
             ]
             .map(String::from)
         );

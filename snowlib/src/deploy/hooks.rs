@@ -241,7 +241,7 @@ impl HookExecutor {
     }
 }
 
-/// As in "radon: hook 'drain' (pre-deploy) failed with exit code 1 after 3 attempts"
+/// As in "raven: hook 'drain' (pre-deploy) failed with exit code 1 after 3 attempts"
 fn hook_failure(hostname: &str, hook: &HookConfig, result: &HookResult, attempts: u32) -> String {
     let exit = match result.exit_code {
         Some(code) => format!("with exit code {code}"),
@@ -278,7 +278,7 @@ mod tests {
             success: false,
             exit_code,
             stdout: String::new(),
-            stderr: "storage on radon is degraded\n".to_string(),
+            stderr: "storage on raven is degraded\n".to_string(),
             duration: Duration::from_secs(2),
         }
     }
@@ -288,37 +288,37 @@ mod tests {
             "drain",
             HookStage::PreDeploy,
             HookLocation::Local,
-            "kubectl drain radon",
+            "kubectl drain raven",
         )
     }
 
     #[test]
     fn test_hook_failure_gives_the_stage_and_plain_exit_code() {
         assert_eq!(
-            hook_failure("radon", &drain_hook(), &failed_hook(Some(1)), 1),
-            "radon: hook 'drain' (pre-deploy) failed with exit code 1"
+            hook_failure("raven", &drain_hook(), &failed_hook(Some(1)), 1),
+            "raven: hook 'drain' (pre-deploy) failed with exit code 1"
         );
     }
 
     #[test]
     fn test_hook_failure_counts_the_attempts() {
         assert_eq!(
-            hook_failure("radon", &drain_hook(), &failed_hook(Some(3)), 4),
-            "radon: hook 'drain' (pre-deploy) failed with exit code 3 after 4 attempts"
+            hook_failure("raven", &drain_hook(), &failed_hook(Some(3)), 4),
+            "raven: hook 'drain' (pre-deploy) failed with exit code 3 after 4 attempts"
         );
     }
 
     #[test]
     fn test_hook_failure_of_a_killed_hook() {
         assert_eq!(
-            hook_failure("radon", &drain_hook(), &failed_hook(None), 1),
-            "radon: hook 'drain' (pre-deploy) failed without an exit code"
+            hook_failure("raven", &drain_hook(), &failed_hook(None), 1),
+            "raven: hook 'drain' (pre-deploy) failed without an exit code"
         );
     }
 
     #[test]
     fn test_last_stderr_line_skips_trailing_blank_lines() {
-        let stderr = "node/radon cordoned\nerror: cannot evict pod storage-0\n\n  \n";
+        let stderr = "node/raven cordoned\nerror: cannot evict pod storage-0\n\n  \n";
 
         assert_eq!(
             last_stderr_line(stderr),

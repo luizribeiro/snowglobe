@@ -353,13 +353,13 @@ mod tests {
         let deployer = SshDeployBackend::new();
         let target = DeployTarget {
             user: Some("root".to_string()),
-            hostname: "hydrogen.example.com".to_string(),
+            hostname: "hedgehog.example.com".to_string(),
             port: None,
         };
 
         assert_eq!(
             deployer.get_destination(&target),
-            "root@hydrogen.example.com"
+            "root@hedgehog.example.com"
         );
     }
 
@@ -368,13 +368,13 @@ mod tests {
         let deployer = SshDeployBackend::new().with_user("deploy");
         let target = DeployTarget {
             user: Some("root".to_string()),
-            hostname: "hydrogen.example.com".to_string(),
+            hostname: "hedgehog.example.com".to_string(),
             port: None,
         };
 
         assert_eq!(
             deployer.get_destination(&target),
-            "deploy@hydrogen.example.com"
+            "deploy@hedgehog.example.com"
         );
     }
 
@@ -382,27 +382,27 @@ mod tests {
     fn test_host_systems_from_output_success() {
         let result = command_result(
             0,
-            "/nix/store/new-nixos-system-hydrogen\n/nix/store/staged-nixos-system-hydrogen\n",
+            "/nix/store/new-nixos-system-hedgehog\n/nix/store/staged-nixos-system-hedgehog\n",
             "",
         );
 
-        let systems = host_systems_from_output("hydrogen", &result).unwrap();
+        let systems = host_systems_from_output("hedgehog", &result).unwrap();
 
         assert_eq!(
             systems.running.as_str(),
-            "/nix/store/new-nixos-system-hydrogen"
+            "/nix/store/new-nixos-system-hedgehog"
         );
         assert_eq!(
             systems.next_boot.as_str(),
-            "/nix/store/staged-nixos-system-hydrogen"
+            "/nix/store/staged-nixos-system-hedgehog"
         );
     }
 
     #[test]
     fn test_host_systems_from_output_command_failure() {
-        let result = command_result(255, "", "ssh: Could not resolve hostname hydrogen");
+        let result = command_result(255, "", "ssh: Could not resolve hostname hedgehog");
 
-        let err = host_systems_from_output("hydrogen", &result).unwrap_err();
+        let err = host_systems_from_output("hedgehog", &result).unwrap_err();
 
         match err {
             crate::error::SnowError::Deploy(DeployError::CommandFailed {
@@ -419,29 +419,29 @@ mod tests {
 
     #[test]
     fn test_host_systems_from_output_rejects_wrong_line_count() {
-        let one_line = command_result(0, "/nix/store/new-nixos-system-hydrogen\n", "");
+        let one_line = command_result(0, "/nix/store/new-nixos-system-hedgehog\n", "");
         let with_banner = command_result(
             0,
-            "Welcome to hydrogen!\n/nix/store/a-system\n/nix/store/b-system\n",
+            "Welcome to hedgehog!\n/nix/store/a-system\n/nix/store/b-system\n",
             "",
         );
 
-        assert!(host_systems_from_output("hydrogen", &one_line).is_err());
-        assert!(host_systems_from_output("hydrogen", &with_banner).is_err());
+        assert!(host_systems_from_output("hedgehog", &one_line).is_err());
+        assert!(host_systems_from_output("hedgehog", &with_banner).is_err());
     }
 
     #[test]
     fn test_host_systems_from_output_rejects_non_store_path() {
         let result = command_result(0, "/run/current-system\n/nix/store/b-system\n", "");
 
-        assert!(host_systems_from_output("hydrogen", &result).is_err());
+        assert!(host_systems_from_output("hedgehog", &result).is_err());
     }
 
     #[test]
     fn test_host_systems_from_output_names_the_bad_link() {
         let result = command_result(0, "/nix/store/a-system\n/nix/var/nix/profiles/system\n", "");
 
-        let err = host_systems_from_output("hydrogen", &result).unwrap_err();
+        let err = host_systems_from_output("hedgehog", &result).unwrap_err();
 
         assert!(format!("{:?}", err).contains("/nix/var/nix/profiles/system resolved to"));
     }
@@ -523,7 +523,7 @@ mod tests {
     async fn test_host_systems_times_out_when_ssh_hangs() {
         let (_dir, deployer) = fake_ssh_deployer("exec sleep 30");
 
-        let err = deployer.host_systems(&curium()).await.unwrap_err();
+        let err = deployer.host_systems(&condor()).await.unwrap_err();
 
         assert!(crate::error::is_timeout(&err), "{err:?}");
     }
@@ -533,7 +533,7 @@ mod tests {
         let deployer = SshDeployBackend::new().with_user("pusher");
         let target = DeployTarget {
             user: None,
-            hostname: "curium.example.com".to_string(),
+            hostname: "condor.example.com".to_string(),
             port: None,
         };
 
@@ -548,10 +548,10 @@ mod tests {
             probe.contains("-o ConnectTimeout=10 -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -o ForwardAgent=no"),
             "{probe}"
         );
-        assert!(probe.ends_with("pusher@curium.example.com readlink -f /run/current-system /nix/var/nix/profiles/system"), "{probe}");
+        assert!(probe.ends_with("pusher@condor.example.com readlink -f /run/current-system /nix/var/nix/profiles/system"), "{probe}");
         assert!(
             activation
-                .contains("-o ConnectTimeout=10 -o ForwardAgent=no pusher@curium.example.com"),
+                .contains("-o ConnectTimeout=10 -o ForwardAgent=no pusher@condor.example.com"),
             "{activation}"
         );
         assert!(!activation.contains("ServerAlive"), "{activation}");
@@ -655,10 +655,10 @@ mod tests {
         (dir, deployer)
     }
 
-    fn curium() -> DeployTarget {
+    fn condor() -> DeployTarget {
         DeployTarget {
             user: None,
-            hostname: "curium.example.com".to_string(),
+            hostname: "condor.example.com".to_string(),
             port: None,
         }
     }
@@ -667,24 +667,24 @@ mod tests {
     async fn test_helper_is_available_when_command_finds_it() {
         let (_dir, deployer) = fake_ssh_deployer("exit 0");
 
-        assert!(deployer.check_helper_available(&curium()).await.unwrap());
+        assert!(deployer.check_helper_available(&condor()).await.unwrap());
     }
 
     #[tokio::test]
     async fn test_helper_is_missing_when_command_does_not_find_it() {
         let (_dir, deployer) = fake_ssh_deployer("exit 1");
 
-        assert!(!deployer.check_helper_available(&curium()).await.unwrap());
+        assert!(!deployer.check_helper_available(&condor()).await.unwrap());
     }
 
     #[tokio::test]
     async fn test_helper_check_fails_when_ssh_cannot_connect() {
         let (_dir, deployer) = fake_ssh_deployer(
-            "echo 'ssh: connect to host curium.example.com port 22: Connection refused' >&2; exit 255",
+            "echo 'ssh: connect to host condor.example.com port 22: Connection refused' >&2; exit 255",
         );
 
         let err = deployer
-            .check_helper_available(&curium())
+            .check_helper_available(&condor())
             .await
             .unwrap_err();
 
@@ -700,7 +700,7 @@ mod tests {
             fake_ssh_deployer("echo 'command: Command not found.' >&2; exit 127");
 
         let err = deployer
-            .check_helper_available(&curium())
+            .check_helper_available(&condor())
             .await
             .unwrap_err();
 
@@ -714,7 +714,7 @@ mod tests {
         let (_dir, deployer) = fake_ssh_deployer("exec sleep 30");
 
         let err = deployer
-            .check_helper_available(&curium())
+            .check_helper_available(&condor())
             .await
             .unwrap_err();
 
@@ -725,7 +725,7 @@ mod tests {
     /// `helper_status` for the helper check and 0 otherwise
     fn recording_deployer(helper_status: i32) -> (tempfile::TempDir, SshDeployBackend) {
         let (dir, deployer) = fake_ssh_deployer(&format!(
-            r#"while [ "$1" != pusher@curium.example.com ]; do [ $# -gt 0 ] || exit 99; shift; done; shift
+            r#"while [ "$1" != pusher@condor.example.com ]; do [ $# -gt 0 ] || exit 99; shift; done; shift
 echo "$*" >> "$(dirname "$0")/commands"
 case "$*" in "command -v"*) exit {helper_status} ;; esac"#
         ));
@@ -740,7 +740,7 @@ case "$*" in "command -v"*) exit {helper_status} ;; esac"#
             .collect()
     }
 
-    const CURIUM_SYSTEM: &str = "/nix/store/6c3x8d0yq2l1-nixos-system-curium-26.05";
+    const CONDOR_SYSTEM: &str = "/nix/store/6c3x8d0yq2l1-nixos-system-condor-26.05";
 
     #[tokio::test]
     async fn test_activate_runs_the_helper_when_installed() {
@@ -748,8 +748,8 @@ case "$*" in "command -v"*) exit {helper_status} ;; esac"#
 
         deployer
             .activate(
-                &curium(),
-                &StorePath::new(CURIUM_SYSTEM.to_string()),
+                &condor(),
+                &StorePath::new(CONDOR_SYSTEM.to_string()),
                 ActivationMode::Switch,
             )
             .await
@@ -759,7 +759,7 @@ case "$*" in "command -v"*) exit {helper_status} ;; esac"#
             logged_commands(&dir),
             [
                 "command -v snowglobe-activate".to_string(),
-                format!("sudo snowglobe-activate {CURIUM_SYSTEM} switch"),
+                format!("sudo snowglobe-activate {CONDOR_SYSTEM} switch"),
             ]
         );
     }
@@ -768,7 +768,7 @@ case "$*" in "command -v"*) exit {helper_status} ;; esac"#
     /// for the failing units query
     fn failing_units_deployer(show_output: &str) -> (tempfile::TempDir, SshDeployBackend) {
         let (dir, deployer) = fake_ssh_deployer(&format!(
-            r#"while [ "$1" != pusher@curium.example.com ]; do [ $# -gt 0 ] || exit 99; shift; done; shift
+            r#"while [ "$1" != pusher@condor.example.com ]; do [ $# -gt 0 ] || exit 99; shift; done; shift
 echo "$*" >> "$(dirname "$0")/commands"
 case "$*" in "systemctl show"*) printf %s '{show_output}' ;; esac"#
         ));
@@ -782,7 +782,7 @@ case "$*" in "systemctl show"*) printf %s '{show_output}' ;; esac"#
             format!("Id={fsck}\nActiveState=activating\nSubState=auto-restart\nExecMainStatus=1\n");
         let (dir, deployer) = failing_units_deployer(&show);
 
-        let failing = deployer.failing_units(&curium()).await.unwrap();
+        let failing = deployer.failing_units(&condor()).await.unwrap();
 
         assert_eq!(failing, [fsck]);
         assert_eq!(
@@ -798,7 +798,7 @@ case "$*" in "systemctl show"*) printf %s '{show_output}' ;; esac"#
             fake_ssh_deployer("echo 'systemctl: command not found' >&2; exit 127");
 
         let err = deployer
-            .inspect(&curium(), "systemctl", &["show".to_string()])
+            .inspect(&condor(), "systemctl", &["show".to_string()])
             .await
             .unwrap_err();
 
@@ -811,8 +811,8 @@ case "$*" in "systemctl show"*) printf %s '{show_output}' ;; esac"#
 
         deployer
             .activate(
-                &curium(),
-                &StorePath::new(CURIUM_SYSTEM.to_string()),
+                &condor(),
+                &StorePath::new(CONDOR_SYSTEM.to_string()),
                 ActivationMode::Switch,
             )
             .await
@@ -823,9 +823,9 @@ case "$*" in "systemctl show"*) printf %s '{show_output}' ;; esac"#
             [
                 "command -v snowglobe-activate".to_string(),
                 format!(
-                    "sudo nix-env --profile /nix/var/nix/profiles/system --set {CURIUM_SYSTEM}"
+                    "sudo nix-env --profile /nix/var/nix/profiles/system --set {CONDOR_SYSTEM}"
                 ),
-                format!("sudo {CURIUM_SYSTEM}/bin/switch-to-configuration switch"),
+                format!("sudo {CONDOR_SYSTEM}/bin/switch-to-configuration switch"),
             ]
         );
     }
@@ -836,8 +836,8 @@ case "$*" in "systemctl show"*) printf %s '{show_output}' ;; esac"#
 
         let result = deployer
             .activate(
-                &curium(),
-                &StorePath::new(CURIUM_SYSTEM.to_string()),
+                &condor(),
+                &StorePath::new(CONDOR_SYSTEM.to_string()),
                 ActivationMode::Switch,
             )
             .await;
@@ -976,9 +976,9 @@ case "$*" in "systemctl show"*) printf %s '{show_output}' ;; esac"#
     #[tokio::test]
     async fn test_activate_with_realistic_store_paths() {
         let deployer = create_test_backend();
-        let target = create_test_target("hydrogen.example.com", Some(22));
+        let target = create_test_target("hedgehog.example.com", Some(22));
         let store_path =
-            create_test_store_path("/nix/store/abc123def456-nixos-system-hydrogen-24.05");
+            create_test_store_path("/nix/store/abc123def456-nixos-system-hedgehog-24.05");
 
         let result = deployer
             .activate(&target, &store_path, ActivationMode::Switch)
@@ -1032,7 +1032,7 @@ case "$*" in "systemctl show"*) printf %s '{show_output}' ;; esac"#
         );
 
         let result = deployer
-            .check_agent(Some("/home/luiz/.ssh/ssh_auth_sock".into()))
+            .check_agent(Some("/home/alice/.ssh/ssh_auth_sock".into()))
             .await;
 
         assert!(result.is_ok());

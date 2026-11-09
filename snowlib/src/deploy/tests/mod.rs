@@ -121,7 +121,7 @@ impl TestObserver {
 }
 
 /// The step-level names these tests have always asserted on, e.g.
-/// "build_start:cerium" or "activation_complete:cerium:failed"
+/// "build_start:cactus" or "activation_complete:cactus:failed"
 fn step_event_name(hostname: &str, event: &crate::observer::HostEvent) -> Option<String> {
     use crate::observer::HostEvent;
     let step_name = |step: &PipelineStep| match step {

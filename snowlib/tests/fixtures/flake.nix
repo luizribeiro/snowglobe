@@ -13,13 +13,13 @@
   in
   {
     nixosConfigurations = {
-      hydrogen = {
+      hedgehog = {
         config = {
           # Standard NixOS options
           services.openssh.enable = true;
           services.postgresql.enable = true;
           services.nginx.enable = true;
-          networking.hostName = "hydrogen";
+          networking.hostName = "hedgehog";
           networking.domain = "example.com";
           nixpkgs.hostPlatform = "x86_64-linux";
 
@@ -28,39 +28,39 @@
           snowglobe.deploy.tags = ["web" "database"];
 
           # Mock build output for testing
-          system.build.toplevel = makeMockToplevel "hydrogen";
+          system.build.toplevel = makeMockToplevel "hedgehog";
         };
       };
 
-      nitrogen = {
+      nuthatch = {
         config = {
           services.openssh.enable = true;
           services.postgresql.enable = false;
           services.nginx.enable = true;
-          networking.hostName = "nitrogen";
+          networking.hostName = "nuthatch";
           networking.domain = "example.com";
           nixpkgs.hostPlatform = "aarch64-linux";
 
           snowglobe.deploy.phase = "staging";
           snowglobe.deploy.tags = ["web"];
 
-          system.build.toplevel = makeMockToplevel "nitrogen";
+          system.build.toplevel = makeMockToplevel "nuthatch";
         };
       };
 
-      oxygen = {
+      osprey = {
         config = {
           services.openssh.enable = true;
           services.postgresql.enable = true;
           services.nginx.enable = false;
-          networking.hostName = "oxygen";
+          networking.hostName = "osprey";
           networking.domain = "";
           nixpkgs.hostPlatform = "x86_64-linux";
 
           snowglobe.deploy.phase = "production";
           snowglobe.deploy.tags = ["database"];
 
-          system.build.toplevel = makeMockToplevel "oxygen";
+          system.build.toplevel = makeMockToplevel "osprey";
         };
       };
 

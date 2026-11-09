@@ -95,9 +95,9 @@ mod tests {
 
         // Check all host names are present
         let names: Vec<&str> = hosts.iter().map(|h| h["name"].as_str().unwrap()).collect();
-        assert!(names.contains(&"hydrogen"));
-        assert!(names.contains(&"nitrogen"));
-        assert!(names.contains(&"oxygen"));
+        assert!(names.contains(&"hedgehog"));
+        assert!(names.contains(&"nuthatch"));
+        assert!(names.contains(&"osprey"));
         assert!(names.contains(&"helium"));
     }
 
@@ -121,8 +121,8 @@ mod tests {
         assert_eq!(hosts.len(), 2);
 
         let names: Vec<&str> = hosts.iter().map(|h| h["name"].as_str().unwrap()).collect();
-        assert!(names.contains(&"hydrogen"));
-        assert!(names.contains(&"oxygen"));
+        assert!(names.contains(&"hedgehog"));
+        assert!(names.contains(&"osprey"));
     }
 
     #[test]
@@ -154,7 +154,7 @@ mod tests {
             .stdout(predicate::str::contains("Cluster Status"))
             .stdout(predicate::str::contains("Host"))
             .stdout(predicate::str::contains("Status"))
-            .stdout(predicate::str::contains("hydrogen"));
+            .stdout(predicate::str::contains("hedgehog"));
     }
 
     #[test]

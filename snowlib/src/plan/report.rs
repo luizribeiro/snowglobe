@@ -363,8 +363,8 @@ mod tests {
         vec![
             derivation(WINE, "wine-wow-staging-10.12", false),
             derivation(ETC_SUDO, "sudo.pam", true),
-            derivation(&system_drv("radon"), "nixos-system-radon-26.05", false),
-            derivation(&system_drv("argon"), "nixos-system-argon-26.05", false),
+            derivation(&system_drv("raven"), "nixos-system-raven-26.05", false),
+            derivation(&system_drv("alpha"), "nixos-system-alpha-26.05", false),
         ]
     }
 
@@ -396,13 +396,13 @@ mod tests {
     fn fleet_report() -> PlanReport {
         let evals = vec![
             evaluated(
-                "radon",
+                "raven",
                 CacheStatus::NotBuilt,
                 &[WINE, ETC_SUDO],
                 &[GLIBC, FFMPEG],
             ),
-            evaluated("argon", CacheStatus::NotBuilt, &[ETC_SUDO], &[GLIBC]),
-            evaluated("boron", CacheStatus::Cached, &[], &[GLIBC]),
+            evaluated("alpha", CacheStatus::NotBuilt, &[ETC_SUDO], &[GLIBC]),
+            evaluated("bravo", CacheStatus::Cached, &[], &[GLIBC]),
         ];
         let substituters = vec![
             lookup(
@@ -432,8 +432,8 @@ mod tests {
     fn test_shared_paths_are_deduplicated_and_attributed_to_hosts() {
         let report = fleet_report();
 
-        assert_eq!(build(&report, ETC_SUDO).hosts, vec!["argon", "radon"]);
-        assert_eq!(fetch(&report, GLIBC).hosts, vec!["argon", "boron", "radon"]);
+        assert_eq!(build(&report, ETC_SUDO).hosts, vec!["alpha", "raven"]);
+        assert_eq!(fetch(&report, GLIBC).hosts, vec!["alpha", "bravo", "raven"]);
         assert_eq!(report.fetches.len(), 2);
     }
 
@@ -441,11 +441,11 @@ mod tests {
     fn test_not_built_roots_are_builds() {
         let report = fleet_report();
 
-        assert_eq!(build(&report, &system_drv("radon")).hosts, vec!["radon"]);
+        assert_eq!(build(&report, &system_drv("raven")).hosts, vec!["raven"]);
         assert!(!report
             .builds
             .iter()
-            .any(|b| b.derivation.drv_path == system_drv("boron")));
+            .any(|b| b.derivation.drv_path == system_drv("bravo")));
     }
 
     #[test]
@@ -486,7 +486,7 @@ mod tests {
         let report = fleet_report();
 
         let names: Vec<&str> = report.hosts.iter().map(|h| h.name.as_str()).collect();
-        assert_eq!(names, vec!["argon", "boron", "radon"]);
+        assert_eq!(names, vec!["alpha", "bravo", "raven"]);
         match &report.hosts[2].status {
             HostStatus::Evaluated {
                 builds,
@@ -494,13 +494,13 @@ mod tests {
                 fetches,
                 ..
             } => assert_eq!((*builds, *trivial_builds, *fetches), (2, 1, 2)),
-            other => panic!("expected radon to be evaluated, got {other:?}"),
+            other => panic!("expected raven to be evaluated, got {other:?}"),
         }
     }
 
     #[test]
     fn test_everything_cached() {
-        let evals = vec![evaluated("boron", CacheStatus::Local, &[], &[])];
+        let evals = vec![evaluated("bravo", CacheStatus::Local, &[], &[])];
 
         let report = build_report(&evals, &[], &[lookup(CACHE_NIXOS_ORG, 40, true, &[])]);
 
@@ -512,7 +512,7 @@ mod tests {
 
     #[test]
     fn test_only_trivial_builds_are_not_nontrivial() {
-        let evals = vec![evaluated("argon", CacheStatus::Cached, &[ETC_SUDO], &[])];
+        let evals = vec![evaluated("alpha", CacheStatus::Cached, &[ETC_SUDO], &[])];
 
         let report = build_report(&evals, &known_derivations(), &[]);
 
@@ -523,9 +523,9 @@ mod tests {
     #[test]
     fn test_eval_failure_is_reported_alongside_other_hosts() {
         let evals = vec![
-            evaluated("radon", CacheStatus::NotBuilt, &[WINE], &[]),
+            evaluated("raven", CacheStatus::NotBuilt, &[WINE], &[]),
             HostEval {
-                host: "krypton".to_string(),
+                host: "kestrel".to_string(),
                 outcome: EvalOutcome::Failed {
                     error: "error: attribute 'doesNotExist' missing".to_string(),
                 },
@@ -535,14 +535,14 @@ mod tests {
         let report = build_report(&evals, &known_derivations(), &[]);
 
         assert!(report.has_eval_failures());
-        assert_eq!(report.hosts[0].name, "krypton");
+        assert_eq!(report.hosts[0].name, "kestrel");
         assert!(matches!(report.hosts[0].status, HostStatus::Failed { .. }));
-        assert_eq!(build(&report, WINE).hosts, vec!["radon"]);
+        assert_eq!(build(&report, WINE).hosts, vec!["raven"]);
     }
 
     #[test]
     fn test_fetch_missing_from_every_substituter_is_unattributed() {
-        let evals = vec![evaluated("boron", CacheStatus::Cached, &[], &[GLIBC])];
+        let evals = vec![evaluated("bravo", CacheStatus::Cached, &[], &[GLIBC])];
 
         let report = build_report(&evals, &[], &[lookup(S3, 1, false, &[])]);
 
@@ -560,7 +560,7 @@ mod tests {
 
     #[test]
     fn test_undescribed_derivation_is_named_from_its_path_and_not_trivial() {
-        let evals = vec![evaluated("radon", CacheStatus::Cached, &[WINE], &[])];
+        let evals = vec![evaluated("raven", CacheStatus::Cached, &[WINE], &[])];
 
         let report = build_report(&evals, &[], &[]);
 
@@ -581,7 +581,7 @@ mod tests {
     fn test_json_shape() {
         let json = serde_json::to_value(fleet_report()).unwrap();
 
-        assert_eq!(json["hosts"][0]["name"], "argon");
+        assert_eq!(json["hosts"][0]["name"], "alpha");
         assert_eq!(json["hosts"][0]["status"], "evaluated");
         assert_eq!(json["hosts"][0]["cacheStatus"], "notBuilt");
         assert_eq!(json["hosts"][0]["trivialBuilds"], 1);
@@ -592,7 +592,7 @@ mod tests {
             .find(|b| b["drvPath"] == WINE)
             .unwrap();
         assert_eq!(wine["name"], "wine-wow-staging-10.12");
-        assert_eq!(wine["hosts"], serde_json::json!(["radon"]));
+        assert_eq!(wine["hosts"], serde_json::json!(["raven"]));
         let ffmpeg = json["fetches"]
             .as_array()
             .unwrap()
@@ -609,7 +609,7 @@ mod tests {
     #[test]
     fn test_duplicate_path_within_one_host_counts_once() {
         let evals = vec![evaluated(
-            "radon",
+            "raven",
             CacheStatus::Cached,
             &[WINE, WINE],
             &[GLIBC, GLIBC],
@@ -632,7 +632,7 @@ mod tests {
     #[test]
     fn test_missing_download_size_is_excluded_from_download_total() {
         let evals = vec![evaluated(
-            "boron",
+            "bravo",
             CacheStatus::Cached,
             &[],
             &[GLIBC, FFMPEG],
@@ -656,9 +656,9 @@ mod tests {
     #[test]
     fn test_failed_and_unattributed_json_shape() {
         let evals = vec![
-            evaluated("boron", CacheStatus::Cached, &[], &[GLIBC]),
+            evaluated("bravo", CacheStatus::Cached, &[], &[GLIBC]),
             HostEval {
-                host: "krypton".to_string(),
+                host: "kestrel".to_string(),
                 outcome: EvalOutcome::Failed {
                     error: "error: attribute 'doesNotExist' missing".to_string(),
                 },
@@ -670,7 +670,7 @@ mod tests {
         assert_eq!(
             json["hosts"][1],
             serde_json::json!({
-                "name": "krypton",
+                "name": "kestrel",
                 "status": "failed",
                 "error": "error: attribute 'doesNotExist' missing",
             })
@@ -681,7 +681,7 @@ mod tests {
                 "path": GLIBC,
                 "substituter": null,
                 "narInfo": null,
-                "hosts": ["boron"],
+                "hosts": ["bravo"],
             })
         );
     }

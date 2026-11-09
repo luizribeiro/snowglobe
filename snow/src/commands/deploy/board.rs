@@ -362,7 +362,7 @@ mod tests {
     use super::*;
     use snowlib::ActivationMode;
 
-    const P3: [&str; 4] = ["vanadium", "cerium", "lanthanum", "sodium"];
+    const P3: [&str; 4] = ["vineyard", "cactus", "limestone", "spruce"];
 
     fn board(t0: Instant) -> HostBoard {
         let hosts: Vec<String> = P3.iter().map(|h| h.to_string()).collect();
@@ -418,10 +418,10 @@ mod tests {
         assert_eq!(
             summary(&rows),
             vec![
-                (RowKind::Queued, "cerium", "queued", ""),
-                (RowKind::Queued, "lanthanum", "queued", ""),
-                (RowKind::Queued, "sodium", "queued", ""),
-                (RowKind::Queued, "vanadium", "queued", ""),
+                (RowKind::Queued, "cactus", "queued", ""),
+                (RowKind::Queued, "limestone", "queued", ""),
+                (RowKind::Queued, "spruce", "queued", ""),
+                (RowKind::Queued, "vineyard", "queued", ""),
             ]
         );
         assert_eq!(rows[0].elapsed, Some(secs(5)));
@@ -433,9 +433,9 @@ mod tests {
         let t0 = Instant::now();
         let mut board = board(t0);
 
-        board.apply("vanadium", &HostEvent::Started(PipelineStep::Copy), t0);
+        board.apply("vineyard", &HostEvent::Started(PipelineStep::Copy), t0);
         board.apply(
-            "lanthanum",
+            "limestone",
             &HostEvent::Failed {
                 step: PipelineStep::Plan,
                 reason: "hook 'wait-storage-healthy': /nix/store/715s-kubernetes-storage-healthy missing"
@@ -444,16 +444,16 @@ mod tests {
             t0,
         );
         board.apply(
-            "cerium",
+            "cactus",
             &HostEvent::WaitingForSerialGroup {
                 group: "k8s".to_string(),
-                holder: Some("vanadium".to_string()),
+                holder: Some("vineyard".to_string()),
             },
             t0,
         );
         board.apply(
-            "sodium",
-            &HostEvent::Done(HostDeploymentResult::unchanged("sodium")),
+            "spruce",
+            &HostEvent::Done(HostDeploymentResult::unchanged("spruce")),
             t0,
         );
 
@@ -462,15 +462,15 @@ mod tests {
             vec![
                 (
                     RowKind::Queued,
-                    "cerium",
+                    "cactus",
                     "queued",
-                    "serial group 'k8s' (held by vanadium)"
+                    "serial group 'k8s' (held by vineyard)"
                 ),
-                (RowKind::Active, "vanadium", "copy", ""),
-                (RowKind::Unchanged, "sodium", "unchanged", ""),
+                (RowKind::Active, "vineyard", "copy", ""),
+                (RowKind::Unchanged, "spruce", "unchanged", ""),
                 (
                     RowKind::Failed,
-                    "lanthanum",
+                    "limestone",
                     "plan",
                     "hook 'wait-storage-healthy': /nix/store/715s-kubernetes-storage-healthy missing"
                 ),
@@ -488,23 +488,23 @@ mod tests {
         let mut board = board(t0);
 
         board.apply(
-            "cerium",
+            "cactus",
             &HostEvent::Failed {
                 step: PipelineStep::Build,
-                reason: "Failed to build host configuration for 'cerium':\n\
-                         error: builder for '/nix/store/xyz-cerium.drv' failed with exit code 1\n\
+                reason: "Failed to build host configuration for 'cactus':\n\
+                         error: builder for '/nix/store/xyz-cactus.drv' failed with exit code 1\n\
                          error: attribute 'services.nginx.virtualHosts' already defined"
                     .to_string(),
             },
             t0,
         );
 
-        let cerium = row_of(&board, "cerium", t0 + secs(9));
+        let cactus = row_of(&board, "cactus", t0 + secs(9));
         assert_eq!(
-            cerium.detail,
+            cactus.detail,
             "attribute 'services.nginx.virtualHosts' already defined"
         );
-        assert_eq!(cerium.elapsed, None);
+        assert_eq!(cactus.elapsed, None);
     }
 
     #[test]
@@ -512,16 +512,16 @@ mod tests {
         let t0 = Instant::now();
         let mut board = board(t0);
 
-        board.apply("cerium", &HostEvent::Started(PipelineStep::Build), t0);
+        board.apply("cactus", &HostEvent::Started(PipelineStep::Build), t0);
         board.apply(
-            "cerium",
+            "cactus",
             &HostEvent::Started(PipelineStep::Copy),
             t0 + secs(100),
         );
 
-        let cerium = row_of(&board, "cerium", t0 + secs(130));
+        let cactus = row_of(&board, "cactus", t0 + secs(130));
         assert_eq!(
-            (cerium.step.as_str(), cerium.elapsed),
+            (cactus.step.as_str(), cactus.elapsed),
             ("copy", Some(secs(30)))
         );
     }
@@ -532,15 +532,15 @@ mod tests {
         let mut board = board(t0);
 
         board.apply(
-            "cerium",
-            &HostEvent::Done(deployed("cerium", ActivationMode::Boot, true)),
+            "cactus",
+            &HostEvent::Done(deployed("cactus", ActivationMode::Boot, true)),
             t0 + secs(595),
         );
         board.apply(
-            "vanadium",
+            "vineyard",
             &HostEvent::Done(HostDeploymentResult {
-                ignored_failing: vec!["unifi.service".to_string()],
-                ..deployed("vanadium", ActivationMode::Switch, false)
+                ignored_failing: vec!["vault.service".to_string()],
+                ..deployed("vineyard", ActivationMode::Switch, false)
             }),
             t0 + secs(252),
         );
@@ -554,10 +554,10 @@ mod tests {
         assert_eq!(
             done,
             vec![
-                ("cerium", "boot, rebooted", Some(secs(595))),
+                ("cactus", "boot, rebooted", Some(secs(595))),
                 (
-                    "vanadium",
-                    "switch, ignored failing unifi.service",
+                    "vineyard",
+                    "switch, ignored failing vault.service",
                     Some(secs(252))
                 ),
             ]
@@ -569,26 +569,26 @@ mod tests {
         let t0 = Instant::now();
         let mut board = board(t0);
 
-        board.hook_started("cerium", HookStage::PreDeploy, "drain-node", t0);
-        let while_draining = row_of(&board, "cerium", t0);
+        board.hook_started("cactus", HookStage::PreDeploy, "drain-node", t0);
+        let while_draining = row_of(&board, "cactus", t0);
         board.apply(
-            "cerium",
+            "cactus",
             &HostEvent::Failed {
                 step: PipelineStep::Activate,
                 reason: "activation failed".to_string(),
             },
             t0,
         );
-        board.hook_started("cerium", HookStage::OnFailure, "recover-uncordon", t0);
-        board.apply("cerium", &HostEvent::Started(PipelineStep::Reboot), t0);
+        board.hook_started("cactus", HookStage::OnFailure, "recover-uncordon", t0);
+        board.apply("cactus", &HostEvent::Started(PipelineStep::Reboot), t0);
 
         assert_eq!(
             brief(&while_draining),
-            (RowKind::Active, "cerium", "pre-deploy", "hook 'drain-node'")
+            (RowKind::Active, "cactus", "pre-deploy", "hook 'drain-node'")
         );
         assert_eq!(
-            brief(&row_of(&board, "cerium", t0)),
-            (RowKind::Failed, "cerium", "activate", "activation failed")
+            brief(&row_of(&board, "cactus", t0)),
+            (RowKind::Failed, "cactus", "activate", "activation failed")
         );
     }
 
@@ -596,27 +596,27 @@ mod tests {
     fn test_done_with_a_failure_takes_the_final_reason() {
         let t0 = Instant::now();
         let mut board = board(t0);
-        let mut result = deployed("cerium", ActivationMode::Boot, false);
+        let mut result = deployed("cactus", ActivationMode::Boot, false);
         result.success = false;
         result.failed_at_step = Some(PipelineStep::Reboot);
         result.error_message =
             Some("Deployment succeeded but reboot failed: host did not come back".to_string());
 
         board.apply(
-            "cerium",
+            "cactus",
             &HostEvent::Failed {
                 step: PipelineStep::Reboot,
                 reason: "host did not come back".to_string(),
             },
             t0,
         );
-        board.apply("cerium", &HostEvent::Done(result), t0);
+        board.apply("cactus", &HostEvent::Done(result), t0);
 
         assert_eq!(
-            brief(&row_of(&board, "cerium", t0)),
+            brief(&row_of(&board, "cactus", t0)),
             (
                 RowKind::Failed,
-                "cerium",
+                "cactus",
                 "reboot",
                 "Deployment succeeded but reboot failed: host did not come back"
             )
@@ -629,20 +629,20 @@ mod tests {
         let mut board = board(t0);
 
         board.apply(
-            "vanadium",
+            "vineyard",
             &HostEvent::Done(HostDeploymentResult::skipped_by_serial_group(
-                "vanadium", "k8s", "cerium",
+                "vineyard", "k8s", "cactus",
             )),
             t0,
         );
 
         assert_eq!(
-            brief(&row_of(&board, "vanadium", t0)),
+            brief(&row_of(&board, "vineyard", t0)),
             (
                 RowKind::Failed,
-                "vanadium",
+                "vineyard",
                 "skipped",
-                "serial group 'k8s' halted after cerium failed"
+                "serial group 'k8s' halted after cactus failed"
             )
         );
     }
@@ -652,8 +652,8 @@ mod tests {
         let t0 = Instant::now();
         let mut board = board(t0);
 
-        board.apply("ferrum", &HostEvent::Started(PipelineStep::Build), t0);
-        board.hook_started("ferrum", HookStage::PreDeploy, "drain-node", t0);
+        board.apply("falcon", &HostEvent::Started(PipelineStep::Build), t0);
+        board.hook_started("falcon", HookStage::PreDeploy, "drain-node", t0);
 
         assert!(board.rows(t0).iter().all(|r| r.kind == RowKind::Queued));
     }
@@ -664,23 +664,23 @@ mod tests {
         let mut board = board(t0);
 
         board.apply(
-            "cerium",
+            "cactus",
             &HostEvent::Failed {
                 step: PipelineStep::Copy,
                 reason: "Copy closure failed".to_string(),
             },
             t0,
         );
-        board.apply("cerium", &HostEvent::Finished(PipelineStep::Copy), t0);
+        board.apply("cactus", &HostEvent::Finished(PipelineStep::Copy), t0);
         board.apply(
-            "cerium",
-            &HostEvent::Done(deployed("cerium", ActivationMode::Switch, false)),
+            "cactus",
+            &HostEvent::Done(deployed("cactus", ActivationMode::Switch, false)),
             t0,
         );
 
         assert_eq!(
-            brief(&row_of(&board, "cerium", t0)),
-            (RowKind::Failed, "cerium", "copy", "Copy closure failed")
+            brief(&row_of(&board, "cactus", t0)),
+            (RowKind::Failed, "cactus", "copy", "Copy closure failed")
         );
     }
 
@@ -688,22 +688,22 @@ mod tests {
     fn test_failed_done_without_details_keeps_the_earlier_ones() {
         let t0 = Instant::now();
         let mut board = board(t0);
-        let mut result = deployed("cerium", ActivationMode::Switch, false);
+        let mut result = deployed("cactus", ActivationMode::Switch, false);
         result.success = false;
 
         board.apply(
-            "cerium",
+            "cactus",
             &HostEvent::Failed {
                 step: PipelineStep::Copy,
                 reason: "Copy closure failed".to_string(),
             },
             t0,
         );
-        board.apply("cerium", &HostEvent::Done(result), t0);
+        board.apply("cactus", &HostEvent::Done(result), t0);
 
         assert_eq!(
-            brief(&row_of(&board, "cerium", t0)),
-            (RowKind::Failed, "cerium", "copy", "Copy closure failed")
+            brief(&row_of(&board, "cactus", t0)),
+            (RowKind::Failed, "cactus", "copy", "Copy closure failed")
         );
     }
 
@@ -713,16 +713,16 @@ mod tests {
         let mut board = board(t0);
 
         board.apply(
-            "cerium",
+            "cactus",
             &HostEvent::WaitingForSerialGroup {
                 group: "k8s".to_string(),
                 holder: None,
             },
             t0,
         );
-        let waiting = row_of(&board, "cerium", t0);
+        let waiting = row_of(&board, "cactus", t0);
         let waiting = (waiting.kind, waiting.detail);
-        board.apply("cerium", &HostEvent::Started(PipelineStep::Activate), t0);
+        board.apply("cactus", &HostEvent::Started(PipelineStep::Activate), t0);
 
         assert_eq!(
             waiting,
@@ -732,8 +732,8 @@ mod tests {
             )
         );
         assert_eq!(
-            brief(&row_of(&board, "cerium", t0)),
-            (RowKind::Active, "cerium", "activate", "")
+            brief(&row_of(&board, "cactus", t0)),
+            (RowKind::Active, "cactus", "activate", "")
         );
     }
 
@@ -742,11 +742,11 @@ mod tests {
         let t0 = Instant::now();
         let mut board = board(t0);
 
-        board.apply("vanadium", &HostEvent::Started(PipelineStep::Activate), t0);
-        board.apply("sodium", &HostEvent::Started(PipelineStep::Activate), t0);
+        board.apply("vineyard", &HostEvent::Started(PipelineStep::Activate), t0);
+        board.apply("spruce", &HostEvent::Started(PipelineStep::Activate), t0);
         board.apply(
-            "lanthanum",
-            &HostEvent::Done(deployed("lanthanum", ActivationMode::Switch, false)),
+            "limestone",
+            &HostEvent::Done(deployed("limestone", ActivationMode::Switch, false)),
             t0,
         );
 
@@ -762,15 +762,15 @@ mod tests {
             lines,
             vec![
                 "Queued (1)",
-                "  cerium",
+                "  cactus",
                 "Build (0)",
                 "Copy (0)",
                 "Activate (2)",
-                "  sodium",
-                "  vanadium",
+                "  spruce",
+                "  vineyard",
                 "Reboot (0)",
                 "Done (1)",
-                "  lanthanum",
+                "  limestone",
                 "Failed (0)",
             ]
         );
@@ -804,7 +804,7 @@ mod tests {
             (State::Step(PipelineStep::PostDeploy), Lane::Activate),
             (hook(HookStage::PostDeploy), Lane::Activate),
             (
-                State::Done(deployed("cerium", ActivationMode::Switch, false)),
+                State::Done(deployed("cactus", ActivationMode::Switch, false)),
                 Lane::Done,
             ),
             (
@@ -824,7 +824,7 @@ mod tests {
     #[test]
     fn test_header_and_width_for_a_single_host() {
         let t0 = Instant::now();
-        let board = HostBoard::new("default", &["praseodymium".to_string()], t0);
+        let board = HostBoard::new("default", &["pomegranates".to_string()], t0);
 
         assert_eq!(board.title(), "Deploy");
         assert_eq!(board.counts(), "1 host · 1 queued");

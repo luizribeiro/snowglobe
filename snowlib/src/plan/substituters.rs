@@ -69,7 +69,7 @@ fn parse_store_url(store_url: String) -> ConfiguredSubstituter {
 mod tests {
     use super::*;
 
-    const SODIUM_CONFIG: &str = include_str!("../../tests/fixtures/plan/nix-config-show.json");
+    const SPRUCE_CONFIG: &str = include_str!("../../tests/fixtures/plan/nix-config-show.json");
 
     fn summary(substituters: &[ConfiguredSubstituter]) -> Vec<(&str, u32)> {
         substituters
@@ -80,7 +80,7 @@ mod tests {
 
     #[test]
     fn test_parse_real_config_dedupes_and_sorts_by_priority() {
-        let substituters = parse_substituters(SODIUM_CONFIG.as_bytes()).unwrap();
+        let substituters = parse_substituters(SPRUCE_CONFIG.as_bytes()).unwrap();
 
         assert_eq!(
             summary(&substituters),

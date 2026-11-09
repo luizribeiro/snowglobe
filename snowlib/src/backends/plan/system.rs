@@ -154,22 +154,22 @@ mod tests {
 
     #[test]
     fn test_select_toplevels_quotes_host_names() {
-        let hosts = vec!["radon".to_string(), "lanthanum".to_string()];
+        let hosts = vec!["raven".to_string(), "limestone".to_string()];
 
         assert_eq!(
             select_toplevels(SystemType::NixOS, &hosts),
             "configs: builtins.mapAttrs (_: host: host.config.system.build.toplevel) \
              (builtins.intersectAttrs (builtins.listToAttrs (map (name: { inherit name; \
-             value = null; }) [ \"radon\" \"lanthanum\" ])) configs)"
+             value = null; }) [ \"raven\" \"limestone\" ])) configs)"
         );
     }
 
     #[test]
     fn test_select_toplevels_for_darwin_uses_configurations_toplevel() {
-        let select = select_toplevels(SystemType::Darwin, &["ferrum".to_string()]);
+        let select = select_toplevels(SystemType::Darwin, &["falcon".to_string()]);
 
         assert!(select.contains("host.config.system.build.toplevel"));
-        assert!(select.contains(r#"[ "ferrum" ]"#));
+        assert!(select.contains(r#"[ "falcon" ]"#));
     }
 
     #[test]
@@ -210,14 +210,14 @@ mod tests {
         let backend = SystemPlanBackend::new(1, 2048);
 
         let evals = backend
-            .evaluate(&flake, SystemType::NixOS, &["hydrogen".to_string()])
+            .evaluate(&flake, SystemType::NixOS, &["hedgehog".to_string()])
             .await
             .unwrap();
 
         assert_eq!(evals.len(), 1);
-        assert_eq!(evals[0].host, "hydrogen");
-        let hydrogen = evals[0].evaluated().unwrap();
-        assert!(hydrogen.drv_path.ends_with("-test-hydrogen-toplevel.drv"));
-        assert_eq!(hydrogen.cache_status, crate::plan::CacheStatus::NotBuilt);
+        assert_eq!(evals[0].host, "hedgehog");
+        let hedgehog = evals[0].evaluated().unwrap();
+        assert!(hedgehog.drv_path.ends_with("-test-hedgehog-toplevel.drv"));
+        assert_eq!(hedgehog.cache_status, crate::plan::CacheStatus::NotBuilt);
     }
 }

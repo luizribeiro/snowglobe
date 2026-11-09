@@ -129,7 +129,7 @@ fails for another reason, such as a unit that failed to reload.
 Listed units are ignored even if this deployment broke them. nix-darwin
 hosts aren’t affected.
 
-**Type:** list of systemd unit name with its type, as in “unifi.service”
+**Type:** list of systemd unit name with its type, as in “vault.service”
 
 **Default:** `[ ]`
 
@@ -137,7 +137,7 @@ hosts aren’t affected.
 
 ```nix
 [
-  "unifi.service"
+  "vault.service"
 ]
 ```
 

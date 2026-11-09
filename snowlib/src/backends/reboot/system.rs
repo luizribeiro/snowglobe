@@ -464,7 +464,7 @@ esac
     fn fake_target() -> DeployTarget {
         DeployTarget {
             user: Some("pusher".to_string()),
-            hostname: "hydrogen.example.com".to_string(),
+            hostname: "hedgehog.example.com".to_string(),
             port: None,
         }
     }
@@ -610,7 +610,7 @@ esac
         let host = FakeHost::new("exit 0");
         std::fs::write(host.state.path().join("hang_on"), "dry-activate").unwrap();
         let new_system =
-            StorePath::new("/nix/store/6c3x8d0yq2l1-nixos-system-curium-26.05".to_string());
+            StorePath::new("/nix/store/6c3x8d0yq2l1-nixos-system-condor-26.05".to_string());
 
         let err = host
             .backend(5)
@@ -840,7 +840,7 @@ esac
     #[tokio::test]
     async fn test_reboot_wait_reports_the_last_probe_error() {
         let host = FakeHost::new(
-            r#"echo "ssh: connect to host hydrogen.example.com port 22: No route to host" > "$state/unreachable"; exit 255"#,
+            r#"echo "ssh: connect to host hedgehog.example.com port 22: No route to host" > "$state/unreachable"; exit 255"#,
         );
 
         let err = host
@@ -883,7 +883,7 @@ esac
         assert_eq!(
             args,
             "-o BatchMode=yes -o ConnectTimeout=5 -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -o ForwardAgent=no \
-             pusher@hydrogen.example.com cat /proc/sys/kernel/random/boot_id"
+             pusher@hedgehog.example.com cat /proc/sys/kernel/random/boot_id"
         );
     }
 
@@ -907,7 +907,7 @@ esac
             .join(" ");
 
         assert!(
-            args.ends_with("-p 2222 pusher@hydrogen.example.com true"),
+            args.ends_with("-p 2222 pusher@hedgehog.example.com true"),
             "{args}"
         );
     }
@@ -923,13 +923,13 @@ esac
         let backend = SystemRebootBackend::with_defaults().with_ssh_user("deploy");
         let target = DeployTarget {
             user: Some("root".to_string()),
-            hostname: "hydrogen.example.com".to_string(),
+            hostname: "hedgehog.example.com".to_string(),
             port: None,
         };
 
         assert_eq!(
             backend.get_destination(&target),
-            "deploy@hydrogen.example.com"
+            "deploy@hedgehog.example.com"
         );
     }
 
@@ -938,13 +938,13 @@ esac
         let backend = SystemRebootBackend::with_defaults();
         let target = DeployTarget {
             user: Some("root".to_string()),
-            hostname: "hydrogen.example.com".to_string(),
+            hostname: "hedgehog.example.com".to_string(),
             port: None,
         };
 
         assert_eq!(
             backend.get_destination(&target),
-            "root@hydrogen.example.com"
+            "root@hedgehog.example.com"
         );
     }
 

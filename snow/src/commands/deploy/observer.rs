@@ -109,7 +109,7 @@ mod tests {
     use snowlib::PipelineStep;
 
     fn hosts() -> Vec<String> {
-        vec!["radon".to_string(), "cerium".to_string()]
+        vec!["raven".to_string(), "cactus".to_string()]
     }
 
     fn rows(observer: &CliObserver) -> Vec<(String, String)> {
@@ -160,14 +160,14 @@ mod tests {
         let observer = CliObserver::new(None, false);
         observer.on_phase_start("p3", &hosts());
 
-        observer.on_host_event("radon", &HostEvent::Started(PipelineStep::Copy));
-        observer.on_hook_start("cerium", HookStage::PreDeploy, "drain-node");
+        observer.on_host_event("raven", &HostEvent::Started(PipelineStep::Copy));
+        observer.on_hook_start("cactus", HookStage::PreDeploy, "drain-node");
 
         assert_eq!(
             rows(&observer),
             vec![
-                ("radon".to_string(), "copy".to_string()),
-                ("cerium".to_string(), "pre-deploy".to_string()),
+                ("raven".to_string(), "copy".to_string()),
+                ("cactus".to_string(), "pre-deploy".to_string()),
             ]
         );
     }
@@ -178,7 +178,7 @@ mod tests {
         observer.on_phase_start("p3", &hosts());
         let result = PhaseResult {
             phase: "p3".to_string(),
-            hosts: vec![snowlib::HostDeploymentResult::unchanged("radon")],
+            hosts: vec![snowlib::HostDeploymentResult::unchanged("raven")],
             duration: std::time::Duration::from_secs(5),
         };
 
@@ -194,7 +194,7 @@ mod tests {
         observer.on_phase_start("p3", &hosts());
 
         observer.on_phase_complete("p3", None);
-        observer.on_host_event("radon", &HostEvent::Started(PipelineStep::Copy));
+        observer.on_host_event("raven", &HostEvent::Started(PipelineStep::Copy));
 
         assert!(observer.spans.lock().is_empty());
         assert!(observer.board.lock().is_none());

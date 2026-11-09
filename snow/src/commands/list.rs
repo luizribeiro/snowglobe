@@ -133,20 +133,20 @@ mod tests {
 
     #[test]
     fn test_json_has_each_hosts_deploy_settings() {
-        let argon = HostMetadata {
+        let alpha = HostMetadata {
             system: Some("aarch64-linux".to_string()),
             phase: Some("p1".to_string()),
             tags: vec!["web".to_string(), "dns".to_string()],
             reboot_policy: RebootPolicy::Never,
             optional: true,
             serial_group: Some("dns".to_string()),
-            ..host("argon")
+            ..host("alpha")
         };
 
         assert_eq!(
-            json_value(&[argon]),
+            json_value(&[alpha]),
             serde_json::json!([{
-                "name": "argon",
+                "name": "alpha",
                 "system": "aarch64-linux",
                 "phase": "p1",
                 "tags": ["web", "dns"],
@@ -160,9 +160,9 @@ mod tests {
     #[test]
     fn test_json_writes_unset_settings_as_null() {
         assert_eq!(
-            json_value(&[host("boron")]),
+            json_value(&[host("bravo")]),
             serde_json::json!([{
-                "name": "boron",
+                "name": "bravo",
                 "system": null,
                 "phase": null,
                 "tags": [],
@@ -196,7 +196,7 @@ mod tests {
             .skip(1)
             .filter_map(|row| row.split_whitespace().next())
             .collect();
-        assert_eq!(hosts, ["hydrogen", "oxygen"]);
+        assert_eq!(hosts, ["hedgehog", "osprey"]);
     }
 
     #[test]
@@ -243,10 +243,10 @@ mod tests {
         assert_eq!(
             list_stdout(&[]),
             "HOST     PHASE   TAGS\n\
-             argon    p1      web,dns\n\
-             boron    p2      web\n\
-             curium   never   web\n\
-             ferrum   -       -\n"
+             alpha    p1      web,dns\n\
+             bravo    p2      web\n\
+             condor   never   web\n\
+             falcon   -       -\n"
         );
     }
 
@@ -257,22 +257,22 @@ mod tests {
 
     #[test]
     fn test_list_without_a_selection_shows_every_host_even_in_the_never_phase() {
-        assert_eq!(listed_hosts(&[]), ["argon", "boron", "curium", "ferrum"]);
+        assert_eq!(listed_hosts(&[]), ["alpha", "bravo", "condor", "falcon"]);
     }
 
     #[test]
     fn test_list_selections_leave_out_the_never_phase_like_deploy() {
-        assert_eq!(listed_hosts(&["--tag", "web"]), ["argon", "boron"]);
+        assert_eq!(listed_hosts(&["--tag", "web"]), ["alpha", "bravo"]);
         assert_eq!(
             listed_hosts(&["-e", "c: true"]),
-            ["argon", "boron", "ferrum"]
+            ["alpha", "bravo", "falcon"]
         );
     }
 
     #[test]
     fn test_list_selects_the_never_phase_by_phase_or_name_like_deploy() {
-        assert_eq!(listed_hosts(&["--phases", "p2,never"]), ["boron", "curium"]);
-        assert_eq!(listed_hosts(&["ferrum", "curium"]), ["ferrum", "curium"]);
+        assert_eq!(listed_hosts(&["--phases", "p2,never"]), ["bravo", "condor"]);
+        assert_eq!(listed_hosts(&["falcon", "condor"]), ["falcon", "condor"]);
     }
 
     #[test]
@@ -296,7 +296,7 @@ mod tests {
             listed_json(&[]),
             serde_json::json!([
                 {
-                    "name": "argon",
+                    "name": "alpha",
                     "system": "x86_64-linux",
                     "phase": "p1",
                     "tags": ["web", "dns"],
@@ -305,7 +305,7 @@ mod tests {
                     "serialGroup": "dns",
                 },
                 {
-                    "name": "boron",
+                    "name": "bravo",
                     "system": "aarch64-linux",
                     "phase": "p2",
                     "tags": ["web"],
@@ -314,7 +314,7 @@ mod tests {
                     "serialGroup": null,
                 },
                 {
-                    "name": "curium",
+                    "name": "condor",
                     "system": "x86_64-linux",
                     "phase": "never",
                     "tags": ["web"],
@@ -323,7 +323,7 @@ mod tests {
                     "serialGroup": null,
                 },
                 {
-                    "name": "ferrum",
+                    "name": "falcon",
                     "system": "aarch64-darwin",
                     "phase": null,
                     "tags": [],
@@ -345,8 +345,8 @@ mod tests {
                 .map(|host| host["name"].as_str().unwrap().to_string())
                 .collect()
         };
-        assert_eq!(names(&["--tag", "web"]), ["argon", "boron"]);
-        assert_eq!(names(&["--phase", "never"]), ["curium"]);
+        assert_eq!(names(&["--tag", "web"]), ["alpha", "bravo"]);
+        assert_eq!(names(&["--phase", "never"]), ["condor"]);
     }
 
     #[test]

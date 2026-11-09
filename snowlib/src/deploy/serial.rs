@@ -216,58 +216,58 @@ mod tests {
 
     #[tokio::test]
     async fn test_same_group_waits_for_the_holder() {
-        let praseodymium = host("praseodymium", Some("kubernetes"));
-        let promethium = host("promethium", Some("kubernetes"));
-        let scheduler = PhaseScheduler::new(3, &[praseodymium.clone(), promethium.clone()]);
+        let pomegranates = host("pomegranates", Some("kubernetes"));
+        let pufferfish = host("pufferfish", Some("kubernetes"));
+        let scheduler = PhaseScheduler::new(3, &[pomegranates.clone(), pufferfish.clone()]);
 
         let section = scheduler
-            .enter_section(&praseodymium, no_wait)
+            .enter_section(&pomegranates, no_wait)
             .await
             .unwrap();
         let mut waited_on = None;
         assert!(
-            is_blocked(scheduler.enter_section(&promethium, |group, holder| {
+            is_blocked(scheduler.enter_section(&pufferfish, |group, holder| {
                 waited_on = Some((group.to_string(), holder.map(str::to_string)));
             }))
             .await
         );
         assert_eq!(
             waited_on,
-            Some(("kubernetes".to_string(), Some("praseodymium".to_string())))
+            Some(("kubernetes".to_string(), Some("pomegranates".to_string())))
         );
 
         section.succeeded();
-        assert!(scheduler.enter_section(&promethium, no_wait).await.is_ok());
+        assert!(scheduler.enter_section(&pufferfish, no_wait).await.is_ok());
     }
 
     #[tokio::test]
     async fn test_different_groups_and_ungrouped_hosts_do_not_wait() {
-        let praseodymium = host("praseodymium", Some("kubernetes"));
-        let consul = host("argon", Some("consul"));
-        let hydrogen = host("hydrogen", None);
+        let pomegranates = host("pomegranates", Some("kubernetes"));
+        let consul = host("alpha", Some("consul"));
+        let hedgehog = host("hedgehog", None);
         let scheduler =
-            PhaseScheduler::new(3, &[praseodymium.clone(), consul.clone(), hydrogen.clone()]);
+            PhaseScheduler::new(3, &[pomegranates.clone(), consul.clone(), hedgehog.clone()]);
 
         let _held = scheduler
-            .enter_section(&praseodymium, no_wait)
+            .enter_section(&pomegranates, no_wait)
             .await
             .unwrap();
 
         let _consul = without_blocking(scheduler.enter_section(&consul, no_wait)).await;
-        let _hydrogen = without_blocking(scheduler.enter_section(&hydrogen, no_wait)).await;
+        let _hedgehog = without_blocking(scheduler.enter_section(&hedgehog, no_wait)).await;
     }
 
     #[tokio::test]
     async fn test_failed_section_halts_waiting_members() {
-        let praseodymium = host("praseodymium", Some("kubernetes"));
-        let promethium = host("promethium", Some("kubernetes"));
-        let scheduler = PhaseScheduler::new(3, &[praseodymium.clone(), promethium.clone()]);
+        let pomegranates = host("pomegranates", Some("kubernetes"));
+        let pufferfish = host("pufferfish", Some("kubernetes"));
+        let scheduler = PhaseScheduler::new(3, &[pomegranates.clone(), pufferfish.clone()]);
 
         let section = scheduler
-            .enter_section(&praseodymium, no_wait)
+            .enter_section(&pomegranates, no_wait)
             .await
             .unwrap();
-        let waiting = scheduler.enter_section(&promethium, no_wait);
+        let waiting = scheduler.enter_section(&pufferfish, no_wait);
         tokio::pin!(waiting);
         assert!(is_blocked(&mut waiting).await);
         drop(section);
@@ -276,76 +276,76 @@ mod tests {
             waiting.await.err(),
             Some(GroupHalted {
                 group: "kubernetes".to_string(),
-                failed_host: "praseodymium".to_string(),
+                failed_host: "pomegranates".to_string(),
             })
         );
     }
 
     #[tokio::test]
     async fn test_failed_optional_host_lets_the_next_member_in() {
-        let praseodymium = HostMetadata {
+        let pomegranates = HostMetadata {
             optional: true,
-            ..host("praseodymium", Some("kubernetes"))
+            ..host("pomegranates", Some("kubernetes"))
         };
-        let promethium = host("promethium", Some("kubernetes"));
-        let scheduler = PhaseScheduler::new(3, &[praseodymium.clone(), promethium.clone()]);
+        let pufferfish = host("pufferfish", Some("kubernetes"));
+        let scheduler = PhaseScheduler::new(3, &[pomegranates.clone(), pufferfish.clone()]);
 
         let section = scheduler
-            .enter_section(&praseodymium, no_wait)
+            .enter_section(&pomegranates, no_wait)
             .await
             .unwrap();
-        let waiting = scheduler.enter_section(&promethium, no_wait);
+        let waiting = scheduler.enter_section(&pufferfish, no_wait);
         tokio::pin!(waiting);
         assert!(is_blocked(&mut waiting).await);
         drop(section);
-        scheduler.halt_group_of(&praseodymium);
+        scheduler.halt_group_of(&pomegranates);
 
         assert!(without_blocking(waiting).await.is_ok());
     }
 
     #[tokio::test]
     async fn test_halted_group_refuses_members_immediately() {
-        let praseodymium = host("praseodymium", Some("kubernetes"));
-        let promethium = host("promethium", Some("kubernetes"));
-        let scheduler = PhaseScheduler::new(3, &[praseodymium.clone(), promethium.clone()]);
+        let pomegranates = host("pomegranates", Some("kubernetes"));
+        let pufferfish = host("pufferfish", Some("kubernetes"));
+        let scheduler = PhaseScheduler::new(3, &[pomegranates.clone(), pufferfish.clone()]);
 
-        scheduler.halt_group_of(&praseodymium);
+        scheduler.halt_group_of(&pomegranates);
 
-        assert!(scheduler.enter_section(&promethium, no_wait).await.is_err());
+        assert!(scheduler.enter_section(&pufferfish, no_wait).await.is_err());
     }
 
     #[tokio::test]
     async fn test_waiting_for_a_group_holds_no_permit() {
-        let praseodymium = host("praseodymium", Some("kubernetes"));
-        let promethium = host("promethium", Some("kubernetes"));
-        let hydrogen = host("hydrogen", None);
+        let pomegranates = host("pomegranates", Some("kubernetes"));
+        let pufferfish = host("pufferfish", Some("kubernetes"));
+        let hedgehog = host("hedgehog", None);
         let scheduler = PhaseScheduler::new(
             2,
-            &[praseodymium.clone(), promethium.clone(), hydrogen.clone()],
+            &[pomegranates.clone(), pufferfish.clone(), hedgehog.clone()],
         );
 
         let _held = scheduler
-            .enter_section(&praseodymium, no_wait)
+            .enter_section(&pomegranates, no_wait)
             .await
             .unwrap();
-        let queued = scheduler.enter_section(&promethium, no_wait);
+        let queued = scheduler.enter_section(&pufferfish, no_wait);
         tokio::pin!(queued);
         assert!(is_blocked(&mut queued).await);
 
-        let _hydrogen = without_blocking(scheduler.enter_section(&hydrogen, no_wait)).await;
+        let _hedgehog = without_blocking(scheduler.enter_section(&hedgehog, no_wait)).await;
     }
 
     #[tokio::test]
     async fn test_halt_while_waiting_for_a_permit_is_honored() {
-        let praseodymium = host("praseodymium", Some("kubernetes"));
-        let promethium = host("promethium", Some("kubernetes"));
-        let scheduler = PhaseScheduler::new(1, &[praseodymium.clone(), promethium.clone()]);
+        let pomegranates = host("pomegranates", Some("kubernetes"));
+        let pufferfish = host("pufferfish", Some("kubernetes"));
+        let scheduler = PhaseScheduler::new(1, &[pomegranates.clone(), pufferfish.clone()]);
 
         let building = scheduler.permit().await;
-        let entering = scheduler.enter_section(&promethium, no_wait);
+        let entering = scheduler.enter_section(&pufferfish, no_wait);
         tokio::pin!(entering);
         assert!(is_blocked(&mut entering).await);
-        scheduler.halt_group_of(&praseodymium);
+        scheduler.halt_group_of(&pomegranates);
         drop(building);
 
         assert!(entering.await.is_err());
