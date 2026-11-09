@@ -290,6 +290,29 @@ async fn test_units_failing_after_activation_fail_the_host_and_halt_later_phases
 }
 
 #[tokio::test]
+async fn test_a_host_whose_only_failing_units_are_ignored_is_deployed() {
+    let mut harness = PushHarness::new();
+    harness.deployer = MockDeployBackend::new()
+        .with_units_failing_activation("cerium.example.com", &["unifi.service"]);
+    let cerium = HostMetadata {
+        ignored_failed_units: vec!["unifi.service".to_string()],
+        ..make_host_metadata("cerium", Some("p1"), RebootPolicy::Auto)
+    };
+
+    let run = harness
+        .run(vec![
+            cerium,
+            make_host_metadata("radon", Some("p2"), RebootPolicy::Auto),
+        ])
+        .await;
+
+    let cerium = run.host("cerium");
+    assert!(cerium.success, "{cerium:?}");
+    assert_eq!(cerium.ignored_failing, ["unifi.service"]);
+    assert!(run.host("radon").success);
+}
+
+#[tokio::test]
 async fn test_push_with_partial_failure_in_phase() {
     let mut harness = PushHarness::new();
     harness.deployer =

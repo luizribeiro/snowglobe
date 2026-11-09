@@ -10,16 +10,19 @@ use std::collections::{HashMap, HashSet};
 
 /// Activates `system`. If units are failing afterwards, the error says the
 /// system did activate, which units are failing, and which of them were
-/// already failing before.
+/// already failing before. When the only failing units are `ignored`, and
+/// the switch reported nothing else, it succeeds, returning those units.
 pub async fn activate_reporting_failed_units(
     backend: &dyn DeployBackend,
     target: &DeployTarget,
     system: &StorePath,
     mode: ActivationMode,
     system_type: SystemType,
-) -> Result<()> {
+    ignored: &[String],
+) -> Result<Vec<String>> {
     if !reports_failing_units(mode, system_type) {
-        return backend.activate(target, system, mode).await;
+        backend.activate(target, system, mode).await?;
+        return Ok(Vec::new());
     }
     let failing_before: HashSet<String> = backend
         .failing_units(target)
@@ -35,11 +38,19 @@ pub async fn activate_reporting_failed_units(
         .into_iter()
         .collect();
     let Err(error) = backend.activate(target, system, mode).await else {
-        return Ok(());
+        return Ok(Vec::new());
     };
     let Some(failed) = units_failed(&error) else {
         return Err(error);
     };
+    if failed.only_units && failed.units.iter().all(|unit| ignored.contains(unit)) {
+        tracing::warn!(
+            "{}: activated, ignoring failing units: {}",
+            target.hostname,
+            failed.units.join(", ")
+        );
+        return Ok(failed.units);
+    }
     tracing::info!("{}: {}", target.hostname, error_chain(&error));
     Err(DeployError::UnitsFailing {
         host: target.hostname.clone(),
@@ -339,14 +350,29 @@ Nov 08 22:43:02 boron systemd[1]: Failed to start stale-job.service.";
         backend: &MockDeployBackend,
         mode: ActivationMode,
         system_type: SystemType,
-    ) -> Result<()> {
+    ) -> Result<Vec<String>> {
+        activate_ignoring(backend, mode, system_type, &[]).await
+    }
+
+    async fn activate_ignoring(
+        backend: &MockDeployBackend,
+        mode: ActivationMode,
+        system_type: SystemType,
+        ignored: &[&str],
+    ) -> Result<Vec<String>> {
+        let ignored: Vec<String> = ignored.iter().map(|unit| unit.to_string()).collect();
         let target = DeployTarget {
             user: None,
             hostname: BORON.to_string(),
             port: None,
         };
         let system = StorePath::new("/nix/store/7y4n-nixos-system-boron".to_string());
-        activate_reporting_failed_units(backend, &target, &system, mode, system_type).await
+        activate_reporting_failed_units(backend, &target, &system, mode, system_type, &ignored)
+            .await
+    }
+
+    async fn switch_ignoring(backend: &MockDeployBackend, ignored: &[&str]) -> Result<Vec<String>> {
+        activate_ignoring(backend, ActivationMode::Switch, SystemType::NixOS, ignored).await
     }
 
     async fn switch(backend: &MockDeployBackend) -> String {
@@ -423,7 +449,71 @@ Nov 08 22:43:02 boron systemd[1]: Failed to start stale-job.service.";
     async fn test_an_activation_without_failures_succeeds() {
         let result = activate_with(&boron(), ActivationMode::Switch, SystemType::NixOS).await;
 
-        assert!(result.is_ok());
+        assert!(result.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_a_switch_whose_only_failing_units_are_ignored_succeeds() {
+        let boron = boron().with_units_failing_activation(BORON, &["unifi.service"]);
+
+        let ignored = switch_ignoring(&boron, &["unifi.service", "nginx.service"]).await;
+
+        assert_eq!(ignored.unwrap(), ["unifi.service"]);
+    }
+
+    #[tokio::test]
+    async fn test_a_switch_with_a_failing_unit_not_ignored_fails() {
+        let boron =
+            boron().with_units_failing_activation(BORON, &["stale-job.service", "unifi.service"]);
+
+        let error = switch_ignoring(&boron, &["unifi.service"])
+            .await
+            .unwrap_err();
+
+        assert_eq!(
+            error.to_string(),
+            "activated, but 2 units are failing\n\
+             Details:\n\
+             stale-job.service (already failing before this push)\n\
+             unifi.service"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_ignored_units_dont_hide_other_trouble_the_switch_reported() {
+        let boron = boron().with_switch_stderr(
+            BORON,
+            "Failed to restart nginx.service\n\
+             warning: the following units failed: unifi.service",
+        );
+
+        let error = switch_ignoring(&boron, &["unifi.service"])
+            .await
+            .unwrap_err();
+
+        assert_eq!(error.to_string(), "activated, but unifi.service is failing");
+    }
+
+    #[tokio::test]
+    async fn test_ignored_units_are_ignored_whatever_else_activation_printed() {
+        let boron = boron().with_switch_stderr(
+            BORON,
+            "Warning: Permanently added 'boron.example.com' (ED25519) to the list of known hosts.\n\
+             sops-install-secrets: Imported /etc/ssh/ssh_host_ed25519_key as age key with fingerprint age1ql3z7hjy54pw3hyww5ayyfg7zqgvc7w3j2elw8zmrj2kg5sfn9aqmcac8p\n\
+             activating the configuration...\n\
+             warning: the following units failed: unifi.service",
+        );
+
+        let ignored = switch_ignoring(&boron, &["unifi.service"]).await;
+
+        assert_eq!(ignored.unwrap(), ["unifi.service"]);
+    }
+
+    #[tokio::test]
+    async fn test_ignored_units_dont_hide_other_failures() {
+        let boron = boron().with_activate_failures(vec![BORON.to_string()]);
+
+        assert!(switch_ignoring(&boron, &["unifi.service"]).await.is_err());
     }
 
     #[tokio::test]
@@ -434,7 +524,9 @@ Nov 08 22:43:02 boron systemd[1]: Failed to start stale-job.service.";
         ] {
             let boron = boron().with_units_failing_activation(BORON, &["stale-job.service"]);
 
-            let error = activate_with(&boron, mode, system_type).await.unwrap_err();
+            let error = activate_ignoring(&boron, mode, system_type, &["stale-job.service"])
+                .await
+                .unwrap_err();
 
             assert!(
                 matches!(

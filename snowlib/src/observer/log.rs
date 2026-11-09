@@ -185,6 +185,7 @@ mod tests {
             rebooted: true,
             unchanged: false,
             optional: false,
+            ignored_failing: Vec::new(),
             error_message: None,
         };
         let skipped = HostDeploymentResult::skipped_by_serial_group("samarium", "k8s", "cerium");

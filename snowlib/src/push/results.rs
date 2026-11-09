@@ -68,6 +68,8 @@ pub struct HostDeploymentResult {
     pub error_message: Option<String>,
     /// From the host's metadata: its failure doesn't fail its phase or the push
     pub optional: bool,
+    /// Units failing after activation that the host's metadata ignores
+    pub ignored_failing: Vec<String>,
 }
 
 impl HostDeploymentResult {
@@ -92,6 +94,7 @@ impl HostDeploymentResult {
             rebooted: false,
             unchanged: false,
             optional: false,
+            ignored_failing: Vec::new(),
             error_message: Some(format!(
                 "serial group '{group}' halted after {failed_host} failed"
             )),
@@ -117,6 +120,7 @@ impl HostDeploymentResult {
             rebooted: false,
             unchanged: true,
             optional: false,
+            ignored_failing: Vec::new(),
             error_message: None,
         }
     }
@@ -226,6 +230,7 @@ mod tests {
             rebooted: false,
             unchanged: false,
             optional: false,
+            ignored_failing: Vec::new(),
             error_message: failed_at_step.map(|_| "error".to_string()),
         }
     }

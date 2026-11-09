@@ -156,18 +156,26 @@ fn host_label(host: &snowlib::HostDeploymentResult) -> String {
     }
 }
 
-pub(super) fn success_labels(host: &snowlib::HostDeploymentResult) -> Vec<&'static str> {
+pub(super) fn success_labels(host: &snowlib::HostDeploymentResult) -> Vec<String> {
     let mut labels = Vec::new();
     if let Some(mode) = host.activation_mode {
-        labels.push(mode_label(mode));
+        labels.push(mode_label(mode).to_string());
     }
     if host.rebooted {
-        labels.push("rebooted");
+        labels.push("rebooted".to_string());
     }
     if host.unchanged {
-        labels.push("unchanged");
+        labels.push("unchanged".to_string());
+    }
+    if !host.ignored_failing.is_empty() {
+        labels.push(ignored_failing_label(&host.ignored_failing));
     }
     labels
+}
+
+/// "ignored failing unifi.service"
+fn ignored_failing_label(units: &[String]) -> String {
+    format!("ignored failing {}", units.join(", "))
 }
 
 fn host_lines(
@@ -214,10 +222,11 @@ pub(in crate::commands) fn mode_label(mode: snowlib::ActivationMode) -> &'static
 }
 
 /// "✓ boron (switch, rebooted)"
-pub(in crate::commands) fn success_line(hostname: &str, labels: &[&str]) -> String {
+pub(in crate::commands) fn success_line(hostname: &str, labels: &[impl AsRef<str>]) -> String {
     let status = if labels.is_empty() {
         String::new()
     } else {
+        let labels: Vec<&str> = labels.iter().map(AsRef::as_ref).collect();
         format!(" {}", style(format!("({})", labels.join(", "))).dim())
     };
     format!("{} {hostname}{status}", marks::success())
@@ -467,6 +476,7 @@ mod tests {
             rebooted,
             unchanged: false,
             optional: false,
+            ignored_failing: Vec::new(),
             failed_at_step: None,
             error_message: None,
         }
@@ -480,6 +490,7 @@ mod tests {
             rebooted: false,
             unchanged: false,
             optional: false,
+            ignored_failing: Vec::new(),
             failed_at_step: Some(step),
             error_message: Some(error.to_string()),
         }
@@ -986,6 +997,19 @@ mod tests {
         assert_eq!(
             super::skipped_phase_report(&two),
             "⊘ Phase p3-k8s (2 hosts skipped)\n  ⊘ cerium\n  ⊘ lanthanum"
+        );
+    }
+
+    #[test]
+    fn test_phase_report_notes_the_failing_units_a_host_ignored() {
+        let cerium = HostDeploymentResult {
+            ignored_failing: vec!["unifi.service".to_string()],
+            ..make_successful_host("cerium", ActivationMode::Switch, false)
+        };
+
+        assert_eq!(
+            super::host_lines(&cerium, 80, None),
+            vec!["  ✓ cerium (switch, ignored failing unifi.service)"]
         );
     }
 

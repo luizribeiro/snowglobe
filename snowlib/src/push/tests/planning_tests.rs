@@ -21,6 +21,7 @@ fn test_push_results_counts() {
                     rebooted: false,
                     unchanged: false,
                     optional: false,
+                    ignored_failing: Vec::new(),
                     error_message: None,
                 },
                 HostDeploymentResult {
@@ -31,6 +32,7 @@ fn test_push_results_counts() {
                     rebooted: false,
                     unchanged: false,
                     optional: false,
+                    ignored_failing: Vec::new(),
                     error_message: Some("failed".to_string()),
                 },
                 HostDeploymentResult {
@@ -41,6 +43,7 @@ fn test_push_results_counts() {
                     rebooted: false,
                     unchanged: false,
                     optional: false,
+                    ignored_failing: Vec::new(),
                     error_message: None,
                 },
             ],
@@ -68,6 +71,7 @@ fn test_push_results_all_succeeded() {
                     rebooted: false,
                     unchanged: false,
                     optional: false,
+                    ignored_failing: Vec::new(),
                     error_message: None,
                 },
                 HostDeploymentResult {
@@ -78,6 +82,7 @@ fn test_push_results_all_succeeded() {
                     rebooted: false,
                     unchanged: false,
                     optional: false,
+                    ignored_failing: Vec::new(),
                     error_message: None,
                 },
             ],

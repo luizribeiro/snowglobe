@@ -41,8 +41,8 @@ pub struct MockDeployBackend {
     failing_units: HashMap<String, Vec<String>>,
     unreadable_failing_units: Vec<String>,
     failing_units_reads: Arc<Mutex<usize>>,
-    /// Units whose failure makes activation exit 4, per target hostname
-    units_failing_activation: HashMap<String, Vec<String>>,
+    /// stderr of an activation that exits 4, per target hostname
+    switch_stderr: HashMap<String, String>,
 }
 
 impl Default for MockDeployBackend {
@@ -61,7 +61,7 @@ impl Default for MockDeployBackend {
             failing_units: HashMap::new(),
             unreadable_failing_units: Vec::new(),
             failing_units_reads: Arc::new(Mutex::new(0)),
-            units_failing_activation: HashMap::new(),
+            switch_stderr: HashMap::new(),
         }
     }
 }
@@ -165,9 +165,15 @@ impl MockDeployBackend {
     }
 
     /// Activating `hostname` exits 4, as switch-to-configuration does when `units` fail
-    pub fn with_units_failing_activation(mut self, hostname: &str, units: &[&str]) -> Self {
-        self.units_failing_activation
-            .insert(hostname.to_string(), to_strings(units));
+    pub fn with_units_failing_activation(self, hostname: &str, units: &[&str]) -> Self {
+        let stderr = format!("warning: the following units failed: {}", units.join(", "));
+        self.with_switch_stderr(hostname, &stderr)
+    }
+
+    /// Activating `hostname` exits 4, printing `stderr`
+    pub fn with_switch_stderr(mut self, hostname: &str, stderr: &str) -> Self {
+        self.switch_stderr
+            .insert(hostname.to_string(), stderr.to_string());
         self
     }
 
@@ -382,12 +388,12 @@ impl DeployBackend for MockDeployBackend {
             .into());
         }
 
-        if let Some(units) = self.units_failing_activation.get(&target.hostname) {
+        if let Some(stderr) = self.switch_stderr.get(&target.hostname) {
             return Err(crate::error::DeployError::CommandFailed {
                 host: target.hostname.clone(),
                 command: "sudo switch-to-configuration switch".to_string(),
                 exit_code: 4,
-                stderr: format!("warning: the following units failed: {}", units.join(", ")),
+                stderr: stderr.clone(),
                 stdout: String::new(),
             }
             .into());

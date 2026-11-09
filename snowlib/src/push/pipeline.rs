@@ -194,6 +194,7 @@ impl HostRun<'_, '_> {
             rebooted: false,
             unchanged: false,
             optional: false,
+            ignored_failing: Vec::new(),
             error_message: Some(reason),
         }
     }
@@ -267,18 +268,20 @@ impl HostRun<'_, '_> {
         self.hooks(HookStage::PreDeploy, PipelineStep::PreDeploy, deployable)
             .await?;
 
-        self.step(
-            PipelineStep::Activate,
-            deployable,
-            activate_reporting_failed_units(
-                push_ctx.deploy_backend,
-                &target,
-                &store_path,
-                plan.activation_mode,
-                self.metadata.system_type,
-            ),
-        )
-        .await?;
+        let ignored_failing = self
+            .step(
+                PipelineStep::Activate,
+                deployable,
+                activate_reporting_failed_units(
+                    push_ctx.deploy_backend,
+                    &target,
+                    &store_path,
+                    plan.activation_mode,
+                    self.metadata.system_type,
+                    &self.metadata.ignored_failed_units,
+                ),
+            )
+            .await?;
 
         let rebooted = should_reboot(push_ctx, &plan);
         if rebooted {
@@ -297,6 +300,7 @@ impl HostRun<'_, '_> {
             rebooted,
             unchanged: false,
             optional: false,
+            ignored_failing,
             error_message: None,
         })
     }

@@ -382,6 +382,7 @@ mod tests {
             rebooted,
             unchanged: false,
             optional: false,
+            ignored_failing: Vec::new(),
             error_message: None,
         }
     }
@@ -537,7 +538,10 @@ mod tests {
         );
         board.apply(
             "vanadium",
-            &HostEvent::Done(deployed("vanadium", ActivationMode::Switch, false)),
+            &HostEvent::Done(HostDeploymentResult {
+                ignored_failing: vec!["unifi.service".to_string()],
+                ..deployed("vanadium", ActivationMode::Switch, false)
+            }),
             t0 + secs(252),
         );
 
@@ -551,7 +555,11 @@ mod tests {
             done,
             vec![
                 ("cerium", "boot, rebooted", Some(secs(595))),
-                ("vanadium", "switch", Some(secs(252))),
+                (
+                    "vanadium",
+                    "switch, ignored failing unifi.service",
+                    Some(secs(252))
+                ),
             ]
         );
     }
