@@ -16,11 +16,11 @@ shows as one row per host.
 
 ## Features
 
-- [Phases](docs/push.md#phases) that roll out by risk and stop at the first failure.
-- [Serial groups](docs/push.md#serial-groups), so cluster nodes deploy one at a time.
-- [Reboot detection](docs/push.md#reboots) with per-host reboot policies.
-- [Hooks](docs/hooks.md) before and after a deploy, after a reboot, and on failure.
-- NixOS and [nix-darwin](docs/darwin.md) hosts in the same deployment.
+- [Phases](https://l9o.dev/snowglobe/phases/) that roll out by risk and stop at the first failure.
+- [Serial groups](https://l9o.dev/snowglobe/cluster/), so cluster nodes deploy one at a time.
+- [Reboot detection](https://l9o.dev/snowglobe/reboots/) with per-host reboot policies.
+- [Hooks](https://l9o.dev/snowglobe/hooks/) before and after a deploy, after a reboot, and on failure.
+- NixOS and [nix-darwin](https://l9o.dev/snowglobe/darwin/) hosts in the same deployment.
 - Reads the flake's existing `nixosConfigurations` and `darwinConfigurations`.
   No extra flake output is needed.
 
@@ -93,7 +93,7 @@ Static binaries for Linux and macOS are on the
    }
    ```
 
-Macs use `darwinModules.default`; see [docs/darwin.md](docs/darwin.md).
+Macs use `darwinModules.default`; see [Deploy nix-darwin hosts](https://l9o.dev/snowglobe/darwin/).
 `snow rebuild` works like `nixos-rebuild` or `darwin-rebuild` on the local
 machine, with the same reboot check. Everything else is in `snow --help` and
 the module's option descriptions.
@@ -149,14 +149,14 @@ if you need secrets upload or building on the target.
   deploy user and guard its SSH key like a root key.
 - Local hooks run code from the flake on the deploying machine.
 
-Details in [docs/activation-helper.md](docs/activation-helper.md#security).
+Details in the [security model](https://l9o.dev/snowglobe/security/).
 
 ## Documentation
 
-- [docs/push.md](docs/push.md): phases, serial groups, reboots and modes
-- [docs/hooks.md](docs/hooks.md): hooks, and secrets in hooks
-- [docs/darwin.md](docs/darwin.md): nix-darwin hosts
-- [docs/activation-helper.md](docs/activation-helper.md): the activation helper and its security model
+The documentation is at [l9o.dev/snowglobe](https://l9o.dev/snowglobe/),
+starting with the [tutorial](https://l9o.dev/snowglobe/tutorial/). Its
+source is in [docs/](docs/).
+
 - [docs/demos.md](docs/demos.md): every clip is a NixOS VM test deploying to real VMs
 - [CHANGELOG.md](CHANGELOG.md)
 - [CONTRIBUTING.md](CONTRIBUTING.md)

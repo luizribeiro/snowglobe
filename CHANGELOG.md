@@ -54,7 +54,7 @@ Not in release builds. May change or break any time. Try them with
 
 #### Deploy
 
-Details in [docs/push.md](docs/push.md) and [docs/hooks.md](docs/hooks.md).
+Details in [Roll out in phases](https://l9o.dev/snowglobe/phases/) and [Write deployment hooks](https://l9o.dev/snowglobe/hooks/).
 
 - Phases (`snowglobe.deploy.phase`), in order. A failed phase stops the rest.
   `--ignore-phases` to deploy all at once.
