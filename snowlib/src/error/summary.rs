@@ -68,6 +68,30 @@ pub fn error_context(error: &str, max: usize) -> ErrorContext<'_> {
     }
 }
 
+/// Heads the lines an error lists under its cause, as its second line:
+/// "activated, but 2 units are failing\nDetails:\nnginx.service"
+pub const DETAILS_HEADER: &str = "Details:";
+
+/// At most `max` of the non-empty lines under an error's `DETAILS_HEADER`,
+/// if it has one: they say more about the cause rather than lead up to it.
+/// Only right under the cause, so a command's output can't pose as one.
+pub fn error_details(error: &str, max: usize) -> Option<ErrorContext<'_>> {
+    let mut lines = error.lines().map(str::trim);
+    lines.next()?;
+    if lines.next()? != DETAILS_HEADER {
+        return None;
+    }
+    let details: Vec<&str> = non_empty(lines).collect();
+    if details.is_empty() {
+        return None;
+    }
+    let shown = details.len().min(max);
+    Some(ErrorContext {
+        hidden: details.len() - shown,
+        lines: details[..shown].to_vec(),
+    })
+}
+
 fn non_empty<'a>(lines: impl Iterator<Item = &'a str>) -> impl Iterator<Item = &'a str> {
     lines.filter(|line| !line.is_empty())
 }
@@ -225,6 +249,54 @@ mod tests {
                 hidden: 1,
             }
         );
+    }
+
+    const UNITS_FAILING: &str = "activated, but 3 units are failing\n\
+        Details:\n\
+        nginx.service\n\
+        stale-job.service (already failing before this push)\n\
+        unifi.service";
+
+    #[test]
+    fn test_error_details_are_the_lines_under_the_header() {
+        assert_eq!(
+            error_details(UNITS_FAILING, 10),
+            Some(ErrorContext {
+                lines: vec![
+                    "nginx.service",
+                    "stale-job.service (already failing before this push)",
+                    "unifi.service",
+                ],
+                hidden: 0,
+            })
+        );
+        assert_eq!(
+            error_summary(UNITS_FAILING),
+            "activated, but 3 units are failing"
+        );
+    }
+
+    #[test]
+    fn test_error_details_keep_the_first_lines() {
+        assert_eq!(
+            error_details(UNITS_FAILING, 2),
+            Some(ErrorContext {
+                lines: vec![
+                    "nginx.service",
+                    "stale-job.service (already failing before this push)",
+                ],
+                hidden: 1,
+            })
+        );
+    }
+
+    #[test]
+    fn test_errors_without_a_details_header_have_no_details() {
+        assert_eq!(error_details(ACTIVATION_FAILURE, 10), None);
+        assert_eq!(error_details("storage degraded", 10), None);
+        let hook_output = "Command failed\n\nStderr:\nDetails:\ndisk sdb missing";
+        assert_eq!(error_details(hook_output, 10), None);
+        assert_eq!(error_details("activated\nDetails:\n", 10), None);
     }
 
     #[test]

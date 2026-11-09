@@ -7,7 +7,7 @@
 use super::board::{format_elapsed, plural};
 use super::colors::style;
 use crate::marks;
-use snowlib::error::summary::{error_context, error_summary, truncate};
+use snowlib::error::summary::{error_context, error_details, error_summary, truncate};
 use snowlib::push::{ALL_HOSTS, UNPHASED};
 use std::path::Path;
 
@@ -307,18 +307,28 @@ fn overall_summary(results: &snowlib::PushResults) -> String {
     }
 }
 
-/// The lines leading up to the cause, dim but for the cause itself, then
-/// where to read the rest. A cause on its own is left out, since the line
-/// above already ends with it.
+/// The error's own details, or else the lines leading up to the cause,
+/// dim but for the cause itself, then where to read the rest. A cause on
+/// its own is left out, since the line above already ends with it.
 fn failure_details(error: &str, log_file: Option<&Path>) -> Vec<String> {
-    let context = error_context(error, MAX_CONTEXT_LINES);
+    let dim = |line: &&str| style(line).dim().to_string();
     let mut details = Vec::new();
-    if let [leading @ .., cause] = context.lines.as_slice() {
-        if !leading.is_empty() {
-            details.extend(leading.iter().map(|line| style(line).dim().to_string()));
-            details.push(cause.to_string());
+    let context = match error_details(error, MAX_CONTEXT_LINES) {
+        Some(own) => {
+            details.extend(own.lines.iter().map(dim));
+            own
         }
-    }
+        None => {
+            let context = error_context(error, MAX_CONTEXT_LINES);
+            if let [leading @ .., cause] = context.lines.as_slice() {
+                if !leading.is_empty() {
+                    details.extend(leading.iter().map(dim));
+                    details.push(cause.to_string());
+                }
+            }
+            context
+        }
+    };
     if context.hidden > 0 {
         details.push(
             style(more_lines_hint(context.hidden, log_file))
@@ -649,6 +659,28 @@ mod tests {
              \x20   … 5 more lines in /tmp/snow-1762255380.log\n\
              \x20 ✗ radon at pre-deploy: storage degraded\n\
              \x20 ⊘ lanthanum skipped, serial group 'k8s' halted after cerium failed"
+        );
+    }
+
+    #[test]
+    fn test_phase_report_lists_an_errors_own_details_under_its_cause() {
+        console::set_colors_enabled(false);
+        let error = "activated, but 2 units are failing\n\
+                     Details:\n\
+                     nginx.service\n\
+                     unifi.service (already failing before this push)";
+        let phase = PhaseResult {
+            phase: "p1".to_string(),
+            duration: Duration::from_secs(41),
+            hosts: vec![make_failed_host("cerium", PipelineStep::Activate, error)],
+        };
+
+        assert_eq!(
+            super::phase_report(&phase, false, 100, None),
+            "✗ Phase p1 (1/1 failed in 0:41)\n\
+             \x20 ✗ cerium at activate: activated, but 2 units are failing\n\
+             \x20   nginx.service\n\
+             \x20   unifi.service (already failing before this push)"
         );
     }
 
