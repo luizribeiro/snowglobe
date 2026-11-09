@@ -231,7 +231,7 @@ in
         {
           drain-node = {
             location = "local";
-            command = "kubectl drain --ignore-daemonsets \${config.networking.hostName}";
+            command = "kubectl drain --ignore-daemonsets ''${config.networking.hostName}";
             timeout = 360;
             continueOnFailure = false;
             priority = 50; # Run before other hooks
@@ -259,7 +259,7 @@ in
         {
           uncordon-node = {
             location = "local";
-            command = "kubectl uncordon \${config.networking.hostName}";
+            command = "kubectl uncordon ''${config.networking.hostName}";
             timeout = 60;
             continueOnFailure = true;
           };
@@ -313,13 +313,13 @@ in
         {
           uncordon-on-failure = {
             location = "local";
-            command = "kubectl uncordon \${config.networking.hostName}";
+            command = "kubectl uncordon ''${config.networking.hostName}";
             timeout = 60;
             continueOnFailure = true;
           };
           send-notification = {
             location = "local";
-            command = "notify-send 'Deployment failed for \${config.networking.hostName}'";
+            command = "notify-send 'Deployment failed for ''${config.networking.hostName}'";
             timeout = 10;
             continueOnFailure = true;
           };

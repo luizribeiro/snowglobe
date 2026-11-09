@@ -14,16 +14,21 @@ let
     };
   };
 
-  evalConfig = config: (pkgs.lib.evalModules {
+  evalModules = config: pkgs.lib.evalModules {
     modules = [
       assertionsModule
       ./hooks.nix
       { _module.args.pkgs = pkgs; }
       config
     ];
-  }).config;
+  };
+
+  evalConfig = config: (evalModules config).config;
 
   evalHooks = config: (evalConfig config).snowglobe.hooks;
+
+  hookOptions = (evalModules { }).options.snowglobe.hooks;
+  hostNameInterpolation = "\${config.networking.hostName}";
 
   pkgsFor = system: import pkgs.path { localSystem = { inherit system; }; };
   aarch64Pkgs = pkgsFor "aarch64-linux";
@@ -410,5 +415,11 @@ in
   "test remote hook deps: add nothing to /etc without remote hooks" = {
     expr = (evalConfig { }).environment.etc ? "snowglobe/remote-hooks";
     expected = false;
+  };
+
+  "test option examples: show the hostname interpolation as written" = {
+    expr = pkgs.lib.genAttrs [ "pre-deploy" "post-deploy" "on-failure" ]
+      (stage: pkgs.lib.hasInfix hostNameInterpolation hookOptions.${stage}.example.text);
+    expected = { pre-deploy = true; post-deploy = true; on-failure = true; };
   };
 }
