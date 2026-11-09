@@ -18,7 +18,8 @@ let
 in {
   hostName = config.networking.hostName;
   domain = config.networking.domain or "";
-  system = config.nixpkgs.hostPlatform.system or null;
+  # pkgs has the platform however the host was built; hand-written hosts have no pkgs
+  system = extended.pkgs.stdenv.hostPlatform.system or (config.nixpkgs.hostPlatform.system or null);
   phase = config.snowglobe.deploy.phase or null;
   tags = config.snowglobe.deploy.tags or [];
   rebootPolicy = config.snowglobe.deploy.rebootPolicy or "auto";

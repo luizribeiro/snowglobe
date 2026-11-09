@@ -29,6 +29,12 @@ let
 
   withoutModule = nixosHost [ { networking.hostName = "plain"; } ];
 
+  # As nixosSystem { system = ...; } builds it, leaving nixpkgs.hostPlatform unset
+  withSystemArgument = import (pkgs.path + "/nixos/lib/eval-config.nix") {
+    system = otherSystem;
+    modules = [ snowglobeModule { networking.hostName = "web3"; } ];
+  };
+
   hooksFileFor = system: (web1.extendModules {
     modules = [ { snowglobe.localSystem = pkgs.lib.mkForce system; } ];
   }).config.snowglobe.hooksFile.drvPath;
@@ -77,6 +83,11 @@ in
   testReusesTheHooksFileOnTheHostsPlatform = {
     expr = (metadata hostSystem web1).hooksFile == hooksFileFor hostSystem;
     expected = true;
+  };
+
+  testReadsThePlatformOfAHostWithoutHostPlatform = {
+    expr = (metadata hostSystem withSystemArgument).system;
+    expected = otherSystem;
   };
 
   # Not every flake builds its hosts with nixosSystem
