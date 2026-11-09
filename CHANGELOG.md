@@ -25,7 +25,7 @@ and aarch64), with `SHA256SUMS`.
 - `snow list`: hosts in the flake, with phase and tags. `--json` for
   scripts.
 - `snow build`: build, don't deploy.
-- `snow deploy`: deploy over SSH. See [Push](#push).
+- `snow deploy`: deploy over SSH. See [Deploy](#deploy).
 - `snow rebuild`: `nixos-rebuild` for the machine you're on. Asks for sudo
   once at the start. If a switch needs a reboot, you get a menu: reboot
   now, next boot, switch anyway, or cancel.
@@ -52,13 +52,13 @@ Not in release builds. May change or break any time. Try them with
   image with the host's provisioner (`manual`, `sd-image`, `raw` or
   `proxmox-vma`). `--target` writes it to a block device or a Proxmox host.
 
-#### Push
+#### Deploy
 
 Details in [docs/push.md](docs/push.md) and [docs/hooks.md](docs/hooks.md).
 
 - Phases (`snowglobe.deploy.phase`), in order. A failed phase stops the rest.
-  `--ignore-phases` to push all at once.
-- `never` phase, for hosts you only push by name.
+  `--ignore-phases` to deploy all at once.
+- `never` phase, for hosts you only deploy by name.
 - Optional hosts (`snowglobe.deploy.optional`), e.g. a laptop that's often off.
 - Serial groups (`snowglobe.deploy.serialGroup`).
 - Hooks (`snowglobe.hooks`): `pre-deploy`, `post-deploy`, `post-reboot`,
@@ -67,7 +67,7 @@ Details in [docs/push.md](docs/push.md) and [docs/hooks.md](docs/hooks.md).
   restart), plus `auto`/`never`/`always` reboot policies per host. Policies
   win over `--switch`. `--boot`, `--test` and `--dry-run` ignore them.
 - Modes to switch, boot next time, test or dry-run.
-- Unchanged hosts are skipped. `--redeploy` to push them anyway.
+- Unchanged hosts are skipped. `--redeploy` to deploy them anyway.
 - A host whose units are failing after its switch fails, with a message
   saying the new system is active and naming the failing units.
   `snowglobe.deploy.ignoredFailedUnits` lists units that don't fail it.

@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/luizribeiro/snowglobe/actions/workflows/ci.yml/badge.svg)](https://github.com/luizribeiro/snowglobe/actions/workflows/ci.yml) [![Release](https://img.shields.io/github/v/release/luizribeiro/snowglobe)](https://github.com/luizribeiro/snowglobe/releases) [![License](https://img.shields.io/github/license/luizribeiro/snowglobe)](#license)
 
-Push deployments for NixOS and nix-darwin hosts, in phases.
+Deploy NixOS and nix-darwin hosts, in phases.
 
 snowglobe deploys the NixOS and nix-darwin hosts in a flake over SSH. Its
 CLI, `snow`, builds each host, copies it over, activates it, and reboots it
@@ -20,7 +20,7 @@ shows as one row per host.
 - [Serial groups](docs/push.md#serial-groups), so cluster nodes deploy one at a time.
 - [Reboot detection](docs/push.md#reboots) with per-host reboot policies.
 - [Hooks](docs/hooks.md) before and after a deploy, after a reboot, and on failure.
-- NixOS and [nix-darwin](docs/darwin.md) hosts in the same push.
+- NixOS and [nix-darwin](docs/darwin.md) hosts in the same deployment.
 - Reads the flake's existing `nixosConfigurations` and `darwinConfigurations`.
   No extra flake output is needed.
 
@@ -101,7 +101,7 @@ the module's option descriptions.
 ## How it works
 
 Phases are for rolling out by risk. Low-risk hosts go first, and a
-post-deploy hook can check each one. A failure stops the push before any
+post-deploy hook can check each one. A failure stops the deployment before any
 host in a later phase is touched. Spreading a cluster's nodes across phases
 migrates it gradually instead of all at once.
 
@@ -157,7 +157,7 @@ Details in [docs/activation-helper.md](docs/activation-helper.md#security).
 - [docs/hooks.md](docs/hooks.md): hooks, and secrets in hooks
 - [docs/darwin.md](docs/darwin.md): nix-darwin hosts
 - [docs/activation-helper.md](docs/activation-helper.md): the activation helper and its security model
-- [docs/demos.md](docs/demos.md): every clip is a NixOS VM test pushing to real VMs
+- [docs/demos.md](docs/demos.md): every clip is a NixOS VM test deploying to real VMs
 - [CHANGELOG.md](CHANGELOG.md)
 - [CONTRIBUTING.md](CONTRIBUTING.md)
 
