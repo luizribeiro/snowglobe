@@ -287,39 +287,8 @@ fn nix_system(arch: &str, os: &str) -> String {
 }
 
 /// Builds the `--apply` expression that extracts host metadata as JSON
-///
-/// When this machine's platform differs from the host's, the host is
-/// re-evaluated with `snowglobe.localSystem` set to it, so local hooks get
-/// packages that run here. The re-evaluation costs about half a second per
-/// host, so it's skipped when the platforms already match.
 fn metadata_apply_expr(local_system: &str) -> String {
-    format!(
-        r#"host:
-        let
-          needsLocalSystem = host ? options && host.options ? snowglobe && host.options.snowglobe ? localSystem
-            && host.config.snowglobe.localSystem != "{local_system}";
-          extended = if needsLocalSystem
-            then host.extendModules {{
-              modules = [ ({{ lib, ... }}: {{ snowglobe.localSystem = lib.mkForce "{local_system}"; }}) ];
-            }}
-            else host;
-          config = extended.config;
-        in {{
-          hostName = config.networking.hostName;
-          domain = config.networking.domain or "";
-          system = config.nixpkgs.hostPlatform.system or null;
-          phase = config.snowglobe.deploy.phase or null;
-          tags = config.snowglobe.deploy.tags or [];
-          rebootPolicy = config.snowglobe.deploy.rebootPolicy or "auto";
-          serialGroup = config.snowglobe.deploy.serialGroup or null;
-          sshPort = config.snowglobe.deploy.sshPort or null;
-          optional = config.snowglobe.deploy.optional or false;
-          ignoredFailedUnits = config.snowglobe.deploy.ignoredFailedUnits or [];
-          hooksFile = if config ? snowglobe && config.snowglobe ? hooksFile
-            then config.snowglobe.hooksFile.drvPath
-            else null;
-        }}"#
-    )
+    format!("({}) \"{local_system}\"", include_str!("metadata.nix"))
 }
 
 fn read_hooks_file(path: &str) -> Result<Vec<HookConfig>> {
@@ -594,12 +563,6 @@ mod tests {
     }
 
     #[test]
-    fn test_metadata_apply_expr_reads_ignored_failed_units() {
-        assert!(metadata_apply_expr("x86_64-linux")
-            .contains("ignoredFailedUnits = config.snowglobe.deploy.ignoredFailedUnits or [];"));
-    }
-
-    #[test]
     fn test_parse_metadata_without_ssh_port_leaves_it_to_ssh_config() {
         let meta = parse(
             r#"{
@@ -650,15 +613,6 @@ mod tests {
     }
 
     #[test]
-    fn test_metadata_apply_expr_reads_phase_tags_and_reboot_policy_from_the_module() {
-        let expr = metadata_apply_expr("x86_64-linux");
-
-        assert!(expr.contains("phase = config.snowglobe.deploy.phase or null;"));
-        assert!(expr.contains("tags = config.snowglobe.deploy.tags or [];"));
-        assert!(expr.contains(r#"rebootPolicy = config.snowglobe.deploy.rebootPolicy or "auto";"#));
-    }
-
-    #[test]
     fn test_parse_metadata_reads_whether_the_host_is_optional() {
         let json = |optional: &str| {
             format!(
@@ -670,8 +624,6 @@ mod tests {
         assert!(parse(&json(r#", "optional": true"#)).optional);
         assert!(!parse(&json(r#", "optional": false"#)).optional);
         assert!(!parse(&json("")).optional);
-        assert!(metadata_apply_expr("x86_64-linux")
-            .contains("optional = config.snowglobe.deploy.optional or false;"));
     }
 
     #[test]
@@ -689,32 +641,6 @@ mod tests {
         );
         assert_eq!(parse(&json(r#", "system": null"#)).system, None);
         assert_eq!(parse(&json("")).system, None);
-    }
-
-    #[test]
-    fn test_metadata_apply_expr_reads_the_hosts_platform() {
-        assert!(metadata_apply_expr("x86_64-linux")
-            .contains("system = config.nixpkgs.hostPlatform.system or null;"));
-    }
-
-    #[test]
-    fn test_metadata_apply_expr_reads_ssh_port() {
-        assert!(metadata_apply_expr("x86_64-linux")
-            .contains("sshPort = config.snowglobe.deploy.sshPort or null;"));
-    }
-
-    #[test]
-    fn test_metadata_apply_expr_reads_serial_group() {
-        assert!(metadata_apply_expr("x86_64-linux")
-            .contains("serialGroup = config.snowglobe.deploy.serialGroup or null;"));
-    }
-
-    #[test]
-    fn test_metadata_apply_expr_sets_local_system_and_reads_hooks_file() {
-        let expr = metadata_apply_expr("aarch64-darwin");
-
-        assert!(expr.contains(r#"snowglobe.localSystem = lib.mkForce "aarch64-darwin";"#));
-        assert!(expr.contains("config.snowglobe.hooksFile.drvPath"));
     }
 
     #[test]

@@ -131,6 +131,10 @@
           hooks-module = runNixTests "hooks-module" (import ./modules/hooks.test.nix { inherit pkgs; });
           deploy-module = runNixTests "deploy-module" (import ./modules/deploy.test.nix { inherit pkgs; });
           local-pkgs-module = runNixTests "local-pkgs-module" (import ./modules/local-pkgs.test.nix { inherit pkgs; });
+          host-metadata = runNixTests "host-metadata" (import ./snowlib/src/backends/nix/metadata.test.nix {
+            inherit pkgs;
+            snowglobeModule = self.nixosModules.default;
+          });
           store-path-check = import ./modules/store-path-check.test.nix { inherit pkgs; };
           darwin-activate = import ./modules/darwin-activate.test.nix { inherit pkgs; };
         } // nixpkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux ({
