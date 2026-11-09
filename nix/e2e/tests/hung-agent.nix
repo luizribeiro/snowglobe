@@ -6,7 +6,7 @@
   demo = {
     title = "The ssh-agent never answers, so the push stops at once";
     script = ''
-      run("snow push")
+      run("snow deploy")
     '';
   };
 

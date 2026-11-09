@@ -12,7 +12,7 @@
   testScript = ''
     boron.block()
     try:
-        status, output = deployer.execute(f"cd {FLAKE} && snow push 2>&1")
+        status, output = deployer.execute(f"cd {FLAKE} && snow deploy 2>&1")
     finally:
         boron.unblock()
     assert status == 0, output

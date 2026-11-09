@@ -75,7 +75,7 @@ sudo darwin-rebuild switch --flake .#your-mac
 Then:
 
 ```bash
-snow push your-mac
+snow deploy your-mac
 ```
 
 ### Determinate Nix
@@ -110,7 +110,7 @@ switches. No reboot check, no hooks. `--host` to pick another config.
   run: |
     ssh-agent -a $SSH_AUTH_SOCK > /dev/null
     ssh-add - <<< "${{ secrets.DEPLOY_SSH_KEY }}"
-    snow push mac-1 mac-2
+    snow deploy mac-1 mac-2
 ```
 
 ## Troubleshooting

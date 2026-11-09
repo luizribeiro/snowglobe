@@ -79,7 +79,7 @@ want, then activate it.
 
 Every push tool needs a user that can become root on the host, since
 activation runs as root. deploy-rs and `nixos-rebuild --target-host` can ask
-for that user's sudo password. `snow push` can't yet, so its deploy user
+for that user's sudo password. `snow deploy` can't yet, so its deploy user
 becomes root without one.
 
 What the helper does give you: one command in sudoers, which you can read,
@@ -117,7 +117,7 @@ the module isn't active on the host yet. Import it, add the SSH user to
 1. Add the module. Keep your old sudoers rule for now.
 2. Rebuild.
 3. Try the helper: `ssh host 'sudo snowglobe-activate "$(readlink -f /run/current-system)" switch'`
-4. `snow push host`. It picks the helper up on its own.
+4. `snow deploy host`. It picks the helper up on its own.
 5. Remove the old rule and rebuild again.
 
 See also [push.md](push.md) and [darwin.md](darwin.md).

@@ -27,7 +27,7 @@ async fn with_spinner<T>(message: &str, work: impl Future<Output = T>) -> T {
 /// Deploy configurations to hosts
 #[derive(Debug, Args)]
 #[command(group = super::activation_modes())]
-pub struct PushArgs {
+pub struct DeployArgs {
     #[command(flatten)]
     pub selection: crate::host_selection::HostSelectionArgs,
 
@@ -98,7 +98,7 @@ pub struct PushArgs {
     pub mock_fixture: Option<String>,
 }
 
-impl PushArgs {
+impl DeployArgs {
     /// Determine the push strategy from flags
     fn push_strategy(&self) -> PushStrategy {
         if self.dry_run {
@@ -384,16 +384,16 @@ mod tests {
             .is_err());
     }
 
-    fn try_push_args(flags: &[&str]) -> std::result::Result<PushArgs, clap::Error> {
+    fn try_deploy_args(flags: &[&str]) -> std::result::Result<DeployArgs, clap::Error> {
         crate::test_utils::try_parse_args(flags)
     }
 
-    fn push_args(flags: &[&str]) -> PushArgs {
-        try_push_args(flags).unwrap()
+    fn deploy_args(flags: &[&str]) -> DeployArgs {
+        try_deploy_args(flags).unwrap()
     }
 
     fn rejection(flags: &[&str]) -> clap::error::ErrorKind {
-        try_push_args(flags).unwrap_err().kind()
+        try_deploy_args(flags).unwrap_err().kind()
     }
 
     #[test]
@@ -419,19 +419,19 @@ mod tests {
 
     #[test]
     fn test_force_with_switch_is_accepted() {
-        assert!(push_args(&["--switch", "--force"]).force);
-        assert!(!push_args(&[]).force);
+        assert!(deploy_args(&["--switch", "--force"]).force);
+        assert!(!deploy_args(&[]).force);
     }
 
     #[test]
     fn test_push_strategy_auto() {
-        assert_eq!(push_args(&[]).push_strategy(), PushStrategy::Auto);
+        assert_eq!(deploy_args(&[]).push_strategy(), PushStrategy::Auto);
     }
 
     #[test]
     fn test_push_strategy_switch() {
         assert_eq!(
-            push_args(&["--switch"]).push_strategy(),
+            deploy_args(&["--switch"]).push_strategy(),
             PushStrategy::Switch
         );
     }
@@ -439,20 +439,20 @@ mod tests {
     #[test]
     fn test_reboot_timeout_flag() {
         assert_eq!(
-            push_args(&[]).reboot_timeout,
+            deploy_args(&[]).reboot_timeout,
             snowlib::DEFAULT_REBOOT_MAX_WAIT_SECS
         );
-        assert_eq!(push_args(&["--reboot-timeout", "45"]).reboot_timeout, 45);
+        assert_eq!(deploy_args(&["--reboot-timeout", "45"]).reboot_timeout, 45);
     }
 
     #[test]
     fn test_reboot_timeout_must_be_positive() {
-        assert!(try_push_args(&["--reboot-timeout", "0"]).is_err());
+        assert!(try_deploy_args(&["--reboot-timeout", "0"]).is_err());
     }
 
     #[test]
     fn test_redeploy_flag() {
-        assert!(push_args(&["--redeploy", "hydrogen"]).redeploy);
-        assert!(!push_args(&["hydrogen"]).redeploy);
+        assert!(deploy_args(&["--redeploy", "hydrogen"]).redeploy);
+        assert!(!deploy_args(&["hydrogen"]).redeploy);
     }
 }

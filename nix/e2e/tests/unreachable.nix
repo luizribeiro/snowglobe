@@ -9,7 +9,7 @@
   demo = {
     title = "A host is off the network: ssh times out and only that host fails";
     script = ''
-      run("snow push")
+      run("snow deploy")
     '';
   };
 

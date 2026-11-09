@@ -25,7 +25,7 @@ and aarch64), with `SHA256SUMS`.
 - `snow list`: hosts in the flake, with phase and tags. `--json` for
   scripts.
 - `snow build`: build, don't deploy.
-- `snow push`: deploy over SSH. See [Push](#push).
+- `snow deploy`: deploy over SSH. See [Push](#push).
 - `snow rebuild`: `nixos-rebuild` for the machine you're on. Asks for sudo
   once at the start. If a switch needs a reboot, you get a menu: reboot
   now, next boot, switch anyway, or cancel.
@@ -87,7 +87,7 @@ Details in [docs/push.md](docs/push.md) and [docs/hooks.md](docs/hooks.md).
 
 #### Testing
 
-- NixOS VM tests that run `snow push` and `snow rebuild` against real VMs:
+- NixOS VM tests that run `snow deploy` and `snow rebuild` against real VMs:
   reboots, failures, serial groups. The same tests record the terminal demos.
   The recorder is exposed as the flake's `lib`.
 - Unit tests for the Nix modules, as flake checks.

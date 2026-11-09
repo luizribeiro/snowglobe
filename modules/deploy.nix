@@ -27,7 +27,7 @@ in
       are skipped.
 
       Hosts in the phase `never` are pushed (or built) only when named, as
-      in `snow push web1`, or selected with `--phase never`.
+      in `snow deploy web1`, or selected with `--phase never`.
     '';
     example = "p1";
   };
@@ -36,7 +36,7 @@ in
     type = lib.types.listOf tagName;
     default = [ ];
     description = ''
-      Tags that select this host with `snow push --tag` or `--tags`.
+      Tags that select this host with `snow deploy --tag` or `--tags`.
     '';
     example = [ "web" "database" ];
   };
@@ -45,7 +45,7 @@ in
     type = lib.types.enum [ "auto" "never" "always" ];
     default = "auto";
     description = ''
-      When `snow push` reboots this host: `auto` when the new system needs a
+      When `snow deploy` reboots this host: `auto` when the new system needs a
       reboot (a new kernel, initrd or critical service), `always` after
       every deploy, and `never` not at all, setting the new system for the
       next boot instead when it needs one. snow never reboots nix-darwin
@@ -57,7 +57,7 @@ in
     type = lib.types.bool;
     default = false;
     description = ''
-      Whether `snow push` may go on without this host. An optional host that
+      Whether `snow deploy` may go on without this host. An optional host that
       fails, for example because it is offline, is reported as failed, but
       its phase doesn't fail: later phases still run, and the push succeeds
       if only optional hosts failed.
@@ -78,7 +78,7 @@ in
       next host may start, and group members that haven't started are
       skipped.
 
-      Only hosts pushed by the same `snow push` invocation coordinate.
+      Only hosts pushed by the same `snow deploy` invocation coordinate.
     '';
     example = "kubernetes";
   };
@@ -87,7 +87,7 @@ in
     type = lib.types.listOf unitName;
     default = [ ];
     description = ''
-      Units that may be failing after `snow push` activates this host
+      Units that may be failing after `snow deploy` activates this host
       without failing it.
 
       A NixOS switch fails when any unit is failing afterwards, even one

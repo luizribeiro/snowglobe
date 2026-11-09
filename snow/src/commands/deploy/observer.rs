@@ -105,7 +105,7 @@ fn report_width() -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::commands::push::board::Lane;
+    use crate::commands::deploy::board::Lane;
     use snowlib::PipelineStep;
 
     fn hosts() -> Vec<String> {

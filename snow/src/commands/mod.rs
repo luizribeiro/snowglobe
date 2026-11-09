@@ -1,10 +1,10 @@
 #[cfg(feature = "unstable")]
 pub mod bootstrap;
 pub mod build;
+pub mod deploy;
 pub mod list;
 #[cfg(feature = "unstable")]
 pub mod plan;
-pub mod push;
 pub mod rebuild;
 #[cfg(feature = "unstable")]
 pub mod status;
@@ -14,10 +14,10 @@ use clap::Subcommand;
 #[cfg(feature = "unstable")]
 pub use bootstrap::BootstrapArgs;
 pub use build::BuildArgs;
+pub use deploy::DeployArgs;
 pub use list::ListArgs;
 #[cfg(feature = "unstable")]
 pub use plan::PlanArgs;
-pub use push::PushArgs;
 pub use rebuild::RebuildArgs;
 #[cfg(feature = "unstable")]
 pub use status::StatusArgs;
@@ -37,7 +37,7 @@ pub enum Commands {
     Build(BuildArgs),
     #[cfg(feature = "unstable")]
     Plan(PlanArgs),
-    Push(PushArgs),
+    Deploy(DeployArgs),
     Rebuild(RebuildArgs),
 }
 
@@ -57,7 +57,7 @@ impl Commands {
             Commands::Build(args) => args.run(flake).await,
             #[cfg(feature = "unstable")]
             Commands::Plan(args) => args.run(flake).await,
-            Commands::Push(args) => args.run(flake, log_file).await,
+            Commands::Deploy(args) => args.run(flake, log_file).await,
             Commands::Rebuild(args) => args.run(flake).await,
         }
     }

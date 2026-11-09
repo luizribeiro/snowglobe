@@ -199,7 +199,7 @@ Put the hooks and a serial group in the module that enables Kubernetes:
 }
 ```
 
-`snow push node1 node2 node3` drains, deploys and uncordons each node in
+`snow deploy node1 node2 node3` drains, deploys and uncordons each node in
 turn. If one fails, the rest of the group isn't touched.
 
 ### Health check

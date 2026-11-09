@@ -76,9 +76,9 @@ Static binaries for Linux and macOS are on the
 
    ```bash
    snow list                 # the hosts snow sees
-   snow push --dry-run web1  # build, copy and show what would change
-   snow push web1            # deploy one host
-   snow push                 # deploy every host
+   snow deploy --dry-run web1  # build, copy and show what would change
+   snow deploy web1            # deploy one host
+   snow deploy                 # deploy every host
    ```
 
 4. Optionally, give hosts a phase, tags or a reboot policy:
@@ -87,7 +87,7 @@ Static binaries for Linux and macOS are on the
    {
      snowglobe.deploy = {
        phase = "p2";            # deploys after the p1 hosts
-       tags = [ "web" ];        # snow push --tag web
+       tags = [ "web" ];        # snow deploy --tag web
        rebootPolicy = "auto";   # or "never" or "always"
      };
    }

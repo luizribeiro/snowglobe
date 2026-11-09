@@ -26,7 +26,7 @@
     ], output
 
     def push(args: str) -> str:
-        status, output = deployer.execute(f"cd {FLAKE} && snow push {args} 2>&1")
+        status, output = deployer.execute(f"cd {FLAKE} && snow deploy {args} 2>&1")
         assert status == 0, output
         return output
 

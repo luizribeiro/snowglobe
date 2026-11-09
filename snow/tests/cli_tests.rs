@@ -20,7 +20,7 @@ fn test_help_command() {
         .success()
         .stdout(predicate::str::contains("NixOS cluster orchestration tool"))
         .stdout(predicate::str::contains("build"))
-        .stdout(predicate::str::contains("push"));
+        .stdout(predicate::str::contains("deploy"));
 }
 
 #[cfg(not(feature = "unstable"))]
@@ -86,9 +86,9 @@ fn test_cursor_is_left_alone_when_stderr_is_not_a_terminal() {
 }
 
 #[test]
-fn test_push_help() {
+fn test_deploy_help() {
     snow_cmd()
-        .arg("push")
+        .arg("deploy")
         .arg("--help")
         .assert()
         .success()
@@ -143,9 +143,9 @@ fn test_build_filter_flag_in_help() {
 }
 
 #[test]
-fn test_push_filter_flag_in_help() {
+fn test_deploy_filter_flag_in_help() {
     snow_cmd()
-        .arg("push")
+        .arg("deploy")
         .arg("--help")
         .assert()
         .success()
@@ -195,9 +195,9 @@ fn test_build_tags_flag_in_help() {
 }
 
 #[test]
-fn test_push_phase_flag_in_help() {
+fn test_deploy_phase_flag_in_help() {
     snow_cmd()
-        .arg("push")
+        .arg("deploy")
         .arg("--help")
         .assert()
         .success()
@@ -205,9 +205,9 @@ fn test_push_phase_flag_in_help() {
 }
 
 #[test]
-fn test_push_redeploy_flag_in_help() {
+fn test_deploy_redeploy_flag_in_help() {
     snow_cmd()
-        .arg("push")
+        .arg("deploy")
         .arg("--help")
         .assert()
         .success()
@@ -215,9 +215,9 @@ fn test_push_redeploy_flag_in_help() {
 }
 
 #[test]
-fn test_push_tags_flag_in_help() {
+fn test_deploy_tags_flag_in_help() {
     snow_cmd()
-        .arg("push")
+        .arg("deploy")
         .arg("--help")
         .assert()
         .success()
@@ -277,9 +277,9 @@ fn test_build_phase_and_tag_mutually_exclusive() {
 }
 
 #[test]
-fn test_push_filter_and_tag_mutually_exclusive() {
+fn test_deploy_filter_and_tag_mutually_exclusive() {
     snow_cmd()
-        .arg("push")
+        .arg("deploy")
         .arg("-e")
         .arg("config: true")
         .arg("--tag")
@@ -312,9 +312,9 @@ fn test_build_empty_phase_name() {
 }
 
 #[test]
-fn test_push_invalid_tag_name() {
+fn test_deploy_invalid_tag_name() {
     snow_cmd()
-        .arg("push")
+        .arg("deploy")
         .arg("--tag")
         .arg("web.server")
         .assert()
@@ -327,7 +327,7 @@ fn test_push_invalid_tag_name() {
 #[test]
 fn test_mock_push_keeps_stdout_for_the_report() {
     snow_cmd()
-        .args(["push", "--switch", "--mock-fixture"])
+        .args(["deploy", "--switch", "--mock-fixture"])
         .arg(fixtures_dir().join("push_scenarios/build_failure.json"))
         .assert()
         .failure()
@@ -346,10 +346,10 @@ fn test_mock_push_keeps_stdout_for_the_report() {
 
 #[cfg(debug_assertions)]
 #[test]
-fn test_push_without_a_terminal_logs_each_step_to_stderr() {
+fn test_deploy_without_a_terminal_logs_each_step_to_stderr() {
     snow_cmd()
         .env("RUST_LOG", "snowlib=info")
-        .args(["push", "--switch", "--quiet", "--mock-fixture"])
+        .args(["deploy", "--switch", "--quiet", "--mock-fixture"])
         .arg(fixtures_dir().join("push_scenarios/build_failure.json"))
         .assert()
         .failure()

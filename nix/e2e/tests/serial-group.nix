@@ -20,7 +20,7 @@ in
   demo = {
     title = "Two hosts in a serial group take turns";
     script = ''
-      run("snow push")
+      run("snow deploy")
     '';
   };
 

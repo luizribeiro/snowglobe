@@ -1,4 +1,4 @@
-use super::push::{failed_host, format_elapsed, mode_label, success_line, HostLine};
+use super::deploy::{failed_host, format_elapsed, mode_label, success_line, HostLine};
 use crate::cursor::Cursor;
 use crate::marks;
 use crate::prompt;

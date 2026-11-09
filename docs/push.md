@@ -1,15 +1,15 @@
-# snow push
+# snow deploy
 
-`snow push` builds each host's system, copies it over SSH, activates it, and
+`snow deploy` builds each host's system, copies it over SSH, activates it, and
 reboots the host if it needs it. This page explains how a push behaves and
-why. For every flag, see `snow push --help`.
+why. For every flag, see `snow deploy --help`.
 
 ```bash
-snow push hydrogen oxygen        # these two
-snow push                        # every host (except phase "never")
-snow push --phase p1             # one phase
-snow push --tags web,database    # any of these tags
-snow push -e 'config: config.services.nginx.enable or false'
+snow deploy hydrogen oxygen        # these two
+snow deploy                        # every host (except phase "never")
+snow deploy --phase p1             # one phase
+snow deploy --tags web,database    # any of these tags
+snow deploy -e 'config: config.services.nginx.enable or false'
 ```
 
 ## SSH
@@ -43,7 +43,7 @@ instead of all at once. `--ignore-phases` pushes everything at once.
 ### Hosts you only push on purpose
 
 Hosts in the phase `never` only go when you name them or ask for
-`--phase never`. A bare `snow push`, a tag or a filter skips them. For hosts
+`--phase never`. A bare `snow deploy`, a tag or a filter skips them. For hosts
 you'd rather deploy by hand.
 
 ### Hosts that may be off
@@ -54,7 +54,7 @@ snowglobe.deploy.optional = true;
 
 For a laptop, say. If an optional host fails, its on-failure hooks still
 run and the report marks it `(optional)`, but it doesn't stop its serial
-group or later phases, and `snow push` still exits zero.
+group or later phases, and `snow deploy` still exits zero.
 
 ## What happens to each host
 
@@ -107,7 +107,7 @@ untouched. The rest of the phase keeps going, but the phase fails. A failed
 optional host doesn't stop the group; the next one waits for its on-failure
 hooks, then goes.
 
-Groups only coordinate within one `snow push`. Two pushes at the same time
+Groups only coordinate within one `snow deploy`. Two pushes at the same time
 don't know about each other.
 
 ## Reboots
@@ -142,7 +142,7 @@ live isn't, even if you forget. `--switch --force` is the explicit override.
 
 ## Modes
 
-Most of the time plain `snow push` is what you want. The others:
+Most of the time plain `snow deploy` is what you want. The others:
 
 | | |
 |---|---|
@@ -161,7 +161,7 @@ only switch; see [darwin.md](darwin.md).
 Each phase ends with a report, one line per host:
 
 ```
-$ snow push hydrogen oxygen
+$ snow deploy hydrogen oxygen
 ✓ Push (2 hosts in 1:12)
   ✓ hydrogen (switch)
   ✓ oxygen (boot, rebooted)

@@ -40,7 +40,7 @@
         sodium.fail(f"ssh -n {host} sudo -n true")
 
     before = {host: boot_id(host) for host in hosts}
-    status, output = sodium.execute(f"cd {FLAKE} && snow push 2>&1")
+    status, output = sodium.execute(f"cd {FLAKE} && snow deploy 2>&1")
     assert status == 0, output
     contains(output, ("boron: deployed", "cerium: reboot started", "cerium: deployed"))
     assert "boron: reboot started" not in output, output

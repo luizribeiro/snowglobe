@@ -13,7 +13,7 @@
   demo = {
     title = "A pre-deploy hook fails, so its host is never activated";
     script = ''
-      run("snow push")
+      run("snow deploy")
     '';
   };
 

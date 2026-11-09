@@ -10,7 +10,7 @@
   demo = {
     title = "Three hosts in two phases switch to a new system";
     script = ''
-      run("snow push")
+      run("snow deploy")
     '';
   };
 

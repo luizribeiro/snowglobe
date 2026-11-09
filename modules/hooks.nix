@@ -12,7 +12,7 @@ let
         type = types.enum [ "local" "remote" ];
         description = ''
           Where to execute the hook:
-          - "local": Execute on the machine running `snow push`
+          - "local": Execute on the machine running `snow deploy`
           - "remote": Execute on the target host via SSH
         '';
         example = "local";

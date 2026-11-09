@@ -18,7 +18,7 @@
   demo = {
     title = "One host fails to activate while the others succeed";
     script = ''
-      run("snow push")
+      run("snow deploy")
     '';
   };
 

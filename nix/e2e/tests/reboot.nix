@@ -6,7 +6,7 @@
   demo = {
     title = "A host that must reboot is set to boot the new system, then rebooted";
     script = ''
-      run("snow push boron")
+      run("snow deploy boron")
     '';
   };
 

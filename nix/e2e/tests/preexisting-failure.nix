@@ -40,7 +40,7 @@
     hosts["cerium"].wait_until_succeeds(
         "test $(systemctl show -P SubState crash-loop.service) = auto-restart"
     )
-    status, output = deployer.execute(f"cd {FLAKE} && snow push 2>&1")
+    status, output = deployer.execute(f"cd {FLAKE} && snow deploy 2>&1")
     assert status != 0, output
     contains(output, (
         "✗ boron at activate: activated, but stale-job.service is failing"

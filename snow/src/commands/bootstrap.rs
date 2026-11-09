@@ -168,7 +168,7 @@ impl BootstrapArgs {
         if self.target.is_some() {
             println!();
             println!("After the host is running:");
-            println!("  snow push {}", self.hostname);
+            println!("  snow deploy {}", self.hostname);
         } else {
             println!("Image: {}", image_path.display());
         }

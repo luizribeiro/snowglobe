@@ -4,9 +4,9 @@
   nodes.boron.snowglobe.deploy.rebootPolicy = "never";
 
   demo = {
-    title = "snow push --boot sets the new system for the next boot, without rebooting";
+    title = "snow deploy --boot sets the new system for the next boot, without rebooting";
     script = ''
-      run("snow push --boot boron")
+      run("snow deploy --boot boron")
     '';
   };
 

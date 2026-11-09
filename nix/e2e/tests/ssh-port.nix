@@ -19,7 +19,7 @@
   testScript = ''
     status, output = deployer.execute("ssh -o BatchMode=yes -o ConnectTimeout=5 root@boron true 2>&1")
     assert status != 0 and "connect to host boron port 22" in output, output
-    status, output = deployer.execute(f"cd {FLAKE} && snow push 2>&1")
+    status, output = deployer.execute(f"cd {FLAKE} && snow deploy 2>&1")
     assert status == 0, output
     runs("boron", pushed("boron"))
     boots("boron", pushed("boron"))

@@ -6,7 +6,7 @@
   demo = {
     title = "A rebooted host never comes back before the deadline";
     script = ''
-      run("snow push --reboot-timeout 20")
+      run("snow deploy --reboot-timeout 20")
     '';
   };
 

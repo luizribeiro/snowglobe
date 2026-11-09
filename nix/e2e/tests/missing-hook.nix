@@ -16,7 +16,7 @@ in
   demo = {
     title = "A local hook's program is missing, so the push stops before building";
     script = ''
-      run("snow push")
+      run("snow deploy")
     '';
   };
 

@@ -11,7 +11,7 @@ in
     defaultText = lib.literalExpression "pkgs.stdenv.hostPlatform.system";
     example = "aarch64-darwin";
     description = ''
-      Platform of the machine running `snow push`, which is where local
+      Platform of the machine running `snow deploy`, which is where local
       hooks run. snow sets this when it reads hooks; you normally leave it
       alone. Hooks get a matching package set as the `localPkgs` module
       argument: the host's nixpkgs, instantiated for this platform with the
