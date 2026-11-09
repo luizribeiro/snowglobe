@@ -1,7 +1,7 @@
 {
   name = "ssh-port";
 
-  # Booted as well as pushed: boron's sshd never listens on 22, and only
+  # Booted as well as deployed: boron's sshd never listens on 22, and only
   # its own config tells snow where to find it
   base.boron = {
     services.openssh.ports = [ 2222 ];
@@ -21,8 +21,8 @@
     assert status != 0 and "connect to host boron port 22" in output, output
     status, output = deployer.execute(f"cd {FLAKE} && snow deploy 2>&1")
     assert status == 0, output
-    runs("boron", pushed("boron"))
-    boots("boron", pushed("boron"))
+    runs("boron", deployed("boron"))
+    boots("boron", deployed("boron"))
     hosts["boron"].succeed("test -e /run/snowglobe-hook-ran")
   '';
 }

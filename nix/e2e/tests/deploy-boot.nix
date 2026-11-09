@@ -1,5 +1,5 @@
 {
-  name = "push-boot";
+  name = "deploy-boot";
 
   nodes.boron.snowglobe.deploy.rebootPolicy = "never";
 
@@ -12,13 +12,13 @@
 
   testScript = ''
     before = boot_id("boron")
-    push = demo()
-    push.succeeded()
-    push.has("✓ boron (boot)")
-    push.logged("boron: deployed")
-    assert "reboot started" not in push.log, push.log
+    deploy = demo()
+    deploy.succeeded()
+    deploy.has("✓ boron (boot)")
+    deploy.logged("boron: deployed")
+    assert "reboot started" not in deploy.log, deploy.log
     assert boot_id("boron") == before
-    boots("boron", pushed("boron"))
+    boots("boron", deployed("boron"))
     runs("boron", base("boron"))
   '';
 }

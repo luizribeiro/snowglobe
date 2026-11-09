@@ -14,18 +14,18 @@ in
   };
 
   demo = {
-    title = "A local hook's program is missing, so the push stops before building";
+    title = "A local hook's program is missing, so the deployment stops before building";
     script = ''
       run("snow deploy")
     '';
   };
 
   testScript = ''
-    push = demo()
-    push.failed()
+    deploy = demo()
+    deploy.failed()
     # The error wraps the path after /nix/store/
-    push.has("${builtins.baseNameOf missingPath}")
-    assert "build started" not in push.log, push.log
+    deploy.has("${builtins.baseNameOf missingPath}")
+    assert "build started" not in deploy.log, deploy.log
     for host in hosts:
         runs(host, base(host))
   '';

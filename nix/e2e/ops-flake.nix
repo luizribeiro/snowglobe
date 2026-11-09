@@ -1,4 +1,4 @@
-# The flake a test's deployer pushes from. It can't evaluate the hosts'
+# The flake a test's deployer deploys from. It can't evaluate the hosts'
 # NixOS configs, having no nixpkgs, so it carries what snow reads from them,
 # evaluated when the test was built: hosts.json, written by harness.nix.
 {

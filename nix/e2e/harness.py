@@ -55,9 +55,9 @@ def base(host: str) -> str:
     return str(settings["base"][host])
 
 
-def pushed(host: str) -> str:
+def deployed(host: str) -> str:
     """The system the test's nodes give the host"""
-    return str(settings["pushed"][host])
+    return str(settings["deployed"][host])
 
 
 def runs(host: str, system: str) -> None:

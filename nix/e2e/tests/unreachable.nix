@@ -16,13 +16,13 @@
   testScript = ''
     cerium.block()
     try:
-        push = demo()
+        deploy = demo()
     finally:
         cerium.unblock()
-    push.failed()
-    push.has("cerium")
-    push.logged("cerium: failed at", "boron: deployed")
-    runs("boron", pushed("boron"))
+    deploy.failed()
+    deploy.has("cerium")
+    deploy.logged("cerium: failed at", "boron: deployed")
+    runs("boron", deployed("boron"))
     runs("cerium", base("cerium"))
   '';
 }

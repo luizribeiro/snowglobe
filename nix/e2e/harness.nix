@@ -1,9 +1,9 @@
-# snowTest: a NixOS VM test of snow pushing to hosts, from a test file in
+# snowTest: a NixOS VM test of snow deploying to hosts, from a test file in
 # ./tests. The hosts boot a base system shared by every test; the test's
-# `nodes` are what snow pushes to them, from the deployer `sodium`. A test's
+# `nodes` are what snow deploys to them, from the deployer `sodium`. A test's
 # optional `common` module is booted by every VM, the deployer's included,
 # and its optional `base.<host>` module goes on that host's base system;
-# both are booted and pushed alike.
+# both are booted and deployed alike.
 { pkgs, snow, snowglobeModule }:
 
 let
@@ -30,7 +30,7 @@ let
   base = { config, ... }: {
     imports = [ snowglobeModule ];
     virtualisation.memorySize = 1024;
-    # Test VMs leave it out, but snow activates pushed systems with it
+    # Test VMs leave it out, but snow activates deployed systems with it
     system.switch.enable = true;
     # Test VMs boot their kernel directly, so there is no boot loader to
     # install, and the demos shouldn't warn about it
@@ -60,7 +60,7 @@ let
       LogLevel ERROR
     '';
     # Test VMs boot without a system profile, so snow could not read what
-    # they boot into and would warn on every push. Record the booted system
+    # they boot into and would warn on every deployment. Record the booted system
     # as its first generation, as installing NixOS does.
     systemd.services.install-system-profile = {
       wantedBy = [ "multi-user.target" ];
@@ -77,7 +77,7 @@ let
     };
   };
 
-  hostsJson = pushed: pkgs.writeText "hosts.json" (builtins.toJSON {
+  hostsJson = deployed: pkgs.writeText "hosts.json" (builtins.toJSON {
     inherit (pkgs.stdenv.hostPlatform) system;
     bash = "${pkgs.bash}";
     hosts = lib.mapAttrs
@@ -89,13 +89,13 @@ let
         hooksFile = "${config.snowglobe.hooksFile}";
         toplevel = "${config.system.build.toplevel}";
       })
-      pushed;
+      deployed;
   });
 
-  opsFlake = pushed: pkgs.runCommand "ops" { } ''
+  opsFlake = deployed: pkgs.runCommand "ops" { } ''
     mkdir $out
     cp ${./ops-flake.nix} $out/flake.nix
-    cp ${hostsJson pushed} $out/hosts.json
+    cp ${hostsJson deployed} $out/hosts.json
   '';
 
   toplevels = lib.mapAttrs (_: config: "${config.system.build.toplevel}");
@@ -107,12 +107,12 @@ let
   runsDemo = name: demo != null && name == demo.runOn;
 
   # The host's base system with the test's module on top, so it boots in the
-  # same VM; marked, so there's always something to push
-  pushedModule = name: { extendModules, ... }: {
-    system.build.pushed = (extendModules {
+  # same VM; marked, so there's always something to deploy
+  deployedModule = name: { extendModules, ... }: {
+    system.build.deployed = (extendModules {
       modules = [
         test.nodes.${name}
-        { environment.etc.snowglobe-pushed.text = test.name; }
+        { environment.etc.snowglobe-deployed.text = test.name; }
       ];
     }).config;
   };
@@ -120,18 +120,18 @@ in
 assert lib.assertMsg (test ? demo || test ? testScript)
   "${test.name}: a test needs a demo, a testScript or both";
 assert lib.assertMsg (!(test.nodes ? ${deployer}))
-  "${test.name}: ${deployer} is the deployer, not a host to push to";
+  "${test.name}: ${deployer} is the deployer, not a host to deploy to";
 assert lib.assertMsg (demo == null || builtins.elem demo.runOn (hosts ++ [ deployer ]))
   "${test.name}: the demo runs on ${demo.runOn}, which has no VM";
 pkgs.testers.runNixOSTest ({ config, ... }:
   let
-    pushed = lib.genAttrs hosts (name: config.nodes.${name}.system.build.pushed);
-    flake = opsFlake pushed;
+    deployed = lib.genAttrs hosts (name: config.nodes.${name}.system.build.deployed);
+    flake = opsFlake deployed;
     demoScript = pkgs.writeText "${test.name}-demo.py" demo.script;
 
     node = name: {
       imports = [ base (test.common or { }) (test.base.${name} or { }) ]
-        ++ lib.optional (builtins.elem name hosts) (pushedModule name);
+        ++ lib.optional (builtins.elem name hosts) (deployedModule name);
       # Registered in the VM's store without being part of its system, which
       # stays the base
       virtualisation.additionalPaths =
@@ -143,7 +143,7 @@ pkgs.testers.runNixOSTest ({ config, ... }:
       inherit deployer hosts flake;
       base = toplevels (lib.getAttrs hosts config.nodes);
       sshPorts = lib.mapAttrs (_: node: node.snowglobe.deploy.sshPort) (lib.getAttrs hosts config.nodes);
-      pushed = toplevels pushed;
+      deployed = toplevels deployed;
       demo = if demo == null then null else {
         inherit (test) name;
         inherit (demo) title runOn;

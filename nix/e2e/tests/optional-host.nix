@@ -24,6 +24,6 @@
         "1/2 deployed, 1 failed (optional)",
     ))
     runs("boron", base("boron"))
-    runs("cerium", pushed("cerium"))
+    runs("cerium", deployed("cerium"))
   '';
 }

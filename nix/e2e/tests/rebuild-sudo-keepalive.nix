@@ -39,6 +39,6 @@ assert buildSeconds > sudoTimeoutMinutes * 60;
     assert rebuild.output.count("${user.prompt}") == 1, rebuild.output
     rebuild.has("✓ boron (switch) in")
     rebuild.logged("boron: activated (Switch mode)")
-    runs("boron", pushed("boron"))
+    runs("boron", deployed("boron"))
   '';
 }

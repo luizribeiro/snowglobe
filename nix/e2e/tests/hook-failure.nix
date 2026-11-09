@@ -18,11 +18,11 @@
   };
 
   testScript = ''
-    push = demo()
-    push.failed()
-    push.has("radon", "wait-storage-healthy", "✗ radon at pre-deploy: storage on radon is degraded")
-    push.logged("radon: failed at", "storage on radon is degraded", "cerium: deployed")
-    runs("cerium", pushed("cerium"))
+    deploy = demo()
+    deploy.failed()
+    deploy.has("radon", "wait-storage-healthy", "✗ radon at pre-deploy: storage on radon is degraded")
+    deploy.logged("radon: failed at", "storage on radon is degraded", "cerium: deployed")
+    runs("cerium", deployed("cerium"))
     runs("radon", base("radon"))
   '';
 }

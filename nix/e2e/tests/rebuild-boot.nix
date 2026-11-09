@@ -19,7 +19,7 @@
     rebuild.succeeded()
     rebuild.has("✓ boron (boot) in")
     rebuild.logged("boron: built", "boron: chose to activate on the next boot", "boron: activated (Boot mode)")
-    boots("boron", pushed("boron"))
+    boots("boron", deployed("boron"))
     runs("boron", base("boron"))
   '';
 }

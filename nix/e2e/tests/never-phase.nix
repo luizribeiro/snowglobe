@@ -25,27 +25,27 @@
         host | {"name": "curium", "phase": "never", "tags": ["web"], "serialGroup": None},
     ], output
 
-    def push(args: str) -> str:
+    def deploy(args: str) -> str:
         status, output = deployer.execute(f"cd {FLAKE} && snow deploy {args} 2>&1")
         assert status == 0, output
         return output
 
-    output = push("")
+    output = deploy("")
     contains(output, ("Deploying 1 host: boron", "boron: deployed"))
-    runs("boron", pushed("boron"))
+    runs("boron", deployed("boron"))
     runs("curium", base("curium"))
 
     # curium matches the tag, but only its name or phase selects it
-    output = push("--tag web")
+    output = deploy("--tag web")
     contains(output, ("Deploying 1 host: boron",))
     runs("curium", base("curium"))
 
-    output = push("--phase never --dry-run")
+    output = deploy("--phase never --dry-run")
     contains(output, ("Deploying 1 host in 1 phase:", "never  curium"))
     runs("curium", base("curium"))
 
-    output = push("curium")
+    output = deploy("curium")
     contains(output, ("Deploying 1 host in 1 phase:", "never  curium", "curium: deployed"))
-    runs("curium", pushed("curium"))
+    runs("curium", deployed("curium"))
   '';
 }

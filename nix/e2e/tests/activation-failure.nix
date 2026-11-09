@@ -23,13 +23,13 @@
   };
 
   testScript = ''
-    push = demo()
-    push.failed()
-    push.has("cerium", "1/3 failed", "✗ cerium at activate: activated, but storage-agent.service is failing")
-    assert "already failing" not in push.output, push.output
-    push.logged("cerium: failed at activate:", "boron: deployed", "radon: deployed")
+    deploy = demo()
+    deploy.failed()
+    deploy.has("cerium", "1/3 failed", "✗ cerium at activate: activated, but storage-agent.service is failing")
+    assert "already failing" not in deploy.output, deploy.output
+    deploy.logged("cerium: failed at activate:", "boron: deployed", "radon: deployed")
     # NixOS keeps a system whose services failed to start
     for host in hosts:
-        runs(host, pushed(host))
+        runs(host, deployed(host))
   '';
 }

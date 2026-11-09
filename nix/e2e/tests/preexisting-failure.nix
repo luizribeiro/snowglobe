@@ -1,7 +1,7 @@
 {
   name = "preexisting-failure";
 
-  # Booted as well as pushed, so the push leaves these units as they are:
+  # Booted as well as deployed, so the deployment leaves these units as they are:
   # boron's failed once at boot, cerium's keeps crashing like a broken app
   base = {
     boron = { pkgs, ... }: {
@@ -50,8 +50,8 @@
     ))
     assert "boron (switch" not in output, output
     # Both switched, failing or not
-    runs("boron", pushed("boron"))
-    runs("cerium", pushed("cerium"))
+    runs("boron", deployed("boron"))
+    runs("cerium", deployed("cerium"))
     runs("radon", base("radon"))
   '';
 }

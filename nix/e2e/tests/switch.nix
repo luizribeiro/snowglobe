@@ -15,13 +15,13 @@
   };
 
   testScript = ''
-    push = demo()
-    push.succeeded()
-    push.has("Deploying 3 hosts in 2 phases:", "p1  boron", "p2  cerium, radon", "✓ Phase p1", "✓ Phase p2")
-    assert "could not read installed systems" not in push.output, push.output
-    push.logged("boron: activate started", "boron: deployed", "cerium: deployed", "radon: deployed")
-    assert push.log.index("boron: deployed") < push.log.index("cerium: build started"), push.log
+    deploy = demo()
+    deploy.succeeded()
+    deploy.has("Deploying 3 hosts in 2 phases:", "p1  boron", "p2  cerium, radon", "✓ Phase p1", "✓ Phase p2")
+    assert "could not read installed systems" not in deploy.output, deploy.output
+    deploy.logged("boron: activate started", "boron: deployed", "cerium: deployed", "radon: deployed")
+    assert deploy.log.index("boron: deployed") < deploy.log.index("cerium: build started"), deploy.log
     for host in hosts:
-        runs(host, pushed(host))
+        runs(host, deployed(host))
   '';
 }

@@ -5,7 +5,7 @@
   common = { lib, pkgs, ... }: {
     users.users.deploy = {
       isNormalUser = true;
-      # The deploy user's ssh checks before the push would otherwise leave
+      # The deploy user's ssh checks before the deployment would otherwise leave
       # its user manager stopping during the switch (see the harness)
       linger = true;
       openssh.authorizedKeys.keys =
@@ -16,7 +16,7 @@
     # copies when the user is trusted
     nix.settings.trusted-users = [ "deploy" ];
     # The user comes from the SSH config alone, with no --user, which hooks
-    # have to honor as push does
+    # have to honor as `snow deploy` does
     programs.ssh.extraConfig = lib.mkAfter ''
       Host boron cerium
         User deploy
@@ -45,7 +45,7 @@
     contains(output, ("boron: deployed", "cerium: reboot started", "cerium: deployed"))
     assert "boron: reboot started" not in output, output
 
-    runs("boron", pushed("boron"))
+    runs("boron", deployed("boron"))
     assert boot_id("boron") == before["boron"]
     assert boron.succeed("cat /tmp/hook-user").strip() == "deploy"
 
@@ -53,6 +53,6 @@
     # restart of systemd-sysctl.service can have called for this reboot
     reconnect("cerium")
     assert boot_id("cerium") != before["cerium"]
-    boots("cerium", pushed("cerium"))
+    boots("cerium", deployed("cerium"))
   '';
 }

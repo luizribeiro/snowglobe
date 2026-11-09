@@ -8,7 +8,7 @@ let
   names = [
     "switch"
     "reboot"
-    "push-boot"
+    "deploy-boot"
     "activation-failure"
     "hook-failure"
     "missing-hook"
@@ -43,7 +43,7 @@ assert lib.all (name: lib.assertMsg (files.${name}.name == name)
   inherit tests;
   recordings = (import ../demos).renderDemos {
     inherit pkgs;
-    name = "snow-push-recordings";
+    name = "snow-deploy-recordings";
     demos = map (name: "${tests.${name}}/demo") withDemo;
   };
 }

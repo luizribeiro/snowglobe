@@ -15,10 +15,10 @@
     radon.shutdown()
     radon.start()
     sodium.wait_until_succeeds("ssh -o BatchMode=yes root@radon true")
-    push = demo()
-    push.failed()
-    push.has("radon")
-    push.logged("radon: failed at reboot:", "did not come back online within 20s")
+    deploy = demo()
+    deploy.failed()
+    deploy.has("radon")
+    deploy.logged("radon: failed at reboot:", "did not come back online within 20s")
     radon.wait_for_shutdown()
   '';
 }

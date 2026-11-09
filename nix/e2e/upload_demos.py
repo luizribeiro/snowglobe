@@ -2,7 +2,7 @@
 
 Usage: upload-demos RECORDINGS [PAGE]
 
-RECORDINGS is the push-recordings output; PAGE (docs/demos.md by default) is
+RECORDINGS is the deploy-recordings output; PAGE (docs/demos.md by default) is
 the markdown file to write. Each demo plays inline as an animated SVG,
 copied into a `demos` directory next to PAGE, and links to its player.
 
@@ -21,7 +21,7 @@ from pathlib import Path
 URL = re.compile(r"https://asciinema\.org/a/\w+")
 HEADER = """# Demos
 
-Every clip below is one of the NixOS VM tests in `nix/e2e`. Real pushes and
+Every clip below is one of the NixOS VM tests in `nix/e2e`. Real deployments and
 rebuilds between VMs, and the test checks they worked, so what you see here
 is tested. Click a demo to open it in the asciinema player.
 """

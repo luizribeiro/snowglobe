@@ -4,7 +4,7 @@
   nodes.cerium = { };
 
   demo = {
-    title = "The ssh-agent never answers, so the push stops at once";
+    title = "The ssh-agent never answers, so the deployment stops at once";
     script = ''
       run("snow deploy")
     '';
@@ -16,12 +16,12 @@
     )
     sodium.wait_for_file("/tmp/hung-agent.sock")
     try:
-        push = demo(env={"SSH_AUTH_SOCK": "/tmp/hung-agent.sock"})
+        deploy = demo(env={"SSH_AUTH_SOCK": "/tmp/hung-agent.sock"})
     finally:
         sodium.succeed("systemctl stop hung-agent")
-    push.failed()
-    push.has("✗ The ssh-agent did not answer within 10s", "help: Every ssh connection would hang on it.")
-    assert push.seconds < 60, push.seconds
+    deploy.failed()
+    deploy.has("✗ The ssh-agent did not answer within 10s", "help: Every ssh connection would hang on it.")
+    assert deploy.seconds < 60, deploy.seconds
     runs("cerium", base("cerium"))
   '';
 }

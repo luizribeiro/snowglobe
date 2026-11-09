@@ -19,11 +19,11 @@ developing, or snow will read it.
 There are a few layers, each catching something the one below can't.
 
 **Rust tests**, `cargo test --workspace` (add `--all-features` for the
-unstable commands). Push logic runs against mock backends and records the
-events each host reports, so you can test a whole push, failures included,
+unstable commands). Deploy logic runs against mock backends and records the
+events each host reports, so you can test a whole deployment, failures included,
 without Nix or SSH. Start here.
 
-**CLI tests**, in `snow/tests/`. They run the real binary, with mock push
+**CLI tests**, in `snow/tests/`. They run the real binary, with mock deploy
 scenarios standing in for Nix and SSH.
 
 **Nix module tests**, as flake checks. They cover the options and the
@@ -33,7 +33,7 @@ activation helper:
 nix build -L .#checks.x86_64-linux.deploy-module
 ```
 
-**VM tests** (Linux), in `nix/e2e/tests/`. Real pushes between NixOS VMs.
+**VM tests** (Linux), in `nix/e2e/tests/`. Real deployments between NixOS VMs.
 They catch what mocks can't, like a non-root deploy user missing a
 permission. New features should come with one when they can.
 
@@ -56,7 +56,7 @@ asciinema cast while it runs, so a demo can't show something the code
 doesn't do.
 
 ```bash
-nix build .#push-recordings   # casts and SVGs
+nix build .#deploy-recordings   # casts and SVGs
 nix run .#upload-demos        # upload them and rewrite docs/demos.md
 ```
 
@@ -73,7 +73,7 @@ A few ideas the code is built around:
   `snowlib/` does the work and never touches the terminal, so another
   frontend could use it.
 - **Backends are traits.** Nix, SSH deploys, reboots and hooks each sit
-  behind a trait with a real and a mock version. That's what lets the push
+  behind a trait with a real and a mock version. That's what lets the deployment
   tests run without Nix or SSH.
 - **Each host runs its own pipeline.** Build, check, copy, plan, deploy,
   reboot, per host, all at once. Fast hosts don't wait for slow ones. Serial

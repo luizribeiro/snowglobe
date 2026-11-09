@@ -32,6 +32,6 @@ in
     rebuild.cursor_hidden_at("boron  build")
     rebuild.has("boron needs sudo", "✓ boron (switch) in")
     rebuild.logged("boron: activated (Switch mode)")
-    runs("boron", pushed("boron"))
+    runs("boron", deployed("boron"))
   '';
 }
