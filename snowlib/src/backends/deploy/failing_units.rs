@@ -388,7 +388,7 @@ Nov 08 22:43:02 boron systemd[1]: Failed to start stale-job.service.";
 
         assert_eq!(
             switch(&boron).await,
-            "activated, but stale-job.service is failing (it was already failing before this push)"
+            "activated, but stale-job.service is failing (it was already failing before this deployment)"
         );
     }
 
@@ -404,7 +404,7 @@ Nov 08 22:43:02 boron systemd[1]: Failed to start stale-job.service.";
             "activated, but 2 units are failing\n\
              Details:\n\
              nginx.service\n\
-             stale-job.service (already failing before this push)"
+             stale-job.service (already failing before this deployment)"
         );
         assert_eq!(
             crate::error::summary::error_summary(&reason),
@@ -474,7 +474,7 @@ Nov 08 22:43:02 boron systemd[1]: Failed to start stale-job.service.";
             error.to_string(),
             "activated, but 2 units are failing\n\
              Details:\n\
-             stale-job.service (already failing before this push)\n\
+             stale-job.service (already failing before this deployment)\n\
              unifi.service"
         );
     }

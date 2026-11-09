@@ -135,7 +135,7 @@ pub enum FlakeError {
         available_hosts: String,
     },
 
-    #[error("{host} has an invalid push phase '{phase}'")]
+    #[error("{host} has an invalid phase '{phase}'")]
     #[diagnostic(
         code(snow::flake::invalid_phase),
         help("A phase name may contain only ASCII letters, digits, dashes and underscores, and 'default' is reserved for hosts without a phase. Set snowglobe.deploy.phase to a name like 'p1', or leave it unset.")
@@ -189,7 +189,7 @@ pub enum DeployError {
     #[error("{}", activated_but_failing(units))]
     #[diagnostic(
         code(snow::deploy::units_failing),
-        help("The new system is activated. Look at the failing units with `systemctl status <unit>` on the host before pushing again.")
+        help("The new system is activated. Look at the failing units with `systemctl status <unit>` on the host before deploying again.")
     )]
     UnitsFailing {
         host: String,
@@ -593,7 +593,7 @@ pub struct FailingUnit {
 fn activated_but_failing(units: &[FailingUnit]) -> String {
     match units {
         [unit] if unit.already_failing => format!(
-            "activated, but {} is failing (it was already failing before this push)",
+            "activated, but {} is failing (it was already failing before this deployment)",
             unit.name
         ),
         [unit] => format!("activated, but {} is failing", unit.name),
@@ -604,7 +604,7 @@ fn activated_but_failing(units: &[FailingUnit]) -> String {
         ))
         .chain(units.iter().map(|unit| {
             let before = if unit.already_failing {
-                " (already failing before this push)"
+                " (already failing before this deployment)"
             } else {
                 ""
             };

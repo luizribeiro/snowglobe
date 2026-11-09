@@ -225,7 +225,7 @@ async fn test_deploy_post_reboot_hooks_not_executed_when_reboot_fails() {
 
     assert!(
         !results.all_succeeded(),
-        "Push should fail when reboot fails"
+        "Deploy should fail when reboot fails"
     );
 
     let phase_result = &results.phases[0];

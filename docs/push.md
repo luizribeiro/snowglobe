@@ -162,7 +162,7 @@ Each phase ends with a report, one line per host:
 
 ```
 $ snow deploy hydrogen oxygen
-✓ Push (2 hosts in 1:12)
+✓ Deploy (2 hosts in 1:12)
   ✓ hydrogen (switch)
   ✓ oxygen (boot, rebooted)
 ```
@@ -192,7 +192,7 @@ were already failing. The new system is active by then, and the report says
 so, marking units that were failing before the push:
 
 ```
-  ✗ boron at activate: activated, but stale-job.service is failing (it was already failing before this push)
+  ✗ boron at activate: activated, but stale-job.service is failing (it was already failing before this deployment)
 ```
 
 The host still fails at activate, so later phases don't run. To deploy a

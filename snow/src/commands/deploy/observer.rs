@@ -140,7 +140,7 @@ mod tests {
 
         observer.on_phase_start("default", &hosts());
 
-        assert_eq!(observer.board.lock().as_ref().unwrap().title(), "Push");
+        assert_eq!(observer.board.lock().as_ref().unwrap().title(), "Deploy");
     }
 
     #[test]

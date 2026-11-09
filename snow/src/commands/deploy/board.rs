@@ -826,7 +826,7 @@ mod tests {
         let t0 = Instant::now();
         let board = HostBoard::new("default", &["praseodymium".to_string()], t0);
 
-        assert_eq!(board.title(), "Push");
+        assert_eq!(board.title(), "Deploy");
         assert_eq!(board.counts(), "1 host · 1 queued");
         assert_eq!(board.hostname_width(), 12);
         assert_eq!(

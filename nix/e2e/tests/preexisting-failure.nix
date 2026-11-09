@@ -44,7 +44,7 @@
     assert status != 0, output
     contains(output, (
         "✗ boron at activate: activated, but stale-job.service is failing"
-        " (it was already failing before this push)",
+        " (it was already failing before this deployment)",
         "✓ cerium (switch, ignored failing crash-loop.service)",
         "⊘ Phase p2",
     ))

@@ -231,8 +231,8 @@ async fn test_deploy_stops_on_phase_failure() {
     };
 
     // Push should succeed but with failures and skipped phases
-    let results = result.expect("Push should succeed structurally");
-    assert!(!results.all_succeeded(), "Push should have failures");
+    let results = result.expect("Deploy should succeed structurally");
+    assert!(!results.all_succeeded(), "Deploy should have failures");
     assert_eq!(results.failure_count(), 1);
     assert_eq!(
         results.skipped_phases.len(),
@@ -281,7 +281,7 @@ async fn test_units_failing_after_activation_fail_the_host_and_halt_later_phases
     assert_eq!(
         boron.error_message.as_deref(),
         Some(
-            "activated, but stale-job.service is failing (it was already failing before this push)"
+            "activated, but stale-job.service is failing (it was already failing before this deployment)"
         )
     );
     assert!(!run.results.all_succeeded());
@@ -371,8 +371,8 @@ async fn test_deploy_error_message_includes_source() {
     };
 
     // Push should succeed but with failures captured
-    let results = result.expect("Push should succeed structurally");
-    assert!(!results.all_succeeded(), "Push should have failures");
+    let results = result.expect("Deploy should succeed structurally");
+    assert!(!results.all_succeeded(), "Deploy should have failures");
     assert_eq!(results.failure_count(), 1);
 
     // Verify the error message includes the source error chain
@@ -452,8 +452,8 @@ async fn test_deploy_error_message_format_with_activation_failure() {
     };
 
     // Push should succeed but with failures captured
-    let results = result.expect("Push should succeed structurally");
-    assert!(!results.all_succeeded(), "Push should have failures");
+    let results = result.expect("Deploy should succeed structurally");
+    assert!(!results.all_succeeded(), "Deploy should have failures");
     assert_eq!(results.failure_count(), 1);
 
     // Verify the error message includes expected details

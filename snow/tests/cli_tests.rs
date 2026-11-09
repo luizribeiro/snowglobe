@@ -336,7 +336,7 @@ fn test_mock_deploy_keeps_stdout_for_the_report() {
             "building '/nix/store/...-nitrogen.drv'",
         ))
         .stderr(predicate::str::contains("copying "))
-        .stdout(predicate::str::contains("Pushing 4 hosts"))
+        .stdout(predicate::str::contains("Deploying 4 hosts"))
         .stdout(predicate::str::contains("copying ").not())
         .stdout(predicate::str::contains("activation").not())
         .stdout(predicate::str::contains("mock deployer").not())

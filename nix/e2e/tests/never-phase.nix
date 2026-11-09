@@ -31,21 +31,21 @@
         return output
 
     output = push("")
-    contains(output, ("Pushing 1 host: boron", "boron: deployed"))
+    contains(output, ("Deploying 1 host: boron", "boron: deployed"))
     runs("boron", pushed("boron"))
     runs("curium", base("curium"))
 
     # curium matches the tag, but only its name or phase selects it
     output = push("--tag web")
-    contains(output, ("Pushing 1 host: boron",))
+    contains(output, ("Deploying 1 host: boron",))
     runs("curium", base("curium"))
 
     output = push("--phase never --dry-run")
-    contains(output, ("Pushing 1 host in 1 phase:", "never  curium"))
+    contains(output, ("Deploying 1 host in 1 phase:", "never  curium"))
     runs("curium", base("curium"))
 
     output = push("curium")
-    contains(output, ("Pushing 1 host in 1 phase:", "never  curium", "curium: deployed"))
+    contains(output, ("Deploying 1 host in 1 phase:", "never  curium", "curium: deployed"))
     runs("curium", pushed("curium"))
   '';
 }

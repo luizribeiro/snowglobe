@@ -645,7 +645,7 @@ mod tests {
 
         assert_eq!(
             result.unwrap_err().to_string(),
-            "web01 has an invalid push phase 'p2 k8s'"
+            "web01 has an invalid phase 'p2 k8s'"
         );
     }
 
@@ -844,14 +844,14 @@ mod tests {
 
     #[test]
     fn test_system_build_is_rooted_in_the_gc_roots_dir() {
-        let backend = SystemNixBackend::new().with_gc_roots("/tmp/snow-push-x1");
+        let backend = SystemNixBackend::new().with_gc_roots("/tmp/snow-deploy-x1");
 
         assert_eq!(
             link_args(&backend, GcRootKind::System),
             [
                 ".#nixosConfigurations.radon.config.system.build.toplevel",
                 "--out-link",
-                "/tmp/snow-push-x1/radon-system"
+                "/tmp/snow-deploy-x1/radon-system"
             ]
         );
     }

@@ -452,8 +452,8 @@ async fn test_deploy_phase_failure_stops_next_phase() {
     };
 
     // Push should succeed but with failures and skipped phases
-    let results = result.expect("Push should succeed structurally");
-    assert!(!results.all_succeeded(), "Push should have failures");
+    let results = result.expect("Deploy should succeed structurally");
+    assert!(!results.all_succeeded(), "Deploy should have failures");
     assert_eq!(results.failure_count(), 1);
     assert_eq!(results.skipped_phases.len(), 1, "Phase2 should be skipped");
 
@@ -997,7 +997,7 @@ async fn test_deploy_never_reboots_darwin_hosts() {
         let events = observer.get_events();
         assert!(
             !events.iter().any(|e| e.starts_with("reboot_start")),
-            "{:?} push rebooted a Darwin host. Events: {:?}",
+            "{:?} deployment rebooted a Darwin host. Events: {:?}",
             strategy,
             events
         );

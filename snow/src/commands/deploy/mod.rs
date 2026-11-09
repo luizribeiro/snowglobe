@@ -140,7 +140,7 @@ impl DeployArgs {
         // Lives until the push ends: its links stop the GC from collecting the
         // hooks and systems built for this push
         let gc_roots = tempfile::Builder::new()
-            .prefix("snow-push-")
+            .prefix("snow-deploy-")
             .tempdir()
             .map_err(|source| snowlib::error::IoError::TempDir { source })?;
         let gc_roots_path = std::path::absolute(gc_roots.path())
@@ -167,7 +167,7 @@ impl DeployArgs {
             self.reboot_timeout,
         )?;
         let hostnames = with_spinner(
-            "Finding the hosts to push",
+            "Finding the hosts to deploy",
             self.selection.resolve(flake, nix_backend.as_ref()),
         )
         .await?;

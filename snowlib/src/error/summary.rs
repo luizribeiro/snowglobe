@@ -254,7 +254,7 @@ mod tests {
     const UNITS_FAILING: &str = "activated, but 3 units are failing\n\
         Details:\n\
         nginx.service\n\
-        stale-job.service (already failing before this push)\n\
+        stale-job.service (already failing before this deployment)\n\
         unifi.service";
 
     #[test]
@@ -264,7 +264,7 @@ mod tests {
             Some(ErrorContext {
                 lines: vec![
                     "nginx.service",
-                    "stale-job.service (already failing before this push)",
+                    "stale-job.service (already failing before this deployment)",
                     "unifi.service",
                 ],
                 hidden: 0,
@@ -283,7 +283,7 @@ mod tests {
             Some(ErrorContext {
                 lines: vec![
                     "nginx.service",
-                    "stale-job.service (already failing before this push)",
+                    "stale-job.service (already failing before this deployment)",
                 ],
                 hidden: 1,
             })

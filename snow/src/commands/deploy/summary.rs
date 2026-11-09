@@ -19,11 +19,11 @@ fn is_unnamed_phase(phase: &str) -> bool {
     matches!(phase, ALL_HOSTS | UNPHASED)
 }
 
-/// "Phase p2", or "Push" for a push's only phase when it has no name
+/// "Phase p2", or "Deploy" for a deployment's only phase when it has no name
 pub(super) fn phase_title(phase: &str, among_other_phases: bool) -> String {
     match phase {
         UNPHASED if among_other_phases => "Hosts without a phase".to_string(),
-        ALL_HOSTS | UNPHASED => "Push".to_string(),
+        ALL_HOSTS | UNPHASED => "Deploy".to_string(),
         _ => format!("Phase {phase}"),
     }
 }
@@ -41,12 +41,12 @@ fn overview_label(phase: &str) -> &str {
 /// before anything happens
 pub fn phase_overview(phases: &[(String, Vec<String>)]) -> String {
     let total: usize = phases.iter().map(|(_, hosts)| hosts.len()).sum();
-    let pushing = format!("Pushing {total} {}", plural(total, "host"));
+    let deploying = format!("Deploying {total} {}", plural(total, "host"));
     match phases {
         [(phase, hosts)] if is_unnamed_phase(phase) => {
             format!(
                 "{} {}",
-                style(format!("{pushing}:")).bold(),
+                style(format!("{deploying}:")).bold(),
                 hosts.join(", ")
             )
         }
@@ -57,7 +57,7 @@ pub fn phase_overview(phases: &[(String, Vec<String>)]) -> String {
                 .max()
                 .unwrap_or(0);
             let heading = format!(
-                "{pushing} in {} {}:",
+                "{deploying} in {} {}:",
                 phases.len(),
                 plural(phases.len(), "phase")
             );
@@ -385,7 +385,7 @@ mod tests {
 
         assert_eq!(
             overview,
-            "Pushing 5 hosts in 2 phases:\n  p2      argon, curium, ferrum\n  p3-k8s  cerium, lanthanum"
+            "Deploying 5 hosts in 2 phases:\n  p2      argon, curium, ferrum\n  p3-k8s  cerium, lanthanum"
         );
     }
 
@@ -394,11 +394,11 @@ mod tests {
         console::set_colors_enabled(false);
         assert_eq!(
             phase_overview(&[phase("default", &["boron", "radon"])]),
-            "Pushing 2 hosts: boron, radon"
+            "Deploying 2 hosts: boron, radon"
         );
         assert_eq!(
             phase_overview(&[phase("_all", &["sodium"])]),
-            "Pushing 1 host: sodium"
+            "Deploying 1 host: sodium"
         );
     }
 
@@ -407,7 +407,7 @@ mod tests {
         console::set_colors_enabled(false);
         assert_eq!(
             phase_overview(&[phase("p2", &["ferrum"])]),
-            "Pushing 1 host in 1 phase:\n  p2  ferrum"
+            "Deploying 1 host in 1 phase:\n  p2  ferrum"
         );
     }
 
@@ -419,15 +419,15 @@ mod tests {
                 phase("p2", &["ferrum"]),
                 phase("default", &["boron", "radon"])
             ]),
-            "Pushing 3 hosts in 2 phases:\n  p2          ferrum\n  (no phase)  boron, radon"
+            "Deploying 3 hosts in 2 phases:\n  p2          ferrum\n  (no phase)  boron, radon"
         );
     }
 
     #[test]
     fn test_hosts_without_a_phase_after_named_phases_are_titled_so() {
-        assert_eq!(super::phase_title("default", false), "Push");
+        assert_eq!(super::phase_title("default", false), "Deploy");
         assert_eq!(super::phase_title("default", true), "Hosts without a phase");
-        assert_eq!(super::phase_title("_all", false), "Push");
+        assert_eq!(super::phase_title("_all", false), "Deploy");
         assert_eq!(super::phase_title("p2", true), "Phase p2");
         assert_eq!(super::phase_title("p2", false), "Phase p2");
     }
@@ -680,7 +680,7 @@ mod tests {
         let error = "activated, but 2 units are failing\n\
                      Details:\n\
                      nginx.service\n\
-                     unifi.service (already failing before this push)";
+                     unifi.service (already failing before this deployment)";
         let phase = PhaseResult {
             phase: "p1".to_string(),
             duration: Duration::from_secs(41),
@@ -692,7 +692,7 @@ mod tests {
             "✗ Phase p1 (1/1 failed in 0:41)\n\
              \x20 ✗ cerium at activate: activated, but 2 units are failing\n\
              \x20   nginx.service\n\
-             \x20   unifi.service (already failing before this push)"
+             \x20   unifi.service (already failing before this deployment)"
         );
     }
 
@@ -733,10 +733,10 @@ mod tests {
         assert_eq!(
             super::phase_report(&phase, false, 120, None),
             "✗ Phase p1 (2/2 failed in 0:41)\n\
-             \x20 ✗ boron at activate: activated, but stale-job.service is failing (it was already failing before this push)\n\
+             \x20 ✗ boron at activate: activated, but stale-job.service is failing (it was already failing before this deployment)\n\
              \x20 ✗ cerium at activate: activated, but 2 units are failing\n\
              \x20   nginx.service\n\
-             \x20   unifi.service (already failing before this push)"
+             \x20   unifi.service (already failing before this deployment)"
         );
     }
 
@@ -771,7 +771,7 @@ mod tests {
 
             assert_eq!(
                 super::phase_report(&phase, false, 100, None),
-                "✓ Push (1 host in 1:02:07)\n  ✓ sodium (switch)"
+                "✓ Deploy (1 host in 1:02:07)\n  ✓ sodium (switch)"
             );
         }
     }
