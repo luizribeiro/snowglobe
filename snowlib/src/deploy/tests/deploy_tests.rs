@@ -1,10 +1,10 @@
-//! Basic push() function tests
+//! Basic deploy() function tests
 
 use super::*;
 
 #[tokio::test]
-async fn test_push_with_single_phase() {
-    let run = PushHarness::new()
+async fn test_deploy_with_single_phase() {
+    let run = DeployHarness::new()
         .run(vec![
             make_host_metadata("host1", Some("p1"), RebootPolicy::Auto),
             make_host_metadata("host2", Some("p1"), RebootPolicy::Auto),
@@ -21,7 +21,7 @@ async fn test_push_with_single_phase() {
 
 #[tokio::test]
 async fn test_each_phase_reports_its_hosts_when_it_completes() {
-    let run = PushHarness::new()
+    let run = DeployHarness::new()
         .run(vec![
             make_host_metadata("host1", Some("p1"), RebootPolicy::Auto),
             make_host_metadata("host2", Some("p2"), RebootPolicy::Auto),
@@ -43,7 +43,7 @@ async fn test_each_phase_reports_its_hosts_when_it_completes() {
 
 #[tokio::test]
 async fn test_phases_run_with_their_numbers_in_order_then_hosts_without_one() {
-    let run = PushHarness::new()
+    let run = DeployHarness::new()
         .run(vec![
             make_host_metadata("sodium", None, RebootPolicy::Auto),
             make_host_metadata("cerium", Some("p10"), RebootPolicy::Auto),
@@ -57,7 +57,7 @@ async fn test_phases_run_with_their_numbers_in_order_then_hosts_without_one() {
         .iter()
         .map(|phase| phase.phase.as_str())
         .collect();
-    assert_eq!(completed, vec!["p1", "p2", "p10", crate::push::UNPHASED]);
+    assert_eq!(completed, vec!["p1", "p2", "p10", crate::deploy::UNPHASED]);
 }
 
 fn optional(mut host: HostMetadata) -> HostMetadata {
@@ -67,7 +67,7 @@ fn optional(mut host: HostMetadata) -> HostMetadata {
 
 #[tokio::test]
 async fn test_failed_optional_host_lets_later_phases_run() {
-    let mut harness = PushHarness::new();
+    let mut harness = DeployHarness::new();
     harness.nix_backend = MockNixBackend::new().with_build_failures(vec!["curium".to_string()]);
     let run = harness
         .run(vec![
@@ -88,7 +88,7 @@ async fn test_failed_optional_host_lets_later_phases_run() {
 
 #[tokio::test]
 async fn test_unreachable_optional_host_leaves_its_serial_group_running() {
-    let mut harness = PushHarness::new();
+    let mut harness = DeployHarness::new();
     harness.deployer =
         MockDeployBackend::new().with_failures(vec!["curium.example.com".to_string()]);
     let in_group = |name: &str| HostMetadata {
@@ -111,7 +111,7 @@ async fn test_unreachable_optional_host_leaves_its_serial_group_running() {
 
 #[tokio::test]
 async fn test_failed_host_beside_a_failed_optional_one_still_skips_later_phases() {
-    let mut harness = PushHarness::new();
+    let mut harness = DeployHarness::new();
     harness.nix_backend =
         MockNixBackend::new().with_build_failures(vec!["curium".to_string(), "boron".to_string()]);
     let run = harness
@@ -131,7 +131,7 @@ async fn test_failed_host_beside_a_failed_optional_one_still_skips_later_phases(
 
 #[tokio::test]
 async fn test_hosts_without_a_phase_are_skipped_when_a_phase_fails() {
-    let mut harness = PushHarness::new();
+    let mut harness = DeployHarness::new();
     harness.nix_backend = MockNixBackend::new().with_build_failures(vec!["boron".to_string()]);
     let run = harness
         .run(vec![
@@ -143,12 +143,12 @@ async fn test_hosts_without_a_phase_are_skipped_when_a_phase_fails() {
     assert_eq!(run.results.phases.len(), 1);
     assert_eq!(run.results.phases[0].phase, "p1");
     assert_eq!(run.results.skipped_phases.len(), 1);
-    assert_eq!(run.results.skipped_phases[0].phase, crate::push::UNPHASED);
+    assert_eq!(run.results.skipped_phases[0].phase, crate::deploy::UNPHASED);
     assert_eq!(run.results.skipped_phases[0].hostnames, vec!["sodium"]);
 }
 
 #[tokio::test]
-async fn test_push_with_multiple_phases() {
+async fn test_deploy_with_multiple_phases() {
     let flake = Flake::test_context();
     let nix_backend = MockNixBackend::new();
     let deployer = MockDeployBackend::new();
@@ -167,10 +167,10 @@ async fn test_push_with_multiple_phases() {
         make_host_metadata("host1", Some("p1"), RebootPolicy::Auto),
     ];
 
-    let config = create_push_config(PushStrategy::Switch, 2);
+    let config = create_deploy_config(DeployStrategy::Switch, 2);
 
     let results = {
-        let push_ctx = PushContext::new(
+        let deploy_ctx = DeployContext::new(
             &flake,
             &nix_backend,
             &deployer,
@@ -179,7 +179,7 @@ async fn test_push_with_multiple_phases() {
             &observer,
             None,
         );
-        push(&push_ctx, hosts).await
+        deploy(&deploy_ctx, hosts).await
     }
     .unwrap();
 
@@ -194,7 +194,7 @@ async fn test_push_with_multiple_phases() {
 }
 
 #[tokio::test]
-async fn test_push_stops_on_phase_failure() {
+async fn test_deploy_stops_on_phase_failure() {
     // Test that when phase p1 fails, phase p2 never starts
     let flake = Flake::test_context();
     let nix_backend = MockNixBackend::new();
@@ -214,11 +214,11 @@ async fn test_push_stops_on_phase_failure() {
         make_host_metadata("host2", Some("p2"), RebootPolicy::Auto),
     ];
 
-    let config = create_push_config(PushStrategy::Switch, 2);
+    let config = create_deploy_config(DeployStrategy::Switch, 2);
 
-    // When activation fails, push() returns Err
+    // When activation fails, deploy() returns Err
     let result = {
-        let push_ctx = PushContext::new(
+        let deploy_ctx = DeployContext::new(
             &flake,
             &nix_backend,
             &deployer,
@@ -227,7 +227,7 @@ async fn test_push_stops_on_phase_failure() {
             &observer,
             None,
         );
-        push(&push_ctx, hosts).await
+        deploy(&deploy_ctx, hosts).await
     };
 
     // Push should succeed but with failures and skipped phases
@@ -253,8 +253,8 @@ async fn test_push_stops_on_phase_failure() {
 }
 
 #[tokio::test]
-async fn test_push_with_default_phase() {
-    let run = PushHarness::new()
+async fn test_deploy_with_default_phase() {
+    let run = DeployHarness::new()
         .run(vec![make_host_metadata("host1", None, RebootPolicy::Auto)])
         .await;
 
@@ -264,7 +264,7 @@ async fn test_push_with_default_phase() {
 
 #[tokio::test]
 async fn test_units_failing_after_activation_fail_the_host_and_halt_later_phases() {
-    let mut harness = PushHarness::new();
+    let mut harness = DeployHarness::new();
     harness.deployer = MockDeployBackend::new()
         .with_failing_units("boron.example.com", &["stale-job.service"])
         .with_units_failing_activation("boron.example.com", &["stale-job.service"]);
@@ -291,7 +291,7 @@ async fn test_units_failing_after_activation_fail_the_host_and_halt_later_phases
 
 #[tokio::test]
 async fn test_a_host_whose_only_failing_units_are_ignored_is_deployed() {
-    let mut harness = PushHarness::new();
+    let mut harness = DeployHarness::new();
     harness.deployer = MockDeployBackend::new()
         .with_units_failing_activation("cerium.example.com", &["unifi.service"]);
     let cerium = HostMetadata {
@@ -313,8 +313,8 @@ async fn test_a_host_whose_only_failing_units_are_ignored_is_deployed() {
 }
 
 #[tokio::test]
-async fn test_push_with_partial_failure_in_phase() {
-    let mut harness = PushHarness::new();
+async fn test_deploy_with_partial_failure_in_phase() {
+    let mut harness = DeployHarness::new();
     harness.deployer =
         MockDeployBackend::new().with_activate_failures(vec!["host2.example.com".to_string()]);
 
@@ -335,7 +335,7 @@ async fn test_push_with_partial_failure_in_phase() {
 }
 
 #[tokio::test]
-async fn test_push_error_message_includes_source() {
+async fn test_deploy_error_message_includes_source() {
     // Test that when deployment fails, the error message includes the full error chain
     let flake = Flake::test_context();
     let nix_backend = MockNixBackend::new();
@@ -354,11 +354,11 @@ async fn test_push_error_message_includes_source() {
 
     let hosts = vec![make_host_metadata("fail", Some("p1"), RebootPolicy::Auto)];
 
-    let config = create_push_config(PushStrategy::Switch, 1);
+    let config = create_deploy_config(DeployStrategy::Switch, 1);
 
-    // When activation fails, push() returns Err
+    // When activation fails, deploy() returns Err
     let result = {
-        let push_ctx = PushContext::new(
+        let deploy_ctx = DeployContext::new(
             &flake,
             &nix_backend,
             &deployer,
@@ -367,7 +367,7 @@ async fn test_push_error_message_includes_source() {
             &observer,
             None,
         );
-        push(&push_ctx, hosts).await
+        deploy(&deploy_ctx, hosts).await
     };
 
     // Push should succeed but with failures captured
@@ -401,7 +401,7 @@ async fn test_push_error_message_includes_source() {
 }
 
 #[tokio::test]
-async fn test_push_error_message_format_with_activation_failure() {
+async fn test_deploy_error_message_format_with_activation_failure() {
     // Test the specific format of error messages with activation failures
     use std::collections::HashMap;
 
@@ -435,11 +435,11 @@ async fn test_push_error_message_format_with_activation_failure() {
 
     let hosts = vec![make_host_metadata("test", Some("p1"), RebootPolicy::Auto)];
 
-    let config = create_push_config(PushStrategy::Switch, 1);
+    let config = create_deploy_config(DeployStrategy::Switch, 1);
 
-    // When activation fails, push() returns Err
+    // When activation fails, deploy() returns Err
     let result = {
-        let push_ctx = PushContext::new(
+        let deploy_ctx = DeployContext::new(
             &flake,
             &nix_backend,
             &deployer,
@@ -448,7 +448,7 @@ async fn test_push_error_message_format_with_activation_failure() {
             &observer,
             None,
         );
-        push(&push_ctx, hosts).await
+        deploy(&deploy_ctx, hosts).await
     };
 
     // Push should succeed but with failures captured
@@ -491,7 +491,7 @@ fn test_phases_lists_each_phase_in_order_with_its_hosts() {
     ];
 
     assert_eq!(
-        crate::push::phases(&hosts, false),
+        crate::deploy::phases(&hosts, false),
         vec![
             ("p2".to_string(), vec!["ferrum".to_string()]),
             (
@@ -502,7 +502,7 @@ fn test_phases_lists_each_phase_in_order_with_its_hosts() {
         ]
     );
     assert_eq!(
-        crate::push::phases(&hosts, true),
+        crate::deploy::phases(&hosts, true),
         vec![(
             "_all".to_string(),
             vec![

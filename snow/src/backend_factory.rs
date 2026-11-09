@@ -26,7 +26,7 @@ pub fn create_nix_backend(
 }
 
 /// Like `create_nix_backend`, but roots what it builds in `gc_roots`
-pub fn create_push_nix_backend(
+pub fn create_deploy_nix_backend(
     #[cfg(debug_assertions)] mock_fixture: &Option<String>,
     gc_roots: &std::path::Path,
 ) -> Result<Box<dyn NixBackend>> {

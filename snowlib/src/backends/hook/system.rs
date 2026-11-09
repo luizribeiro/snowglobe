@@ -516,7 +516,7 @@ mod tests {
     }
 
     #[test]
-    fn test_ssh_shell_command_without_a_user_leaves_it_to_ssh_as_push_does() {
+    fn test_ssh_shell_command_without_a_user_leaves_it_to_ssh_as_deploy_does() {
         let backend = SystemHookBackend::new(None, OutputMode::Capture);
         let command = backend.ssh_shell_command(
             &DeployTarget::new("curium.example.com"),

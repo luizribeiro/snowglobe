@@ -15,15 +15,15 @@ use crate::observer::HostEvent;
 use std::collections::HashMap;
 use std::future::Future;
 
-use super::config::PushStrategy;
-use super::context::PushContext;
+use super::config::DeployStrategy;
+use super::context::DeployContext;
 use super::planning::create_deployment_plans;
-use super::results::{HostDeploymentResult, PipelineStep, PushPlan};
+use super::results::{DeployPlan, HostDeploymentResult, PipelineStep};
 use super::serial::{PhaseScheduler, Section};
 
 /// Execute hooks for a specific stage
 async fn execute_hooks(
-    push_ctx: &PushContext<'_>,
+    deploy_ctx: &DeployContext<'_>,
     hostname: &str,
     stage: HookStage,
     target: Option<&DeployTarget>,
@@ -31,10 +31,10 @@ async fn execute_hooks(
     store_path: Option<&StorePath>,
 ) -> Result<()> {
     // A dry run changes nothing, so it must not drain nodes or send alerts
-    if push_ctx.config.strategy == PushStrategy::DryRun {
+    if deploy_ctx.config.strategy == DeployStrategy::DryRun {
         return Ok(());
     }
-    if let Some(executor) = push_ctx.hook_executor {
+    if let Some(executor) = deploy_ctx.hook_executor {
         let mut env = HashMap::new();
         env.insert("SNOW_HOSTNAME".to_string(), hostname.to_string());
         if let Some(phase) = phase {
@@ -48,7 +48,7 @@ async fn execute_hooks(
         }
 
         executor
-            .execute_hooks_for_stage(hostname, stage, target, &env, Some(push_ctx.observer))
+            .execute_hooks_for_stage(hostname, stage, target, &env, Some(deploy_ctx.observer))
             .await?;
     }
     Ok(())
@@ -66,7 +66,7 @@ type Stopped = HostDeploymentResult;
 
 /// One host's way through the deployment pipeline
 struct HostRun<'a, 'ctx> {
-    push_ctx: &'a PushContext<'ctx>,
+    deploy_ctx: &'a DeployContext<'ctx>,
     scheduler: &'a PhaseScheduler,
     metadata: &'a HostMetadata,
 }
@@ -77,7 +77,7 @@ impl HostRun<'_, '_> {
     }
 
     fn report(&self, event: HostEvent) {
-        self.push_ctx
+        self.deploy_ctx
             .observer
             .on_host_event(self.hostname(), &event);
     }
@@ -141,13 +141,13 @@ impl HostRun<'_, '_> {
 
     async fn reboot(
         &self,
-        plan: &PushPlan,
+        plan: &DeployPlan,
         context: FailureContext<'_>,
     ) -> std::result::Result<(), Stopped> {
         self.step(
             PipelineStep::Reboot,
             context,
-            self.push_ctx.reboot_backend.reboot_and_wait(&plan.target),
+            self.deploy_ctx.reboot_backend.reboot_and_wait(&plan.target),
         )
         .await
         .map_err(|failure| activated_but_reboot_failed(failure, plan))?;
@@ -157,7 +157,7 @@ impl HostRun<'_, '_> {
 
     async fn run_hooks(&self, stage: HookStage, context: FailureContext<'_>) -> Result<()> {
         execute_hooks(
-            self.push_ctx,
+            self.deploy_ctx,
             self.hostname(),
             stage,
             context.target,
@@ -205,23 +205,23 @@ impl HostRun<'_, '_> {
     /// Planning happens before any hook so a host blocked by planning is never
     /// disrupted (e.g. drained) for nothing.
     async fn run(&self) -> std::result::Result<HostDeploymentResult, Stopped> {
-        let push_ctx = self.push_ctx;
+        let deploy_ctx = self.deploy_ctx;
         let hostname = self.hostname();
 
         let preparation_permit = self.scheduler.permit().await;
         let target = self
             .metadata
-            .deploy_target(push_ctx.config.ssh_user.clone());
+            .deploy_target(deploy_ctx.config.ssh_user.clone());
 
         let store_path = self
             .step(
                 PipelineStep::Build,
                 FailureContext::default(),
-                push_ctx.nix_backend.build_host(
-                    push_ctx.flake,
+                deploy_ctx.nix_backend.build_host(
+                    deploy_ctx.flake,
                     hostname,
                     self.metadata.system_type,
-                    push_ctx.config.output_mode,
+                    deploy_ctx.config.output_mode,
                 ),
             )
             .await?;
@@ -230,12 +230,12 @@ impl HostRun<'_, '_> {
             store_path: Some(&store_path),
         };
 
-        if !push_ctx.config.redeploy
+        if !deploy_ctx.config.redeploy
             && self
                 .step(
                     PipelineStep::Check,
                     built,
-                    is_unchanged(push_ctx, hostname, &target, &store_path),
+                    is_unchanged(deploy_ctx, hostname, &target, &store_path),
                 )
                 .await?
         {
@@ -246,7 +246,7 @@ impl HostRun<'_, '_> {
         self.step(
             PipelineStep::Copy,
             built,
-            push_ctx.deploy_backend.copy_closure(&target, &store_path),
+            deploy_ctx.deploy_backend.copy_closure(&target, &store_path),
         )
         .await?;
         let deployable = FailureContext {
@@ -258,7 +258,7 @@ impl HostRun<'_, '_> {
             .step(
                 PipelineStep::Plan,
                 deployable,
-                plan_host(push_ctx, self.metadata, &target, &store_path),
+                plan_host(deploy_ctx, self.metadata, &target, &store_path),
             )
             .await?;
 
@@ -273,7 +273,7 @@ impl HostRun<'_, '_> {
                 PipelineStep::Activate,
                 deployable,
                 activate_reporting_failed_units(
-                    push_ctx.deploy_backend,
+                    deploy_ctx.deploy_backend,
                     &target,
                     &store_path,
                     plan.activation_mode,
@@ -283,7 +283,7 @@ impl HostRun<'_, '_> {
             )
             .await?;
 
-        let rebooted = should_reboot(push_ctx, &plan);
+        let rebooted = should_reboot(deploy_ctx, &plan);
         if rebooted {
             self.reboot(&plan, deployable).await?;
         }
@@ -323,7 +323,7 @@ fn failure_summary(error: &SnowError) -> String {
     error_summary(&failure_reason(error)).to_string()
 }
 
-fn activated_but_reboot_failed(mut failure: Stopped, plan: &PushPlan) -> Stopped {
+fn activated_but_reboot_failed(mut failure: Stopped, plan: &DeployPlan) -> Stopped {
     failure.activation_mode = Some(plan.activation_mode);
     failure.error_message = failure
         .error_message
@@ -335,12 +335,12 @@ fn activated_but_reboot_failed(mut failure: Stopped, plan: &PushPlan) -> Stopped
 ///
 /// This function is called concurrently for each host in a phase using tokio tasks.
 pub(super) async fn execute_host_pipeline(
-    push_ctx: &PushContext<'_>,
+    deploy_ctx: &DeployContext<'_>,
     host_metadata: &HostMetadata,
     scheduler: &PhaseScheduler,
 ) -> Result<HostDeploymentResult> {
     let host = HostRun {
-        push_ctx,
+        deploy_ctx,
         scheduler,
         metadata: host_metadata,
     };
@@ -359,12 +359,12 @@ pub(super) async fn execute_host_pipeline(
 /// skipped. A timeout fails instead: whatever stalled ssh (e.g. a hung
 /// ssh-agent) would stall the copy next, and the copy has no time limit.
 async fn is_unchanged(
-    push_ctx: &PushContext<'_>,
+    deploy_ctx: &DeployContext<'_>,
     hostname: &str,
     target: &DeployTarget,
     store_path: &StorePath,
 ) -> Result<bool> {
-    match push_ctx.deploy_backend.host_systems(target).await {
+    match deploy_ctx.deploy_backend.host_systems(target).await {
         Ok(systems) => Ok(systems.are(store_path)),
         Err(e) if crate::error::is_timeout(&e) => Err(e),
         Err(e) => {
@@ -380,16 +380,16 @@ async fn is_unchanged(
 
 /// Choose the activation mode for a host (with reboot detection)
 async fn plan_host(
-    push_ctx: &PushContext<'_>,
+    deploy_ctx: &DeployContext<'_>,
     host_metadata: &HostMetadata,
     target: &DeployTarget,
     store_path: &StorePath,
-) -> Result<PushPlan> {
+) -> Result<DeployPlan> {
     let (plans, blocked) = create_deployment_plans(
         vec![(host_metadata.clone(), target.clone(), store_path.clone())],
-        push_ctx.reboot_backend,
-        push_ctx.config.strategy,
-        push_ctx.config.force,
+        deploy_ctx.reboot_backend,
+        deploy_ctx.config.strategy,
+        deploy_ctx.config.force,
     )
     .await?;
 
@@ -411,8 +411,8 @@ async fn plan_host(
 }
 
 /// Whether the host gets rebooted after activation; Darwin hosts never are
-fn should_reboot(push_ctx: &PushContext<'_>, plan: &PushPlan) -> bool {
-    push_ctx.config.allow_reboot
+fn should_reboot(deploy_ctx: &DeployContext<'_>, plan: &DeployPlan) -> bool {
+    deploy_ctx.config.allow_reboot
         && plan.metadata.system_type == SystemType::NixOS
         && plan.activation_mode == crate::nix::ActivationMode::Boot
         && plan.reboot_check.is_required()

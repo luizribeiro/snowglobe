@@ -5,8 +5,8 @@ use crate::backends::reboot::{MockRebootBackend, RebootReason};
 
 #[tokio::test]
 async fn test_host_blocked_by_planning_is_never_drained() {
-    let mut harness = PushHarness::new();
-    harness.config.strategy = PushStrategy::Switch;
+    let mut harness = DeployHarness::new();
+    harness.config.strategy = DeployStrategy::Switch;
     harness.reboot_backend = MockRebootBackend::new().with_reboot_required(HashMap::from([(
         "neodymium".to_string(),
         RebootReason::KernelChanged {
@@ -31,8 +31,8 @@ async fn test_host_blocked_by_planning_is_never_drained() {
 
 #[tokio::test]
 async fn test_blocked_host_keeps_the_reason_it_was_blocked() {
-    let mut harness = PushHarness::new();
-    harness.config.strategy = PushStrategy::Switch;
+    let mut harness = DeployHarness::new();
+    harness.config.strategy = DeployStrategy::Switch;
     harness.reboot_backend = MockRebootBackend::new().with_reboot_required(HashMap::from([(
         "neodymium".to_string(),
         RebootReason::KernelChanged {
@@ -49,7 +49,7 @@ async fn test_blocked_host_keeps_the_reason_it_was_blocked() {
 
 #[tokio::test]
 async fn test_hooks_wrap_activation_in_order() {
-    let run = PushHarness::new()
+    let run = DeployHarness::new()
         .run(vec![kubernetes_node("samarium")])
         .await;
 
@@ -67,7 +67,7 @@ async fn test_hooks_wrap_activation_in_order() {
 
 #[tokio::test]
 async fn test_failed_drain_does_not_start_activation() {
-    let mut harness = PushHarness::new();
+    let mut harness = DeployHarness::new();
     harness.hook_backend = Arc::new(
         crate::backends::hook::MockHookBackend::new()
             .with_local_failures(vec!["kubectl drain ${SNOW_HOSTNAME}".to_string()]),
@@ -94,7 +94,7 @@ fn executed_stages(run: &HarnessRun) -> Vec<HookStage> {
 
 #[tokio::test]
 async fn test_post_deploy_runs_last_after_a_reboot() {
-    let harness = PushHarness::new();
+    let harness = DeployHarness::new();
     let mut host = kubernetes_node("lanthanum");
     host.reboot_policy = RebootPolicy::Always;
 
@@ -116,7 +116,7 @@ async fn test_post_deploy_runs_last_after_a_reboot() {
 
 #[tokio::test]
 async fn test_post_deploy_runs_without_a_reboot() {
-    let run = PushHarness::new()
+    let run = DeployHarness::new()
         .run(vec![kubernetes_node("cerium")])
         .await;
 
@@ -129,7 +129,7 @@ async fn test_post_deploy_runs_without_a_reboot() {
 
 #[tokio::test]
 async fn test_post_deploy_skipped_when_reboot_fails() {
-    let mut harness = PushHarness::new();
+    let mut harness = DeployHarness::new();
     harness.reboot_backend =
         MockRebootBackend::new().with_reboot_failures(vec!["curium.example.com".to_string()]);
     let mut host = kubernetes_node("curium");
@@ -143,7 +143,7 @@ async fn test_post_deploy_skipped_when_reboot_fails() {
 
 #[tokio::test]
 async fn test_failed_post_deploy_hook_runs_on_failure_hooks() {
-    let mut harness = PushHarness::new();
+    let mut harness = DeployHarness::new();
     harness.hook_backend = Arc::new(
         crate::backends::hook::MockHookBackend::new()
             .with_local_failures(vec!["kubectl uncordon ${SNOW_HOSTNAME}".to_string()]),
@@ -175,7 +175,7 @@ async fn test_failed_post_deploy_hook_runs_on_failure_hooks() {
 
 #[tokio::test]
 async fn test_failed_reboot_runs_on_failure_hooks() {
-    let mut harness = PushHarness::new();
+    let mut harness = DeployHarness::new();
     harness.reboot_backend =
         MockRebootBackend::new().with_reboot_failures(vec!["boron.example.com".to_string()]);
     let mut host = kubernetes_node("boron");
@@ -200,8 +200,8 @@ async fn test_failed_reboot_runs_on_failure_hooks() {
 
 #[tokio::test]
 async fn test_dry_run_runs_no_hooks() {
-    let mut harness = PushHarness::new();
-    harness.config.strategy = PushStrategy::DryRun;
+    let mut harness = DeployHarness::new();
+    harness.config.strategy = DeployStrategy::DryRun;
     let mut host = kubernetes_node("hydrogen");
     host.reboot_policy = RebootPolicy::Always;
 
@@ -217,8 +217,8 @@ async fn test_dry_run_runs_no_hooks() {
 
 #[tokio::test]
 async fn test_failed_dry_run_runs_no_on_failure_hooks() {
-    let mut harness = PushHarness::new();
-    harness.config.strategy = PushStrategy::DryRun;
+    let mut harness = DeployHarness::new();
+    harness.config.strategy = DeployStrategy::DryRun;
     harness.deployer =
         MockDeployBackend::new().with_activate_failures(vec!["oxygen.example.com".to_string()]);
 
@@ -249,7 +249,7 @@ async fn test_local_hook_with_missing_store_path_fails_before_any_build() {
         node_with_gate("promethium", crate::hooks::HookLocation::Local),
     ];
 
-    let (result, observer) = PushHarness::new().run_push(hosts).await;
+    let (result, observer) = DeployHarness::new().run_deploy(hosts).await;
     let events = observer.get_events();
 
     assert!(
@@ -266,7 +266,7 @@ async fn test_local_hook_with_missing_store_path_fails_before_any_build() {
 
 #[tokio::test]
 async fn test_remote_hook_store_paths_are_not_checked_locally() {
-    let run = PushHarness::new()
+    let run = DeployHarness::new()
         .run(vec![node_with_gate(
             "promethium",
             crate::hooks::HookLocation::Remote,
@@ -278,8 +278,8 @@ async fn test_remote_hook_store_paths_are_not_checked_locally() {
 
 #[tokio::test]
 async fn test_dry_run_skips_the_hook_path_check() {
-    let mut harness = PushHarness::new();
-    harness.config.strategy = PushStrategy::DryRun;
+    let mut harness = DeployHarness::new();
+    harness.config.strategy = DeployStrategy::DryRun;
 
     let run = harness
         .run(vec![node_with_gate(
@@ -292,11 +292,11 @@ async fn test_dry_run_skips_the_hook_path_check() {
 }
 
 #[tokio::test]
-async fn test_hung_ssh_agent_stops_the_push_before_any_build() {
-    let mut harness = PushHarness::new();
+async fn test_hung_ssh_agent_stops_the_deploy_before_any_build() {
+    let mut harness = DeployHarness::new();
     harness.deployer = MockDeployBackend::new().with_hung_agent();
 
-    let (result, observer) = harness.run_push(vec![kubernetes_node("cerium")]).await;
+    let (result, observer) = harness.run_deploy(vec![kubernetes_node("cerium")]).await;
 
     assert!(matches!(
         result,
@@ -320,13 +320,17 @@ fn darwin_host(name: &str) -> HostMetadata {
 }
 
 #[tokio::test]
-async fn test_darwin_hosts_stop_a_push_that_does_not_switch_before_any_build() {
-    for strategy in [PushStrategy::Boot, PushStrategy::Test, PushStrategy::DryRun] {
-        let mut harness = PushHarness::new();
+async fn test_darwin_hosts_stop_a_deploy_that_does_not_switch_before_any_build() {
+    for strategy in [
+        DeployStrategy::Boot,
+        DeployStrategy::Test,
+        DeployStrategy::DryRun,
+    ] {
+        let mut harness = DeployHarness::new();
         harness.config.strategy = strategy;
 
         let (result, observer) = harness
-            .run_push(vec![
+            .run_deploy(vec![
                 darwin_host("ferrum"),
                 kubernetes_node("boron"),
                 darwin_host("cobalt"),
@@ -349,9 +353,9 @@ async fn test_darwin_hosts_stop_a_push_that_does_not_switch_before_any_build() {
 }
 
 #[tokio::test]
-async fn test_darwin_hosts_join_a_push_that_switches() {
-    for strategy in [PushStrategy::Auto, PushStrategy::Switch] {
-        let mut harness = PushHarness::new();
+async fn test_darwin_hosts_join_a_deploy_that_switches() {
+    for strategy in [DeployStrategy::Auto, DeployStrategy::Switch] {
+        let mut harness = DeployHarness::new();
         harness.config.strategy = strategy;
 
         let run = harness

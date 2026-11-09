@@ -13,11 +13,11 @@
 //! # Example
 //!
 //! ```
-//! use snowlib::PushObserver;
+//! use snowlib::DeployObserver;
 //!
 //! struct MyObserver;
 //!
-//! impl PushObserver for MyObserver {
+//! impl DeployObserver for MyObserver {
 //!     fn on_phase_start(&self, phase: &str, hosts: &[String]) {
 //!         println!("Starting phase {} with {} hosts", phase, hosts.len());
 //!     }
@@ -28,8 +28,8 @@ mod log;
 
 pub use log::LogObserver;
 
+use crate::deploy::{HostDeploymentResult, PhaseResult, PipelineStep};
 use crate::hooks::HookStage;
-use crate::push::{HostDeploymentResult, PhaseResult, PipelineStep};
 
 /// Something that happened to one host during a push
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -58,7 +58,7 @@ pub enum HostEvent {
 ///
 /// Observers are infallible and should handle errors internally (e.g., by logging).
 /// Observer failures will not abort deployment.
-pub trait PushObserver: Send + Sync {
+pub trait DeployObserver: Send + Sync {
     /// Called for every step a host starts, finishes or fails, when it
     /// waits or turns out unchanged, and once when it is done
     fn on_host_event(&self, _hostname: &str, _event: &HostEvent) {}
@@ -96,7 +96,7 @@ pub trait PushObserver: Send + Sync {
 #[derive(Debug, Clone, Copy, Default)]
 pub struct NoopObserver;
 
-impl PushObserver for NoopObserver {}
+impl DeployObserver for NoopObserver {}
 
 /// Composite observer that calls multiple observers in sequence
 ///
@@ -112,16 +112,16 @@ impl PushObserver for NoopObserver {}
 /// ]);
 /// ```
 pub struct CompositeObserver {
-    observers: Vec<Box<dyn PushObserver>>,
+    observers: Vec<Box<dyn DeployObserver>>,
 }
 
 impl CompositeObserver {
-    pub fn new(observers: Vec<Box<dyn PushObserver>>) -> Self {
+    pub fn new(observers: Vec<Box<dyn DeployObserver>>) -> Self {
         Self { observers }
     }
 }
 
-impl PushObserver for CompositeObserver {
+impl DeployObserver for CompositeObserver {
     fn on_host_event(&self, hostname: &str, event: &HostEvent) {
         for observer in &self.observers {
             observer.on_host_event(hostname, event);
@@ -185,7 +185,7 @@ mod tests {
         }
     }
 
-    impl PushObserver for EventLog {
+    impl DeployObserver for EventLog {
         fn on_host_event(&self, hostname: &str, event: &HostEvent) {
             self.log(format!("{hostname}:{event:?}"));
         }

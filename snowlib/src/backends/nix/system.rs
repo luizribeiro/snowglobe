@@ -369,7 +369,7 @@ fn parse_host_metadata(
             source: e,
         })?;
 
-    crate::push::check_phase(host, meta.phase.as_deref())?;
+    crate::deploy::check_phase(host, meta.phase.as_deref())?;
 
     let fqdn = match meta.domain {
         Some(domain) if !domain.is_empty() => format!("{}.{}", meta.hostname, domain),

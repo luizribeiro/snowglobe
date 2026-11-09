@@ -7,8 +7,8 @@ use crate::backends::reboot::{
 use std::time::Duration;
 
 #[test]
-fn test_push_results_counts() {
-    let results = PushResults {
+fn test_deploy_results_counts() {
+    let results = DeployResults {
         phases: vec![PhaseResult {
             phase: "default".to_string(),
             duration: Duration::ZERO,
@@ -57,8 +57,8 @@ fn test_push_results_counts() {
 }
 
 #[test]
-fn test_push_results_all_succeeded() {
-    let results = PushResults {
+fn test_deploy_results_all_succeeded() {
+    let results = DeployResults {
         phases: vec![PhaseResult {
             phase: "default".to_string(),
             duration: Duration::ZERO,
@@ -107,7 +107,7 @@ async fn test_create_deployment_plans_auto_mode_no_reboot() {
 
     let hosts = vec![make_host("test", None, RebootPolicy::Auto)];
 
-    let (plans, blocked) = create_deployment_plans(hosts, &detector, PushStrategy::Auto, false)
+    let (plans, blocked) = create_deployment_plans(hosts, &detector, DeployStrategy::Auto, false)
         .await
         .unwrap();
 
@@ -122,7 +122,7 @@ async fn test_create_deployment_plans_dry_run() {
     let detector = SystemRebootBackend::default();
     let hosts = vec![make_host("test", None, RebootPolicy::Auto)];
 
-    let (plans, blocked) = create_deployment_plans(hosts, &detector, PushStrategy::DryRun, false)
+    let (plans, blocked) = create_deployment_plans(hosts, &detector, DeployStrategy::DryRun, false)
         .await
         .unwrap();
 
@@ -143,9 +143,10 @@ async fn test_boot_mode_plans_no_reboot_for_any_policy() {
     ] {
         let hosts = vec![make_host("boron", None, policy.clone())];
 
-        let (plans, blocked) = create_deployment_plans(hosts, &detector, PushStrategy::Boot, false)
-            .await
-            .unwrap();
+        let (plans, blocked) =
+            create_deployment_plans(hosts, &detector, DeployStrategy::Boot, false)
+                .await
+                .unwrap();
 
         let plan = (plans[0].activation_mode, plans[0].reboot_check.clone());
         assert!(blocked.is_empty(), "{policy:?} blocked");
@@ -162,7 +163,7 @@ async fn test_create_deployment_plans_test_mode() {
     let detector = SystemRebootBackend::default();
     let hosts = vec![make_host("test", None, RebootPolicy::Auto)];
 
-    let (plans, blocked) = create_deployment_plans(hosts, &detector, PushStrategy::Test, false)
+    let (plans, blocked) = create_deployment_plans(hosts, &detector, DeployStrategy::Test, false)
         .await
         .unwrap();
 
@@ -183,7 +184,7 @@ async fn test_create_deployment_plans_switch_with_force() {
     let detector = SystemRebootBackend::new(config);
     let hosts = vec![make_host("test", None, RebootPolicy::Auto)];
 
-    let (plans, blocked) = create_deployment_plans(hosts, &detector, PushStrategy::Switch, true)
+    let (plans, blocked) = create_deployment_plans(hosts, &detector, DeployStrategy::Switch, true)
         .await
         .unwrap();
 
@@ -208,7 +209,7 @@ async fn test_create_deployment_plans_multiple_hosts_mixed_results() {
         make_host("host3", None, RebootPolicy::Auto),
     ];
 
-    let (plans, blocked) = create_deployment_plans(hosts, &detector, PushStrategy::Auto, false)
+    let (plans, blocked) = create_deployment_plans(hosts, &detector, DeployStrategy::Auto, false)
         .await
         .unwrap();
 
@@ -231,7 +232,7 @@ async fn test_reboot_policy_never_uses_boot_mode() {
 
     let hosts = vec![make_host("host1", None, RebootPolicy::Never)];
 
-    let (plans, blocked) = create_deployment_plans(hosts, &detector, PushStrategy::Auto, false)
+    let (plans, blocked) = create_deployment_plans(hosts, &detector, DeployStrategy::Auto, false)
         .await
         .unwrap();
 
@@ -253,7 +254,7 @@ async fn test_reboot_policy_always_uses_boot_mode_with_reboot() {
 
     let hosts = vec![make_host("host1", None, RebootPolicy::Always)];
 
-    let (plans, blocked) = create_deployment_plans(hosts, &detector, PushStrategy::Auto, false)
+    let (plans, blocked) = create_deployment_plans(hosts, &detector, DeployStrategy::Auto, false)
         .await
         .unwrap();
 
@@ -275,7 +276,7 @@ async fn test_reboot_policy_auto_uses_detection() {
 
     let hosts = vec![make_host("host1", None, RebootPolicy::Auto)];
 
-    let (plans, blocked) = create_deployment_plans(hosts, &detector, PushStrategy::Auto, false)
+    let (plans, blocked) = create_deployment_plans(hosts, &detector, DeployStrategy::Auto, false)
         .await
         .unwrap();
 
@@ -297,7 +298,7 @@ async fn test_reboot_policy_never_overrides_switch_mode() {
 
     let hosts = vec![make_host("host1", None, RebootPolicy::Never)];
 
-    let (plans, blocked) = create_deployment_plans(hosts, &detector, PushStrategy::Switch, false)
+    let (plans, blocked) = create_deployment_plans(hosts, &detector, DeployStrategy::Switch, false)
         .await
         .unwrap();
 
@@ -319,7 +320,7 @@ async fn test_reboot_policy_always_overrides_switch_mode() {
 
     let hosts = vec![make_host("host1", None, RebootPolicy::Always)];
 
-    let (plans, blocked) = create_deployment_plans(hosts, &detector, PushStrategy::Switch, false)
+    let (plans, blocked) = create_deployment_plans(hosts, &detector, DeployStrategy::Switch, false)
         .await
         .unwrap();
 
@@ -341,7 +342,7 @@ async fn test_force_overrides_never_policy_with_switch() {
 
     let hosts = vec![make_host("host1", None, RebootPolicy::Never)];
 
-    let (plans, blocked) = create_deployment_plans(hosts, &detector, PushStrategy::Switch, true)
+    let (plans, blocked) = create_deployment_plans(hosts, &detector, DeployStrategy::Switch, true)
         .await
         .unwrap();
 
@@ -362,7 +363,7 @@ async fn test_force_overrides_always_policy_with_switch() {
 
     let hosts = vec![make_host("host1", None, RebootPolicy::Always)];
 
-    let (plans, blocked) = create_deployment_plans(hosts, &detector, PushStrategy::Switch, true)
+    let (plans, blocked) = create_deployment_plans(hosts, &detector, DeployStrategy::Switch, true)
         .await
         .unwrap();
 
@@ -390,7 +391,7 @@ async fn test_darwin_hosts_switch_without_reboot_regardless_of_policy() {
         RebootPolicy::Never,
         RebootPolicy::Always,
     ] {
-        for strategy in [PushStrategy::Auto, PushStrategy::Switch] {
+        for strategy in [DeployStrategy::Auto, DeployStrategy::Switch] {
             let (mut metadata, target, store_path) = make_host("ferrum", None, policy.clone());
             metadata.system_type = SystemType::Darwin;
 

@@ -6,7 +6,7 @@ use crate::backends::nix::MockNixBackend;
 use crate::backends::reboot::{MockRebootBackend, RebootReason};
 
 /// Sets the harness up so one step fails
-type BreakStep = fn(&mut PushHarness);
+type BreakStep = fn(&mut DeployHarness);
 
 fn failed_events(run: &HarnessRun) -> Vec<&String> {
     run.events
@@ -17,7 +17,7 @@ fn failed_events(run: &HarnessRun) -> Vec<&String> {
 
 #[tokio::test]
 async fn test_deploy_reports_each_step_in_order() {
-    let harness = PushHarness::new();
+    let harness = DeployHarness::new();
     let mut host = kubernetes_node("samarium");
     host.reboot_policy = RebootPolicy::Always;
 
@@ -58,7 +58,7 @@ async fn test_failed_step_reports_its_reason_and_never_finishes() {
     ];
 
     for (step, configure) in cases {
-        let mut harness = PushHarness::new();
+        let mut harness = DeployHarness::new();
         configure(&mut harness);
 
         let run = harness.run(vec![kubernetes_node("cerium")]).await;
@@ -82,8 +82,8 @@ async fn test_failed_step_reports_its_reason_and_never_finishes() {
 
 #[tokio::test]
 async fn test_blocked_host_reports_why_it_was_blocked() {
-    let mut harness = PushHarness::new();
-    harness.config.strategy = PushStrategy::Switch;
+    let mut harness = DeployHarness::new();
+    harness.config.strategy = DeployStrategy::Switch;
     harness.reboot_backend = MockRebootBackend::new().with_reboot_required(HashMap::from([(
         "neodymium".to_string(),
         RebootReason::KernelChanged {
@@ -103,7 +103,7 @@ async fn test_blocked_host_reports_why_it_was_blocked() {
 
 #[tokio::test]
 async fn test_hook_failures_are_not_reported_as_failed_steps() {
-    let mut harness = PushHarness::new();
+    let mut harness = DeployHarness::new();
     harness.hook_backend = Arc::new(
         crate::backends::hook::MockHookBackend::new()
             .with_local_failures(vec!["kubectl drain ${SNOW_HOSTNAME}".to_string()]),
@@ -121,7 +121,7 @@ async fn test_hook_failures_are_not_reported_as_failed_steps() {
 
 #[tokio::test]
 async fn test_failed_post_reboot_hook_leaves_the_reboot_finished() {
-    let mut harness = PushHarness::new();
+    let mut harness = DeployHarness::new();
     harness.hook_backend = Arc::new(
         crate::backends::hook::MockHookBackend::new().with_local_failures(vec![
             "kubectl wait --for=condition=Ready node/${SNOW_HOSTNAME}".to_string(),
@@ -143,7 +143,7 @@ async fn test_failed_post_reboot_hook_leaves_the_reboot_finished() {
 
 #[tokio::test]
 async fn test_failed_reboot_reports_the_reboot_error_itself() {
-    let mut harness = PushHarness::new();
+    let mut harness = DeployHarness::new();
     harness.reboot_backend =
         MockRebootBackend::new().with_reboot_failures(vec!["boron.example.com".to_string()]);
     let mut host = kubernetes_node("boron");
@@ -166,7 +166,7 @@ async fn test_failed_reboot_reports_the_reboot_error_itself() {
 
 #[tokio::test]
 async fn test_unchanged_host_stops_after_its_check() {
-    let mut harness = PushHarness::new();
+    let mut harness = DeployHarness::new();
     harness.deployer = MockDeployBackend::new().with_host_systems(HashMap::from([(
         "sodium.example.com".to_string(),
         HostSystems::both(mock_built_system("sodium")),
@@ -181,7 +181,7 @@ async fn test_unchanged_host_stops_after_its_check() {
 
 #[tokio::test]
 async fn test_redeploy_skips_the_check_step() {
-    let mut harness = PushHarness::new();
+    let mut harness = DeployHarness::new();
     harness.config.redeploy = true;
 
     let run = harness.run(vec![kubernetes_node("sodium")]).await;
@@ -193,7 +193,7 @@ async fn test_redeploy_skips_the_check_step() {
 
 #[tokio::test]
 async fn test_failed_post_deploy_hook_is_not_a_failed_step() {
-    let mut harness = PushHarness::new();
+    let mut harness = DeployHarness::new();
     harness.hook_backend = Arc::new(
         crate::backends::hook::MockHookBackend::new()
             .with_local_failures(vec!["kubectl uncordon ${SNOW_HOSTNAME}".to_string()]),
@@ -211,7 +211,7 @@ async fn test_failed_post_deploy_hook_is_not_a_failed_step() {
 
 #[tokio::test]
 async fn test_done_carries_each_hosts_final_result() {
-    let mut harness = PushHarness::new();
+    let mut harness = DeployHarness::new();
     harness.deployer = MockDeployBackend::new()
         .with_copy_failures(vec!["cerium.example.com".to_string()])
         .with_host_systems(HashMap::from([(

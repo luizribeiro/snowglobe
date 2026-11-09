@@ -3,9 +3,9 @@ use crate::process::OutputMode;
 
 /// Configuration for push operations
 #[derive(Debug, Clone)]
-pub struct PushConfiguration {
+pub struct DeployConfiguration {
     /// Push strategy (auto, switch, boot, test, dry-run)
-    pub strategy: PushStrategy,
+    pub strategy: DeployStrategy,
     /// Force deployment even when reboot is detected in switch mode
     pub force: bool,
     /// Maximum number of parallel deployments within a phase
@@ -22,10 +22,10 @@ pub struct PushConfiguration {
     pub redeploy: bool,
 }
 
-impl Default for PushConfiguration {
+impl Default for DeployConfiguration {
     fn default() -> Self {
         Self {
-            strategy: PushStrategy::Auto,
+            strategy: DeployStrategy::Auto,
             force: false,
             concurrency: 3,
             ignore_phases: false,
@@ -39,7 +39,7 @@ impl Default for PushConfiguration {
 
 /// Push deployment strategy requested by the user
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PushStrategy {
+pub enum DeployStrategy {
     /// Auto mode - detect reboot need and choose appropriate activation mode
     Auto,
     /// Switch now, blocking hosts that need a reboot instead of rebooting them; force switches them anyway and ignores reboot policies
@@ -52,7 +52,7 @@ pub enum PushStrategy {
     DryRun,
 }
 
-impl PushStrategy {
+impl DeployStrategy {
     /// The mode every host activates in, or None when it depends on the host
     pub fn fixed_activation_mode(self) -> Option<ActivationMode> {
         match self {

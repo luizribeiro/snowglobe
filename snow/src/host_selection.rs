@@ -49,7 +49,7 @@ impl HostSelectionArgs {
         self.phase
             .iter()
             .chain(&self.phases)
-            .any(|phase| phase.trim() == snowlib::push::NEVER)
+            .any(|phase| phase.trim() == snowlib::deploy::NEVER)
     }
 
     pub async fn resolve(
@@ -102,7 +102,7 @@ impl HostSelectionArgs {
 fn excluding_never_phase(filter: Option<&str>) -> String {
     let outside_never = format!(
         r#"(config.snowglobe.deploy.phase or null) != "{}""#,
-        snowlib::push::NEVER
+        snowlib::deploy::NEVER
     );
     match filter {
         Some(filter) => format!("config: {outside_never} && ({filter}) config"),

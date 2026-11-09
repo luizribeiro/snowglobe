@@ -79,7 +79,7 @@ fn assert_skipped_after(run: &HarnessRun, hostname: &str, failed: &str) {
 
 #[tokio::test]
 async fn test_same_group_deploys_never_overlap() {
-    let mut harness = PushHarness::new();
+    let mut harness = DeployHarness::new();
     harness.hook_backend = Arc::new(hooks_taking(Duration::from_millis(30)));
 
     let run = harness
@@ -109,7 +109,7 @@ async fn test_same_group_deploys_never_overlap() {
 
 #[tokio::test]
 async fn test_different_groups_and_ungrouped_hosts_overlap() {
-    let mut harness = PushHarness::new();
+    let mut harness = DeployHarness::new();
     harness.hook_backend = Arc::new(hooks_taking(Duration::from_millis(30)));
 
     let run = harness
@@ -137,7 +137,7 @@ async fn test_different_groups_and_ungrouped_hosts_overlap() {
 
 #[tokio::test]
 async fn test_unchanged_host_never_takes_the_group_slot() {
-    let mut harness = PushHarness::new();
+    let mut harness = DeployHarness::new();
     harness.hook_backend = Arc::new(hooks_taking(Duration::from_millis(30)));
     harness.deployer = MockDeployBackend::new().with_host_systems(HashMap::from([(
         "neodymium.example.com".to_string(),
@@ -162,7 +162,7 @@ async fn test_unchanged_host_never_takes_the_group_slot() {
 
 #[tokio::test]
 async fn test_failed_deploy_skips_the_rest_of_its_group_only() {
-    let mut harness = PushHarness::new();
+    let mut harness = DeployHarness::new();
     harness.hook_backend = Arc::new(
         hooks_taking(Duration::from_millis(30))
             .with_local_failures(vec!["--simulate-failure".to_string()]),
@@ -192,7 +192,7 @@ async fn test_failed_deploy_skips_the_rest_of_its_group_only() {
 
 #[tokio::test]
 async fn test_failure_before_deploy_halts_group_before_on_failure_hooks_finish() {
-    let mut harness = PushHarness::new();
+    let mut harness = DeployHarness::new();
     // on-failure hooks of the failed build outlast the other members' builds,
     // so they would start deploying if the halt waited for those hooks
     harness.hook_backend = Arc::new(hooks_taking(Duration::from_millis(80)));
@@ -220,7 +220,7 @@ async fn test_waiting_for_the_group_does_not_consume_hook_timeouts() {
     use crate::backends::hook::SystemHookBackend;
     use crate::hooks::{HookConfig, HookLocation};
 
-    let mut harness = PushHarness::new();
+    let mut harness = DeployHarness::new();
     harness.real_hook_backend = Some(Arc::new(SystemHookBackend::new(
         None,
         crate::process::OutputMode::Capture,

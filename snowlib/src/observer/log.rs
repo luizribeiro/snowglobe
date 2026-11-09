@@ -1,7 +1,7 @@
 //! Writes each host's progress to the log
 
-use super::{HostEvent, PushObserver};
-use crate::push::{HostDeploymentResult, PhaseResult, PipelineStep};
+use super::{DeployObserver, HostEvent};
+use crate::deploy::{HostDeploymentResult, PhaseResult, PipelineStep};
 use parking_lot::Mutex;
 use std::collections::HashMap;
 use std::time::Instant;
@@ -69,7 +69,7 @@ fn phase_line(phase: &str, result: Option<&PhaseResult>) -> String {
     }
 }
 
-impl PushObserver for LogObserver {
+impl DeployObserver for LogObserver {
     fn on_host_event(&self, hostname: &str, event: &HostEvent) {
         if let Some(line) = self.line(hostname, event, Instant::now()) {
             tracing::info!("{line}");

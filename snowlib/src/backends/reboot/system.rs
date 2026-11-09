@@ -590,7 +590,7 @@ esac
     }
 
     #[tokio::test]
-    async fn test_hung_probe_fails_instead_of_blocking_the_push() {
+    async fn test_hung_probe_fails_instead_of_blocking_the_deploy() {
         let host = FakeHost::new("exit 0");
         std::fs::write(host.state.path().join("hang_on"), "boot_id").unwrap();
 

@@ -46,17 +46,17 @@ fn create_nixos_host_metadata(name: &str, fqdn: &str) -> HostMetadata {
 }
 
 #[tokio::test]
-async fn test_push_profile_update_for_switch_mode() {
+async fn test_deploy_profile_update_for_switch_mode() {
     let (flake, nix_backend, deployer, reboot_detector, observer) = create_profile_test_backends();
 
     let hosts = vec![create_nixos_host_metadata(
         "test-host",
         "test-host.example.com",
     )];
-    let config = create_push_config(PushStrategy::Switch, 1);
+    let config = create_deploy_config(DeployStrategy::Switch, 1);
 
     let results = {
-        let push_ctx = PushContext::new(
+        let deploy_ctx = DeployContext::new(
             &flake,
             &nix_backend,
             &deployer,
@@ -65,7 +65,7 @@ async fn test_push_profile_update_for_switch_mode() {
             &observer,
             None,
         );
-        push(&push_ctx, hosts).await
+        deploy(&deploy_ctx, hosts).await
     }
     .unwrap();
 
@@ -90,17 +90,17 @@ async fn test_push_profile_update_for_switch_mode() {
 }
 
 #[tokio::test]
-async fn test_push_profile_update_skipped_for_test_mode() {
+async fn test_deploy_profile_update_skipped_for_test_mode() {
     let (flake, nix_backend, deployer, reboot_detector, observer) = create_profile_test_backends();
 
     let hosts = vec![create_nixos_host_metadata(
         "test-host",
         "test-host.example.com",
     )];
-    let config = create_push_config(PushStrategy::Test, 1);
+    let config = create_deploy_config(DeployStrategy::Test, 1);
 
     let results = {
-        let push_ctx = PushContext::new(
+        let deploy_ctx = DeployContext::new(
             &flake,
             &nix_backend,
             &deployer,
@@ -109,7 +109,7 @@ async fn test_push_profile_update_skipped_for_test_mode() {
             &observer,
             None,
         );
-        push(&push_ctx, hosts).await
+        deploy(&deploy_ctx, hosts).await
     }
     .unwrap();
 
@@ -131,7 +131,7 @@ async fn test_push_profile_update_skipped_for_test_mode() {
 }
 
 #[tokio::test]
-async fn test_push_profile_update_multiple_hosts() {
+async fn test_deploy_profile_update_multiple_hosts() {
     let (flake, nix_backend, deployer, reboot_detector, observer) = create_profile_test_backends();
 
     let hosts = vec![
@@ -139,10 +139,10 @@ async fn test_push_profile_update_multiple_hosts() {
         create_nixos_host_metadata("host2", "host2.example.com"),
         create_nixos_host_metadata("host3", "host3.example.com"),
     ];
-    let config = create_push_config(PushStrategy::Switch, 3);
+    let config = create_deploy_config(DeployStrategy::Switch, 3);
 
     let results = {
-        let push_ctx = PushContext::new(
+        let deploy_ctx = DeployContext::new(
             &flake,
             &nix_backend,
             &deployer,
@@ -151,7 +151,7 @@ async fn test_push_profile_update_multiple_hosts() {
             &observer,
             None,
         );
-        push(&push_ctx, hosts).await
+        deploy(&deploy_ctx, hosts).await
     }
     .unwrap();
 

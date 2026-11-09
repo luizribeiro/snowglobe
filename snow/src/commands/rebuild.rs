@@ -376,7 +376,7 @@ mod tests {
     }
 
     #[test]
-    fn test_endings_read_as_push_reports_a_host() {
+    fn test_endings_read_as_deploy_reports_a_host() {
         console::set_colors_enabled(false);
         let took = Duration::from_secs(41);
         let line = |ending: Ending| ending.line("boron", took);

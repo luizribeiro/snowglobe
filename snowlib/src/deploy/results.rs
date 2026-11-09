@@ -8,7 +8,7 @@ use std::time::Duration;
 
 /// A push deployment plan for a single host
 #[derive(Debug, Clone)]
-pub struct PushPlan {
+pub struct DeployPlan {
     pub metadata: HostMetadata,
     pub target: DeployTarget,
     pub store_path: StorePath,
@@ -163,12 +163,12 @@ pub struct SkippedPhase {
 
 /// Result of pushing multiple hosts across multiple phases
 #[derive(Debug)]
-pub struct PushResults {
+pub struct DeployResults {
     pub phases: Vec<PhaseResult>,
     pub skipped_phases: Vec<SkippedPhase>,
 }
 
-impl PushResults {
+impl DeployResults {
     pub fn success_count(&self) -> usize {
         self.phases.iter().map(|p| p.success_count()).sum()
     }
@@ -235,8 +235,8 @@ mod tests {
         }
     }
 
-    fn p3_results(hosts: Vec<HostDeploymentResult>, skipped: Vec<SkippedPhase>) -> PushResults {
-        PushResults {
+    fn p3_results(hosts: Vec<HostDeploymentResult>, skipped: Vec<SkippedPhase>) -> DeployResults {
+        DeployResults {
             phases: vec![PhaseResult {
                 phase: "p3".to_string(),
                 duration: Duration::ZERO,
@@ -278,7 +278,7 @@ mod tests {
     }
 
     #[test]
-    fn test_optional_failures_neither_block_the_phase_nor_fail_the_push() {
+    fn test_optional_failures_neither_block_the_phase_nor_fail_the_deploy() {
         let curium = HostDeploymentResult {
             optional: true,
             ..host("curium", Some(PipelineStep::Copy))

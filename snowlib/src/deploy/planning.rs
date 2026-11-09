@@ -10,8 +10,8 @@ use crate::host::HostMetadata;
 use crate::nix::{ActivationMode, StorePath, SystemType};
 use crate::reboot::RebootPolicy;
 
-use super::config::PushStrategy;
-use super::results::{BlockedHost, PushPlan};
+use super::config::DeployStrategy;
+use super::results::{BlockedHost, DeployPlan};
 
 /// Strategy for handling a host deployment
 enum ActivationStrategy {
@@ -33,7 +33,7 @@ async fn determine_activation_strategy(
     target: &DeployTarget,
     store_path: &StorePath,
     reboot_backend: &dyn RebootBackend,
-    strategy: PushStrategy,
+    strategy: DeployStrategy,
     force: bool,
 ) -> Result<ActivationStrategy> {
     if let Some(mode) = strategy.fixed_activation_mode() {
@@ -45,7 +45,7 @@ async fn determine_activation_strategy(
         return Ok(ActivationStrategy::without_reboot(ActivationMode::Switch));
     }
     match strategy {
-        PushStrategy::Switch => {
+        DeployStrategy::Switch => {
             handle_switch_mode(metadata, target, store_path, reboot_backend, force).await
         }
         _ => handle_auto_mode(metadata, target, store_path, reboot_backend).await,
@@ -143,9 +143,9 @@ async fn handle_auto_mode(
 pub async fn create_deployment_plans(
     hosts: Vec<(HostMetadata, DeployTarget, StorePath)>,
     reboot_backend: &dyn RebootBackend,
-    strategy: PushStrategy,
+    strategy: DeployStrategy,
     force: bool,
-) -> Result<(Vec<PushPlan>, Vec<BlockedHost>)> {
+) -> Result<(Vec<DeployPlan>, Vec<BlockedHost>)> {
     let mut plans = Vec::new();
     let mut blocked = Vec::new();
 
@@ -161,7 +161,7 @@ pub async fn create_deployment_plans(
         .await?
         {
             ActivationStrategy::Deploy(activation_mode, reboot_check) => {
-                plans.push(PushPlan {
+                plans.push(DeployPlan {
                     metadata,
                     target,
                     store_path,

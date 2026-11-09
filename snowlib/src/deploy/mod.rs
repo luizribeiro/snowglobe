@@ -1,6 +1,6 @@
 //! Push deployment orchestration
 //!
-//! This module provides the main `push()` function for deploying NixOS configurations
+//! This module provides the main `deploy()` function for deploying NixOS configurations
 //! to remote hosts. The deployment uses a parallel-per-host execution model where
 //! each host runs through all steps independently:
 //!
@@ -25,13 +25,13 @@ mod results;
 mod serial;
 
 // Re-export public types
-pub use config::{PushConfiguration, PushStrategy};
-pub use context::PushContext;
+pub use config::{DeployConfiguration, DeployStrategy};
+pub use context::DeployContext;
 pub use hooks::HookExecutor;
 pub(crate) use phase::check_phase;
 pub use phase::{is_name_char, ALL_HOSTS, NEVER, UNPHASED};
 pub use results::{
-    BlockedHost, HostDeploymentResult, PhaseResult, PipelineStep, PushPlan, PushResults,
+    BlockedHost, DeployPlan, DeployResults, HostDeploymentResult, PhaseResult, PipelineStep,
     SkippedPhase,
 };
 
@@ -81,13 +81,13 @@ fn skip_remaining_phases(
 ///
 /// # Arguments
 ///
-/// - `push_ctx`: Push context containing flake, backends, configuration, and observer
+/// - `deploy_ctx`: Push context containing flake, backends, configuration, and observer
 /// - `hosts`: List of hosts to deploy
 ///
 /// # Example
 ///
 /// ```no_run
-/// use snowlib::{push, PushConfiguration, PushContext, Flake, SystemNixBackend, SshDeployBackend, SystemRebootBackend, HostMetadata};
+/// use snowlib::{deploy, DeployConfiguration, DeployContext, Flake, SystemNixBackend, SshDeployBackend, SystemRebootBackend, HostMetadata};
 /// use snowlib::observer::NoopObserver;
 ///
 /// # async fn example(hosts: Vec<HostMetadata>) -> snowlib::Result<()> {
@@ -95,20 +95,23 @@ fn skip_remaining_phases(
 /// let nix_backend = SystemNixBackend::new();
 /// let deploy_backend = SshDeployBackend::new();
 /// let reboot_backend = SystemRebootBackend::default();
-/// let config = PushConfiguration::default();
+/// let config = DeployConfiguration::default();
 /// let observer = NoopObserver;
-/// let push_ctx = PushContext::new(&flake, &nix_backend, &deploy_backend, &reboot_backend, &config, &observer, None);
+/// let deploy_ctx = DeployContext::new(&flake, &nix_backend, &deploy_backend, &reboot_backend, &config, &observer, None);
 ///
-/// let results = push(&push_ctx, hosts).await?;
+/// let results = deploy(&deploy_ctx, hosts).await?;
 /// # Ok(())
 /// # }
 /// ```
-pub async fn push(push_ctx: &PushContext<'_>, hosts: Vec<HostMetadata>) -> Result<PushResults> {
-    preflight::check_hosts_support_strategy(push_ctx, &hosts)?;
-    preflight::check_local_hooks(push_ctx, &hosts)?;
-    preflight::check_ssh_agent(push_ctx).await?;
+pub async fn deploy(
+    deploy_ctx: &DeployContext<'_>,
+    hosts: Vec<HostMetadata>,
+) -> Result<DeployResults> {
+    preflight::check_hosts_support_strategy(deploy_ctx, &hosts)?;
+    preflight::check_local_hooks(deploy_ctx, &hosts)?;
+    preflight::check_ssh_agent(deploy_ctx).await?;
 
-    let by_phase = group_by_phase(hosts, push_ctx.config.ignore_phases);
+    let by_phase = group_by_phase(hosts, deploy_ctx.config.ignore_phases);
     let phases = sorted_phases(&by_phase);
 
     let mut executed_phases = Vec::new();
@@ -119,14 +122,14 @@ pub async fn push(push_ctx: &PushContext<'_>, hosts: Vec<HostMetadata>) -> Resul
 
         let hostnames: Vec<String> = phase_hosts.iter().map(|h| h.name.clone()).collect();
 
-        push_ctx.observer.on_phase_start(phase, &hostnames);
+        deploy_ctx.observer.on_phase_start(phase, &hostnames);
 
         // Execute phase and notify observer (even on failure)
-        let phase_result = execute_phase(push_ctx, phase, phase_hosts).await;
+        let phase_result = execute_phase(deploy_ctx, phase, phase_hosts).await;
         let phase_passed = phase_result
             .as_ref()
             .is_ok_and(|pr| !pr.has_blocking_failure());
-        push_ctx
+        deploy_ctx
             .observer
             .on_phase_complete(phase, phase_result.as_ref().ok());
 
@@ -143,7 +146,7 @@ pub async fn push(push_ctx: &PushContext<'_>, hosts: Vec<HostMetadata>) -> Resul
         }
     }
 
-    Ok(PushResults {
+    Ok(DeployResults {
         phases: executed_phases,
         skipped_phases,
     })
@@ -155,7 +158,7 @@ pub async fn push(push_ctx: &PushContext<'_>, hosts: Vec<HostMetadata>) -> Resul
 /// all steps (build -> copy -> activate -> reboot). This allows hosts to progress
 /// at different rates - one host can be activating while another is still building.
 async fn execute_phase(
-    push_ctx: &PushContext<'_>,
+    deploy_ctx: &DeployContext<'_>,
     phase: &str,
     phase_hosts: &[HostMetadata],
 ) -> Result<PhaseResult> {
@@ -164,14 +167,14 @@ async fn execute_phase(
     let mut sorted_hosts = phase_hosts.to_vec();
     sorted_hosts.sort_by(|a, b| a.name.cmp(&b.name));
 
-    let scheduler = PhaseScheduler::new(push_ctx.config.concurrency, &sorted_hosts);
+    let scheduler = PhaseScheduler::new(deploy_ctx.config.concurrency, &sorted_hosts);
     let scheduler = &scheduler;
 
     let mut futures = FuturesUnordered::new();
 
     for host_metadata in sorted_hosts {
         futures.push(async move {
-            let result = execute_host_pipeline(push_ctx, &host_metadata, scheduler).await;
+            let result = execute_host_pipeline(deploy_ctx, &host_metadata, scheduler).await;
             // Backstop for errors that bypass the pipeline's failure handling
             if !result.as_ref().is_ok_and(|r| r.success) {
                 scheduler.halt_group_of(&host_metadata);

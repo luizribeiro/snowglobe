@@ -4,7 +4,7 @@ use crate::backends::deploy::DeployTarget;
 use crate::backends::hook::{HookBackend, HookResult};
 use crate::error::Result;
 use crate::hooks::{HookConfig, HookLocation, HookStage};
-use crate::observer::PushObserver;
+use crate::observer::DeployObserver;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
@@ -37,7 +37,7 @@ impl HookExecutor {
         stage: HookStage,
         target: Option<&DeployTarget>,
         env: &HashMap<String, String>,
-        observer: Option<&dyn PushObserver>,
+        observer: Option<&dyn DeployObserver>,
     ) -> Result<Vec<HookResult>> {
         let hooks = match self.hooks_by_host.get(hostname) {
             Some(hooks) => hooks,

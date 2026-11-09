@@ -9,6 +9,7 @@
 
 pub mod backends;
 pub mod bootstrap;
+pub mod deploy;
 pub mod error;
 pub mod hooks;
 pub mod host;
@@ -16,7 +17,6 @@ pub mod nix;
 pub mod observer;
 pub mod plan;
 pub mod process;
-pub mod push;
 pub mod reboot;
 mod ssh_options;
 pub mod sudo;
@@ -39,16 +39,16 @@ pub use backends::reboot::{
 };
 pub use backends::sops::{SopsBackend, SopsUpdateResult, SystemSopsBackend};
 pub use bootstrap::BootstrapConfig;
+pub use deploy::{
+    deploy, phases, DeployConfiguration, DeployContext, DeployResults, DeployStrategy,
+    HookExecutor, HostDeploymentResult, PhaseResult, PipelineStep, SkippedPhase,
+};
 pub use error::{BootstrapError, ProvisionerError, Result};
 pub use hooks::{HookConfig, HookLocation, HookStage};
 pub use host::{get_hostname, Host, HostMetadata};
 pub use nix::{ActivationMode, Flake, StorePath, SystemType};
-pub use observer::{HostEvent, LogObserver, PushObserver};
+pub use observer::{DeployObserver, HostEvent, LogObserver};
 pub use process::OutputMode;
-pub use push::{
-    phases, push, HookExecutor, HostDeploymentResult, PhaseResult, PipelineStep, PushConfiguration,
-    PushContext, PushResults, PushStrategy, SkippedPhase,
-};
 pub use reboot::RebootPolicy;
 pub use sudo::{Sudo, SudoPrompt, SudoTerminal};
 

@@ -9,7 +9,7 @@ use crate::hooks::{HookConfig, HookLocation, HookStage};
 // ============================================================================
 
 #[tokio::test]
-async fn test_push_with_pre_deploy_hooks() {
+async fn test_deploy_with_pre_deploy_hooks() {
     let flake = Flake::test_context();
     let nix_backend = MockNixBackend::new();
     let deployer = MockDeployBackend::new();
@@ -44,10 +44,10 @@ async fn test_push_with_pre_deploy_hooks() {
 
     let hook_executor = make_hook_executor(hook_backend.clone(), &hosts);
 
-    let config = create_push_config(PushStrategy::Switch, 1);
+    let config = create_deploy_config(DeployStrategy::Switch, 1);
 
     let results = {
-        let push_ctx = PushContext::new(
+        let deploy_ctx = DeployContext::new(
             &flake,
             &nix_backend,
             &deployer,
@@ -56,7 +56,7 @@ async fn test_push_with_pre_deploy_hooks() {
             &observer,
             Some(&hook_executor),
         );
-        push(&push_ctx, hosts).await
+        deploy(&deploy_ctx, hosts).await
     }
     .unwrap();
 
@@ -73,7 +73,7 @@ async fn test_push_with_pre_deploy_hooks() {
 }
 
 #[tokio::test]
-async fn test_push_with_post_deploy_hooks() {
+async fn test_deploy_with_post_deploy_hooks() {
     let flake = Flake::test_context();
     let nix_backend = MockNixBackend::new();
     let deployer = MockDeployBackend::new();
@@ -100,10 +100,10 @@ async fn test_push_with_post_deploy_hooks() {
 
     let hook_executor = make_hook_executor(hook_backend.clone(), &hosts);
 
-    let config = create_push_config(PushStrategy::Switch, 1);
+    let config = create_deploy_config(DeployStrategy::Switch, 1);
 
     let results = {
-        let push_ctx = PushContext::new(
+        let deploy_ctx = DeployContext::new(
             &flake,
             &nix_backend,
             &deployer,
@@ -112,7 +112,7 @@ async fn test_push_with_post_deploy_hooks() {
             &observer,
             Some(&hook_executor),
         );
-        push(&push_ctx, hosts).await
+        deploy(&deploy_ctx, hosts).await
     }
     .unwrap();
 
@@ -126,7 +126,7 @@ async fn test_push_with_post_deploy_hooks() {
 }
 
 #[tokio::test]
-async fn test_push_with_post_reboot_hooks() {
+async fn test_deploy_with_post_reboot_hooks() {
     let flake = Flake::test_context();
     let nix_backend = MockNixBackend::new();
     let deployer = MockDeployBackend::new();
@@ -150,10 +150,10 @@ async fn test_push_with_post_reboot_hooks() {
 
     let hook_executor = make_hook_executor(hook_backend.clone(), &hosts);
 
-    let config = create_push_config(PushStrategy::Switch, 1);
+    let config = create_deploy_config(DeployStrategy::Switch, 1);
 
     let results = {
-        let push_ctx = PushContext::new(
+        let deploy_ctx = DeployContext::new(
             &flake,
             &nix_backend,
             &deployer,
@@ -162,7 +162,7 @@ async fn test_push_with_post_reboot_hooks() {
             &observer,
             Some(&hook_executor),
         );
-        push(&push_ctx, hosts).await
+        deploy(&deploy_ctx, hosts).await
     }
     .unwrap();
 
@@ -182,7 +182,7 @@ async fn test_push_with_post_reboot_hooks() {
 }
 
 #[tokio::test]
-async fn test_push_post_reboot_hooks_not_executed_when_reboot_fails() {
+async fn test_deploy_post_reboot_hooks_not_executed_when_reboot_fails() {
     let flake = Flake::test_context();
     let nix_backend = MockNixBackend::new();
     let deployer = MockDeployBackend::new();
@@ -207,10 +207,10 @@ async fn test_push_post_reboot_hooks_not_executed_when_reboot_fails() {
 
     let hook_executor = make_hook_executor(hook_backend.clone(), &hosts);
 
-    let config = create_push_config(PushStrategy::Switch, 1);
+    let config = create_deploy_config(DeployStrategy::Switch, 1);
 
     let results = {
-        let push_ctx = PushContext::new(
+        let deploy_ctx = DeployContext::new(
             &flake,
             &nix_backend,
             &deployer,
@@ -219,7 +219,7 @@ async fn test_push_post_reboot_hooks_not_executed_when_reboot_fails() {
             &observer,
             Some(&hook_executor),
         );
-        push(&push_ctx, hosts).await
+        deploy(&deploy_ctx, hosts).await
     }
     .unwrap();
 
@@ -247,7 +247,7 @@ async fn test_push_post_reboot_hooks_not_executed_when_reboot_fails() {
 }
 
 #[tokio::test]
-async fn test_push_pre_deploy_hook_failure_aborts_deployment() {
+async fn test_deploy_pre_deploy_hook_failure_aborts_deployment() {
     let flake = Flake::test_context();
     let nix_backend = MockNixBackend::new();
     let deployer = MockDeployBackend::new();
@@ -275,10 +275,10 @@ async fn test_push_pre_deploy_hook_failure_aborts_deployment() {
 
     let hook_executor = make_hook_executor(hook_backend.clone(), &hosts);
 
-    let config = create_push_config(PushStrategy::Switch, 1);
+    let config = create_deploy_config(DeployStrategy::Switch, 1);
 
     let results = {
-        let push_ctx = PushContext::new(
+        let deploy_ctx = DeployContext::new(
             &flake,
             &nix_backend,
             &deployer,
@@ -287,7 +287,7 @@ async fn test_push_pre_deploy_hook_failure_aborts_deployment() {
             &observer,
             Some(&hook_executor),
         );
-        push(&push_ctx, hosts).await
+        deploy(&deploy_ctx, hosts).await
     }
     .unwrap();
 
@@ -306,7 +306,7 @@ async fn test_push_pre_deploy_hook_failure_aborts_deployment() {
 }
 
 #[tokio::test]
-async fn test_push_hook_failure_with_continue_on_failure() {
+async fn test_deploy_hook_failure_with_continue_on_failure() {
     let flake = Flake::test_context();
     let nix_backend = MockNixBackend::new();
     let deployer = MockDeployBackend::new();
@@ -337,10 +337,10 @@ async fn test_push_hook_failure_with_continue_on_failure() {
 
     let hook_executor = make_hook_executor(hook_backend.clone(), &hosts);
 
-    let config = create_push_config(PushStrategy::Switch, 1);
+    let config = create_deploy_config(DeployStrategy::Switch, 1);
 
     let results = {
-        let push_ctx = PushContext::new(
+        let deploy_ctx = DeployContext::new(
             &flake,
             &nix_backend,
             &deployer,
@@ -349,7 +349,7 @@ async fn test_push_hook_failure_with_continue_on_failure() {
             &observer,
             Some(&hook_executor),
         );
-        push(&push_ctx, hosts).await
+        deploy(&deploy_ctx, hosts).await
     }
     .unwrap();
 
@@ -360,7 +360,7 @@ async fn test_push_hook_failure_with_continue_on_failure() {
 }
 
 #[tokio::test]
-async fn test_push_on_failure_hooks_execute_when_build_fails() {
+async fn test_deploy_on_failure_hooks_execute_when_build_fails() {
     let flake = Flake::test_context();
     let nix_backend = MockNixBackend::new().with_build_failures(vec!["test-host".to_string()]);
     let deployer = MockDeployBackend::new();
@@ -389,10 +389,10 @@ async fn test_push_on_failure_hooks_execute_when_build_fails() {
 
     let hook_executor = make_hook_executor(hook_backend.clone(), &hosts);
 
-    let config = create_push_config(PushStrategy::Switch, 1);
+    let config = create_deploy_config(DeployStrategy::Switch, 1);
 
     let results = {
-        let push_ctx = PushContext::new(
+        let deploy_ctx = DeployContext::new(
             &flake,
             &nix_backend,
             &deployer,
@@ -401,7 +401,7 @@ async fn test_push_on_failure_hooks_execute_when_build_fails() {
             &observer,
             Some(&hook_executor),
         );
-        push(&push_ctx, hosts).await
+        deploy(&deploy_ctx, hosts).await
     }
     .unwrap();
 
@@ -420,7 +420,7 @@ async fn test_push_on_failure_hooks_execute_when_build_fails() {
 }
 
 #[tokio::test]
-async fn test_push_on_failure_hooks_execute_when_copy_fails() {
+async fn test_deploy_on_failure_hooks_execute_when_copy_fails() {
     let flake = Flake::test_context();
     let nix_backend = MockNixBackend::new();
     let deployer =
@@ -442,10 +442,10 @@ async fn test_push_on_failure_hooks_execute_when_copy_fails() {
 
     let hook_executor = make_hook_executor(hook_backend.clone(), &hosts);
 
-    let config = create_push_config(PushStrategy::Switch, 1);
+    let config = create_deploy_config(DeployStrategy::Switch, 1);
 
     let results = {
-        let push_ctx = PushContext::new(
+        let deploy_ctx = DeployContext::new(
             &flake,
             &nix_backend,
             &deployer,
@@ -454,7 +454,7 @@ async fn test_push_on_failure_hooks_execute_when_copy_fails() {
             &observer,
             Some(&hook_executor),
         );
-        push(&push_ctx, hosts).await
+        deploy(&deploy_ctx, hosts).await
     }
     .unwrap();
 
@@ -466,7 +466,7 @@ async fn test_push_on_failure_hooks_execute_when_copy_fails() {
 }
 
 #[tokio::test]
-async fn test_push_environment_variables_passed_to_hooks() {
+async fn test_deploy_environment_variables_passed_to_hooks() {
     let flake = Flake::test_context();
     let nix_backend = MockNixBackend::new();
     let deployer = MockDeployBackend::new();
@@ -493,10 +493,10 @@ async fn test_push_environment_variables_passed_to_hooks() {
 
     let hook_executor = make_hook_executor(hook_backend.clone(), &hosts);
 
-    let config = create_push_config(PushStrategy::Switch, 1);
+    let config = create_deploy_config(DeployStrategy::Switch, 1);
 
     let results = {
-        let push_ctx = PushContext::new(
+        let deploy_ctx = DeployContext::new(
             &flake,
             &nix_backend,
             &deployer,
@@ -505,7 +505,7 @@ async fn test_push_environment_variables_passed_to_hooks() {
             &observer,
             Some(&hook_executor),
         );
-        push(&push_ctx, hosts).await
+        deploy(&deploy_ctx, hosts).await
     }
     .unwrap();
 
@@ -517,7 +517,7 @@ async fn test_push_environment_variables_passed_to_hooks() {
 }
 
 #[tokio::test]
-async fn test_push_hooks_execute_in_parallel_for_multiple_hosts() {
+async fn test_deploy_hooks_execute_in_parallel_for_multiple_hosts() {
     let flake = Flake::test_context();
     let nix_backend = MockNixBackend::new();
     let deployer = MockDeployBackend::new();
@@ -555,10 +555,10 @@ async fn test_push_hooks_execute_in_parallel_for_multiple_hosts() {
 
     let hook_executor = make_hook_executor(hook_backend.clone(), &hosts);
 
-    let config = create_push_config(PushStrategy::Switch, 2);
+    let config = create_deploy_config(DeployStrategy::Switch, 2);
 
     let results = {
-        let push_ctx = PushContext::new(
+        let deploy_ctx = DeployContext::new(
             &flake,
             &nix_backend,
             &deployer,
@@ -567,7 +567,7 @@ async fn test_push_hooks_execute_in_parallel_for_multiple_hosts() {
             &observer,
             Some(&hook_executor),
         );
-        push(&push_ctx, hosts).await
+        deploy(&deploy_ctx, hosts).await
     }
     .unwrap();
 
@@ -580,7 +580,7 @@ async fn test_push_hooks_execute_in_parallel_for_multiple_hosts() {
 }
 
 #[tokio::test]
-async fn test_push_hook_failure_in_one_host_doesnt_affect_others() {
+async fn test_deploy_hook_failure_in_one_host_doesnt_affect_others() {
     let flake = Flake::test_context();
     let nix_backend = MockNixBackend::new();
     let deployer = MockDeployBackend::new();
@@ -620,10 +620,10 @@ async fn test_push_hook_failure_in_one_host_doesnt_affect_others() {
 
     let hook_executor = make_hook_executor(hook_backend.clone(), &hosts);
 
-    let config = create_push_config(PushStrategy::Switch, 2);
+    let config = create_deploy_config(DeployStrategy::Switch, 2);
 
     let results = {
-        let push_ctx = PushContext::new(
+        let deploy_ctx = DeployContext::new(
             &flake,
             &nix_backend,
             &deployer,
@@ -632,7 +632,7 @@ async fn test_push_hook_failure_in_one_host_doesnt_affect_others() {
             &observer,
             Some(&hook_executor),
         );
-        push(&push_ctx, hosts).await
+        deploy(&deploy_ctx, hosts).await
     }
     .unwrap();
 
@@ -656,7 +656,7 @@ async fn test_push_hook_failure_in_one_host_doesnt_affect_others() {
 }
 
 #[tokio::test]
-async fn test_push_hook_with_explicit_environment() {
+async fn test_deploy_hook_with_explicit_environment() {
     let flake = Flake::test_context();
     let nix_backend = MockNixBackend::new();
     let deployer = MockDeployBackend::new();
@@ -697,13 +697,13 @@ async fn test_push_hook_with_explicit_environment() {
 
     let hook_executor = make_hook_executor(hook_backend.clone(), &hosts);
 
-    let config = PushConfiguration {
+    let config = DeployConfiguration {
         allow_reboot: false,
-        ..create_push_config(PushStrategy::Switch, 1)
+        ..create_deploy_config(DeployStrategy::Switch, 1)
     };
 
     let _results = {
-        let push_ctx = PushContext::new(
+        let deploy_ctx = DeployContext::new(
             &flake,
             &nix_backend,
             &deployer,
@@ -712,7 +712,7 @@ async fn test_push_hook_with_explicit_environment() {
             &observer,
             Some(&hook_executor),
         );
-        push(&push_ctx, hosts).await
+        deploy(&deploy_ctx, hosts).await
     }
     .unwrap();
 
@@ -787,10 +787,10 @@ async fn test_full_pipeline_all_hook_stages_execute_in_order() {
 
     let hook_executor = make_hook_executor(hook_backend.clone(), &hosts);
 
-    let config = create_push_config(PushStrategy::Switch, 1);
+    let config = create_deploy_config(DeployStrategy::Switch, 1);
 
     let results = {
-        let push_ctx = PushContext::new(
+        let deploy_ctx = DeployContext::new(
             &flake,
             &nix_backend,
             &deployer,
@@ -799,7 +799,7 @@ async fn test_full_pipeline_all_hook_stages_execute_in_order() {
             &observer,
             Some(&hook_executor),
         );
-        push(&push_ctx, hosts).await
+        deploy(&deploy_ctx, hosts).await
     }
     .unwrap();
 
@@ -874,12 +874,12 @@ async fn test_pipeline_environment_variables_propagated_correctly() {
     for host in &hosts {
         hooks_by_host.insert(host.name.clone(), host.hooks.clone());
     }
-    let hook_executor = crate::push::hooks::HookExecutor::new(real_hook_backend, hooks_by_host);
+    let hook_executor = crate::deploy::hooks::HookExecutor::new(real_hook_backend, hooks_by_host);
 
-    let config = create_push_config(PushStrategy::Switch, 1);
+    let config = create_deploy_config(DeployStrategy::Switch, 1);
 
     let results = {
-        let push_ctx = PushContext::new(
+        let deploy_ctx = DeployContext::new(
             &flake,
             &nix_backend,
             &deployer,
@@ -888,7 +888,7 @@ async fn test_pipeline_environment_variables_propagated_correctly() {
             &observer,
             Some(&hook_executor),
         );
-        push(&push_ctx, hosts).await
+        deploy(&deploy_ctx, hosts).await
     }
     .unwrap();
 
@@ -954,13 +954,13 @@ async fn test_pipeline_hooks_execute_by_priority_order() {
 
     let hook_executor = make_hook_executor(hook_backend.clone(), &hosts);
 
-    let config = PushConfiguration {
+    let config = DeployConfiguration {
         allow_reboot: false,
-        ..create_push_config(PushStrategy::Switch, 1)
+        ..create_deploy_config(DeployStrategy::Switch, 1)
     };
 
     let results = {
-        let push_ctx = PushContext::new(
+        let deploy_ctx = DeployContext::new(
             &flake,
             &nix_backend,
             &deployer,
@@ -969,7 +969,7 @@ async fn test_pipeline_hooks_execute_by_priority_order() {
             &observer,
             Some(&hook_executor),
         );
-        push(&push_ctx, hosts).await
+        deploy(&deploy_ctx, hosts).await
     }
     .unwrap();
 
@@ -1044,13 +1044,13 @@ async fn test_post_reboot_hooks_not_executed_when_no_reboot_needed() {
 
     let hook_executor = make_hook_executor(hook_backend.clone(), &hosts);
 
-    let config = PushConfiguration {
+    let config = DeployConfiguration {
         allow_reboot: false,
-        ..create_push_config(PushStrategy::Switch, 1)
+        ..create_deploy_config(DeployStrategy::Switch, 1)
     };
 
     let results = {
-        let push_ctx = PushContext::new(
+        let deploy_ctx = DeployContext::new(
             &flake,
             &nix_backend,
             &deployer,
@@ -1059,7 +1059,7 @@ async fn test_post_reboot_hooks_not_executed_when_no_reboot_needed() {
             &observer,
             Some(&hook_executor),
         );
-        push(&push_ctx, hosts).await
+        deploy(&deploy_ctx, hosts).await
     }
     .unwrap();
 
@@ -1139,13 +1139,13 @@ async fn test_hook_observer_callbacks_invoked_correctly() {
 
     let hook_executor = make_hook_executor(hook_backend.clone(), &hosts);
 
-    let config = PushConfiguration {
+    let config = DeployConfiguration {
         allow_reboot: false,
-        ..create_push_config(PushStrategy::Switch, 1)
+        ..create_deploy_config(DeployStrategy::Switch, 1)
     };
 
     let results = {
-        let push_ctx = PushContext::new(
+        let deploy_ctx = DeployContext::new(
             &flake,
             &nix_backend,
             &deployer,
@@ -1154,7 +1154,7 @@ async fn test_hook_observer_callbacks_invoked_correctly() {
             &observer,
             Some(&hook_executor),
         );
-        push(&push_ctx, hosts).await
+        deploy(&deploy_ctx, hosts).await
     }
     .unwrap();
 
@@ -1272,13 +1272,13 @@ async fn test_hook_observer_callbacks_on_failure() {
 
     let hook_executor = make_hook_executor(hook_backend.clone(), &hosts);
 
-    let config = PushConfiguration {
+    let config = DeployConfiguration {
         allow_reboot: false,
-        ..create_push_config(PushStrategy::Switch, 1)
+        ..create_deploy_config(DeployStrategy::Switch, 1)
     };
 
     let results = {
-        let push_ctx = PushContext::new(
+        let deploy_ctx = DeployContext::new(
             &flake,
             &nix_backend,
             &deployer,
@@ -1287,7 +1287,7 @@ async fn test_hook_observer_callbacks_on_failure() {
             &observer,
             Some(&hook_executor),
         );
-        push(&push_ctx, hosts).await
+        deploy(&deploy_ctx, hosts).await
     }
     .unwrap();
 

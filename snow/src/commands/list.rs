@@ -132,7 +132,7 @@ mod tests {
     }
 
     #[test]
-    fn test_json_has_each_hosts_push_settings() {
+    fn test_json_has_each_hosts_deploy_settings() {
         let argon = HostMetadata {
             system: Some("aarch64-linux".to_string()),
             phase: Some("p1".to_string()),
@@ -261,7 +261,7 @@ mod tests {
     }
 
     #[test]
-    fn test_list_selections_leave_out_the_never_phase_like_push() {
+    fn test_list_selections_leave_out_the_never_phase_like_deploy() {
         assert_eq!(listed_hosts(&["--tag", "web"]), ["argon", "boron"]);
         assert_eq!(
             listed_hosts(&["-e", "c: true"]),
@@ -270,7 +270,7 @@ mod tests {
     }
 
     #[test]
-    fn test_list_selects_the_never_phase_by_phase_or_name_like_push() {
+    fn test_list_selects_the_never_phase_by_phase_or_name_like_deploy() {
         assert_eq!(listed_hosts(&["--phases", "p2,never"]), ["boron", "curium"]);
         assert_eq!(listed_hosts(&["ferrum", "curium"]), ["ferrum", "curium"]);
     }
@@ -291,7 +291,7 @@ mod tests {
     }
 
     #[test]
-    fn test_list_json_shows_each_hosts_push_settings() {
+    fn test_list_json_shows_each_hosts_deploy_settings() {
         assert_eq!(
             listed_json(&[]),
             serde_json::json!([

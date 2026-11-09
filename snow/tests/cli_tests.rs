@@ -325,10 +325,10 @@ fn test_deploy_invalid_tag_name() {
 // --mock-fixture only exists in debug builds
 #[cfg(debug_assertions)]
 #[test]
-fn test_mock_push_keeps_stdout_for_the_report() {
+fn test_mock_deploy_keeps_stdout_for_the_report() {
     snow_cmd()
         .args(["deploy", "--switch", "--mock-fixture"])
-        .arg(fixtures_dir().join("push_scenarios/build_failure.json"))
+        .arg(fixtures_dir().join("deploy_scenarios/build_failure.json"))
         .assert()
         .failure()
         .stderr(predicate::str::contains("Using the mock deployer from"))
@@ -350,7 +350,7 @@ fn test_deploy_without_a_terminal_logs_each_step_to_stderr() {
     snow_cmd()
         .env("RUST_LOG", "snowlib=info")
         .args(["deploy", "--switch", "--quiet", "--mock-fixture"])
-        .arg(fixtures_dir().join("push_scenarios/build_failure.json"))
+        .arg(fixtures_dir().join("deploy_scenarios/build_failure.json"))
         .assert()
         .failure()
         .stderr(predicate::str::contains("nitrogen: build started"))

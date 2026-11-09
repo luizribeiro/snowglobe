@@ -2,8 +2,8 @@
 
 use std::path::Path;
 
-use super::config::PushStrategy;
-use super::context::PushContext;
+use super::config::DeployStrategy;
+use super::context::DeployContext;
 use crate::backends::deploy::check_mode_supported;
 use crate::error::DeployError;
 use crate::hooks::{find_store_paths, HookLocation};
@@ -11,11 +11,11 @@ use crate::host::HostMetadata;
 
 /// Fails before any host is touched if a local hook needs a path this machine lacks
 pub(super) fn check_local_hooks(
-    push_ctx: &PushContext<'_>,
+    deploy_ctx: &DeployContext<'_>,
     hosts: &[HostMetadata],
 ) -> Result<(), DeployError> {
     // A dry run runs no hooks
-    if push_ctx.config.strategy == PushStrategy::DryRun {
+    if deploy_ctx.config.strategy == DeployStrategy::DryRun {
         return Ok(());
     }
     hosts
@@ -25,10 +25,10 @@ pub(super) fn check_local_hooks(
 
 /// Fails before anything is built if a nix-darwin host can't activate as asked
 pub(super) fn check_hosts_support_strategy(
-    push_ctx: &PushContext<'_>,
+    deploy_ctx: &DeployContext<'_>,
     hosts: &[HostMetadata],
 ) -> Result<(), DeployError> {
-    let Some(mode) = push_ctx.config.strategy.fixed_activation_mode() else {
+    let Some(mode) = deploy_ctx.config.strategy.fixed_activation_mode() else {
         return Ok(());
     };
     check_mode_supported(
@@ -40,8 +40,8 @@ pub(super) fn check_hosts_support_strategy(
 }
 
 /// Fails before any host is touched if ssh would hang on the ssh-agent
-pub(super) async fn check_ssh_agent(push_ctx: &PushContext<'_>) -> crate::error::Result<()> {
-    push_ctx.deploy_backend.preflight().await
+pub(super) async fn check_ssh_agent(deploy_ctx: &DeployContext<'_>) -> crate::error::Result<()> {
+    deploy_ctx.deploy_backend.preflight().await
 }
 
 /// Fails on the first store path a local hook references that `exists` says is missing

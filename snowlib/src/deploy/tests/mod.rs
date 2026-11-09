@@ -2,7 +2,7 @@
 //!
 //! This module is split into focused test files:
 //! - planning_tests: Tests for create_deployment_plans and reboot policies
-//! - push_tests: Basic push() function tests
+//! - deploy_tests: Basic deploy() function tests
 //! - workflow_tests: Full workflow integration tests
 //! - profile_tests: Profile update tests
 //! - hook_tests: Hook integration tests
@@ -11,11 +11,11 @@
 //! - stage_order_tests: Order of planning, hooks, activation and reboot
 //! - unchanged_tests: Skipping hosts that already run the built system
 
+mod deploy_tests;
 mod hook_tests;
 mod host_event_tests;
 mod planning_tests;
 mod profile_tests;
-mod push_tests;
 mod serial_group_tests;
 mod stage_order_tests;
 mod unchanged_tests;
@@ -29,16 +29,16 @@ use crate::backends::nix::MockNixBackend;
 use crate::hooks::HookStage;
 use crate::host::HostMetadata;
 use crate::nix::{ActivationMode, Flake, StorePath, SystemType};
-use crate::observer::PushObserver;
+use crate::observer::DeployObserver;
 use crate::reboot::RebootPolicy;
 use std::sync::{Arc, Mutex};
 
-fn create_push_config(strategy: PushStrategy, concurrency: usize) -> PushConfiguration {
-    PushConfiguration {
+fn create_deploy_config(strategy: DeployStrategy, concurrency: usize) -> DeployConfiguration {
+    DeployConfiguration {
         strategy,
         concurrency,
         output_mode: crate::process::OutputMode::Capture,
-        ..PushConfiguration::default()
+        ..DeployConfiguration::default()
     }
 }
 
@@ -87,12 +87,12 @@ fn make_host(
 fn make_hook_executor(
     hook_backend: Arc<dyn crate::backends::hook::HookBackend>,
     hosts: &[HostMetadata],
-) -> crate::push::hooks::HookExecutor {
+) -> crate::deploy::hooks::HookExecutor {
     let mut hooks_by_host = std::collections::HashMap::new();
     for host in hosts {
         hooks_by_host.insert(host.name.clone(), host.hooks.clone());
     }
-    crate::push::hooks::HookExecutor::new(hook_backend, hooks_by_host)
+    crate::deploy::hooks::HookExecutor::new(hook_backend, hooks_by_host)
 }
 
 #[derive(Clone)]
@@ -155,7 +155,7 @@ fn step_event_name(hostname: &str, event: &crate::observer::HostEvent) -> Option
     }
 }
 
-impl PushObserver for TestObserver {
+impl DeployObserver for TestObserver {
     fn on_host_event(&self, hostname: &str, event: &crate::observer::HostEvent) {
         use crate::observer::HostEvent;
         match event {
@@ -220,9 +220,9 @@ impl PushObserver for TestObserver {
     }
 }
 
-/// Outcome of a push run through [`PushHarness`]
+/// Outcome of a push run through [`DeployHarness`]
 struct HarnessRun {
-    results: PushResults,
+    results: DeployResults,
     events: Vec<String>,
     /// Results reported through `HostEvent::Done`, in the order reported
     done: Vec<HostDeploymentResult>,
@@ -231,17 +231,17 @@ struct HarnessRun {
 }
 
 /// Runs `push` with mock backends, hooks and a recording observer
-struct PushHarness {
+struct DeployHarness {
     nix_backend: MockNixBackend,
     deployer: MockDeployBackend,
     reboot_backend: crate::backends::reboot::MockRebootBackend,
     hook_backend: Arc<crate::backends::hook::MockHookBackend>,
     /// Runs hooks for real instead of through `hook_backend`
     real_hook_backend: Option<Arc<dyn crate::backends::hook::HookBackend>>,
-    config: PushConfiguration,
+    config: DeployConfiguration,
 }
 
-impl PushHarness {
+impl DeployHarness {
     fn new() -> Self {
         Self {
             nix_backend: MockNixBackend::new(),
@@ -249,15 +249,15 @@ impl PushHarness {
             reboot_backend: crate::backends::reboot::MockRebootBackend::new(),
             hook_backend: Arc::new(crate::backends::hook::MockHookBackend::new()),
             real_hook_backend: None,
-            config: PushConfiguration {
+            config: DeployConfiguration {
                 output_mode: crate::process::OutputMode::Capture,
-                ..PushConfiguration::default()
+                ..DeployConfiguration::default()
             },
         }
     }
 
     async fn run(&self, hosts: Vec<HostMetadata>) -> HarnessRun {
-        let (results, observer) = self.run_push(hosts).await;
+        let (results, observer) = self.run_deploy(hosts).await;
         let done = observer.done.lock().unwrap().clone();
         let completed = observer.completed.lock().unwrap().clone();
         HarnessRun {
@@ -270,7 +270,7 @@ impl PushHarness {
     }
 
     /// The push's outcome, including an error, and what the observer saw
-    async fn run_push(&self, hosts: Vec<HostMetadata>) -> (Result<PushResults>, TestObserver) {
+    async fn run_deploy(&self, hosts: Vec<HostMetadata>) -> (Result<DeployResults>, TestObserver) {
         let flake = Flake::test_context();
         let observer = TestObserver::new();
         let hook_backend = self
@@ -278,7 +278,7 @@ impl PushHarness {
             .clone()
             .unwrap_or_else(|| self.hook_backend.clone());
         let hook_executor = make_hook_executor(hook_backend, &hosts);
-        let push_ctx = PushContext::new(
+        let deploy_ctx = DeployContext::new(
             &flake,
             &self.nix_backend,
             &self.deployer,
@@ -288,7 +288,7 @@ impl PushHarness {
             Some(&hook_executor),
         );
 
-        let results = push(&push_ctx, hosts).await;
+        let results = deploy(&deploy_ctx, hosts).await;
         (results, observer)
     }
 }
@@ -319,7 +319,7 @@ fn position(run: &HarnessRun, event: &str) -> usize {
         .unwrap_or_else(|| panic!("missing {}: {:?}", event, run.events))
 }
 
-/// Asserts each host reported `Done` once, with the result push() returned,
+/// Asserts each host reported `Done` once, with the result deploy() returned,
 /// and reported nothing after it
 fn assert_done_with_final_results(run: &HarnessRun, hosts: &[&str]) {
     assert_eq!(run.done.len(), hosts.len(), "{:?}", run.done);

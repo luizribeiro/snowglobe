@@ -99,7 +99,7 @@ pub fn build_filter_expression(
 fn validate_nix_identifier(s: &str) -> Result<String> {
     let sanitized: String = s
         .chars()
-        .filter(|c| snowlib::push::is_name_char(*c))
+        .filter(|c| snowlib::deploy::is_name_char(*c))
         .collect();
 
     if sanitized.is_empty() {

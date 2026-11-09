@@ -16,7 +16,7 @@ fn host_running(fqdn: &str, systems: HostSystems) -> MockDeployBackend {
 
 #[tokio::test]
 async fn test_unchanged_host_skips_hooks_activation_and_reboot() {
-    let mut harness = PushHarness::new();
+    let mut harness = DeployHarness::new();
     harness.deployer = host_running(
         "praseodymium.example.com",
         HostSystems::both(mock_built_system("praseodymium")),
@@ -56,7 +56,7 @@ async fn test_unchanged_host_skips_hooks_activation_and_reboot() {
 
 #[tokio::test]
 async fn test_host_booting_a_different_system_is_deployed() {
-    let mut harness = PushHarness::new();
+    let mut harness = DeployHarness::new();
     harness.deployer = host_running(
         "promethium.example.com",
         HostSystems {
@@ -80,7 +80,7 @@ async fn test_host_booting_a_different_system_is_deployed() {
 
 #[tokio::test]
 async fn test_host_with_unreadable_systems_is_deployed() {
-    let mut harness = PushHarness::new();
+    let mut harness = DeployHarness::new();
     harness.deployer =
         MockDeployBackend::new().with_host_systems_failures(vec!["argon.example.com".to_string()]);
 
@@ -100,7 +100,7 @@ async fn test_host_with_unreadable_systems_is_deployed() {
 
 #[tokio::test]
 async fn test_host_whose_check_times_out_fails_before_the_copy() {
-    let mut harness = PushHarness::new();
+    let mut harness = DeployHarness::new();
     harness.deployer =
         MockDeployBackend::new().with_host_systems_timeouts(vec!["curium.example.com".to_string()]);
 
@@ -127,7 +127,7 @@ async fn test_host_whose_check_times_out_fails_before_the_copy() {
 
 #[tokio::test]
 async fn test_only_unchanged_hosts_are_skipped_in_a_phase() {
-    let mut harness = PushHarness::new();
+    let mut harness = DeployHarness::new();
     harness.deployer = host_running(
         "boron.example.com",
         HostSystems::both(mock_built_system("boron")),
@@ -149,7 +149,7 @@ async fn test_only_unchanged_hosts_are_skipped_in_a_phase() {
 
 #[tokio::test]
 async fn test_redeploy_deploys_unchanged_host() {
-    let mut harness = PushHarness::new();
+    let mut harness = DeployHarness::new();
     harness.deployer = host_running(
         "krypton.example.com",
         HostSystems::both(mock_built_system("krypton")),

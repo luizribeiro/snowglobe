@@ -6,7 +6,7 @@
 use super::board::HostBoard;
 use super::styles::{header_style, line_style, SharedBoard};
 use parking_lot::Mutex;
-use snowlib::{HookStage, HostEvent, PhaseResult, PushObserver};
+use snowlib::{DeployObserver, HookStage, HostEvent, PhaseResult};
 use std::path::PathBuf;
 use std::time::Instant;
 use tracing::info_span;
@@ -38,7 +38,7 @@ impl CliObserver {
     }
 }
 
-impl PushObserver for CliObserver {
+impl DeployObserver for CliObserver {
     fn on_phase_start(&self, phase: &str, hosts: &[String]) {
         let board = HostBoard::new(phase, hosts, Instant::now())
             .among_other_phases(self.among_other_phases);
@@ -135,7 +135,7 @@ mod tests {
     }
 
     #[test]
-    fn test_default_phase_is_shown_as_push() {
+    fn test_default_phase_is_shown_as_deploy() {
         let observer = CliObserver::new(None, false);
 
         observer.on_phase_start("default", &hosts());

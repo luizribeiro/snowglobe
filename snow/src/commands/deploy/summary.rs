@@ -7,8 +7,8 @@
 use super::board::{format_elapsed, plural};
 use super::colors::style;
 use crate::marks;
+use snowlib::deploy::{ALL_HOSTS, UNPHASED};
 use snowlib::error::summary::{error_context, error_details, error_summary, truncate};
-use snowlib::push::{ALL_HOSTS, UNPHASED};
 use std::path::Path;
 
 /// Keeps the terminal output scannable; the log has every error in full
@@ -78,7 +78,7 @@ pub fn phase_overview(phases: &[(String, Vec<String>)]) -> String {
 
 /// What is left once every phase reported itself: skipped phases and the
 /// totals
-pub fn print_summary(results: &snowlib::PushResults) {
+pub fn print_summary(results: &snowlib::DeployResults) {
     print_skipped_phases(&results.skipped_phases);
     print_overall_summary(results);
     println!();
@@ -282,11 +282,11 @@ fn skipped_phase_report(skipped: &snowlib::SkippedPhase) -> String {
         .join("\n")
 }
 
-fn print_overall_summary(results: &snowlib::PushResults) {
+fn print_overall_summary(results: &snowlib::DeployResults) {
     println!("{}", overall_summary(results));
 }
 
-fn overall_summary(results: &snowlib::PushResults) -> String {
+fn overall_summary(results: &snowlib::DeployResults) -> String {
     let succeeded = results.success_count();
     let failed = results.failure_count();
     let skipped = results.skipped_count();
@@ -362,7 +362,8 @@ fn more_lines_hint(hidden: usize, log_file: Option<&Path>) -> String {
 mod tests {
     use super::phase_overview;
     use snowlib::{
-        ActivationMode, HostDeploymentResult, PhaseResult, PipelineStep, PushResults, SkippedPhase,
+        ActivationMode, DeployResults, HostDeploymentResult, PhaseResult, PipelineStep,
+        SkippedPhase,
     };
     use std::path::Path;
     use std::time::Duration;
@@ -389,7 +390,7 @@ mod tests {
     }
 
     #[test]
-    fn test_overview_of_a_push_without_phases_is_one_line() {
+    fn test_overview_of_a_deploy_without_phases_is_one_line() {
         console::set_colors_enabled(false);
         assert_eq!(
             phase_overview(&[phase("default", &["boron", "radon"])]),
@@ -498,7 +499,7 @@ mod tests {
 
     #[test]
     fn test_all_hosts_successful() {
-        let results = PushResults {
+        let results = DeployResults {
             phases: vec![PhaseResult {
                 phase: "default".to_string(),
                 duration: Duration::ZERO,
@@ -517,7 +518,7 @@ mod tests {
 
     #[test]
     fn test_partial_failure() {
-        let results = PushResults {
+        let results = DeployResults {
             phases: vec![PhaseResult {
                 phase: "production".to_string(),
                 duration: Duration::ZERO,
@@ -536,7 +537,7 @@ mod tests {
 
     #[test]
     fn test_skipped_phases() {
-        let results = PushResults {
+        let results = DeployResults {
             phases: vec![PhaseResult {
                 phase: "staging".to_string(),
                 duration: Duration::ZERO,
@@ -553,7 +554,7 @@ mod tests {
 
     #[test]
     fn test_multiple_phases() {
-        let results = PushResults {
+        let results = DeployResults {
             phases: vec![
                 PhaseResult {
                     phase: "staging".to_string(),
@@ -578,7 +579,7 @@ mod tests {
 
     #[test]
     fn test_activation_modes() {
-        let results = PushResults {
+        let results = DeployResults {
             phases: vec![PhaseResult {
                 phase: "default".to_string(),
                 duration: Duration::ZERO,
@@ -755,7 +756,7 @@ mod tests {
     }
 
     #[test]
-    fn test_phase_report_of_a_push_without_phases() {
+    fn test_phase_report_of_a_deploy_without_phases() {
         console::set_colors_enabled(false);
         for name in ["default", "_all"] {
             let phase = PhaseResult {
@@ -838,11 +839,11 @@ mod tests {
     #[test]
     fn test_overall_summary_pluralizes_deployed_hosts() {
         console::set_colors_enabled(false);
-        let one = PushResults {
+        let one = DeployResults {
             phases: vec![deployed_phase(&["sodium"])],
             skipped_phases: vec![],
         };
-        let three = PushResults {
+        let three = DeployResults {
             phases: vec![deployed_phase(&["boron", "cerium", "radon"])],
             skipped_phases: vec![],
         };
@@ -900,7 +901,7 @@ mod tests {
     #[test]
     fn test_overall_summary_says_which_failures_were_optional() {
         console::set_colors_enabled(false);
-        let pushed = |hosts: Vec<HostDeploymentResult>| PushResults {
+        let pushed = |hosts: Vec<HostDeploymentResult>| DeployResults {
             phases: vec![PhaseResult {
                 hosts,
                 ..deployed_phase(&[])
@@ -951,15 +952,15 @@ mod tests {
             phase: "p3".to_string(),
             hostnames: vec!["lanthanum".to_string(), "sodium".to_string()],
         }];
-        let failed_and_skipped = PushResults {
+        let failed_and_skipped = DeployResults {
             phases: vec![p2.clone()],
             skipped_phases: skipped_phases.clone(),
         };
-        let failed_only = PushResults {
+        let failed_only = DeployResults {
             phases: vec![p2],
             skipped_phases: vec![],
         };
-        let skipped_only = PushResults {
+        let skipped_only = DeployResults {
             phases: vec![deployed_phase(&["boron"])],
             skipped_phases,
         };
@@ -1027,7 +1028,7 @@ mod tests {
 
     #[test]
     fn test_error_at_different_steps() {
-        let results = PushResults {
+        let results = DeployResults {
             phases: vec![PhaseResult {
                 phase: "default".to_string(),
                 duration: Duration::ZERO,

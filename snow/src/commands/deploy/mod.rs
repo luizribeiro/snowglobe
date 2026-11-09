@@ -10,7 +10,7 @@ pub(super) use host_line::HostLine;
 pub(super) use summary::{failed_host, mode_label, success_line};
 
 use clap::Args;
-use snowlib::{Flake, PushStrategy, Result};
+use snowlib::{DeployStrategy, Flake, Result};
 use std::future::Future;
 use tracing_indicatif::span_ext::IndicatifSpanExt;
 
@@ -100,27 +100,27 @@ pub struct DeployArgs {
 
 impl DeployArgs {
     /// Determine the push strategy from flags
-    fn push_strategy(&self) -> PushStrategy {
+    fn deploy_strategy(&self) -> DeployStrategy {
         if self.dry_run {
-            PushStrategy::DryRun
+            DeployStrategy::DryRun
         } else if self.test {
-            PushStrategy::Test
+            DeployStrategy::Test
         } else if self.boot {
-            PushStrategy::Boot
+            DeployStrategy::Boot
         } else if self.switch {
-            PushStrategy::Switch
+            DeployStrategy::Switch
         } else {
-            PushStrategy::Auto
+            DeployStrategy::Auto
         }
     }
 
     /// Main entry point for the push command
     ///
-    /// Orchestrates the entire deployment process by delegating to snowlib's `push()` function.
+    /// Orchestrates the entire deployment process by delegating to snowlib's `deploy()` function.
     /// The CLI's only responsibilities are:
     /// - Parse command-line arguments
     /// - Create backend implementations and observer
-    /// - Call snowlib::push()
+    /// - Call snowlib::deploy()
     /// - Print results table
     pub async fn run(self, flake: &Flake, log_file: Option<&std::path::Path>) -> Result<()> {
         // When using --mock-fixture, use the mock flake instead of the real one
@@ -145,7 +145,7 @@ impl DeployArgs {
             .map_err(|source| snowlib::error::IoError::TempDir { source })?;
         let gc_roots_path = std::path::absolute(gc_roots.path())
             .map_err(|source| snowlib::error::IoError::TempDir { source })?;
-        let nix_backend = crate::backend_factory::create_push_nix_backend(
+        let nix_backend = crate::backend_factory::create_deploy_nix_backend(
             #[cfg(debug_assertions)]
             &self.mock_fixture,
             &gc_roots_path,
@@ -190,8 +190,8 @@ impl DeployArgs {
             )),
         ]);
 
-        let config = snowlib::PushConfiguration {
-            strategy: self.push_strategy(),
+        let config = snowlib::DeployConfiguration {
+            strategy: self.deploy_strategy(),
             force: self.force,
             concurrency: self.concurrency as usize,
             ignore_phases: self.ignore_phases,
@@ -210,7 +210,7 @@ impl DeployArgs {
             .collect();
         let hook_executor = snowlib::HookExecutor::new(hook_backend, hooks_by_host);
 
-        let push_ctx = snowlib::PushContext::new(
+        let deploy_ctx = snowlib::DeployContext::new(
             flake,
             nix_backend.as_ref(),
             deploy_backend.as_ref(),
@@ -221,7 +221,7 @@ impl DeployArgs {
         );
 
         // Execute the push - snowlib handles everything!
-        let results = snowlib::push(&push_ctx, hosts).await?;
+        let results = snowlib::deploy(&deploy_ctx, hosts).await?;
 
         summary::print_summary(&results);
 
@@ -237,8 +237,8 @@ impl DeployArgs {
 mod tests {
     use super::*;
     use snowlib::{
-        ActivationMode, DeployBackend, DeployTarget, DeploymentFixture, HostFixture,
-        MockDeployBackend, OperationFixture, PushStrategy, StorePath,
+        ActivationMode, DeployBackend, DeployStrategy, DeployTarget, DeploymentFixture,
+        HostFixture, MockDeployBackend, OperationFixture, StorePath,
     };
 
     #[test]
@@ -322,7 +322,7 @@ mod tests {
         use std::path::PathBuf;
 
         let fixture_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("tests/fixtures/push_scenarios/success.json");
+            .join("tests/fixtures/deploy_scenarios/success.json");
 
         let deployer = MockDeployBackend::from_file(&fixture_path).unwrap();
 
@@ -346,7 +346,7 @@ mod tests {
         use std::path::PathBuf;
 
         let fixture_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("tests/fixtures/push_scenarios/partial_failure.json");
+            .join("tests/fixtures/deploy_scenarios/partial_failure.json");
 
         let deployer = MockDeployBackend::from_file(&fixture_path).unwrap();
 
@@ -424,15 +424,15 @@ mod tests {
     }
 
     #[test]
-    fn test_push_strategy_auto() {
-        assert_eq!(deploy_args(&[]).push_strategy(), PushStrategy::Auto);
+    fn test_deploy_strategy_auto() {
+        assert_eq!(deploy_args(&[]).deploy_strategy(), DeployStrategy::Auto);
     }
 
     #[test]
-    fn test_push_strategy_switch() {
+    fn test_deploy_strategy_switch() {
         assert_eq!(
-            deploy_args(&["--switch"]).push_strategy(),
-            PushStrategy::Switch
+            deploy_args(&["--switch"]).deploy_strategy(),
+            DeployStrategy::Switch
         );
     }
 
