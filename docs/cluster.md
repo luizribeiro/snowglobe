@@ -33,7 +33,7 @@ For each host in a group, a deployment still builds the system, copies it and pl
 
 The next node in the group starts only after the current one has finished its post-deploy hooks. That makes a post-deploy health check the gate for the next node: if the node is not healthy, the next one does not start.
 
-[![Two hosts in a serial group take turns](/snowglobe/serial-group.svg)](https://asciinema.org/a/DfWYNZ7K7KCfiFvg)
+![Two hosts in a serial group take turns](demos/serial-group.cast)
 
 A few details of how turns are handed out:
 

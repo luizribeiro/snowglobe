@@ -17,7 +17,7 @@ A switch replaces the system profile, updates `/etc`, and starts, stops, restart
 
 For those changes, the safe way to apply them is to set the new system for the next boot and reboot into it, which is what `nixos-rebuild boot` followed by a reboot does. `snow` detects these cases during the plan step of each host, before any hook runs and before anything is activated.
 
-[![A host that must reboot is set to boot the new system, then rebooted](/snowglobe/reboot.svg)](https://asciinema.org/a/CRvXGdOvXPBkkiDV)
+![A host that must reboot is set to boot the new system, then rebooted](demos/reboot.cast)
 
 ## The two checks
 
@@ -96,7 +96,7 @@ The wait ends after `--reboot-timeout` seconds, 600 by default. If the host has 
 
 Both messages are prefixed with `Deployment succeeded but reboot failed:`, because the new system is installed and set to boot, so the next successful boot runs it. If the reboot command itself is refused, for example because `sudo` asks for a password, the host fails at the reboot step straight away instead of waiting. The host's `on-failure` hooks run as for any other failure, and later phases do not.
 
-[![A rebooted host never comes back](/snowglobe/reboot-deadline.svg)](https://asciinema.org/a/eFy1uI5b9rnfI0jt)
+![A rebooted host never comes back](demos/reboot-deadline.cast)
 
 After a successful reboot, `post-reboot` hooks run, then `post-deploy` hooks. A `post-reboot` hook is the place to wait until the host's services are actually ready, for example `kubectl wait --for=condition=Ready`, before the next host in a serial group takes its turn.
 

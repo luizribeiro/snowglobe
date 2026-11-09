@@ -137,7 +137,7 @@ Remote hooks' packages are referenced from `/etc/snowglobe/remote-hooks` in the 
 
 Before touching any host, snow validates every hook (see [Module options](/snowglobe/options/#hooks) for the allowed values) and builds or fetches the packages local hooks reference. A local hook whose `/nix/store` path doesn't exist on the machine running snow, typically a `pkgs` package for another platform, stops the deployment before anything is built, with an error naming the host, hook and path and suggesting `localPkgs`.
 
-[![A local hook's program is missing, so the deployment stops before building](/snowglobe/missing-hook.svg)](https://asciinema.org/a/uH01eTmwST7t8kNE)
+![A local hook's program is missing, so the deployment stops before building](demos/missing-hook.cast)
 
 ## Environment variables
 
@@ -196,7 +196,7 @@ After the last attempt, `continueOnFailure` decides:
 
 A failing `pre-deploy` hook means the host is never activated:
 
-[![A pre-deploy hook fails, so its host is never activated](/snowglobe/hook-failure.svg)](https://asciinema.org/a/SjhKcts8A6EwwRoG)
+![A pre-deploy hook fails, so its host is never activated](demos/hook-failure.cast)
 
 A failing `post-reboot` or `post-deploy` hook fails the host, but the new system is already active (or set for the next boot). snow does not roll anything back; see [Roll back a bad deployment](/snowglobe/rollback/).
 

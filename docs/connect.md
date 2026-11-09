@@ -120,7 +120,7 @@ snow also sets a `ConnectTimeout` (10 seconds for most connections, 5 for reboot
 
 A host that is unreachable fails on its own; the other hosts in the phase carry on.
 
-[![A host is off the network: ssh times out and only that host fails](/snowglobe/unreachable.svg)](https://asciinema.org/a/cX25pebSCFgr3uDE)
+![A host is off the network: ssh times out and only that host fails](demos/unreachable.cast)
 
 ## The ssh-agent
 
@@ -134,7 +134,7 @@ Before it builds anything, snow checks the agent named by `SSH_AUTH_SOCK`, if th
 
 Hardware-backed and app-based agents can take a few seconds to list keys; the 10-second limit allows for that.
 
-[![The ssh-agent never answers, so the deployment stops at once](/snowglobe/hung-agent.svg)](https://asciinema.org/a/eOyxRZmJRZ1fQB7f)
+![The ssh-agent never answers, so the deployment stops at once](demos/hung-agent.cast)
 
 ## NIX_SSHOPTS
 

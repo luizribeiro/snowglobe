@@ -16,7 +16,7 @@ With no flags, snow decides for each NixOS host whether the new system can be sw
 
 This is what you want for most hosts. A per-host policy changes it when you need something else.
 
-[![A host that must reboot is set to boot the new system, then rebooted](/snowglobe/reboot.svg)](https://asciinema.org/a/CRvXGdOvXPBkkiDV)
+![A host that must reboot is set to boot the new system, then rebooted](demos/reboot.cast)
 
 ## Reboot policies
 
@@ -104,7 +104,7 @@ snow deploy --boot db1
 
 Like `nixos-rebuild boot`: every host gets the new system as its default boot entry, but nothing is activated and nothing is rebooted, whatever the policy. The report marks such hosts `(boot)`. Use it to stage a change and reboot later, during a maintenance window.
 
-[![snow deploy --boot sets the new system for the next boot, without rebooting](/snowglobe/deploy-boot.svg)](https://asciinema.org/a/8BSwYPCHAGjHvwxO)
+![snow deploy --boot sets the new system for the next boot, without rebooting](demos/deploy-boot.cast)
 
 Remember that `post-deploy` [hooks](/snowglobe/hooks/) still run after a `--boot` activation, while the host is still running the old system.
 
@@ -160,7 +160,7 @@ Raise it for hosts that boot slowly, for example servers with long firmware chec
 
 If the host is not back in time, it fails at the reboot step. The failure behaves like any other: the host's on-failure hooks run, the rest of its serial group is skipped, and later phases don't run, unless the host is marked optional. The new system was already set as the default boot entry before the reboot, so if the host does come back later, it runs the new system. [Troubleshooting](/snowglobe/troubleshooting/#a-rebooted-host-never-comes-back) lists the messages and what to do about each.
 
-[![A rebooted host never comes back before the deadline](/snowglobe/reboot-deadline.svg)](https://asciinema.org/a/eFy1uI5b9rnfI0jt)
+![A rebooted host never comes back before the deadline](demos/reboot-deadline.cast)
 
 While a host in a [serial group](/snowglobe/cluster/) reboots, it keeps its turn, so the next member of the group waits until this one is back and has run its `post-reboot` and `post-deploy` hooks. A `post-reboot` hook is the place to wait for the host to be fully usable again, for example until its Kubernetes node reports `Ready`; see [Write deployment hooks](/snowglobe/hooks/).
 
