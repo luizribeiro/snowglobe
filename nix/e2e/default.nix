@@ -6,6 +6,7 @@ let
 
   # In the order the demos page shows them
   names = [
+    "tutorial"
     "switch"
     "reboot"
     "deploy-boot"
