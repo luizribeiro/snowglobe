@@ -213,10 +213,7 @@ snow list
 one row per host, with its phase and tags. You have not set either yet, so
 both show `-`:
 
-```text
-HOST  PHASE  TAGS
-web1  -      -
-```
+![snow list shows web1, with no phase or tags yet](demos/tutorial-list.cast)
 
 If your flake defines more hosts, they are listed too. `snow list` only
 evaluates the flake; it does not connect to any host.
@@ -224,12 +221,15 @@ evaluates the flake; it does not connect to any host.
 ## Step 5: Preview a change with a dry run
 
 Make a change to `web1` so there is something to deploy. For example, enable
-nginx in `hosts/web1/configuration.nix`:
+the Prometheus node exporter, which serves the host's metrics on port 9100,
+in `hosts/web1/configuration.nix`:
 
 ```nix
 {
-  services.nginx.enable = true;
-  networking.firewall.allowedTCPPorts = [ 80 ];
+  services.prometheus.exporters.node = {
+    enable = true;
+    openFirewall = true;
+  };
 }
 ```
 
@@ -244,31 +244,23 @@ which units a switch would stop, start or restart, without changing what
 the host runs or boots. [Activation modes](/snowglobe/reboots/#--dry-run-show-what-would-change)
 describes exactly what it does and skips.
 
-You should see output like this:
-
-```text
-Logs: /tmp/snow-1762255380.log
-
-Deploying 1 host: web1
-
-✓ Deploy (1 host in 0:48)
-  ✓ web1 (dry-run)
-
-✓ 1 host deployed
-```
+![snow deploy --dry-run builds web1's new system and asks it what would change](demos/tutorial-dry-run.cast)
 
 While the deployment runs, `snow` shows a live board in place of the report, with
 each host under the step it is in. The `(dry-run)` label says nothing was
 activated; the last line only counts hosts that finished without an error.
 
 The first line names the log file. Every `snow` command run in a terminal
-prints it, and the later examples leave it out. The output of
-`dry-activate` is in that log file; open it to see what the switch would
-do. Among the log lines is one like this:
+prints it. The output of `dry-activate` is in that log file; open it to see
+what the switch would do. Among the log lines is this one:
 
 ```text
-would start the following units: nginx.service
+would reload the following units: dbus-broker.service, firewall.service
 ```
+
+The firewall reloads to open port 9100. The exporter's own service is not
+listed: it is new, and `dry-activate` only reports changes to units the host
+already has.
 
 ## Step 6: Deploy
 
@@ -281,27 +273,23 @@ snow deploy web1
 This time, after copying, `snow` plans the activation: it compares the
 kernel and initrd `web1` booted with the new ones, and runs `dry-activate`
 to see whether a service that should not be restarted on a live system,
-such as udev, would restart. Enabling nginx needs neither, so `snow`
+such as udev, would restart. Enabling the exporter needs neither, so `snow`
 switches `web1` to the new system, as `nixos-rebuild switch` would:
 
-```text
-Deploying 1 host: web1
-
-✓ Deploy (1 host in 0:21)
-  ✓ web1 (switch)
-
-✓ 1 host deployed
-```
+![snow deploy switches web1 to its new system](demos/tutorial-deploy.cast)
 
 Check the result on the host, for example with
-`ssh web1 systemctl is-active nginx`, which should print `active`.
+`ssh web1 systemctl is-active prometheus-node-exporter`, which should print
+`active`.
 
-If the new system had needed a reboot, `snow` would have set it as the
-system for the next boot, rebooted `web1`, and waited for it to come back.
-The report would then read `✓ web1 (boot, rebooted)`. This recording shows
-that case:
+Some changes that look as small do need a reboot. Enabling nginx, for
+example, loads a new kernel module, which restarts
+`systemd-modules-load.service`. For such a change, `snow` sets the new
+system as the system for the next boot, reboots the host, and waits for it
+to come back. The report then reads `(boot, rebooted)`, as in this
+recording of `web1`:
 
-[![A host that must reboot is set to boot the new system, then rebooted](/snowglobe/reboot.svg)](https://asciinema.org/a/CRvXGdOvXPBkkiDV)
+![A host that must reboot is set to boot the new system, then rebooted](demos/reboot.cast)
 
 [Control reboots and activation modes](/snowglobe/reboots/) explains how to
 change this per host, for example to never reboot a host automatically.
@@ -325,14 +313,7 @@ snow deploy web1
 `snow` builds `web1`, sees that the host already runs and boots that exact
 system, and stops there:
 
-```text
-Deploying 1 host: web1
-
-✓ Deploy (1 host in 0:04)
-  ✓ web1 (unchanged)
-
-✓ 1 host deployed
-```
+![web1 already runs its new system, so snow leaves it alone](demos/tutorial-unchanged.cast)
 
 Unchanged hosts are not copied to, activated or rebooted, and their hooks do
 not run, so running `snow deploy` for all hosts is cheap when only some have
@@ -404,20 +385,14 @@ the sudo rule exist on it:
 nixos-rebuild switch --flake .#web2 --target-host admin@web2 --sudo --ask-sudo-password
 ```
 
-`snow list` now shows both hosts and their phases:
-
-```text
-HOST  PHASE  TAGS
-web1  p1     -
-web2  p2     -
-```
-
 Deploy settings such as `phase` are read by `snow` from the configuration;
 they do not change the system that is built. So if you deploy now, both hosts
 report `unchanged`. Make a change that affects both, for example add
-a package to `environment.systemPackages` in `hosts/common.nix`, and deploy without naming any host:
+a package to `environment.systemPackages` in `hosts/common.nix`. Then check
+the phases with `snow list`, and deploy without naming any host:
 
 ```bash
+snow list
 snow deploy
 ```
 
@@ -426,25 +401,10 @@ hosts in the special phase `never`. It first lists the phases it is about
 to run, so you can stop it with Ctrl-C if a host you did not expect shows
 up, then reports each phase as it ends:
 
-```text
-Deploying 2 hosts in 2 phases:
-  p1  web1
-  p2  web2
-
-✓ Phase p1 (1 host in 0:35)
-  ✓ web1 (switch)
-
-✓ Phase p2 (1 host in 0:29)
-  ✓ web2 (switch)
-
-✓ 2 hosts deployed
-```
+![snow list shows both hosts and their phases, then snow deploy deploys them in two phases](demos/tutorial-phases.cast)
 
 If `web1` had failed, phase `p2` would have been skipped, `web2` left
-untouched, and `snow deploy` would exit with a non-zero status. This
-recording shows three hosts in two phases:
-
-[![Three hosts in two phases switch to a new system](/snowglobe/switch.svg)](https://asciinema.org/a/6J8p7HDK0Df1tPSx)
+untouched, and `snow deploy` would exit with a non-zero status.
 
 You can still deploy one host by name, as before, or select hosts with
 `--phase`, `--tag` or a Nix expression; `snow deploy --help` lists the
