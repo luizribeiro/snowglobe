@@ -68,6 +68,9 @@ Details in [docs/push.md](docs/push.md) and [docs/hooks.md](docs/hooks.md).
   win over `--switch`. `--boot`, `--test` and `--dry-run` ignore them.
 - Modes to switch, boot next time, test or dry-run.
 - Unchanged hosts are skipped. `--redeploy` to push them anyway.
+- A host whose units are failing after its switch fails, with a message
+  saying the new system is active and naming the failing units.
+  `snowglobe.push.ignoredFailedUnits` lists units that don't fail it.
 - Hosts don't wait on each other.
 - `snowglobe.push.sshPort` for hosts on another port. ssh never forwards
   your agent.

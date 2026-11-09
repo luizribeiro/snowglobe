@@ -184,6 +184,32 @@ In a terminal, snow writes a full log to `/tmp/snow-<timestamp>.log` and
 prints the path when it starts. Otherwise the log goes to stderr. Set
 `RUST_LOG=debug` for more.
 
+### Units failing after a switch
+
+A NixOS switch fails when any unit is failing afterwards, even one the push
+didn't touch: the switch starts its targets again, which reruns units that
+were already failing. The new system is active by then, and the report says
+so, marking units that were failing before the push:
+
+```
+  ✗ boron at activate: activated, but stale-job.service is failing (it was already failing before this push)
+```
+
+The host still fails at activate, so later phases don't run. To deploy a
+host despite a unit you know is broken, list it:
+
+```nix
+snowglobe.push.ignoredFailedUnits = [ "unifi.service" ];
+```
+
+The host is then deployed if those are the only failing units and the
+switch gave no other reason to fail, such as a unit that failed to
+reload. Its report line names them:
+`✓ boron (switch, ignored failing unifi.service)`. A listed unit is
+ignored even if this push broke it. `snow rebuild` gives the same
+message but doesn't read the list. nix-darwin hosts, `--boot` and
+`--dry-run` aren't affected.
+
 ## See also
 
 - [hooks.md](hooks.md)
