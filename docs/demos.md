@@ -1,6 +1,6 @@
 # Demos
 
-Every clip below is one of the NixOS VM tests in `nix/e2e`. Real pushes and
+Every clip below is one of the NixOS VM tests in `nix/e2e`. Real deployments and
 rebuilds between VMs, and the test checks they worked, so what you see here
 is tested. Click a demo to open it in the asciinema player.
 
@@ -20,7 +20,7 @@ is tested. Click a demo to open it in the asciinema player.
 
 `snow deploy --boot boron`
 
-[![push-boot](demos/push-boot.svg)](https://asciinema.org/a/8BSwYPCHAGjHvwxO)
+[![deploy-boot](demos/deploy-boot.svg)](https://asciinema.org/a/8BSwYPCHAGjHvwxO)
 
 ## One host fails to activate while the others succeed
 
@@ -34,7 +34,7 @@ is tested. Click a demo to open it in the asciinema player.
 
 [![hook-failure](demos/hook-failure.svg)](https://asciinema.org/a/SjhKcts8A6EwwRoG)
 
-## A local hook's program is missing, so the push stops before building
+## A local hook's program is missing, so the deployment stops before building
 
 `snow deploy`
 
@@ -46,7 +46,7 @@ is tested. Click a demo to open it in the asciinema player.
 
 [![unreachable](demos/unreachable.svg)](https://asciinema.org/a/cX25pebSCFgr3uDE)
 
-## The ssh-agent never answers, so the push stops at once
+## The ssh-agent never answers, so the deployment stops at once
 
 `snow deploy`
 
