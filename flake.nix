@@ -106,12 +106,10 @@
         in
         nixpkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
           deploy-recordings = (e2eFor system).recordings;
-          upload-demos = pkgs.writeShellApplication {
-            name = "upload-demos";
-            runtimeInputs = [ pkgs.asciinema ];
+          update-demos = pkgs.writeShellApplication {
+            name = "update-demos";
             text = ''
-              export ASCIINEMA_SERVER_URL=https://asciinema.org
-              ${pkgs.writers.writePython3 "upload-demos" { } (builtins.readFile ./nix/e2e/upload_demos.py)} \
+              ${pkgs.writers.writePython3 "update-demos" { } (builtins.readFile ./nix/e2e/update_demos.py)} \
                 ${self.legacyPackages.${system}.deploy-recordings} "$@"
             '';
           };

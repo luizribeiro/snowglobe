@@ -84,18 +84,18 @@ nix build .#checks.x86_64-linux.e2e-switch.driverInteractive
 
 Build the test you need rather than running `nix flake check`, which evaluates every VM test at once and needs about 11 GB of memory. CI builds each check in its own job for the same reason.
 
-A test file sets `name` (matching its file name), the `nodes` that `snow` deploys, an optional `demo`, and a `testScript`. New tests must also be added to `names` in [`nix/e2e/default.nix`](https://github.com/luizribeiro/snowglobe/blob/main/nix/e2e/default.nix); evaluation fails if the list and the directory disagree. New features should come with a VM test whenever they can.
+A test file sets `name` (matching its file name), the `nodes` that `snow` deploys, an optional `demo`, or a list of `demos` that the `testScript` runs by name, and a `testScript`. New tests must also be added to `names` in [`nix/e2e/default.nix`](https://github.com/luizribeiro/snowglobe/blob/main/nix/e2e/default.nix); evaluation fails if the list and the directory disagree. New features should come with a VM test whenever they can.
 
 ## Demos
 
-The demos on this site are recorded inside the VM tests. A test with a `demo` attribute records an asciinema cast of `snow` while the test runs, and the test then checks the output. A demo therefore cannot show behaviour the code does not have.
+The demos on this site are recorded inside the VM tests. A test with a `demo`, or with `demos` as `tutorial.nix` has, records an asciinema cast of `snow` while the test runs, and the test then checks the output. A demo therefore cannot show behaviour the code does not have.
 
 ```bash
 nix build .#deploy-recordings   # build every cast and its SVG
-nix run .#upload-demos        # upload them and rewrite docs/demos.md
+nix run .#update-demos          # copy them into docs/demos and rewrite docs/demos.md
 ```
 
-Run `asciinema auth` once before uploading, or the uploads expire. Uploading gives each recording a new URL, so links to demos elsewhere, such as in the README, need updating by hand.
+The site plays the casts; the SVGs are for GitHub, where the README and `docs/demos.md` show them. A page shows a recording with an image link to its cast, such as `![Two hosts in a serial group take turns](demos/serial-group.cast)`.
 
 ## Architecture
 

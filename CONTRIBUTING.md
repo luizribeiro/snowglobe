@@ -51,17 +51,14 @@ VM test (about 11 GB of memory). New tests go in `names` in
 
 ### Demos
 
-The demos are recorded inside the VM tests. A test with a `demo` records an
-asciinema cast while it runs, so a demo can't show something the code
+The demos are recorded inside the VM tests. A test with a `demo`, or a list of
+`demos`, records an asciinema cast while it runs, so a demo can't show something the code
 doesn't do.
 
 ```bash
 nix build .#deploy-recordings   # casts and SVGs
-nix run .#upload-demos        # upload them and rewrite docs/demos.md
+nix run .#update-demos          # copy them into docs/demos, rewrite docs/demos.md
 ```
-
-Run `asciinema auth` once first, or the uploads expire. Uploading changes
-the URLs, so update the README's demo links by hand.
 
 CI runs all of the above; see `.github/workflows/ci.yml`.
 

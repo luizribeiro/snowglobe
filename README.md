@@ -9,7 +9,7 @@ CLI, `snow`, builds each host, copies it over, activates it, and reboots it
 when the new system needs a reboot. Hosts deploy in phases, and progress
 shows as one row per host.
 
-[![switch](docs/demos/switch.svg)](https://asciinema.org/a/6J8p7HDK0Df1tPSx)
+![switch](docs/demos/switch.svg)
 
 > [!NOTE]
 > snowglobe is pre-1.0. The CLI, module options and flake interface may change between minor releases; see the [changelog](CHANGELOG.md) before upgrading. It is used in production on one homelab of NixOS (x86_64, aarch64) and nix-darwin hosts.
@@ -112,7 +112,7 @@ the new system for the next boot, reboots and waits for the host. Per-host
 policies cover the rest: `never` for hosts rebooted by hand, `auto` for hosts
 that should reboot only when they must. A policy wins over `--switch`.
 
-[![reboot](docs/demos/reboot.svg)](https://asciinema.org/a/CRvXGdOvXPBkkiDV)
+![reboot](docs/demos/reboot.svg)
 
 Planning runs before any hook, so a host that can't deploy is never drained.
 Hosts that already run the built system are skipped.
