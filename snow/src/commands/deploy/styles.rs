@@ -1,4 +1,4 @@
-//! How the push TUI draws a phase header and its lanes of hosts
+//! How the deploy TUI draws a phase header and its lanes of hosts
 //!
 //! Each line is redrawn from the shared board on every tick, so elapsed
 //! times keep moving between events.

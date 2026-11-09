@@ -343,7 +343,7 @@ impl RebootBackend for SystemRebootBackend {
 
 /// Without dry-activate's restart list, snow can't tell whether the new
 /// system needs a reboot, so it must not guess that it doesn't. Stderr gets
-/// its own section, whose last line a push shows as the cause.
+/// its own section, whose last line a deployment shows as the cause.
 fn dry_activate_failed(target: &DeployTarget, command: &str, result: &CommandResult) -> SnowError {
     DeployError::Failed {
         host: target.hostname.clone(),

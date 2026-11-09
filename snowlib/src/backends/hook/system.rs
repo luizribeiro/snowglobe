@@ -72,7 +72,7 @@ impl SystemHookBackend {
         }
     }
 
-    /// Connects as push does, so hooks need no SSH key of their own. Hooks may
+    /// Connects as `snow deploy` does, so hooks need no SSH key of their own. Hooks may
     /// restart the host's network and are already bounded by their timeout.
     fn ssh_shell_command(&self, target: &DeployTarget, remote_command: &str) -> String {
         let destination = target.ssh_destination_as(self.ssh_user.as_deref());

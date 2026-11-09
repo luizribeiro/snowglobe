@@ -75,7 +75,7 @@ pub trait DeployBackend: Send + Sync {
     /// The systems behind /run/current-system and /nix/var/nix/profiles/system
     async fn host_systems(&self, target: &DeployTarget) -> Result<HostSystems>;
 
-    /// Checks that can fail the whole push before any host is touched
+    /// Checks that can fail the whole deployment before any host is touched
     async fn preflight(&self) -> Result<()> {
         Ok(())
     }

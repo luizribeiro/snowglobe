@@ -341,7 +341,7 @@ Nov 08 22:43:02 boron systemd[1]: Failed to start stale-job.service.";
 
     const BORON: &str = "boron.example.com";
 
-    /// A boron whose stale-job failed before the push
+    /// A boron whose stale-job failed before the deployment
     fn boron() -> MockDeployBackend {
         MockDeployBackend::new().with_failing_units(BORON, &["stale-job.service"])
     }

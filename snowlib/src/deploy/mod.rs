@@ -1,4 +1,4 @@
-//! Push deployment orchestration
+//! Deployment orchestration
 //!
 //! This module provides the main `deploy()` function for deploying NixOS configurations
 //! to remote hosts. The deployment uses a parallel-per-host execution model where
@@ -65,7 +65,7 @@ fn skip_remaining_phases(
         .collect()
 }
 
-/// Main push orchestration function - handles complete deployment workflow
+/// Main deployment orchestration function - handles the complete workflow
 ///
 /// This is the primary entry point for deploying configurations. It orchestrates
 /// the entire deployment process by phase:
@@ -81,7 +81,7 @@ fn skip_remaining_phases(
 ///
 /// # Arguments
 ///
-/// - `deploy_ctx`: Push context containing flake, backends, configuration, and observer
+/// - `deploy_ctx`: Deploy context containing flake, backends, configuration, and observer
 /// - `hosts`: List of hosts to deploy
 ///
 /// # Example
@@ -206,7 +206,7 @@ async fn execute_phase(
     })
 }
 
-/// The phases a push of `hosts` runs, in order, each with its hosts' names
+/// The phases a deployment of `hosts` runs, in order, each with its hosts' names
 pub fn phases(hosts: &[HostMetadata], ignore_phases: bool) -> Vec<(String, Vec<String>)> {
     let by_phase = group_by_phase(hosts.to_vec(), ignore_phases);
     sorted_phases(&by_phase)

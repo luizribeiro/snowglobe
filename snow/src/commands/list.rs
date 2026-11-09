@@ -12,7 +12,7 @@ pub struct ListArgs {
     #[command(flatten)]
     pub selection: HostSelectionArgs,
 
-    /// Print the hosts and their push settings as a JSON array
+    /// Print the hosts and their deploy settings as a JSON array
     #[arg(long)]
     pub json: bool,
 
@@ -212,7 +212,7 @@ mod tests {
             ));
     }
 
-    /// snow list on a flake whose hosts set every push option
+    /// snow list on a flake whose hosts set every deploy option
     fn list_cmd(args: &[&str]) -> assert_cmd::Command {
         let mut cmd = snow_cmd_on(&fixtures_dir().join("list"));
         cmd.arg("list").args(args);

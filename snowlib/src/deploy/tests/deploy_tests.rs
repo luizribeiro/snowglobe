@@ -230,7 +230,7 @@ async fn test_deploy_stops_on_phase_failure() {
         deploy(&deploy_ctx, hosts).await
     };
 
-    // Push should succeed but with failures and skipped phases
+    // Deploy should succeed but with failures and skipped phases
     let results = result.expect("Deploy should succeed structurally");
     assert!(!results.all_succeeded(), "Deploy should have failures");
     assert_eq!(results.failure_count(), 1);
@@ -370,7 +370,7 @@ async fn test_deploy_error_message_includes_source() {
         deploy(&deploy_ctx, hosts).await
     };
 
-    // Push should succeed but with failures captured
+    // Deploy should succeed but with failures captured
     let results = result.expect("Deploy should succeed structurally");
     assert!(!results.all_succeeded(), "Deploy should have failures");
     assert_eq!(results.failure_count(), 1);
@@ -451,7 +451,7 @@ async fn test_deploy_error_message_format_with_activation_failure() {
         deploy(&deploy_ctx, hosts).await
     };
 
-    // Push should succeed but with failures captured
+    // Deploy should succeed but with failures captured
     let results = result.expect("Deploy should succeed structurally");
     assert!(!results.all_succeeded(), "Deploy should have failures");
     assert_eq!(results.failure_count(), 1);

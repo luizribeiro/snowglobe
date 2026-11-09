@@ -81,11 +81,11 @@ pub struct DeployArgs {
     )]
     pub reboot_timeout: u32,
 
-    /// Maximum number of hosts to push in parallel (must be at least 1)
+    /// Maximum number of hosts to deploy in parallel (must be at least 1)
     #[arg(long, default_value = "3", value_parser = clap::value_parser!(u32).range(1..))]
     pub concurrency: u32,
 
-    /// Ignore push phases and deploy all hosts in parallel
+    /// Ignore phases and deploy all hosts in parallel
     ///
     /// By default, hosts are deployed sequentially by phase. This flag disables
     /// phase-based deployment and runs all hosts in parallel (respecting concurrency limit).
@@ -99,7 +99,7 @@ pub struct DeployArgs {
 }
 
 impl DeployArgs {
-    /// Determine the push strategy from flags
+    /// Determine the deploy strategy from flags
     fn deploy_strategy(&self) -> DeployStrategy {
         if self.dry_run {
             DeployStrategy::DryRun
@@ -114,7 +114,7 @@ impl DeployArgs {
         }
     }
 
-    /// Main entry point for the push command
+    /// Main entry point for the deploy command
     ///
     /// Orchestrates the entire deployment process by delegating to snowlib's `deploy()` function.
     /// The CLI's only responsibilities are:
@@ -137,8 +137,8 @@ impl DeployArgs {
             flake
         };
 
-        // Lives until the push ends: its links stop the GC from collecting the
-        // hooks and systems built for this push
+        // Lives until the deployment ends: its links stop the GC from collecting the
+        // hooks and systems built for this deployment
         let gc_roots = tempfile::Builder::new()
             .prefix("snow-deploy-")
             .tempdir()
@@ -220,7 +220,7 @@ impl DeployArgs {
             Some(&hook_executor),
         );
 
-        // Execute the push - snowlib handles everything!
+        // Execute the deployment - snowlib handles everything!
         let results = snowlib::deploy(&deploy_ctx, hosts).await?;
 
         summary::print_summary(&results);

@@ -1,4 +1,4 @@
-//! Push phase names
+//! Phase names
 
 use crate::error::{FlakeError, Result};
 use std::cmp::Ordering;
@@ -9,7 +9,7 @@ pub const UNPHASED: &str = "default";
 /// Hosts in this phase are selected only by name or by phase
 pub const NEVER: &str = "never";
 
-/// The one phase of a push that ignores phases
+/// The one phase of a deployment that ignores phases
 pub const ALL_HOSTS: &str = "_all";
 
 /// Characters allowed in phase and tag names, as in the module's option type

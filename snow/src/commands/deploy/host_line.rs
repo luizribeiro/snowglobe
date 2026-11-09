@@ -1,4 +1,4 @@
-//! A single host's row on its own, drawn as push draws each host, for
+//! A single host's row on its own, drawn as `snow deploy` draws each host, for
 //! commands that work on one host
 //!
 //! The row comes and goes with its span; it is hidden while something else

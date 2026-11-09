@@ -1,4 +1,4 @@
-//! What the push TUI shows for a phase: the steps of a push as lanes, with
+//! What the deploy TUI shows for a phase: the steps of a deployment as lanes, with
 //! each host listed under the lane it is in, kept up to date from host events
 
 use super::summary::success_labels;
@@ -16,7 +16,7 @@ pub(super) enum RowKind {
     Unchanged,
 }
 
-/// The parts of a push a host moves through, in the order they are listed
+/// The parts of a deployment a host moves through, in the order they are listed
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(super) enum Lane {
     Queued,

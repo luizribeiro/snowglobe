@@ -14,7 +14,7 @@ use std::path::Path;
 /// Keeps the terminal output scannable; the log has every error in full
 const MAX_CONTEXT_LINES: usize = 10;
 
-/// The phase hosts without a push phase share, which has no name to show
+/// The phase hosts without a phase share, which has no name to show
 fn is_unnamed_phase(phase: &str) -> bool {
     matches!(phase, ALL_HOSTS | UNPHASED)
 }
@@ -37,7 +37,7 @@ fn overview_label(phase: &str) -> &str {
     }
 }
 
-/// Which hosts each phase will push, so a host nobody expected shows up
+/// Which hosts each phase will deploy, so a host nobody expected shows up
 /// before anything happens
 pub fn phase_overview(phases: &[(String, Vec<String>)]) -> String {
     let total: usize = phases.iter().map(|(_, hosts)| hosts.len()).sum();
@@ -143,7 +143,7 @@ fn failure_headline(text: &str) -> String {
     format!("{} {}", marks::failure().bold(), style(text).red().bold())
 }
 
-/// For failures that don't fail the push: those of optional hosts
+/// For failures that don't fail the deployment: those of optional hosts
 fn warning_headline(text: &str) -> String {
     format!("{} {}", marks::warning(), style(text).yellow().bold())
 }
@@ -901,7 +901,7 @@ mod tests {
     #[test]
     fn test_overall_summary_says_which_failures_were_optional() {
         console::set_colors_enabled(false);
-        let pushed = |hosts: Vec<HostDeploymentResult>| DeployResults {
+        let deployed = |hosts: Vec<HostDeploymentResult>| DeployResults {
             phases: vec![PhaseResult {
                 hosts,
                 ..deployed_phase(&[])
@@ -912,11 +912,11 @@ mod tests {
         let radon = make_failed_host("radon", PipelineStep::Activate, "activation failed");
 
         assert_eq!(
-            super::overall_summary(&pushed(vec![boron(), failed_optional_host("curium")])),
+            super::overall_summary(&deployed(vec![boron(), failed_optional_host("curium")])),
             "! 1/2 deployed, 1 failed (optional)"
         );
         assert_eq!(
-            super::overall_summary(&pushed(vec![
+            super::overall_summary(&deployed(vec![
                 boron(),
                 failed_optional_host("curium"),
                 radon

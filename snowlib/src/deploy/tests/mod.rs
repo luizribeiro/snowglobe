@@ -1,4 +1,4 @@
-//! Tests for push deployment
+//! Tests for deployment
 //!
 //! This module is split into focused test files:
 //! - planning_tests: Tests for create_deployment_plans and reboot policies
@@ -42,7 +42,7 @@ fn create_deploy_config(strategy: DeployStrategy, concurrency: usize) -> DeployC
     }
 }
 
-/// Helper to create just HostMetadata for push tests
+/// Helper to create just HostMetadata for deploy tests
 fn make_host_metadata(
     name: &str,
     phase: Option<&str>,
@@ -220,7 +220,7 @@ impl DeployObserver for TestObserver {
     }
 }
 
-/// Outcome of a push run through [`DeployHarness`]
+/// Outcome of a deployment run through [`DeployHarness`]
 struct HarnessRun {
     results: DeployResults,
     events: Vec<String>,
@@ -230,7 +230,7 @@ struct HarnessRun {
     executed_hooks: Vec<(String, HookStage, crate::hooks::HookLocation, String)>,
 }
 
-/// Runs `push` with mock backends, hooks and a recording observer
+/// Runs `deploy` with mock backends, hooks and a recording observer
 struct DeployHarness {
     nix_backend: MockNixBackend,
     deployer: MockDeployBackend,
@@ -269,7 +269,7 @@ impl DeployHarness {
         }
     }
 
-    /// The push's outcome, including an error, and what the observer saw
+    /// The deployment's outcome, including an error, and what the observer saw
     async fn run_deploy(&self, hosts: Vec<HostMetadata>) -> (Result<DeployResults>, TestObserver) {
         let flake = Flake::test_context();
         let observer = TestObserver::new();

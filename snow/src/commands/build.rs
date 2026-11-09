@@ -34,7 +34,7 @@ pub struct BuildResult {
     pub result: Result<StorePath>,
 }
 
-/// Each host's outcome and the totals, worded like push's report.
+/// Each host's outcome and the totals, worded like `snow deploy`'s report.
 /// A failure shows only its cause: the build's output was already shown
 /// unless `--quiet` asked to hide it.
 fn report(results: &[BuildResult]) -> String {

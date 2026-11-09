@@ -1,7 +1,7 @@
-//! Context for push deployment operations
+//! Context for deployment operations
 //!
 //! This module defines the DeployContext struct which bundles together
-//! all the state needed for a push deployment.
+//! all the state needed for a deployment.
 
 use crate::backends::deploy::DeployBackend;
 use crate::backends::nix::NixBackend;
@@ -11,10 +11,10 @@ use crate::deploy::hooks::HookExecutor;
 use crate::nix::Flake;
 use crate::observer::DeployObserver;
 
-/// Context for push deployment operations
+/// Context for deployment operations
 ///
 /// Bundles together the flake, backends, configuration, and observer needed for
-/// push operations, reducing the number of parameters that need to be passed around.
+/// deploy operations, reducing the number of parameters that need to be passed around.
 pub struct DeployContext<'a> {
     pub flake: &'a Flake,
     pub nix_backend: &'a dyn NixBackend,

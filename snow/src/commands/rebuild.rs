@@ -263,7 +263,7 @@ enum Ending {
 }
 
 impl Ending {
-    /// As push reports a host, with how long the rebuild took
+    /// As `snow deploy` reports a host, with how long the rebuild took
     fn line(&self, hostname: &str, took: Duration) -> String {
         let outcome = match *self {
             Ending::Activated { mode, rebooting } => {

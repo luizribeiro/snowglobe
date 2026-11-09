@@ -1,7 +1,7 @@
 //! Deployment planning and reboot detection
 //!
 //! This module handles determining the appropriate activation strategy for each host
-//! based on push strategy, reboot detection, and reboot policies.
+//! based on deploy strategy, reboot detection, and reboot policies.
 
 use crate::backends::deploy::DeployTarget;
 use crate::backends::reboot::{RebootBackend, RebootCheck, RebootReason};
@@ -39,7 +39,7 @@ async fn determine_activation_strategy(
     if let Some(mode) = strategy.fixed_activation_mode() {
         return Ok(ActivationStrategy::without_reboot(mode));
     }
-    // nix-darwin can only switch, and push never reboots Darwin hosts,
+    // nix-darwin can only switch, and `snow deploy` never reboots Darwin hosts,
     // so reboot policies and detection don't apply to them
     if metadata.system_type == SystemType::Darwin {
         return Ok(ActivationStrategy::without_reboot(ActivationMode::Switch));
@@ -134,7 +134,7 @@ async fn handle_auto_mode(
 /// Create deployment plans with reboot detection
 ///
 /// This function determines the appropriate activation mode for each host based on:
-/// - User-requested push strategy
+/// - User-requested deploy strategy
 /// - Reboot detection results
 /// - Force flag
 ///

@@ -31,7 +31,7 @@ pub use log::LogObserver;
 use crate::deploy::{HostDeploymentResult, PhaseResult, PipelineStep};
 use crate::hooks::HookStage;
 
-/// Something that happened to one host during a push
+/// Something that happened to one host during a deployment
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HostEvent {
     Started(PipelineStep),
@@ -51,7 +51,7 @@ pub enum HostEvent {
     Done(HostDeploymentResult),
 }
 
-/// Observer trait for push deployment lifecycle events
+/// Observer trait for deployment lifecycle events
 ///
 /// All methods have default no-op implementations, so observers only need
 /// to implement the events they care about.

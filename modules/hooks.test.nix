@@ -35,7 +35,7 @@ let
   deployerSystem = "x86_64-linux";
   deployerPkgs = pkgsFor deployerSystem;
 
-  # An aarch64 host (e.g. a Raspberry Pi) pushed from an x86_64-linux deployer
+  # An aarch64 host (e.g. a Raspberry Pi) deployed from an x86_64-linux deployer
   piWithHooks = (pkgs.lib.evalModules {
     modules = [
       assertionsModule

@@ -451,7 +451,7 @@ async fn test_deploy_phase_failure_stops_next_phase() {
         deploy(&deploy_ctx, hosts).await
     };
 
-    // Push should succeed but with failures and skipped phases
+    // Deploy should succeed but with failures and skipped phases
     let results = result.expect("Deploy should succeed structurally");
     assert!(!results.all_succeeded(), "Deploy should have failures");
     assert_eq!(results.failure_count(), 1);

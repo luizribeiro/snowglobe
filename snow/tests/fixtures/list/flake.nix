@@ -1,5 +1,5 @@
 {
-  description = "Hosts with every push setting, for snow list";
+  description = "Hosts with every deploy setting, for snow list";
 
   outputs = { self, ... }: {
     nixosConfigurations = {

@@ -1,16 +1,16 @@
 use crate::nix::ActivationMode;
 use crate::process::OutputMode;
 
-/// Configuration for push operations
+/// Configuration for deploy operations
 #[derive(Debug, Clone)]
 pub struct DeployConfiguration {
-    /// Push strategy (auto, switch, boot, test, dry-run)
+    /// Deploy strategy (auto, switch, boot, test, dry-run)
     pub strategy: DeployStrategy,
     /// Force deployment even when reboot is detected in switch mode
     pub force: bool,
     /// Maximum number of parallel deployments within a phase
     pub concurrency: usize,
-    /// Ignore push phases and deploy all hosts in parallel
+    /// Ignore phases and deploy all hosts in parallel
     pub ignore_phases: bool,
     /// Output mode for build and deploy operations
     pub output_mode: OutputMode,
@@ -37,7 +37,7 @@ impl Default for DeployConfiguration {
     }
 }
 
-/// Push deployment strategy requested by the user
+/// Deployment strategy requested by the user
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DeployStrategy {
     /// Auto mode - detect reboot need and choose appropriate activation mode

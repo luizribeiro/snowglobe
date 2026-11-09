@@ -6,7 +6,7 @@ use crate::nix::{ActivationMode, StorePath};
 use std::fmt;
 use std::time::Duration;
 
-/// A push deployment plan for a single host
+/// A deployment plan for a single host
 #[derive(Debug, Clone)]
 pub struct DeployPlan {
     pub metadata: HostMetadata,
@@ -66,7 +66,7 @@ pub struct HostDeploymentResult {
     /// Host already ran and would boot the built system, so nothing was deployed
     pub unchanged: bool,
     pub error_message: Option<String>,
-    /// From the host's metadata: its failure doesn't fail its phase or the push
+    /// From the host's metadata: its failure doesn't fail its phase or the deployment
     pub optional: bool,
     /// Units failing after activation that the host's metadata ignores
     pub ignored_failing: Vec<String>,
@@ -161,7 +161,7 @@ pub struct SkippedPhase {
     pub hostnames: Vec<String>,
 }
 
-/// Result of pushing multiple hosts across multiple phases
+/// Result of deploying multiple hosts across multiple phases
 #[derive(Debug)]
 pub struct DeployResults {
     pub phases: Vec<PhaseResult>,

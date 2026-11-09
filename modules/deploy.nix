@@ -1,6 +1,6 @@
 { lib, ... }:
 
-# Platform-agnostic push options, imported by both nixos.nix and darwin.nix
+# Platform-agnostic deploy options, imported by both nixos.nix and darwin.nix
 
 let
   # The characters snow's --phase and --tag filters keep
@@ -21,12 +21,12 @@ in
     type = lib.types.nullOr phaseName;
     default = null;
     description = ''
-      The push phase this host deploys in. Phases deploy one after another,
+      The phase this host deploys in. Phases deploy one after another,
       in name order with numbers by value (p2 before p10), and hosts
       without a phase deploy last. If a host in a phase fails, later phases
       are skipped.
 
-      Hosts in the phase `never` are pushed (or built) only when named, as
+      Hosts in the phase `never` are deployed (or built) only when named, as
       in `snow deploy web1`, or selected with `--phase never`.
     '';
     example = "p1";
@@ -59,7 +59,7 @@ in
     description = ''
       Whether `snow deploy` may go on without this host. An optional host that
       fails, for example because it is offline, is reported as failed, but
-      its phase doesn't fail: later phases still run, and the push succeeds
+      its phase doesn't fail: later phases still run, and the deployment succeeds
       if only optional hosts failed.
     '';
   };
@@ -68,7 +68,7 @@ in
     type = lib.types.nullOr (lib.types.strMatching ".+");
     default = null;
     description = ''
-      Hosts that share a serial group deploy one at a time within a push
+      Hosts that share a serial group deploy one at a time within a
       phase. Only the disruptive part is serialized: pre-deploy hooks,
       activation, any reboot, post-reboot hooks and post-deploy hooks.
       Build, copy and planning stay parallel, and hosts with nothing to
@@ -78,7 +78,7 @@ in
       next host may start, and group members that haven't started are
       skipped.
 
-      Only hosts pushed by the same `snow deploy` invocation coordinate.
+      Only hosts deployed by the same `snow deploy` invocation coordinate.
     '';
     example = "kubernetes";
   };
@@ -91,7 +91,7 @@ in
       without failing it.
 
       A NixOS switch fails when any unit is failing afterwards, even one
-      the push didn't touch: the switch starts its targets again, which
+      the deployment didn't touch: the switch starts its targets again, which
       reruns units that were already failing, such as a crash-looping
       service. snow then fails the host at activate, saying that the new
       system is active. If the only failing units are listed here, the
@@ -99,7 +99,7 @@ in
 
       The host still fails if any other unit is failing, or if the switch
       fails for another reason, such as a unit that failed to reload.
-      Listed units are ignored even if this push broke them. nix-darwin
+      Listed units are ignored even if this deployment broke them. nix-darwin
       hosts aren't affected.
     '';
     example = [ "unifi.service" ];
@@ -109,7 +109,7 @@ in
     type = lib.types.nullOr lib.types.port;
     default = null;
     description = ''
-      The port snow connects to over ssh to push to this host: for
+      The port snow connects to over ssh to deploy to this host: for
       `nix copy`, activation, reboots and remote hooks. When null, ssh
       picks the port, from the deployer's ssh config or the default 22.
     '';

@@ -585,7 +585,7 @@ pub enum ProvisionerError {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FailingUnit {
     pub name: String,
-    /// It was failing before the push too; false when that's unknown
+    /// It was failing before the deployment too; false when that's unknown
     pub already_failing: bool,
 }
 
