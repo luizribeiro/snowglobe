@@ -278,6 +278,10 @@ impl DeployBackend for MockDeployBackend {
             }))
     }
 
+    async fn inspect(&self, _: &DeployTarget, _: &str, _: &[String]) -> Result<String> {
+        Ok(String::new())
+    }
+
     async fn activate(
         &self,
         target: &DeployTarget,

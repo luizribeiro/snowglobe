@@ -1,13 +1,14 @@
 use crate::error::{DeployError, Result};
 use crate::nix::{ActivationMode, StorePath, SystemType};
 use crate::process::OutputMode;
+use crate::ssh_options::{run_bounded, PROBE_TIMEOUT};
 use crate::sudo::Sudo;
 use async_trait::async_trait;
 use std::path::Path;
 use std::sync::Arc;
 
 use super::{
-    activation_mode_to_string, check_mode_supported, run_as_root, should_update_profile,
+    activation_mode_to_string, check_mode_supported, run_as_root, should_update_profile, stdout_of,
     store_path_from_resolved, DeployBackend, DeployTarget, HostSystems, CURRENT_SYSTEM_LINK,
     SYSTEM_PROFILE_LINK,
 };
@@ -64,6 +65,22 @@ impl DeployBackend for LocalDeployBackend {
             running: store_path_at(Path::new(CURRENT_SYSTEM_LINK), &target.hostname)?,
             next_boot: store_path_at(Path::new(SYSTEM_PROFILE_LINK), &target.hostname)?,
         })
+    }
+
+    async fn inspect(
+        &self,
+        target: &DeployTarget,
+        program: &str,
+        args: &[String],
+    ) -> Result<String> {
+        let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+        let result = run_bounded(program, &arg_refs, PROBE_TIMEOUT)
+            .await
+            .map_err(|source| DeployError::Failed {
+                host: target.hostname.clone(),
+                source,
+            })?;
+        stdout_of(&target.hostname, program, args, &result)
     }
 
     async fn activate(
@@ -211,6 +228,34 @@ mod tests {
             .into_iter()
             .filter(|call| call != "-n -v")
             .collect()
+    }
+
+    #[tokio::test]
+    async fn test_inspect_returns_what_the_command_prints() {
+        let (_sudo, backend) = create_test_backend();
+
+        let printed = backend
+            .inspect(
+                &create_test_target("boron"),
+                "printf",
+                &["Id=stale-job.service".to_string()],
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(printed, "Id=stale-job.service");
+    }
+
+    #[tokio::test]
+    async fn test_inspect_fails_when_the_command_fails() {
+        let (_sudo, backend) = create_test_backend();
+
+        let error = backend
+            .inspect(&create_test_target("boron"), "false", &[])
+            .await
+            .unwrap_err();
+
+        assert!(error.to_string().contains("Command failed on host 'boron'"));
     }
 
     /// Its sudo fails every command, as running the made-up store paths would

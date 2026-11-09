@@ -9,7 +9,7 @@ use async_trait::async_trait;
 use std::time::Duration;
 
 use super::{
-    activation_mode_to_string, command_failed, helper_found, should_update_profile,
+    activation_mode_to_string, command_failed, helper_found, should_update_profile, stdout_of,
     store_path_from_resolved, DeployBackend, DeployTarget, HostSystems, CURRENT_SYSTEM_LINK,
     HELPER_CHECK, SYSTEM_PROFILE_LINK,
 };
@@ -162,17 +162,23 @@ impl SshDeployBackend {
     }
 
     async fn check_helper_available(&self, target: &DeployTarget) -> Result<bool> {
-        let args = self.ssh_args(target, Keepalive::Probe, &HELPER_CHECK);
-        let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-        let destination = self.get_destination(target);
+        let result = self.probe(target, &HELPER_CHECK).await?;
+        helper_found(&self.get_destination(target), &result)
+    }
 
-        let result = run_bounded(self.ssh_program(), &args_refs, self.probe_timeout)
-            .await
-            .map_err(|source| DeployError::SshFailed {
-                destination: destination.clone(),
-                source,
-            })?;
-        helper_found(&destination, &result)
+    /// Runs `remote_args` on the host, within the probe timeout
+    async fn probe(&self, target: &DeployTarget, remote_args: &[&str]) -> Result<CommandResult> {
+        let args = self.ssh_args(target, Keepalive::Probe, remote_args);
+        let args_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+
+        Ok(
+            run_bounded(self.ssh_program(), &args_refs, self.probe_timeout)
+                .await
+                .map_err(|source| DeployError::SshFailed {
+                    destination: self.get_destination(target),
+                    source,
+                })?,
+        )
     }
 }
 
@@ -205,17 +211,25 @@ impl DeployBackend for SshDeployBackend {
     }
 
     async fn host_systems(&self, target: &DeployTarget) -> Result<HostSystems> {
-        let args = self.ssh_args(target, Keepalive::Probe, &READ_HOST_SYSTEMS_ARGS);
-        let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-
-        let result = run_bounded(self.ssh_program(), &args_refs, self.probe_timeout)
-            .await
-            .map_err(|e| DeployError::SshFailed {
-                destination: self.get_destination(target),
-                source: e,
-            })?;
-
+        let result = self.probe(target, &READ_HOST_SYSTEMS_ARGS).await?;
         host_systems_from_output(&target.hostname, &result)
+    }
+
+    async fn inspect(
+        &self,
+        target: &DeployTarget,
+        program: &str,
+        args: &[String],
+    ) -> Result<String> {
+        // The remote login shell parses the command, and unit names hold
+        // backslashes and globs
+        let quoted: Vec<String> = std::iter::once(program)
+            .chain(args.iter().map(String::as_str))
+            .map(|arg| shell_escape::escape(arg.into()).into_owned())
+            .collect();
+        let quoted: Vec<&str> = quoted.iter().map(String::as_str).collect();
+        let result = self.probe(target, &quoted).await?;
+        stdout_of(&target.hostname, program, args, &result)
     }
 
     async fn activate(
@@ -748,6 +762,47 @@ case "$*" in "command -v"*) exit {helper_status} ;; esac"#
                 format!("sudo snowglobe-activate {CURIUM_SYSTEM} switch"),
             ]
         );
+    }
+
+    /// A fake ssh that logs each remote command and prints `show_output`
+    /// for the failing units query
+    fn failing_units_deployer(show_output: &str) -> (tempfile::TempDir, SshDeployBackend) {
+        let (dir, deployer) = fake_ssh_deployer(&format!(
+            r#"while [ "$1" != pusher@curium.example.com ]; do [ $# -gt 0 ] || exit 99; shift; done; shift
+echo "$*" >> "$(dirname "$0")/commands"
+case "$*" in "systemctl show"*) printf %s '{show_output}' ;; esac"#
+        ));
+        (dir, deployer.with_user("pusher"))
+    }
+
+    #[tokio::test]
+    async fn test_failing_units_quotes_the_query_for_the_remote_shell() {
+        let fsck = r"systemd-fsck@dev-disk-by\x2dlabel-data.service";
+        let show =
+            format!("Id={fsck}\nActiveState=activating\nSubState=auto-restart\nExecMainStatus=1\n");
+        let (dir, deployer) = failing_units_deployer(&show);
+
+        let failing = deployer.failing_units(&curium()).await.unwrap();
+
+        assert_eq!(failing, [fsck]);
+        assert_eq!(
+            logged_commands(&dir),
+            ["systemctl show --state=failed,auto-restart \
+              --property=Id,ActiveState,SubState,ExecMainStatus '*'"]
+        );
+    }
+
+    #[tokio::test]
+    async fn test_inspect_fails_when_the_command_fails() {
+        let (_dir, deployer) =
+            fake_ssh_deployer("echo 'systemctl: command not found' >&2; exit 127");
+
+        let err = deployer
+            .inspect(&curium(), "systemctl", &["show".to_string()])
+            .await
+            .unwrap_err();
+
+        assert!(err.to_string().contains("systemctl show"), "{err}");
     }
 
     #[tokio::test]

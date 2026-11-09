@@ -1,4 +1,5 @@
 mod common;
+mod failing_units;
 mod local;
 #[cfg(any(debug_assertions, test, feature = "test-utils"))]
 mod mock;
@@ -76,6 +77,23 @@ pub trait DeployBackend: Send + Sync {
     /// Checks that can fail the whole push before any host is touched
     async fn preflight(&self) -> Result<()> {
         Ok(())
+    }
+
+    /// Runs `program` with `args` as the deploy user, to read the host
+    /// without changing it, and returns what it prints
+    async fn inspect(
+        &self,
+        target: &DeployTarget,
+        program: &str,
+        args: &[String],
+    ) -> Result<String>;
+
+    /// The units failing on a NixOS host, as switch-to-configuration
+    /// counts them
+    async fn failing_units(&self, target: &DeployTarget) -> Result<Vec<String>> {
+        let show = failing_units::FAILING_UNITS_ARGS.map(String::from);
+        let output = self.inspect(target, "systemctl", &show).await?;
+        Ok(failing_units::parse_failing_units(&output))
     }
 
     /// Activate a configuration on the target host

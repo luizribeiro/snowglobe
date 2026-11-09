@@ -80,6 +80,20 @@ pub(crate) fn command_failed(host: &str, command: String, result: &CommandResult
     }
 }
 
+/// What `program` printed, which must have exited 0
+pub(crate) fn stdout_of(
+    host: &str,
+    program: &str,
+    args: &[String],
+    result: &CommandResult,
+) -> Result<String> {
+    if !result.status.success() {
+        let command = std::iter::once(program.to_string()).chain(args.iter().cloned());
+        return Err(command_failed(host, command.collect::<Vec<_>>().join(" "), result).into());
+    }
+    Ok(String::from_utf8_lossy(&result.stdout).into_owned())
+}
+
 /// Fails unless `command` exits 0; `doing` says what it is for, as in
 /// "update system profile"
 pub(crate) async fn run_as_root(
