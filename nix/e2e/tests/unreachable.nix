@@ -2,8 +2,8 @@
   name = "unreachable";
 
   nodes = {
-    boron = { };
-    cerium = { };
+    web1 = { };
+    web2 = { };
   };
 
   demo = {
@@ -14,15 +14,15 @@
   };
 
   testScript = ''
-    cerium.block()
+    web2.block()
     try:
         deploy = demo()
     finally:
-        cerium.unblock()
+        web2.unblock()
     deploy.failed()
-    deploy.has("cerium")
-    deploy.logged("cerium: failed at", "boron: deployed")
-    runs("boron", deployed("boron"))
-    runs("cerium", base("cerium"))
+    deploy.has("web2")
+    deploy.logged("web2: failed at", "web1: deployed")
+    runs("web1", deployed("web1"))
+    runs("web2", base("web2"))
   '';
 }

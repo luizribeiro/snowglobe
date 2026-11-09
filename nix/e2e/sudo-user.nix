@@ -1,7 +1,7 @@
 # A user whose sudo asks for a password, for tests that run snow as them.
 # `module` goes on the host's base system, so the user is there to run snow.
 rec {
-  name = "luiz";
+  name = "alice";
   password = "snowglobe";
   prompt = "[sudo] password for ${name}: ";
 

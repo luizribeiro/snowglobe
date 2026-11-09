@@ -14,7 +14,7 @@
         (system: { name = system; value = f system; })
         allSystems
       );
-      # Platforms we can build on: the CI runner and ferrum
+      # Platforms we can build on: the CI runner and an Apple silicon Mac
       checkedSystems = [ "x86_64-linux" "aarch64-darwin" ];
       e2eFor = system: import ./nix/e2e {
         pkgs = nixpkgs.legacyPackages.${system};

@@ -13,8 +13,8 @@ in
   name = "serial-group";
 
   nodes = {
-    cerium = storageHost;
-    radon = storageHost;
+    web2 = storageHost;
+    web3 = storageHost;
   };
 
   demo = {
@@ -30,7 +30,7 @@ in
     waiting = re.search(r"(\w+): waiting for serial group 'storage' \(held by (\w+)\)", deploy.log)
     assert waiting, deploy.log
     waiter, holder = waiting.groups()
-    assert {waiter, holder} == {"cerium", "radon"}, deploy.log
+    assert {waiter, holder} == {"web2", "web3"}, deploy.log
     assert deploy.log.index(f"{holder}: deployed") < deploy.log.index(f"{waiter}: activate started"), deploy.log
     for host in hosts:
         runs(host, deployed(host))

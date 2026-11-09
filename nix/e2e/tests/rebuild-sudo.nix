@@ -4,19 +4,19 @@ in
 {
   name = "rebuild-sudo";
 
-  base.boron = user.module;
+  base.workstation = user.module;
 
-  nodes.boron = { };
+  nodes.workstation = { };
 
   demo = {
     title = "snow rebuild asks for the sudo password once, before it starts";
-    runOn = "boron";
+    runOn = "workstation";
     user = user.name;
     script = ''
       run("snow rebuild")
       expect("${user.prompt}")
       press("${user.password}", ENTER)
-      expect("boron (switch)")
+      expect("workstation (switch)")
     '';
   };
 
@@ -29,9 +29,9 @@ in
     answered = rebuild.raw[rebuild.raw.index(prompt) + len(prompt):]
     assert answered.startswith(("\r\n", "\n")), repr(answered[:80])
     rebuild.cursor_shown_at(prompt)
-    rebuild.cursor_hidden_at("boron  build")
-    rebuild.has("boron needs sudo", "✓ boron (switch) in")
-    rebuild.logged("boron: activated (Switch mode)")
-    runs("boron", deployed("boron"))
+    rebuild.cursor_hidden_at("workstation  build")
+    rebuild.has("workstation needs sudo", "✓ workstation (switch) in")
+    rebuild.logged("workstation: activated (Switch mode)")
+    runs("workstation", deployed("workstation"))
   '';
 }

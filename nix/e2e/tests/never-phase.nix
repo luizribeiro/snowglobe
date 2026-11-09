@@ -2,11 +2,11 @@
   name = "never-phase";
 
   nodes = {
-    boron.snowglobe.deploy = {
+    web1.snowglobe.deploy = {
       tags = [ "web" ];
       serialGroup = "web";
     };
-    curium.snowglobe.deploy = {
+    web2.snowglobe.deploy = {
       phase = "never";
       tags = [ "web" ];
     };
@@ -21,8 +21,8 @@
     system = deployer.succeed("uname -m").strip() + "-linux"
     host = {"system": system, "rebootPolicy": "auto", "optional": False}
     assert json.loads(output) == [
-        host | {"name": "boron", "phase": None, "tags": ["web"], "serialGroup": "web"},
-        host | {"name": "curium", "phase": "never", "tags": ["web"], "serialGroup": None},
+        host | {"name": "web1", "phase": None, "tags": ["web"], "serialGroup": "web"},
+        host | {"name": "web2", "phase": "never", "tags": ["web"], "serialGroup": None},
     ], output
 
     def deploy(args: str) -> str:
@@ -31,21 +31,21 @@
         return output
 
     output = deploy("")
-    contains(output, ("Deploying 1 host: boron", "boron: deployed"))
-    runs("boron", deployed("boron"))
-    runs("curium", base("curium"))
+    contains(output, ("Deploying 1 host: web1", "web1: deployed"))
+    runs("web1", deployed("web1"))
+    runs("web2", base("web2"))
 
-    # curium matches the tag, but only its name or phase selects it
+    # web2 matches the tag, but only its name or phase selects it
     output = deploy("--tag web")
-    contains(output, ("Deploying 1 host: boron",))
-    runs("curium", base("curium"))
+    contains(output, ("Deploying 1 host: web1",))
+    runs("web2", base("web2"))
 
     output = deploy("--phase never --dry-run")
-    contains(output, ("Deploying 1 host in 1 phase:", "never  curium"))
-    runs("curium", base("curium"))
+    contains(output, ("Deploying 1 host in 1 phase:", "never  web2"))
+    runs("web2", base("web2"))
 
-    output = deploy("curium")
-    contains(output, ("Deploying 1 host in 1 phase:", "never  curium", "curium: deployed"))
-    runs("curium", deployed("curium"))
+    output = deploy("web2")
+    contains(output, ("Deploying 1 host in 1 phase:", "never  web2", "web2: deployed"))
+    runs("web2", deployed("web2"))
   '';
 }

@@ -5,8 +5,8 @@ in
   name = "missing-hook";
 
   nodes = {
-    boron = { };
-    cerium.snowglobe.hooks.pre-deploy.wait-storage-healthy = {
+    web1 = { };
+    web2.snowglobe.hooks.pre-deploy.wait-storage-healthy = {
       location = "local";
       command = "${missingPath}/bin/wait-storage-healthy";
       timeout = 60;

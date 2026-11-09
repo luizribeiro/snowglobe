@@ -18,41 +18,41 @@
     # The user comes from the SSH config alone, with no --user, which hooks
     # have to honor as `snow deploy` does
     programs.ssh.extraConfig = lib.mkAfter ''
-      Host boron cerium
+      Host web1 web2
         User deploy
     '';
   };
 
   nodes = {
-    boron.snowglobe.hooks.post-deploy.record-user = {
+    web1.snowglobe.hooks.post-deploy.record-user = {
       location = "remote";
       command = "id -un > /tmp/hook-user";
       timeout = 30;
     };
-    # systemd-sysctl.service would restart, so cerium has to reboot
-    cerium.boot.kernel.sysctl."vm.swappiness" = 10;
+    # systemd-sysctl.service would restart, so web2 has to reboot
+    web2.boot.kernel.sysctl."vm.swappiness" = 10;
   };
 
   testScript = ''
     # -n, as ssh would otherwise read the test driver's commands as its input
     for host in hosts:
-        assert sodium.succeed(f"ssh -n {host} id -un").strip() == "deploy"
-        sodium.fail(f"ssh -n {host} sudo -n true")
+        assert laptop.succeed(f"ssh -n {host} id -un").strip() == "deploy"
+        laptop.fail(f"ssh -n {host} sudo -n true")
 
     before = {host: boot_id(host) for host in hosts}
-    status, output = sodium.execute(f"cd {FLAKE} && snow deploy 2>&1")
+    status, output = laptop.execute(f"cd {FLAKE} && snow deploy 2>&1")
     assert status == 0, output
-    contains(output, ("boron: deployed", "cerium: reboot started", "cerium: deployed"))
-    assert "boron: reboot started" not in output, output
+    contains(output, ("web1: deployed", "web2: reboot started", "web2: deployed"))
+    assert "web1: reboot started" not in output, output
 
-    runs("boron", deployed("boron"))
-    assert boot_id("boron") == before["boron"]
-    assert boron.succeed("cat /tmp/hook-user").strip() == "deploy"
+    runs("web1", deployed("web1"))
+    assert boot_id("web1") == before["web1"]
+    assert web1.succeed("cat /tmp/hook-user").strip() == "deploy"
 
     # Nothing but the sysctl differs from the base system, so only the
     # restart of systemd-sysctl.service can have called for this reboot
-    reconnect("cerium")
-    assert boot_id("cerium") != before["cerium"]
-    boots("cerium", deployed("cerium"))
+    reconnect("web2")
+    assert boot_id("web2") != before["web2"]
+    boots("web2", deployed("web2"))
   '';
 }

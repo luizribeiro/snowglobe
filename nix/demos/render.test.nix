@@ -5,7 +5,7 @@ let
   recorder = demos.recorder { inherit pkgs; };
 
   recorded = name: command: pkgs.runCommand "demo-${name}" { nativeBuildInputs = [ recorder ]; } ''
-    record --prompt luiz@sodium:ops --name ${name} --title "Demo ${name}" $out \
+    record --prompt alice@laptop:ops --name ${name} --title "Demo ${name}" $out \
       ${pkgs.writeText "${name}.py" ''run("${command}")''}
   '';
 

@@ -2,9 +2,9 @@
   name = "switch";
 
   nodes = {
-    boron.snowglobe.deploy.phase = "p1";
-    cerium.snowglobe.deploy.phase = "p2";
-    radon.snowglobe.deploy.phase = "p2";
+    web1.snowglobe.deploy.phase = "p1";
+    web2.snowglobe.deploy.phase = "p2";
+    web3.snowglobe.deploy.phase = "p2";
   };
 
   demo = {
@@ -17,10 +17,10 @@
   testScript = ''
     deploy = demo()
     deploy.succeeded()
-    deploy.has("Deploying 3 hosts in 2 phases:", "p1  boron", "p2  cerium, radon", "✓ Phase p1", "✓ Phase p2")
+    deploy.has("Deploying 3 hosts in 2 phases:", "p1  web1", "p2  web2, web3", "✓ Phase p1", "✓ Phase p2")
     assert "could not read installed systems" not in deploy.output, deploy.output
-    deploy.logged("boron: activate started", "boron: deployed", "cerium: deployed", "radon: deployed")
-    assert deploy.log.index("boron: deployed") < deploy.log.index("cerium: build started"), deploy.log
+    deploy.logged("web1: activate started", "web1: deployed", "web2: deployed", "web3: deployed")
+    assert deploy.log.index("web1: deployed") < deploy.log.index("web2: build started"), deploy.log
     for host in hosts:
         runs(host, deployed(host))
   '';

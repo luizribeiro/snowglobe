@@ -34,7 +34,7 @@ let
   '';
 in
 pkgs.runCommand "record-tests" { nativeBuildInputs = [ recorder pkgs.jq ]; } ''
-  record() { command record --prompt luiz@sodium:ops --name demo --title Demo "$@" > "$1.log" 2>&1; }
+  record() { command record --prompt alice@laptop:ops --name demo --title Demo "$@" > "$1.log" 2>&1; }
   # Records SCRIPT into OUT, expecting STATUS and, if given, MESSAGE
   check() {
     local out=$1 script=$2 expected=$3 message=''${4:-} status=0
@@ -49,7 +49,7 @@ pkgs.runCommand "record-tests" { nativeBuildInputs = [ recorder pkgs.jq ]; } ''
   check answered ${answered} 3
   grep -q 'got y' answered/demo.cast
   test "$(jq -r .command answered/demo.json)" = "printf 'Proceed? '; read answer; echo \"got \$answer\"; exit 3"
-  test "$(tail -n 1 answered/demo.cast | jq -r '.[2]')" = $'\e[1;32mluiz@sodium \e[1;34mops % \e[0m'
+  test "$(tail -n 1 answered/demo.cast | jq -r '.[2]')" = $'\e[1;32malice@laptop \e[1;34mops % \e[0m'
 
   check killed ${killed} 137
   check missing ${missingText} 125 "the command exited without showing 'Proceed?'"

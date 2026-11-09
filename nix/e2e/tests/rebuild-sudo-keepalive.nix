@@ -13,22 +13,22 @@ assert buildSeconds > sudoTimeoutMinutes * 60;
 {
   name = "rebuild-sudo-keepalive";
 
-  base.boron = {
+  base.workstation = {
     imports = [ user.module ];
     security.sudo.extraConfig = "Defaults timestamp_timeout=${toString sudoTimeoutMinutes}";
   };
 
-  nodes.boron = { };
+  nodes.workstation = { };
 
   demo = {
     title = "snow rebuild keeps sudo from forgetting the password during a long build";
-    runOn = "boron";
+    runOn = "workstation";
     user = user.name;
     script = ''
       run("snow rebuild")
       expect("${user.prompt}")
       press("${user.password}", ENTER)
-      expect("boron (switch)", timeout=${toString switchedWithinSeconds})
+      expect("workstation (switch)", timeout=${toString switchedWithinSeconds})
     '';
   };
 
@@ -37,8 +37,8 @@ assert buildSeconds > sudoTimeoutMinutes * 60;
     rebuild.succeeded()
     assert rebuild.seconds > ${toString buildSeconds}, rebuild.seconds
     assert rebuild.output.count("${user.prompt}") == 1, rebuild.output
-    rebuild.has("✓ boron (switch) in")
-    rebuild.logged("boron: activated (Switch mode)")
-    runs("boron", deployed("boron"))
+    rebuild.has("✓ workstation (switch) in")
+    rebuild.logged("workstation: activated (Switch mode)")
+    runs("workstation", deployed("workstation"))
   '';
 }

@@ -2,8 +2,8 @@
   name = "activation-failure";
 
   nodes = {
-    boron = { };
-    cerium = { pkgs, ... }: {
+    web1 = { };
+    web2 = { pkgs, ... }: {
       systemd.services.storage-agent = {
         wantedBy = [ "multi-user.target" ];
         serviceConfig = {
@@ -12,7 +12,7 @@
         };
       };
     };
-    radon = { };
+    web3 = { };
   };
 
   demo = {
@@ -25,9 +25,9 @@
   testScript = ''
     deploy = demo()
     deploy.failed()
-    deploy.has("cerium", "1/3 failed", "✗ cerium at activate: activated, but storage-agent.service is failing")
+    deploy.has("web2", "1/3 failed", "✗ web2 at activate: activated, but storage-agent.service is failing")
     assert "already failing" not in deploy.output, deploy.output
-    deploy.logged("cerium: failed at activate:", "boron: deployed", "radon: deployed")
+    deploy.logged("web2: failed at activate:", "web1: deployed", "web3: deployed")
     # NixOS keeps a system whose services failed to start
     for host in hosts:
         runs(host, deployed(host))

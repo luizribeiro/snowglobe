@@ -1,6 +1,6 @@
 # snowTest: a NixOS VM test of snow deploying to hosts, from a test file in
 # ./tests. The hosts boot a base system shared by every test; the test's
-# `nodes` are what snow deploys to them, from the deployer `sodium`. A test's
+# `nodes` are what snow deploys to them, from the deployer `laptop`. A test's
 # optional `common` module is booted by every VM, the deployer's included,
 # and its optional `base.<host>` module goes on that host's base system;
 # both are booted and deployed alike.
@@ -9,7 +9,7 @@
 let
   inherit (pkgs) lib;
 
-  deployer = "sodium";
+  deployer = "laptop";
   demos = import ../demos;
   sshKeys = import "${pkgs.path}/nixos/tests/ssh-keys.nix" pkgs;
 

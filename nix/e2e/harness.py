@@ -92,7 +92,7 @@ class Demo:
         else:
             home, flake = "/root", FLAKE
         record = shlex.join([
-            "record", "--prompt", f"luiz@{spec['runOn']}:ops",
+            "record", "--prompt", f"alice@{spec['runOn']}:ops",
             "--name", spec["name"], "--title", spec["title"],
             "/var/lib/demo", spec["script"],
         ])
