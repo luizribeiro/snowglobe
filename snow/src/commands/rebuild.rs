@@ -5,8 +5,9 @@ use crate::prompt;
 use clap::Args;
 use console::style;
 use snowlib::{
-    ActivationMode, DeployBackend, DeployTarget, Flake, LocalDeployBackend, LocalRebootBackend,
-    PipelineStep, RebootBackend, RebootCheck, Result, Sudo, SudoPrompt, SudoTerminal, SystemType,
+    activate_reporting_failed_units, ActivationMode, DeployTarget, Flake, LocalDeployBackend,
+    LocalRebootBackend, PipelineStep, RebootBackend, RebootCheck, Result, Sudo, SudoPrompt,
+    SudoTerminal, SystemType,
 };
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -198,7 +199,9 @@ impl RebuildArgs {
         let (deployer, host, system) = (&deploy_backend, &target, &store_path);
         let activate = |mode| async move {
             line.start(PipelineStep::Activate);
-            deployer.activate(host, system, mode).await?;
+            // Reading the host's ignoredFailedUnits would take an evaluation
+            // and a hooks build of its own, so rebuild ignores no units
+            activate_reporting_failed_units(deployer, host, system, mode, system_type, &[]).await?;
             tracing::info!("{hostname}: activated ({mode:?} mode)");
             Result::Ok(Some(Ending::Activated {
                 mode,

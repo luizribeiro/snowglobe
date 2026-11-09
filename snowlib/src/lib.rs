@@ -22,7 +22,8 @@ mod ssh_options;
 pub mod sudo;
 
 pub use backends::deploy::{
-    check_mode_supported, DeployBackend, DeployTarget, LocalDeployBackend, SshDeployBackend,
+    activate_reporting_failed_units, check_mode_supported, DeployBackend, DeployTarget,
+    LocalDeployBackend, SshDeployBackend,
 };
 pub use backends::hook::{HookBackend, SystemHookBackend};
 pub use backends::keygen::{KeyGenBackend, SshKeyPair, SystemKeyGenBackend};
