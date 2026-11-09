@@ -7,6 +7,7 @@ mod ssh;
 mod target;
 
 pub use common::*;
+pub use failing_units::{units_failed, UnitsFailed};
 pub use local::LocalDeployBackend;
 #[cfg(any(debug_assertions, test, feature = "test-utils"))]
 pub use mock::{
