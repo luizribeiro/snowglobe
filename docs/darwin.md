@@ -46,7 +46,7 @@ Less tested than NixOS, though: Darwin only has a module test, no VM tests.
   nixpkgs.hostPlatform = "aarch64-darwin";
   networking.hostName = "your-mac";   # snow connects to this
 
-  snowglobe.push.allowedUsers = [ "deploy" ];
+  snowglobe.deploy.allowedUsers = [ "deploy" ];
   # nix copy as a non-root user needs a trusted user (or signed paths)
   nix.settings.trusted-users = [ "deploy" ];
 

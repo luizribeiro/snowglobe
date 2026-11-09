@@ -84,7 +84,7 @@ let
       (_: config: {
         inherit (config.networking) hostName domain;
         inherit (config.nixpkgs.hostPlatform) system;
-        inherit (config.snowglobe.push) phase tags rebootPolicy optional serialGroup sshPort
+        inherit (config.snowglobe.deploy) phase tags rebootPolicy optional serialGroup sshPort
           ignoredFailedUnits;
         hooksFile = "${config.snowglobe.hooksFile}";
         toplevel = "${config.system.build.toplevel}";
@@ -142,7 +142,7 @@ pkgs.testers.runNixOSTest ({ config, ... }:
     settings = pkgs.writeText "${test.name}-harness.json" (builtins.toJSON {
       inherit deployer hosts flake;
       base = toplevels (lib.getAttrs hosts config.nodes);
-      sshPorts = lib.mapAttrs (_: node: node.snowglobe.push.sshPort) (lib.getAttrs hosts config.nodes);
+      sshPorts = lib.mapAttrs (_: node: node.snowglobe.deploy.sshPort) (lib.getAttrs hosts config.nodes);
       pushed = toplevels pushed;
       demo = if demo == null then null else {
         inherit (test) name;

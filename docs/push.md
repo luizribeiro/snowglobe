@@ -16,7 +16,7 @@ snow push -e 'config: config.services.nginx.enable or false'
 
 snow reaches `networking.hostName`, plus `networking.domain` if set, through
 your SSH config, so your `Host` entries apply. Another port:
-`snowglobe.push.sshPort`. `--user` picks the user.
+`snowglobe.deploy.sshPort`. `--user` picks the user.
 
 Every ssh call runs in batch mode, so there are no password prompts: you need
 key auth (an agent or a key file) and the host key already in `known_hosts`.
@@ -27,7 +27,7 @@ host.
 ## Phases
 
 ```nix
-snowglobe.push.phase = "p1";
+snowglobe.deploy.phase = "p1";
 ```
 
 Phases run one after another, in name order, with numbers sorted by value
@@ -49,7 +49,7 @@ you'd rather deploy by hand.
 ### Hosts that may be off
 
 ```nix
-snowglobe.push.optional = true;
+snowglobe.deploy.optional = true;
 ```
 
 For a laptop, say. If an optional host fails, its on-failure hooks still
@@ -93,7 +93,7 @@ A few choices here are on purpose:
 ## Serial groups
 
 ```nix
-snowglobe.push.serialGroup = "kubernetes";
+snowglobe.deploy.serialGroup = "kubernetes";
 ```
 
 Hosts in the same group take turns through steps 5 to 9, so your storage or
@@ -125,7 +125,7 @@ the host, and waits for it to come back with a new boot ID (up to
 ### Policies
 
 ```nix
-snowglobe.push.rebootPolicy = "auto";  # or "never" or "always"
+snowglobe.deploy.rebootPolicy = "auto";  # or "never" or "always"
 ```
 
 | Policy | |
@@ -199,7 +199,7 @@ The host still fails at activate, so later phases don't run. To deploy a
 host despite a unit you know is broken, list it:
 
 ```nix
-snowglobe.push.ignoredFailedUnits = [ "unifi.service" ];
+snowglobe.deploy.ignoredFailedUnits = [ "unifi.service" ];
 ```
 
 The host is then deployed if those are the only failing units and the

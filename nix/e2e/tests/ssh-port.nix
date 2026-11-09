@@ -5,7 +5,7 @@
   # its own config tells snow where to find it
   base.boron = {
     services.openssh.ports = [ 2222 ];
-    snowglobe.push.sshPort = 2222;
+    snowglobe.deploy.sshPort = 2222;
   };
 
   nodes = {

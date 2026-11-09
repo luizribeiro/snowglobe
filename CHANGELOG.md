@@ -56,11 +56,11 @@ Not in release builds. May change or break any time. Try them with
 
 Details in [docs/push.md](docs/push.md) and [docs/hooks.md](docs/hooks.md).
 
-- Phases (`snowglobe.push.phase`), in order. A failed phase stops the rest.
+- Phases (`snowglobe.deploy.phase`), in order. A failed phase stops the rest.
   `--ignore-phases` to push all at once.
 - `never` phase, for hosts you only push by name.
-- Optional hosts (`snowglobe.push.optional`), e.g. a laptop that's often off.
-- Serial groups (`snowglobe.push.serialGroup`).
+- Optional hosts (`snowglobe.deploy.optional`), e.g. a laptop that's often off.
+- Serial groups (`snowglobe.deploy.serialGroup`).
 - Hooks (`snowglobe.hooks`): `pre-deploy`, `post-deploy`, `post-reboot`,
   `on-failure`, local or remote.
 - Reboot detection (new kernel or initrd, or a critical service would
@@ -70,16 +70,16 @@ Details in [docs/push.md](docs/push.md) and [docs/hooks.md](docs/hooks.md).
 - Unchanged hosts are skipped. `--redeploy` to push them anyway.
 - A host whose units are failing after its switch fails, with a message
   saying the new system is active and naming the failing units.
-  `snowglobe.push.ignoredFailedUnits` lists units that don't fail it.
+  `snowglobe.deploy.ignoredFailedUnits` lists units that don't fail it.
 - Hosts don't wait on each other.
-- `snowglobe.push.sshPort` for hosts on another port. ssh never forwards
+- `snowglobe.deploy.sshPort` for hosts on another port. ssh never forwards
   your agent.
 - Live board with a row per host, and a report at the end of each phase.
 
 #### Modules
 
 - `nixosModules.default` and `darwinModules.default`.
-- `snowglobe-activate` on each host. Users in `snowglobe.push.allowedUsers`
+- `snowglobe-activate` on each host. Users in `snowglobe.deploy.allowedUsers`
   can sudo it without a password, nothing else. Takes only store paths that
   are a system.
 - NixOS hosts without the module still work, activated directly, with a
@@ -94,7 +94,7 @@ Details in [docs/push.md](docs/push.md) and [docs/hooks.md](docs/hooks.md).
 
 ### Migrating from pre-release versions
 
-- Phase, tags and reboot policy are read only from `snowglobe.push.phase`,
+- Phase, tags and reboot policy are read only from `snowglobe.deploy.phase`,
   `.tags` and `.rebootPolicy`, not from `core.pushPhase`, `core.tags` and
   `core.rebootPolicy`.
 - The hook stages `pre-activate` and `post-activate` are now `pre-deploy` and

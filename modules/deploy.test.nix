@@ -1,16 +1,16 @@
 { pkgs }:
 
 let
-  evalPush = config: (pkgs.lib.evalModules {
-    modules = [ ./push.nix config ];
-  }).config.snowglobe.push;
+  evalDeploy = config: (pkgs.lib.evalModules {
+    modules = [ ./deploy.nix config ];
+  }).config.snowglobe.deploy;
 
   accepts = name: value:
-    (builtins.tryEval (builtins.deepSeq (evalPush { snowglobe.push.${name} = value; }).${name} true)).success;
+    (builtins.tryEval (builtins.deepSeq (evalDeploy { snowglobe.deploy.${name} = value; }).${name} true)).success;
 in
 {
   testPhaseDefaultsToNull = {
-    expr = (evalPush { }).phase;
+    expr = (evalDeploy { }).phase;
     expected = null;
   };
 
@@ -30,12 +30,12 @@ in
   };
 
   testTagsDefaultToEmpty = {
-    expr = (evalPush { }).tags;
+    expr = (evalDeploy { }).tags;
     expected = [ ];
   };
 
   testTagsAcceptList = {
-    expr = (evalPush { snowglobe.push.tags = [ "web" "database" ]; }).tags;
+    expr = (evalDeploy { snowglobe.deploy.tags = [ "web" "database" ]; }).tags;
     expected = [ "web" "database" ];
   };
 
@@ -55,7 +55,7 @@ in
   };
 
   testRebootPolicyDefaultsToAuto = {
-    expr = (evalPush { }).rebootPolicy;
+    expr = (evalDeploy { }).rebootPolicy;
     expected = "auto";
   };
 
@@ -70,12 +70,12 @@ in
   };
 
   testOptionalDefaultsToFalse = {
-    expr = (evalPush { }).optional;
+    expr = (evalDeploy { }).optional;
     expected = false;
   };
 
   testOptionalAcceptsTrue = {
-    expr = (evalPush { snowglobe.push.optional = true; }).optional;
+    expr = (evalDeploy { snowglobe.deploy.optional = true; }).optional;
     expected = true;
   };
 
@@ -85,27 +85,27 @@ in
   };
 
   testSerialGroupDefaultsToNull = {
-    expr = (evalPush { }).serialGroup;
+    expr = (evalDeploy { }).serialGroup;
     expected = null;
   };
 
   testSerialGroupAcceptsName = {
-    expr = (evalPush { snowglobe.push.serialGroup = "kubernetes"; }).serialGroup;
+    expr = (evalDeploy { snowglobe.deploy.serialGroup = "kubernetes"; }).serialGroup;
     expected = "kubernetes";
   };
 
   testSerialGroupRejectsNonString = {
-    expr = (builtins.tryEval (evalPush { snowglobe.push.serialGroup = 3; }).serialGroup).success;
+    expr = (builtins.tryEval (evalDeploy { snowglobe.deploy.serialGroup = 3; }).serialGroup).success;
     expected = false;
   };
 
   testSerialGroupRejectsEmptyName = {
-    expr = (builtins.tryEval (evalPush { snowglobe.push.serialGroup = ""; }).serialGroup).success;
+    expr = (builtins.tryEval (evalDeploy { snowglobe.deploy.serialGroup = ""; }).serialGroup).success;
     expected = false;
   };
 
   testIgnoredFailedUnitsDefaultToEmpty = {
-    expr = (evalPush { }).ignoredFailedUnits;
+    expr = (evalDeploy { }).ignoredFailedUnits;
     expected = [ ];
   };
 
@@ -126,17 +126,17 @@ in
   };
 
   testSshPortDefaultsToNull = {
-    expr = (evalPush { }).sshPort;
+    expr = (evalDeploy { }).sshPort;
     expected = null;
   };
 
   testSshPortAcceptsPort = {
-    expr = (evalPush { snowglobe.push.sshPort = 2222; }).sshPort;
+    expr = (evalDeploy { snowglobe.deploy.sshPort = 2222; }).sshPort;
     expected = 2222;
   };
 
   testSshPortRejectsOutOfRange = {
-    expr = (builtins.tryEval (evalPush { snowglobe.push.sshPort = 70000; }).sshPort).success;
+    expr = (builtins.tryEval (evalDeploy { snowglobe.deploy.sshPort = 70000; }).sshPort).success;
     expected = false;
   };
 }

@@ -2,11 +2,11 @@
   name = "never-phase";
 
   nodes = {
-    boron.snowglobe.push = {
+    boron.snowglobe.deploy = {
       tags = [ "web" ];
       serialGroup = "web";
     };
-    curium.snowglobe.push = {
+    curium.snowglobe.deploy = {
       phase = "never";
       tags = [ "web" ];
     };

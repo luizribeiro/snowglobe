@@ -2,11 +2,11 @@
   name = "optional-host";
 
   nodes = {
-    boron.snowglobe.push = {
+    boron.snowglobe.deploy = {
       phase = "p1";
       optional = true;
     };
-    cerium.snowglobe.push.phase = "p2";
+    cerium.snowglobe.deploy.phase = "p2";
   };
 
   testScript = ''

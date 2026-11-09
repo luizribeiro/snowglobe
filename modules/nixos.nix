@@ -3,7 +3,7 @@
 with lib;
 
 let
-  cfg = config.snowglobe.push;
+  cfg = config.snowglobe.deploy;
 
   activationHelper = import ./nixos-activate.nix {
     inherit pkgs;
@@ -15,9 +15,9 @@ in
   imports = [
     ./bootstrap.nix
     ./hooks.nix
-    ./push.nix
+    ./deploy.nix
   ];
-  options.snowglobe.push = {
+  options.snowglobe.deploy = {
     allowedUsers = mkOption {
       type = types.listOf types.str;
       default = [];

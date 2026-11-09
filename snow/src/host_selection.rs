@@ -101,7 +101,7 @@ impl HostSelectionArgs {
 /// `filter`, if any, narrowed to hosts outside the `never` phase
 fn excluding_never_phase(filter: Option<&str>) -> String {
     let outside_never = format!(
-        r#"(config.snowglobe.push.phase or null) != "{}""#,
+        r#"(config.snowglobe.deploy.phase or null) != "{}""#,
         snowlib::push::NEVER
     );
     match filter {
@@ -269,7 +269,7 @@ mod tests {
         assert_eq!(selection.tags, vec!["web", "database"]);
         assert_eq!(
             selection.filter_expression().unwrap().unwrap(),
-            r#"config: builtins.any (tag: builtins.elem tag (config.snowglobe.push.tags or [])) ["web" "database"]"#
+            r#"config: builtins.any (tag: builtins.elem tag (config.snowglobe.deploy.tags or [])) ["web" "database"]"#
         );
     }
 
@@ -277,7 +277,7 @@ mod tests {
         parse_selection(args).unwrap().filter_expression().unwrap()
     }
 
-    const OUTSIDE_NEVER: &str = r#"(config.snowglobe.push.phase or null) != "never""#;
+    const OUTSIDE_NEVER: &str = r#"(config.snowglobe.deploy.phase or null) != "never""#;
 
     #[test]
     fn test_selecting_every_host_leaves_out_the_never_phase() {
@@ -289,13 +289,13 @@ mod tests {
         assert_eq!(
             filter_for(&["--tag", "web"]).unwrap(),
             format!(
-                r#"config: {OUTSIDE_NEVER} && (config: builtins.elem "web" (config.snowglobe.push.tags or [])) config"#
+                r#"config: {OUTSIDE_NEVER} && (config: builtins.elem "web" (config.snowglobe.deploy.tags or [])) config"#
             )
         );
         assert_eq!(
             filter_for(&["--tags", "web,database"]).unwrap(),
             format!(
-                r#"config: {OUTSIDE_NEVER} && (config: builtins.any (tag: builtins.elem tag (config.snowglobe.push.tags or [])) ["web" "database"]) config"#
+                r#"config: {OUTSIDE_NEVER} && (config: builtins.any (tag: builtins.elem tag (config.snowglobe.deploy.tags or [])) ["web" "database"]) config"#
             )
         );
         assert_eq!(
@@ -311,7 +311,7 @@ mod tests {
         assert_eq!(
             filter_for(&["--phase", "p1"]).unwrap(),
             format!(
-                r#"config: {OUTSIDE_NEVER} && (config: (config.snowglobe.push.phase or null) == "p1") config"#
+                r#"config: {OUTSIDE_NEVER} && (config: (config.snowglobe.deploy.phase or null) == "p1") config"#
             )
         );
     }
@@ -320,19 +320,19 @@ mod tests {
     fn test_selecting_the_never_phase_selects_its_hosts() {
         assert_eq!(
             filter_for(&["--phase", "never"]).unwrap(),
-            r#"config: (config.snowglobe.push.phase or null) == "never""#
+            r#"config: (config.snowglobe.deploy.phase or null) == "never""#
         );
         assert_eq!(
             filter_for(&["--phase", " never "]).unwrap(),
-            r#"config: (config.snowglobe.push.phase or null) == "never""#
+            r#"config: (config.snowglobe.deploy.phase or null) == "never""#
         );
         assert_eq!(
             filter_for(&["--phase", "never", "curium"]).unwrap(),
-            r#"config: (config.snowglobe.push.phase or null) == "never""#
+            r#"config: (config.snowglobe.deploy.phase or null) == "never""#
         );
         assert_eq!(
             filter_for(&["--phases", "p1, never"]).unwrap(),
-            r#"config: builtins.elem (config.snowglobe.push.phase or null) ["p1" "never"]"#
+            r#"config: builtins.elem (config.snowglobe.deploy.phase or null) ["p1" "never"]"#
         );
     }
 
@@ -341,7 +341,7 @@ mod tests {
         assert_eq!(filter_for(&["curium"]), None);
         assert_eq!(
             filter_for(&["--tag", "web", "curium"]).unwrap(),
-            r#"config: builtins.elem "web" (config.snowglobe.push.tags or [])"#
+            r#"config: builtins.elem "web" (config.snowglobe.deploy.tags or [])"#
         );
     }
 

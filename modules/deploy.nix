@@ -17,7 +17,7 @@ let
     // { description = ''systemd unit name with its type, as in "unifi.service"''; };
 in
 {
-  options.snowglobe.push.phase = lib.mkOption {
+  options.snowglobe.deploy.phase = lib.mkOption {
     type = lib.types.nullOr phaseName;
     default = null;
     description = ''
@@ -32,7 +32,7 @@ in
     example = "p1";
   };
 
-  options.snowglobe.push.tags = lib.mkOption {
+  options.snowglobe.deploy.tags = lib.mkOption {
     type = lib.types.listOf tagName;
     default = [ ];
     description = ''
@@ -41,7 +41,7 @@ in
     example = [ "web" "database" ];
   };
 
-  options.snowglobe.push.rebootPolicy = lib.mkOption {
+  options.snowglobe.deploy.rebootPolicy = lib.mkOption {
     type = lib.types.enum [ "auto" "never" "always" ];
     default = "auto";
     description = ''
@@ -53,7 +53,7 @@ in
     '';
   };
 
-  options.snowglobe.push.optional = lib.mkOption {
+  options.snowglobe.deploy.optional = lib.mkOption {
     type = lib.types.bool;
     default = false;
     description = ''
@@ -64,7 +64,7 @@ in
     '';
   };
 
-  options.snowglobe.push.serialGroup = lib.mkOption {
+  options.snowglobe.deploy.serialGroup = lib.mkOption {
     type = lib.types.nullOr (lib.types.strMatching ".+");
     default = null;
     description = ''
@@ -83,7 +83,7 @@ in
     example = "kubernetes";
   };
 
-  options.snowglobe.push.ignoredFailedUnits = lib.mkOption {
+  options.snowglobe.deploy.ignoredFailedUnits = lib.mkOption {
     type = lib.types.listOf unitName;
     default = [ ];
     description = ''
@@ -105,7 +105,7 @@ in
     example = [ "unifi.service" ];
   };
 
-  options.snowglobe.push.sshPort = lib.mkOption {
+  options.snowglobe.deploy.sshPort = lib.mkOption {
     type = lib.types.nullOr lib.types.port;
     default = null;
     description = ''

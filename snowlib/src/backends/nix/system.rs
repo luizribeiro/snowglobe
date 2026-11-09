@@ -308,13 +308,13 @@ fn metadata_apply_expr(local_system: &str) -> String {
           hostName = config.networking.hostName;
           domain = config.networking.domain or "";
           system = config.nixpkgs.hostPlatform.system or null;
-          phase = config.snowglobe.push.phase or null;
-          tags = config.snowglobe.push.tags or [];
-          rebootPolicy = config.snowglobe.push.rebootPolicy or "auto";
-          serialGroup = config.snowglobe.push.serialGroup or null;
-          sshPort = config.snowglobe.push.sshPort or null;
-          optional = config.snowglobe.push.optional or false;
-          ignoredFailedUnits = config.snowglobe.push.ignoredFailedUnits or [];
+          phase = config.snowglobe.deploy.phase or null;
+          tags = config.snowglobe.deploy.tags or [];
+          rebootPolicy = config.snowglobe.deploy.rebootPolicy or "auto";
+          serialGroup = config.snowglobe.deploy.serialGroup or null;
+          sshPort = config.snowglobe.deploy.sshPort or null;
+          optional = config.snowglobe.deploy.optional or false;
+          ignoredFailedUnits = config.snowglobe.deploy.ignoredFailedUnits or [];
           hooksFile = if config ? snowglobe && config.snowglobe ? hooksFile
             then config.snowglobe.hooksFile.drvPath
             else null;
@@ -596,7 +596,7 @@ mod tests {
     #[test]
     fn test_metadata_apply_expr_reads_ignored_failed_units() {
         assert!(metadata_apply_expr("x86_64-linux")
-            .contains("ignoredFailedUnits = config.snowglobe.push.ignoredFailedUnits or [];"));
+            .contains("ignoredFailedUnits = config.snowglobe.deploy.ignoredFailedUnits or [];"));
     }
 
     #[test]
@@ -653,9 +653,9 @@ mod tests {
     fn test_metadata_apply_expr_reads_phase_tags_and_reboot_policy_from_the_module() {
         let expr = metadata_apply_expr("x86_64-linux");
 
-        assert!(expr.contains("phase = config.snowglobe.push.phase or null;"));
-        assert!(expr.contains("tags = config.snowglobe.push.tags or [];"));
-        assert!(expr.contains(r#"rebootPolicy = config.snowglobe.push.rebootPolicy or "auto";"#));
+        assert!(expr.contains("phase = config.snowglobe.deploy.phase or null;"));
+        assert!(expr.contains("tags = config.snowglobe.deploy.tags or [];"));
+        assert!(expr.contains(r#"rebootPolicy = config.snowglobe.deploy.rebootPolicy or "auto";"#));
     }
 
     #[test]
@@ -671,7 +671,7 @@ mod tests {
         assert!(!parse(&json(r#", "optional": false"#)).optional);
         assert!(!parse(&json("")).optional);
         assert!(metadata_apply_expr("x86_64-linux")
-            .contains("optional = config.snowglobe.push.optional or false;"));
+            .contains("optional = config.snowglobe.deploy.optional or false;"));
     }
 
     #[test]
@@ -700,13 +700,13 @@ mod tests {
     #[test]
     fn test_metadata_apply_expr_reads_ssh_port() {
         assert!(metadata_apply_expr("x86_64-linux")
-            .contains("sshPort = config.snowglobe.push.sshPort or null;"));
+            .contains("sshPort = config.snowglobe.deploy.sshPort or null;"));
     }
 
     #[test]
     fn test_metadata_apply_expr_reads_serial_group() {
         assert!(metadata_apply_expr("x86_64-linux")
-            .contains("serialGroup = config.snowglobe.push.serialGroup or null;"));
+            .contains("serialGroup = config.snowglobe.deploy.serialGroup or null;"));
     }
 
     #[test]

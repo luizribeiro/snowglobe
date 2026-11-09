@@ -27,12 +27,12 @@
   };
 
   nodes = {
-    boron.snowglobe.push.phase = "p1";
-    cerium.snowglobe.push = {
+    boron.snowglobe.deploy.phase = "p1";
+    cerium.snowglobe.deploy = {
       phase = "p1";
       ignoredFailedUnits = [ "crash-loop.service" ];
     };
-    radon.snowglobe.push.phase = "p2";
+    radon.snowglobe.deploy.phase = "p2";
   };
 
   testScript = ''

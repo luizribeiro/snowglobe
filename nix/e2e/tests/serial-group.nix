@@ -1,7 +1,7 @@
 let
   # Slow enough that the second host is seen waiting for the first
   storageHost = {
-    snowglobe.push.serialGroup = "storage";
+    snowglobe.deploy.serialGroup = "storage";
     snowglobe.hooks.pre-deploy.drain-node = {
       location = "local";
       command = "sleep 6";

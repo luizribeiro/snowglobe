@@ -24,8 +24,8 @@
           nixpkgs.hostPlatform = "x86_64-linux";
 
           # Snowglobe-specific options for testing
-          snowglobe.push.phase = "production";
-          snowglobe.push.tags = ["web" "database"];
+          snowglobe.deploy.phase = "production";
+          snowglobe.deploy.tags = ["web" "database"];
 
           # Mock build output for testing
           system.build.toplevel = makeMockToplevel "hydrogen";
@@ -41,8 +41,8 @@
           networking.domain = "example.com";
           nixpkgs.hostPlatform = "aarch64-linux";
 
-          snowglobe.push.phase = "staging";
-          snowglobe.push.tags = ["web"];
+          snowglobe.deploy.phase = "staging";
+          snowglobe.deploy.tags = ["web"];
 
           system.build.toplevel = makeMockToplevel "nitrogen";
         };
@@ -57,8 +57,8 @@
           networking.domain = "";
           nixpkgs.hostPlatform = "x86_64-linux";
 
-          snowglobe.push.phase = "production";
-          snowglobe.push.tags = ["database"];
+          snowglobe.deploy.phase = "production";
+          snowglobe.deploy.tags = ["database"];
 
           system.build.toplevel = makeMockToplevel "oxygen";
         };

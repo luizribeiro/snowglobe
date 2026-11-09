@@ -65,7 +65,7 @@ Static binaries for Linux and macOS are on the
 
    ```nix
    {
-     snowglobe.push.allowedUsers = [ "deploy" ];
+     snowglobe.deploy.allowedUsers = [ "deploy" ];
      # nix copy as a non-root user needs a trusted user (or signed paths)
      nix.settings.trusted-users = [ "deploy" ];
    }
@@ -85,7 +85,7 @@ Static binaries for Linux and macOS are on the
 
    ```nix
    {
-     snowglobe.push = {
+     snowglobe.deploy = {
        phase = "p2";            # deploys after the p1 hosts
        tags = [ "web" ];        # snow push --tag web
        rebootPolicy = "auto";   # or "never" or "always"

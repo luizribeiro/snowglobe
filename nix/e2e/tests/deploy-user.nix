@@ -11,7 +11,7 @@
       openssh.authorizedKeys.keys =
         [ (import "${pkgs.path}/nixos/tests/ssh-keys.nix" pkgs).snakeOilPublicKey ];
     };
-    snowglobe.push.allowedUsers = [ "deploy" ];
+    snowglobe.deploy.allowedUsers = [ "deploy" ];
     # nix copy as a non-root user only imports the unsigned paths snow
     # copies when the user is trusted
     nix.settings.trusted-users = [ "deploy" ];

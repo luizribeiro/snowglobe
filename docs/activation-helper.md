@@ -29,7 +29,7 @@ Import the module and list your deploy users:
 
 ```nix
 {
-  snowglobe.push.allowedUsers = [ "deploy" ];
+  snowglobe.deploy.allowedUsers = [ "deploy" ];
 }
 ```
 

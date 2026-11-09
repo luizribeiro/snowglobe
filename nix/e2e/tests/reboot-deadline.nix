@@ -1,7 +1,7 @@
 {
   name = "reboot-deadline";
 
-  nodes.radon.snowglobe.push.rebootPolicy = "always";
+  nodes.radon.snowglobe.deploy.rebootPolicy = "always";
 
   demo = {
     title = "A rebooted host never comes back before the deadline";

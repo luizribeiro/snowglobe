@@ -173,7 +173,7 @@ Put the hooks and a serial group in the module that enables Kubernetes:
 { config, lib, ... }:
 {
   config = lib.mkIf config.features.kubernetes.enable {  # an option of your own
-    snowglobe.push.serialGroup = "kubernetes";
+    snowglobe.deploy.serialGroup = "kubernetes";
     snowglobe.hooks = {
       pre-deploy.drain = {
         location = "local";

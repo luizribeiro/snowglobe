@@ -131,7 +131,7 @@
           recorder = import ./nix/demos/record.test.nix { inherit pkgs; };
           render-demos = import ./nix/demos/render.test.nix { inherit pkgs; };
           hooks-module = runNixTests "hooks-module" (import ./modules/hooks.test.nix { inherit pkgs; });
-          push-module = runNixTests "push-module" (import ./modules/push.test.nix { inherit pkgs; });
+          deploy-module = runNixTests "deploy-module" (import ./modules/deploy.test.nix { inherit pkgs; });
           local-pkgs-module = runNixTests "local-pkgs-module" (import ./modules/local-pkgs.test.nix { inherit pkgs; });
           store-path-check = import ./modules/store-path-check.test.nix { inherit pkgs; };
           darwin-activate = import ./modules/darwin-activate.test.nix { inherit pkgs; };

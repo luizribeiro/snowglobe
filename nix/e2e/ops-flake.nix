@@ -20,7 +20,7 @@
           networking = { inherit (config) hostName domain; };
           nixpkgs.hostPlatform = { inherit (config) system; };
           snowglobe = {
-            push = {
+            deploy = {
               inherit (config) phase tags rebootPolicy optional serialGroup sshPort
                 ignoredFailedUnits;
             };

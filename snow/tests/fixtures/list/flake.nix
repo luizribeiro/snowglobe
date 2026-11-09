@@ -6,7 +6,7 @@
       argon.config = {
         networking.hostName = "argon";
         nixpkgs.hostPlatform.system = "x86_64-linux";
-        snowglobe.push = {
+        snowglobe.deploy = {
           phase = "p1";
           tags = [ "web" "dns" ];
           rebootPolicy = "never";
@@ -17,7 +17,7 @@
       boron.config = {
         networking.hostName = "boron";
         nixpkgs.hostPlatform.system = "aarch64-linux";
-        snowglobe.push = {
+        snowglobe.deploy = {
           phase = "p2";
           tags = [ "web" ];
           optional = true;
@@ -29,7 +29,7 @@
       curium.config = {
         networking.hostName = "curium";
         nixpkgs.hostPlatform.system = "x86_64-linux";
-        snowglobe.push = {
+        snowglobe.deploy = {
           phase = "never";
           tags = [ "web" ];
         };

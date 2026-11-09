@@ -3,7 +3,7 @@
 with lib;
 
 let
-  cfg = config.snowglobe.push;
+  cfg = config.snowglobe.deploy;
 
   # With nix.enable = false (e.g. Determinate Nix) nix-darwin doesn't manage
   # nix, so use the host's own install; sudo's secure_path may not include it.
@@ -20,10 +20,10 @@ in
   imports = [
     ./bootstrap.nix
     ./hooks.nix
-    ./push.nix
+    ./deploy.nix
   ];
 
-  options.snowglobe.push = {
+  options.snowglobe.deploy = {
     allowedUsers = mkOption {
       type = types.listOf types.str;
       default = [];

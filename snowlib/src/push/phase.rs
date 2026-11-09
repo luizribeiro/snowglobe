@@ -22,7 +22,7 @@ fn is_valid_phase(phase: &str) -> bool {
 }
 
 /// Rejects a phase the module's option type would have, for flakes that set
-/// `snowglobe.push.phase` without the module
+/// `snowglobe.deploy.phase` without the module
 pub(crate) fn check_phase(host: &str, phase: Option<&str>) -> Result<()> {
     match phase {
         Some(phase) if !is_valid_phase(phase) => Err(FlakeError::InvalidPhase {
@@ -192,7 +192,7 @@ mod tests {
         );
         assert_eq!(
             miette::Diagnostic::help(&error).unwrap().to_string(),
-            "A phase name may contain only ASCII letters, digits, dashes and underscores, and 'default' is reserved for hosts without a phase. Set snowglobe.push.phase to a name like 'p1', or leave it unset."
+            "A phase name may contain only ASCII letters, digits, dashes and underscores, and 'default' is reserved for hosts without a phase. Set snowglobe.deploy.phase to a name like 'p1', or leave it unset."
         );
     }
 }

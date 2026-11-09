@@ -30,7 +30,7 @@ scenarios standing in for Nix and SSH.
 activation helper:
 
 ```bash
-nix build -L .#checks.x86_64-linux.push-module
+nix build -L .#checks.x86_64-linux.deploy-module
 ```
 
 **VM tests** (Linux), in `nix/e2e/tests/`. Real pushes between NixOS VMs.
