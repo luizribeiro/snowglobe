@@ -20,7 +20,10 @@
           networking = { inherit (config) hostName domain; };
           nixpkgs.hostPlatform = { inherit (config) system; };
           snowglobe = {
-            push = { inherit (config) phase tags rebootPolicy optional serialGroup sshPort; };
+            push = {
+              inherit (config) phase tags rebootPolicy optional serialGroup sshPort
+                ignoredFailedUnits;
+            };
             hooksFile = hooksFile config.hooksFile;
           };
           system.build.toplevel = builtins.storePath config.toplevel;

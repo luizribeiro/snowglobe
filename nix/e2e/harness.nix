@@ -80,7 +80,8 @@ let
       (_: config: {
         inherit (config.networking) hostName domain;
         inherit (config.nixpkgs.hostPlatform) system;
-        inherit (config.snowglobe.push) phase tags rebootPolicy optional serialGroup sshPort;
+        inherit (config.snowglobe.push) phase tags rebootPolicy optional serialGroup sshPort
+          ignoredFailedUnits;
         hooksFile = "${config.snowglobe.hooksFile}";
         toplevel = "${config.system.build.toplevel}";
       })
