@@ -5,6 +5,9 @@
   common = { lib, pkgs, ... }: {
     users.users.deploy = {
       isNormalUser = true;
+      # The deploy user's ssh checks before the push would otherwise leave
+      # its user manager stopping during the switch (see the harness)
+      linger = true;
       openssh.authorizedKeys.keys =
         [ (import "${pkgs.path}/nixos/tests/ssh-keys.nix" pkgs).snakeOilPublicKey ];
     };

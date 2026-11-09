@@ -45,6 +45,10 @@ let
     ];
     services.openssh.enable = true;
     users.users.root.openssh.authorizedKeys.keys = [ sshKeys.snakeOilPublicKey ];
+    # Waiting for a host's ssh logs in as root, and root's user manager
+    # stops 10s after that session ends. A switch during that stop fails its
+    # user activation (exit 4), so keep the manager running.
+    users.users.root.linger = true;
     environment.etc."ssh/id_snakeoil" = {
       source = sshKeys.snakeOilPrivateKey;
       mode = "0600";
