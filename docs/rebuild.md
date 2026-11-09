@@ -32,15 +32,11 @@ A rebuild goes through these steps:
 3. **Reboot check.** For a switch on NixOS, snow checks whether the new system needs a reboot (see [below](#when-the-new-system-needs-a-reboot)).
 4. **Activate.** snow records the new system in the system profile, which makes it a generation you can roll back to, then runs its activation: `switch-to-configuration` on NixOS, which also makes it the default boot entry, or the `activate` script on macOS.
 
-The output is a single host line, as in `snow deploy`, ending with the result and how long it took:
+After asking for sudo if it needs to, snow shows a single host line, as in `snow deploy`, ending with the result and how long it took:
 
-```text
-✓ workstation (switch) in 0:41
-```
+![snow rebuild asks for the sudo password once, before it starts](demos/rebuild-sudo.cast)
 
 In a terminal, the output of the build and the activation doesn't appear on screen. snow writes it to a full log, `/tmp/snow-<timestamp>.log`, and prints that path when it starts. Look there when something fails, or to see what an activation did.
-
-[![snow rebuild asks for the sudo password once, before it starts](/snowglobe/rebuild-sudo.svg)](https://asciinema.org/a/n6O5yoNHWIld5ZX2)
 
 ## Which configuration it builds
 
@@ -61,7 +57,7 @@ snow checks whether sudo already runs commands without asking, for example becau
 
 While the build runs, snow refreshes sudo's timestamp every minute in the background. sudo forgets a password after five minutes by default, and without the refresh a build longer than that would end at a second password prompt. Every command snow then runs as root uses `sudo -n`, which never prompts, so nothing can ask for a password underneath the progress display.
 
-[![snow rebuild keeps sudo from forgetting the password during a long build](/snowglobe/rebuild-sudo-keepalive.svg)](https://asciinema.org/a/CCKjX20YntNFIMFC)
+![snow rebuild keeps sudo from forgetting the password during a long build](demos/rebuild-sudo-keepalive.cast)
 
 If sudo is configured never to remember a password (`timestamp_timeout=0`), snow can't keep it, and sudo may ask again at each step that needs root.
 
@@ -71,28 +67,18 @@ If sudo needs a password and standard input isn't a terminal, for example in a s
 
 Some changes can't take effect on a running system: a new kernel or initrd, or a change that would restart a service that is unsafe to restart live, such as udev or the network setup. On NixOS, before switching, snow runs the same check that `snow deploy` uses: it compares the booted kernel and initrd with the new ones and, if they match, runs the new system's `dry-activate` to see which services would restart. [Reboot detection](/snowglobe/reboot-detection/) explains the check.
 
-If no reboot is needed, snow switches. If one is, it lists the reasons and asks what to do:
-
-```text
-Reboot needed:
-  • kernel linux-6.12.58 → linux-6.12.60
-? What now? ›
-❯ Reboot into it now
-  Use it from the next boot
-  Switch now, reboot later
-  Cancel
-```
+If no reboot is needed, snow switches. If one is, it lists the reasons and asks what to do, as the recordings below show:
 
 - **Reboot into it now** sets the new system as the boot default without activating it, then reboots. The result line reads `(boot, rebooting)`.
 - **Use it from the next boot** sets the new system as the boot default and leaves the running system alone, like `--boot`. The result line reads `(boot)`.
 - **Switch now, reboot later** shows a warning that, until you reboot, the running system mixes old and new parts, and asks you to confirm (the default is no). If you confirm, snow switches and the result line reads `(switch, reboot to finish)`.
 - **Cancel** changes nothing. The system was built but isn't activated or set for the next boot, and the result line reads `(cancelled)`. snow exits with status 0.
 
-[![snow rebuild sets the new system to start on the next boot](/snowglobe/rebuild-boot.svg)](https://asciinema.org/a/6D3s0ETGu3gsEkXD)
+![snow rebuild sets the new system to start on the next boot](demos/rebuild-boot.cast)
 
-[![snow rebuild reboots into the new system](/snowglobe/rebuild-reboot.svg)](https://asciinema.org/a/HrREagz2DZPhuXDC)
+![snow rebuild reboots into the new system](demos/rebuild-reboot.cast)
 
-[![snow rebuild warns before switching without a reboot, and is cancelled](/snowglobe/rebuild-cancel.svg)](https://asciinema.org/a/BCTneCUsUzcuTWXt)
+![snow rebuild warns before switching without a reboot, and is cancelled](demos/rebuild-cancel.cast)
 
 Two flags answer the question in advance, which is useful when you already know what you want:
 

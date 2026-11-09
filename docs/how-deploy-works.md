@@ -7,7 +7,7 @@ description: "What snow deploy does to each host, in what order, and why it is b
 
 This page explains what happens between typing `snow deploy` and reading its final report: the checks that run before any host is touched, the steps each host goes through, how phases and serial groups fit around those steps, and why the order is what it is. The guides cover how to set each feature up; this page is about the model behind them.
 
-[![Three hosts in two phases switch to a new system](/snowglobe/switch.svg)](https://asciinema.org/a/6J8p7HDK0Df1tPSx)
+![Three hosts in two phases switch to a new system](demos/switch.cast)
 
 ## Before any host is touched
 
@@ -29,7 +29,7 @@ Three checks follow, and each one stops the whole deployment if it fails:
 
 These checks exist so that a mistake on your side cannot leave the fleet half deployed. It is much cheaper to find a missing hook package before the first host is drained than after.
 
-[![A local hook's program is missing, so the deployment stops before building](/snowglobe/missing-hook.svg)](https://asciinema.org/a/uH01eTmwST7t8kNE)
+![A local hook's program is missing, so the deployment stops before building](demos/missing-hook.cast)
 
 ## Phases run one after another
 
@@ -102,7 +102,7 @@ If a host in the group fails, at any step, the group is halted at once, so no ot
 
 Serial groups only coordinate hosts within one `snow deploy`. Two deployments running at the same time do not know about each other. See [Deploy a cluster one node at a time](/snowglobe/cluster/).
 
-[![Two hosts in a serial group take turns](/snowglobe/serial-group.svg)](https://asciinema.org/a/DfWYNZ7K7KCfiFvg)
+![Two hosts in a serial group take turns](demos/serial-group.cast)
 
 ## Dry runs
 
@@ -110,35 +110,12 @@ Serial groups only coordinate hosts within one `snow deploy`. Two deployments ru
 
 ## The report
 
-When a phase ends, `snow` prints its report, one line per host, with the activation mode and what else happened:
+When a phase ends, `snow` prints its report, one line per host, with the activation mode and what else happened. A failed host shows the step it failed at and the line of the error that matters. After the last phase, `snow` lists any phases it skipped, then a total. In this recording, `web2` switched in phase `p2`, but `storage-agent.service` was failing afterwards, so phase `p3` is skipped:
 
-```text
-✓ Phase p1 (1 host in 0:38)
-  ✓ web1 (switch)
-```
-
-A failed host shows the step it failed at and the line of the error that matters. Here `web2` switched, but `nginx.service` was failing afterwards:
-
-```text
-✗ Phase p2 (1/2 failed in 0:52)
-  ✓ db1 (boot, rebooted)
-  ✗ web2 at activate: activated, but nginx.service is failing
-```
+![One host fails to activate, so the next phase is skipped](demos/activation-failure.cast)
 
 When the error has more output, such as a Nix build error or a command that failed over SSH, the report also shows the few lines leading up to the error, and for a failed command the command itself. Longer output is cut short, ending with a line such as `… 7 more lines in /tmp/snow-1762255380.log` that points to the full log.
 
 Labels you may see on a successful host are the mode (`switch`, `boot`, `test`, `dry-run`), `rebooted`, `unchanged`, and `ignored failing <units>`. A host skipped because its serial group halted shows as `⊘ k8s-3 skipped, serial group 'kubernetes' halted after k8s-2 failed`. A failed optional host is marked `(optional)`, and a phase whose only failures are optional hosts is shown as a warning rather than a failure.
 
-After the last phase, `snow` lists any phases it skipped, then a total:
-
-```text
-⊘ Phase p3 (2 hosts skipped)
-  ⊘ k8s-1
-  ⊘ k8s-2
-
-✗ 2/5 deployed, 1 failed, 2 skipped
-```
-
 `snow deploy` exits with a non-zero status if any host that is not optional failed. [Commands](/snowglobe/commands/#logs) describes where the full log goes and the [exit codes](/snowglobe/commands/#exit-codes).
-
-[![One host fails to activate while the others succeed](/snowglobe/activation-failure.svg)](https://asciinema.org/a/NRfbtSt4AyH53Xsy)

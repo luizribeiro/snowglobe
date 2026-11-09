@@ -61,29 +61,13 @@ Deploying 5 hosts in 4 phases:
 
 Inside a phase, hosts do not wait for each other: each one builds, copies, activates and, if it needs to, reboots at its own pace. At most `--concurrency` hosts (3 by default) are busy at the same time.
 
-[![Three hosts in two phases switch to their new systems](/snowglobe/switch.svg)](https://asciinema.org/a/6J8p7HDK0Df1tPSx)
-
 ## What happens when a host fails
 
-When a host fails at any step, its on-failure hooks run and it is marked failed. The other hosts in the same phase keep going to the end; snow does not interrupt a host halfway through an activation because another one failed. When the phase is over, it is reported as failed, and every later phase is skipped:
+When a host fails at any step, its on-failure hooks run and it is marked failed. The other hosts in the same phase keep going to the end; snow does not interrupt a host halfway through an activation because another one failed. When the phase is over, it is reported as failed, and every later phase is skipped. Here `web2` fails in phase `p2`, `web3` finishes, and `db1` in phase `p3` is skipped:
 
-```text
-✗ Phase p2 (1/2 failed in 0:41)
-  ✓ web2 (switch)
-  ✗ web3 at activate: Job for nginx.service failed because the control process exited with error code.
-
-⊘ Phase p3 (1 host skipped)
-  ⊘ db1
-
-⊘ Hosts without a phase (1 host skipped)
-  ⊘ nas1
-
-✗ 2/5 deployed, 1 failed, 2 skipped
-```
+![One host fails to activate, so the next phase is skipped](demos/activation-failure.cast)
 
 Skipped hosts are untouched: snow has not built, copied or activated anything on them. `snow deploy` exits non-zero. Once you have fixed the cause, run the same command again. Hosts that already run the new system are reported as `(unchanged)` without being deployed again, so the deployment effectively picks up where it stopped.
-
-[![One host fails to activate](/snowglobe/activation-failure.svg)](https://asciinema.org/a/NRfbtSt4AyH53Xsy)
 
 ## Hosts that may be offline
 

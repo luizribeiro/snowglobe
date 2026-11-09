@@ -106,8 +106,6 @@ The host is then deployed when the listed units are the only failing ones and th
 
 ## A host fails to activate
 
-[![One host fails to activate while the others succeed](/snowglobe/activation-failure.svg)](https://asciinema.org/a/NRfbtSt4AyH53Xsy)
-
 When activation fails, only that host fails. Other hosts in the same phase carry on, and later phases are skipped. The report shows the command `snow` ran and the end of its output, which normally contains the reason, such as a unit that failed to start or an activation script that exited with an error. The host's on-failure hooks run.
 
 Keep in mind that a failed switch may already have changed the host. NixOS records the new system as current before it starts services, so a host that failed at `activate` may run the new system with some services not started.
@@ -121,8 +119,6 @@ snow deploy --redeploy web2
 To go back to the previous system instead, see [Roll back a bad deployment](/snowglobe/rollback/).
 
 ## A host is unreachable
-
-[![A host is off the network: ssh times out and only that host fails](/snowglobe/unreachable.svg)](https://asciinema.org/a/cX25pebSCFgr3uDE)
 
 When `snow` cannot reach a host, that host fails with ssh's own error, such as `ssh: connect to host web2 port 22: Connection timed out`, and the other hosts in the phase are deployed as usual. `snow` gives up on a connection after 10 seconds, so an offline host does not hold up the deployment for long. Before the failure you may see the warning `could not read installed systems, deploying anyway`: `snow` could not check whether the host was up to date, and the copy that follows is what fails.
 
@@ -143,8 +139,6 @@ Common causes:
 
 ## The ssh-agent does not answer
 
-[![The ssh-agent never answers, so the deployment stops at once](/snowglobe/hung-agent.svg)](https://asciinema.org/a/eOyxRZmJRZ1fQB7f)
-
 If `SSH_AUTH_SOCK` points at an agent that accepts connections but never replies, every ssh call would hang. `snow` checks the agent with `ssh-add -l` before it touches any host, and stops the deployment if the agent does not answer within 10 seconds:
 
 ```text
@@ -161,8 +155,6 @@ env -u SSH_AUTH_SOCK snow deploy web1
 An agent that cannot be reached at all is not fatal. In that case `snow` warns `the ssh-agent can't be reached, ssh will only try key files` and carries on.
 
 ## A hook fails
-
-[![A pre-deploy hook fails, so its host is never activated](/snowglobe/hook-failure.svg)](https://asciinema.org/a/SjhKcts8A6EwwRoG)
 
 A hook fails when its command exits with a non-zero status or runs past its `timeout` (`Hook timed out after 300 seconds`), after any `retries`. The host then fails at the hook's stage, and the report shows the last line the hook wrote to standard error:
 
@@ -188,8 +180,6 @@ If one of a hook's `environmentFiles` cannot be read, the host fails at that hoo
 
 ### A local hook's program is missing
 
-[![A local hook's program is missing, so the deployment stops before building](/snowglobe/missing-hook.svg)](https://asciinema.org/a/uH01eTmwST7t8kNE)
-
 Before building anything, `snow` checks that every store path a local hook's command refers to exists on your machine. If one is missing, the deployment stops before any host is touched:
 
 ```text
@@ -210,8 +200,6 @@ The usual cause is a local hook that interpolates a package from `pkgs`, which i
 ```
 
 ## A rebooted host never comes back
-
-[![A rebooted host never comes back before the deadline](/snowglobe/reboot-deadline.svg)](https://asciinema.org/a/eFy1uI5b9rnfI0jt)
 
 After it asks a host to reboot, `snow` waits for the host to answer over SSH with a new boot ID. If that does not happen within `--reboot-timeout` (600 seconds by default), the host fails at `reboot` with a message such as `host did not come back online within 600s`, followed by the last connection error. If the host answers but still has the same boot ID, the message is `boot ID is unchanged, so the host never rebooted` instead.
 
