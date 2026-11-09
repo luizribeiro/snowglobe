@@ -33,7 +33,6 @@ let
     (lib.filter (lib.hasSuffix ".nix") (builtins.attrNames (builtins.readDir ./tests)));
   sorted = lib.sort lib.lessThan;
   tests = lib.mapAttrs (_: snowTest) files;
-  withDemo = lib.filter (name: files.${name} ? demo) names;
 in
 assert lib.assertMsg (sorted names == sorted onDisk)
   "nix/e2e: the tests listed in default.nix differ from those in ./tests";
@@ -44,6 +43,8 @@ assert lib.all (name: lib.assertMsg (files.${name}.name == name)
   recordings = (import ../demos).renderDemos {
     inherit pkgs;
     name = "snow-deploy-recordings";
-    demos = map (name: "${tests.${name}}/demo") withDemo;
+    demos = lib.concatMap
+      (name: map (demo: "${tests.${name}}/demos/${demo}") tests.${name}.demos)
+      names;
   };
 }

@@ -78,23 +78,31 @@ def contains(text: str, expected: tuple[str, ...]) -> None:
         assert part in text, (part, text)
 
 
-class Demo:
-    """The test's demo, recorded where it runs, under the prompt the
-    maintainer would see there"""
+demos = {spec["name"]: spec for spec in settings["demos"]}
 
-    def __init__(self, env: dict[str, str]):
-        spec = settings["demo"]
-        assert spec, "this test has no demo"
+
+def snow_logs(machine: BaseMachine) -> set[str]:
+    return set(machine.succeed("find /tmp -maxdepth 1 -name 'snow-*.log'").split())
+
+
+class Demo:
+    """One of the test's demos, recorded where it runs, under the prompt
+    its user would see there"""
+
+    def __init__(self, name: str, env: dict[str, str]):
+        spec = demos[name]
+        self.name = name
         self.machine = by_name[spec["runOn"]]
-        user = spec.get("user")
+        self.out = f"/var/lib/demos/{name}"
+        user = spec["user"]
         if user:
             home, flake = stage_for_user(self.machine, user)
         else:
             home, flake = "/root", FLAKE
         record = shlex.join([
             "record", "--prompt", f"alice@{spec['runOn']}:ops",
-            "--name", spec["name"], "--title", spec["title"],
-            "/var/lib/demo", spec["script"],
+            "--name", name, "--title", spec["title"],
+            self.out, spec["script"],
         ])
         variables = {
             "PATH": "/run/wrappers/bin:/run/current-system/sw/bin",
@@ -104,30 +112,32 @@ class Demo:
         setenv = " ".join(
             shlex.quote(f"--setenv={name}={value}") for name, value in variables.items()
         )
-        shell = f"{record} > /tmp/demo.out 2>&1; echo $? > /tmp/demo.status"
+        shell = f"{record} > /tmp/{name}.out 2>&1; echo $? > /tmp/{name}.status"
+        self.logs_before = snow_logs(self.machine)
         self.started = time.monotonic()
         # In its own unit, so a demo that takes its machine down keeps what
         # it recorded
         run_as = f"--uid={user} " if user else ""
         self.machine.succeed(
-            f"systemd-run --unit=demo {run_as}--working-directory={flake} {setenv} "
+            f"systemd-run --unit=demo-{name} {run_as}--working-directory={flake} {setenv} "
             f"/bin/sh -c {shlex.quote(shell)}"
         )
 
     def wait(self) -> "Demo":
-        self.machine.wait_until_succeeds("test -e /tmp/demo.status")
+        self.machine.wait_until_succeeds(f"test -e /tmp/{self.name}.status")
         self.seconds = time.monotonic() - self.started
-        self.status = int(self.machine.succeed("cat /tmp/demo.status"))
-        self.raw = self.machine.succeed("cat /tmp/demo.out")
+        self.status = int(self.machine.succeed(f"cat /tmp/{self.name}.status"))
+        self.raw = self.machine.succeed(f"cat /tmp/{self.name}.out")
         self.output = plain(self.raw)
         assert self.status != SCRIPT_FAILED, self.output
         assert cursor_shown(self.raw), ("snow left the cursor hidden", self.output)
         return self.collect()
 
     def collect(self) -> "Demo":
-        self.machine.copy_from_machine("/var/lib/demo")
-        status, self.log = self.machine.execute("cat /tmp/snow-*.log")
-        assert status == 0, "snow wrote no log"
+        self.machine.copy_from_machine(self.out, "demos")
+        logs = sorted(snow_logs(self.machine) - self.logs_before)
+        assert logs, "snow wrote no log"
+        self.log = self.machine.succeed(f"cat {shlex.join(logs)}")
         return self
 
     def has(self, *texts: str) -> None:
@@ -155,9 +165,16 @@ class Demo:
         assert self.status == 0, self.output
 
 
-def demo(wait: bool = True, env: Optional[dict[str, str]] = None) -> Demo:
-    """Runs the demo; with wait=False, returns at once, to be waited for"""
-    started = Demo(env or {})
+def demo(
+    name: Optional[str] = None, wait: bool = True, env: Optional[dict[str, str]] = None
+) -> Demo:
+    """Runs the named demo, or the test's only one; with wait=False, returns
+    at once, to be waited for"""
+    assert demos, "this test has no demo"
+    if name is None:
+        assert len(demos) == 1, f"name one of the demos {sorted(demos)}"
+        (name,) = demos
+    started = Demo(name, env or {})
     return started.wait() if wait else started
 
 
@@ -170,8 +187,8 @@ def stage_for_user(machine: BaseMachine, user: str) -> tuple[str, str]:
     the user's home and the flake's copy"""
     home = f"/home/{user}"
     flake = f"{home}/ops"
-    machine.succeed(f"cp -rL {settings['flake']} {flake} && chmod -R u+w {flake}")
-    machine.succeed(f"chown -R {user}: {flake} && install -d -o {user} /var/lib/demo")
+    machine.succeed(f"rm -rf {flake} && cp -rL {settings['flake']} {flake} && chmod -R u+w {flake}")
+    machine.succeed(f"chown -R {user}: {flake} && install -d -o {user} /var/lib/demos")
     return home, flake
 
 
@@ -186,8 +203,8 @@ def setup() -> None:
         runs(name, base(name))
         boots(name, base(name))
     stage_flake(deployer)
-    if settings["demo"] and settings["demo"]["runOn"] != settings["deployer"]:
-        stage_flake(by_name[settings["demo"]["runOn"]])
+    for runs_on in {spec["runOn"] for spec in demos.values()} - {settings["deployer"]}:
+        stage_flake(by_name[runs_on])
 
 
 setup()

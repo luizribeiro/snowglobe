@@ -103,8 +103,11 @@ in
 test:
 let
   hosts = builtins.attrNames test.nodes;
-  demo = if test ? demo then { runOn = deployer; } // test.demo else null;
-  runsDemo = name: demo != null && name == demo.runOn;
+  # A test records one `demo`, named after the test, or a list of `demos`,
+  # each with its own name
+  demos = map (demo: { runOn = deployer; user = null; } // demo)
+    (test.demos or (lib.optional (test ? demo) ({ inherit (test) name; } // test.demo)));
+  runsDemo = name: lib.any (demo: demo.runOn == name) demos;
 
   # The host's base system with the test's module on top, so it boots in the
   # same VM; marked, so there's always something to deploy
@@ -117,17 +120,25 @@ let
     }).config;
   };
 in
-assert lib.assertMsg (test ? demo || test ? testScript)
+assert lib.assertMsg (!(test ? demo && test ? demos))
+  "${test.name}: a test has a demo or demos, not both";
+assert lib.assertMsg (lib.allUnique (map (demo: demo.name) demos))
+  "${test.name}: two demos share a name";
+assert lib.all (demo: lib.assertMsg (builtins.match "[a-z0-9-]+" demo.name != null)
+  "${test.name}: the demo name ${demo.name} names a unit and files, so it takes only a-z, 0-9 and -") demos;
+assert lib.assertMsg (demos != [ ] || test ? testScript)
   "${test.name}: a test needs a demo, a testScript or both";
+assert lib.assertMsg (demos == [ ] || builtins.length demos == 1 || test ? testScript)
+  "${test.name}: with several demos, the testScript says when each one runs";
 assert lib.assertMsg (!(test.nodes ? ${deployer}))
   "${test.name}: ${deployer} is the deployer, not a host to deploy to";
-assert lib.assertMsg (demo == null || builtins.elem demo.runOn (hosts ++ [ deployer ]))
-  "${test.name}: the demo runs on ${demo.runOn}, which has no VM";
+assert lib.all (demo: lib.assertMsg (builtins.elem demo.runOn (hosts ++ [ deployer ]))
+  "${test.name}: the demo ${demo.name} runs on ${demo.runOn}, which has no VM") demos;
 pkgs.testers.runNixOSTest ({ config, ... }:
   let
     deployed = lib.genAttrs hosts (name: config.nodes.${name}.system.build.deployed);
     flake = opsFlake deployed;
-    demoScript = pkgs.writeText "${test.name}-demo.py" demo.script;
+    demoScript = demo: pkgs.writeText "${demo.name}-demo.py" demo.script;
 
     node = name: {
       imports = [ base (test.common or { }) (test.base.${name} or { }) ]
@@ -136,7 +147,7 @@ pkgs.testers.runNixOSTest ({ config, ... }:
       # stays the base
       virtualisation.additionalPaths =
         lib.optional (name == deployer || runsDemo name) flake
-        ++ lib.optional (runsDemo name) demoScript;
+        ++ map demoScript (lib.filter (demo: demo.runOn == name) demos);
     };
 
     settings = pkgs.writeText "${test.name}-harness.json" (builtins.toJSON {
@@ -144,16 +155,15 @@ pkgs.testers.runNixOSTest ({ config, ... }:
       base = toplevels (lib.getAttrs hosts config.nodes);
       sshPorts = lib.mapAttrs (_: node: node.snowglobe.deploy.sshPort) (lib.getAttrs hosts config.nodes);
       deployed = toplevels deployed;
-      demo = if demo == null then null else {
-        inherit (test) name;
-        inherit (demo) title runOn;
-        user = demo.user or null;
-        script = demoScript;
-      };
+      demos = map (demo: {
+        inherit (demo) name title runOn user;
+        script = demoScript demo;
+      }) demos;
     });
   in
   {
     inherit (test) name;
+    passthru.demos = map (demo: demo.name) demos;
     nodes = lib.genAttrs (hosts ++ [ deployer ]) node;
     testScript = ''
       HARNESS = "${settings}"

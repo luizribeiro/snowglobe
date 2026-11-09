@@ -26,7 +26,7 @@
     rebuild.collect()
     rebuild.logged("workstation: chose to reboot now", "workstation: activated (Boot mode)", "workstation: rebooting")
     boots("workstation", deployed("workstation"))
-    recorded = workstation.succeed("cat /var/lib/demo/demo.cast")
+    recorded = workstation.succeed("cat /var/lib/demos/rebuild-reboot/demo.cast")
     assert "(boot, rebooting)" in recorded, recorded
   '';
 }
