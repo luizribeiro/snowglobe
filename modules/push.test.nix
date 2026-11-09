@@ -104,6 +104,27 @@ in
     expected = false;
   };
 
+  testIgnoredFailedUnitsDefaultToEmpty = {
+    expr = (evalPush { }).ignoredFailedUnits;
+    expected = [ ];
+  };
+
+  testIgnoredFailedUnitsAcceptUnitNames = {
+    expr = accepts "ignoredFailedUnits" [
+      "unifi.service"
+      "mnt-data.mount"
+      "logrotate.timer"
+      "systemd-fsck@dev-disk-by\\x2dlabel-data.service"
+    ];
+    expected = true;
+  };
+
+  testIgnoredFailedUnitsRejectNamesWithoutAType = {
+    expr = map (unit: accepts "ignoredFailedUnits" [ unit ])
+      [ "unifi" "unifi.services" ".service" "" "unifi service" "units/unifi.service" ];
+    expected = [ false false false false false false ];
+  };
+
   testSshPortDefaultsToNull = {
     expr = (evalPush { }).sshPort;
     expected = null;

@@ -258,6 +258,7 @@ mod tests {
                 serial_group: None,
                 ssh_port: None,
                 optional: false,
+                ignored_failed_units: Vec::new(),
             })
         }
 

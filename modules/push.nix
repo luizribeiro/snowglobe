@@ -11,6 +11,10 @@ let
     // { description = ''phase name (letters, digits, "-" and "_"), other than "default"''; };
 
   tagName = filterName // { description = ''tag (letters, digits, "-" and "_")''; };
+
+  unitName = lib.types.strMatching
+    "[^/[:space:]]+[.](service|socket|target|device|mount|automount|swap|path|timer|slice|scope)"
+    // { description = ''systemd unit name with its type, as in "unifi.service"''; };
 in
 {
   options.snowglobe.push.phase = lib.mkOption {
@@ -77,6 +81,28 @@ in
       Only hosts pushed by the same `snow push` invocation coordinate.
     '';
     example = "kubernetes";
+  };
+
+  options.snowglobe.push.ignoredFailedUnits = lib.mkOption {
+    type = lib.types.listOf unitName;
+    default = [ ];
+    description = ''
+      Units that may be failing after `snow push` activates this host
+      without failing it.
+
+      A NixOS switch fails when any unit is failing afterwards, even one
+      the push didn't touch: the switch starts its targets again, which
+      reruns units that were already failing, such as a crash-looping
+      service. snow then fails the host at activate, saying that the new
+      system is active. If the only failing units are listed here, the
+      host is deployed instead, and the report names the units.
+
+      The host still fails if any other unit is failing, or if the switch
+      fails for another reason, such as a unit that failed to reload.
+      Listed units are ignored even if this push broke them. nix-darwin
+      hosts aren't affected.
+    '';
+    example = [ "unifi.service" ];
   };
 
   options.snowglobe.push.sshPort = lib.mkOption {

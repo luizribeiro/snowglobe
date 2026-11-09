@@ -28,6 +28,8 @@ pub struct HostMetadata {
     pub ssh_port: Option<u16>,
     /// When it fails, its phase and the push still succeed
     pub optional: bool,
+    /// Units that may be failing after activation without failing the host
+    pub ignored_failed_units: Vec<String>,
 }
 
 impl HostMetadata {
@@ -57,6 +59,7 @@ mod tests {
             serial_group: None,
             ssh_port,
             optional: false,
+            ignored_failed_units: Vec::new(),
         }
     }
 

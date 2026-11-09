@@ -314,6 +314,7 @@ fn metadata_apply_expr(local_system: &str) -> String {
           serialGroup = config.snowglobe.push.serialGroup or null;
           sshPort = config.snowglobe.push.sshPort or null;
           optional = config.snowglobe.push.optional or false;
+          ignoredFailedUnits = config.snowglobe.push.ignoredFailedUnits or [];
           hooksFile = if config ? snowglobe && config.snowglobe ? hooksFile
             then config.snowglobe.hooksFile.drvPath
             else null;
@@ -358,6 +359,8 @@ fn parse_host_metadata(
         hooks_file: Option<String>,
         #[serde(default)]
         optional: bool,
+        #[serde(default, rename = "ignoredFailedUnits")]
+        ignored_failed_units: Vec<String>,
     }
 
     let meta: MetadataJson =
@@ -384,6 +387,7 @@ fn parse_host_metadata(
         serial_group: meta.serial_group,
         ssh_port: meta.ssh_port,
         optional: meta.optional,
+        ignored_failed_units: meta.ignored_failed_units,
         hooks: Vec::new(),
     };
     Ok((metadata, meta.hooks_file))
@@ -556,6 +560,43 @@ mod tests {
         );
 
         assert_eq!(meta.ssh_port, Some(2222));
+    }
+
+    #[test]
+    fn test_parse_metadata_with_ignored_failed_units() {
+        let meta = parse(
+            r#"{
+            "hostName": "boron",
+            "domain": "example.com",
+            "phase": null,
+            "tags": [],
+            "rebootPolicy": "auto",
+            "ignoredFailedUnits": ["unifi.service"]
+        }"#,
+        );
+
+        assert_eq!(meta.ignored_failed_units, ["unifi.service"]);
+    }
+
+    #[test]
+    fn test_parse_metadata_without_ignored_failed_units_ignores_none() {
+        let meta = parse(
+            r#"{
+            "hostName": "boron",
+            "domain": "example.com",
+            "phase": null,
+            "tags": [],
+            "rebootPolicy": "auto"
+        }"#,
+        );
+
+        assert!(meta.ignored_failed_units.is_empty());
+    }
+
+    #[test]
+    fn test_metadata_apply_expr_reads_ignored_failed_units() {
+        assert!(metadata_apply_expr("x86_64-linux")
+            .contains("ignoredFailedUnits = config.snowglobe.push.ignoredFailedUnits or [];"));
     }
 
     #[test]

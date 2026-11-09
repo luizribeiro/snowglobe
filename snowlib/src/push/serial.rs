@@ -196,6 +196,7 @@ mod tests {
             serial_group: group.map(str::to_string),
             ssh_port: None,
             optional: false,
+            ignored_failed_units: Vec::new(),
         }
     }
 
