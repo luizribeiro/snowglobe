@@ -27,7 +27,7 @@ in
       are skipped.
 
       Hosts in the phase `never` are pushed (or built) only when named, as
-      in `snow push curium`, or selected with `--phase never`.
+      in `snow push web1`, or selected with `--phase never`.
     '';
     example = "p1";
   };
