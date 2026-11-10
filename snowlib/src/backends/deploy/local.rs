@@ -178,7 +178,7 @@ mod tests {
         let store_path = StorePath::new("/nix/store/nonexistent-path".to_string());
 
         let result = backend
-            .activate(&target, &store_path, ActivationMode::Test)
+            .activate(&target, &store_path, ActivationMode::Switch)
             .await;
 
         assert!(result.is_err());
@@ -203,7 +203,11 @@ mod tests {
         };
         let store_path = StorePath::new("/nix/store/test-darwin-system".to_string());
 
-        for mode in [ActivationMode::Boot, ActivationMode::DryActivate] {
+        for mode in [
+            ActivationMode::Boot,
+            ActivationMode::Test,
+            ActivationMode::DryActivate,
+        ] {
             let result = backend.activate(&target, &store_path, mode).await;
 
             assert!(
