@@ -128,7 +128,7 @@ CI runs formatting, clippy, the Rust tests with and without the unstable feature
 2. Add a `## [X.Y.Z]` section to [`CHANGELOG.md`](https://github.com/luizribeiro/snowglobe/blob/main/CHANGELOG.md). It becomes the release notes.
 3. Push a `vX.Y.Z` tag on `main`. It must match the version in `snow/Cargo.toml`, and the tagged commit must be on `main`, or the release workflow stops.
 
-The [release workflow](https://github.com/luizribeiro/snowglobe/blob/main/.github/workflows/release.yml) builds static binaries for Linux (x86_64 and aarch64) and macOS (x86_64 and aarch64), with a `SHA256SUMS` file, and publishes them on the [releases page](https://github.com/luizribeiro/snowglobe/releases). Running the workflow by hand builds the same archives as artifacts without publishing, to try them before tagging.
+The [release workflow](https://github.com/luizribeiro/snowglobe/blob/main/.github/workflows/release.yml) publishes the release on the [releases page](https://github.com/luizribeiro/snowglobe/releases), with the changelog section as its notes. It builds nothing: people install snowglobe from the flake at the tag. Running the workflow by hand checks that `CHANGELOG.md` has a section for the current version, without publishing.
 
 ## License
 

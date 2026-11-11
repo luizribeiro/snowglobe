@@ -7,7 +7,7 @@ description: "Where to find the list of changes in each snowglobe release, and w
 
 The changes in each release are recorded in [`CHANGELOG.md`](https://github.com/luizribeiro/snowglobe/blob/main/CHANGELOG.md) in the repository. It follows the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format, with an `Unreleased` section at the top for changes that are merged but not yet released.
 
-Each release on the [GitHub releases page](https://github.com/luizribeiro/snowglobe/releases) has its release notes and prebuilt `snow` binaries: static Linux binaries for x86_64 and aarch64, macOS binaries for x86_64 and aarch64, and a `SHA256SUMS` file to check them against.
+Each release is a `vX.Y.Z` tag, with its release notes on the [GitHub releases page](https://github.com/luizribeiro/snowglobe/releases). snowglobe is distributed as a flake, so a release has no other downloads: install it from the tag as the [installation guide](/snowglobe/installation/) shows.
 
 ## Compatibility before 1.0
 
@@ -19,4 +19,4 @@ If you pin snowglobe as a flake input, upgrading is a matter of updating that in
 nix flake update snowglobe
 ```
 
-If you run `snow` from that same input (for example its `packages.<system>.default`), it is updated along with the module. If you installed a release binary instead, replace it with the same release, so that the command line and the module on your hosts match. Then build your hosts with `snow build` before deploying, so that any breaking change shows up as an evaluation or build error rather than during a deployment.
+If you run `snow` from that same input (for example its `packages.<system>.default`), it is updated along with the module. If you installed `snow` separately, with `nix profile`, upgrade it to the same release, so that the command line and the module on your hosts match. Then build your hosts with `snow build` before deploying, so that any breaking change shows up as an evaluation or build error rather than during a deployment.

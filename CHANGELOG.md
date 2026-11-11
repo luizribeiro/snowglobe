@@ -15,9 +15,6 @@ First release. snowglobe is pre-1.0: the CLI, module options and flake
 interface may change between minor releases. It is used in production on one
 homelab of NixOS (x86_64, aarch64) and nix-darwin hosts.
 
-Release binaries: static Linux (x86_64 and aarch64, musl) and macOS (x86_64
-and aarch64), with `SHA256SUMS`.
-
 ### Added
 
 #### Commands

@@ -1,8 +1,8 @@
 ---
 name: Release
 
-# A v* tag publishes a release; running it by hand builds the same
-# archives as artifacts only, to try them before tagging.
+# A v* tag publishes a release with notes from CHANGELOG.md; people install
+# snow from the flake. Running it by hand checks the notes without publishing.
 "on":
   push:
     tags: ["v*"]
@@ -15,8 +15,6 @@ jobs:
   prepare:
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    outputs:
-      version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -55,68 +53,8 @@ jobs:
           name: release-notes
           path: release-notes.md
 
-  # Cargo builds on the runner, not Nix ones, so the binaries don't link
-  # into /nix/store; Linux ones are static musl builds.
-  build:
-    needs: prepare
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: x86_64-linux
-            target: x86_64-unknown-linux-musl
-            runner: ubuntu-24.04
-            native: true
-          - platform: aarch64-linux
-            target: aarch64-unknown-linux-musl
-            runner: ubuntu-24.04-arm
-            native: true
-          - platform: aarch64-darwin
-            target: aarch64-apple-darwin
-            runner: macos-latest
-            native: true
-          - platform: x86_64-darwin
-            target: x86_64-apple-darwin
-            runner: macos-latest
-            native: false
-    name: ${{ matrix.platform }}
-    env:
-      ARCHIVE: snow-${{ needs.prepare.outputs.version }}-${{ matrix.platform }}.tar.gz
-      BIN: target/${{ matrix.target }}/release/snow
-    steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
-      - run: cargo build --release --locked -p snow --target ${{ matrix.target }}
-      - name: Check the binary is static
-        if: runner.os == 'Linux'
-        run: |
-          file "$BIN"
-          file "$BIN" | grep -Eq 'static(ally|-pie) linked'
-      - name: Smoke test
-        if: matrix.native
-        env:
-          VERSION: ${{ needs.prepare.outputs.version }}
-        run: |
-          [ "$("$BIN" --version)" = "snow ${VERSION#v}" ]
-      - name: Package
-        run: |
-          mkdir dist
-          cp "$BIN" README.md LICENSE-MIT LICENSE-APACHE dist/
-          tar -czf "$ARCHIVE" -C dist snow README.md LICENSE-MIT LICENSE-APACHE
-          shasum -a 256 "$ARCHIVE" > "$ARCHIVE.sha256"
-          cat "$ARCHIVE.sha256"
-      - uses: actions/upload-artifact@v7
-        with:
-          name: ${{ matrix.platform }}
-          path: ${{ env.ARCHIVE }}*
-          if-no-files-found: error
-
   publish:
-    needs: [prepare, build]
+    needs: prepare
     if: github.ref_type == 'tag'
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -125,11 +63,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v8
         with:
-          path: dist
-          merge-multiple: true
-      - name: Combine checksums
-        working-directory: dist
-        run: cat ./*.sha256 > SHA256SUMS
+          name: release-notes
       - name: Create the release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -139,5 +73,4 @@ jobs:
           prerelease=()
           [[ "$TAG" == *-* ]] && prerelease=(--prerelease)
           gh release create "$TAG" --verify-tag "${prerelease[@]}" \
-            --title "snowglobe $TAG" --notes-file dist/release-notes.md \
-            dist/*.tar.gz dist/*.sha256 dist/SHA256SUMS
+            --title "snowglobe $TAG" --notes-file release-notes.md

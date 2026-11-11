@@ -94,8 +94,9 @@ A few ideas the code is built around:
    notes.
 3. Push a `vX.Y.Z` tag on main, matching `snow/Cargo.toml`.
 
-The release workflow builds static binaries for Linux and macOS. You can run
-it by hand to build them without publishing.
+The release workflow publishes the tag's changelog section as release notes.
+It builds no binaries, since snowglobe is installed from the flake. You can
+run it by hand to check the notes without publishing.
 
 ## License
 

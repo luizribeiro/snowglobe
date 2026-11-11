@@ -190,49 +190,6 @@ because your nixpkgs is too old, remove the `follows` line.
 Before upgrading, read the [changelog](/snowglobe/changelog/): minor
 releases before 1.0 may rename commands, flags or options.
 
-## Release binaries
-
-Releases on GitHub carry prebuilt `snow` binaries, so you can install `snow`
-on a machine without building it. Each release has an archive per platform,
-named `snow-<tag>-<platform>.tar.gz`, and a `SHA256SUMS` file with the
-checksum of every archive:
-
-| Platform | Binary |
-|---|---|
-| `x86_64-linux` | static (musl), runs on any x86_64 Linux |
-| `aarch64-linux` | static (musl), runs on any 64-bit ARM Linux |
-| `x86_64-darwin` | Intel Macs |
-| `aarch64-darwin` | Apple silicon Macs |
-
-The binaries come from the same source as the Nix package, built without the
-unstable commands. They still need `nix` and `ssh` on your `PATH`.
-
-To install one, pick a tag from the [releases
-page](https://github.com/luizribeiro/snowglobe/releases) and your platform,
-download the archive and the checksums, check the archive, and unpack `snow`
-into a directory on your `PATH`:
-
-```bash
-tag=vX.Y.Z
-platform=x86_64-linux
-base=https://github.com/luizribeiro/snowglobe/releases/download/$tag
-
-curl -fLO "$base/snow-$tag-$platform.tar.gz"
-curl -fLO "$base/SHA256SUMS"
-grep " snow-$tag-$platform.tar.gz\$" SHA256SUMS | sha256sum --check -
-
-tar -xzf "snow-$tag-$platform.tar.gz" snow
-install -Dm755 snow ~/.local/bin/snow
-```
-
-The check should print `snow-<tag>-<platform>.tar.gz: OK`. On macOS, use
-`shasum -a 256 --check -` in place of `sha256sum --check -`.
-
-The macOS binaries are not notarized. A file downloaded with `curl` runs
-normally, but macOS may refuse to open one downloaded with a web browser;
-remove the quarantine flag with `xattr -d com.apple.quarantine snow` if that
-happens.
-
 ## Check the installation
 
 Run:

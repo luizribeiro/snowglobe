@@ -38,8 +38,7 @@ nix run github:luizribeiro/snowglobe -- list      # run without installing
 nix profile install github:luizribeiro/snowglobe  # install
 ```
 
-Static binaries for Linux and macOS are on the
-[releases page](https://github.com/luizribeiro/snowglobe/releases).
+To pin a release, use its tag: `github:luizribeiro/snowglobe/vX.Y.Z`.
 
 ## Getting started
 
