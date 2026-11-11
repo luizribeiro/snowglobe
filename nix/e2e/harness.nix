@@ -37,6 +37,9 @@ let
     boot.loader.grub.enable = false;
     system.build.installBootLoader = "${pkgs.coreutils}/bin/true";
     nix.settings.experimental-features = [ "nix-command" "flakes" ];
+    # The VMs are offline, and each build would spend about 5s retrying
+    # cache.nixos.org before building
+    nix.settings.substituters = lib.mkForce [ ];
     environment.systemPackages = [
       (lib.hiPrio impureNix)
       snow
