@@ -15,12 +15,17 @@ let
 
   # snow evaluates and builds the flake purely; the ops flake needs
   # builtins.storePath to point at the prebuilt systems. Being prebuilt,
-  # they build at once, so a demo that needs a long build sets
+  # they build at once, so a demo that needs a long system build sets
   # SNOW_E2E_BUILD_SECONDS.
   impureNix = pkgs.writeShellScriptBin "nix" ''
     case "$1" in
       build)
-        sleep "''${SNOW_E2E_BUILD_SECONDS:-0}"
+        # Hooks files build while snow reads the hosts' settings, which a
+        # long build shouldn't slow
+        case "$*" in
+          *.drv^out*) ;;
+          *) sleep "''${SNOW_E2E_BUILD_SECONDS:-0}" ;;
+        esac
         exec ${pkgs.nix}/bin/nix build --impure "''${@:2}" ;;
       eval) exec ${pkgs.nix}/bin/nix eval --impure "''${@:2}" ;;
       *) exec ${pkgs.nix}/bin/nix "$@" ;;
