@@ -7,7 +7,7 @@ description: "What snow deploy does to each host, in what order, and why it is b
 
 This page explains what happens between typing `snow deploy` and reading its final report: the checks that run before any host is touched, the steps each host goes through, how phases and serial groups fit around those steps, and why the order is what it is. The guides cover how to set each feature up; this page is about the model behind them.
 
-![Three hosts in two phases switch to a new system](demos/switch.cast)
+![Twelve hosts in four phases switch to a new system](demos/switch.cast)
 
 ## Before any host is touched
 

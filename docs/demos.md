@@ -34,7 +34,7 @@ here is tested.
 
 ![tutorial-phases](demos/tutorial-phases.svg)
 
-## Three hosts in two phases switch to a new system
+## Twelve hosts in four phases switch to a new system
 
 `snow deploy`
 

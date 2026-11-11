@@ -10,7 +10,7 @@ each host's system, copies it to the host, activates it, and reboots the host
 when the new system needs a reboot. Hosts roll out in phases, and a failure
 stops the deployment before later phases are touched.
 
-![Three hosts in two phases switch to a new system](demos/switch.cast)
+![Twelve hosts in four phases switch to a new system](demos/switch.cast)
 
 It is meant for people who manage several NixOS or nix-darwin machines from
 one flake, from a handful of servers to a mixed fleet of Linux machines and
