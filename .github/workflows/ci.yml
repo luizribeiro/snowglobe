@@ -5,16 +5,21 @@ name: CI
   push:
     branches: [main]
   pull_request:
+  # Lets a run be started by hand when GitHub leaves a push's run stuck in
+  # the queue
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 # A PR's new commits supersede its running check; every push to main gets
-# its own group, so none is cancelled or dropped from the queue.
+# its own group, so none is cancelled or dropped from the queue. A manual
+# run gets one too, so a stuck run of the same commit can't hold it back.
 concurrency:
   group: >-
     ${{ github.workflow }}-${{ github.event_name == 'pull_request'
-    && github.ref || github.sha }}
+    && github.ref || github.event_name == 'workflow_dispatch'
+    && github.run_id || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # Evaluating every check in one process, as `nix flake check` does,
