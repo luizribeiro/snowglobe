@@ -16,7 +16,7 @@ pub mod nix;
 pub mod observer;
 pub mod process;
 pub mod reboot;
-mod shell;
+pub mod shell;
 mod ssh_options;
 pub mod sudo;
 #[cfg(test)]

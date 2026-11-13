@@ -1,17 +1,18 @@
-//! Quoting for commands run on a host over ssh. ssh joins its arguments with
-//! spaces and hands the result to the host's login shell, which parses it again.
+//! Quoting for shell command lines: those run on a host over ssh, which joins
+//! its arguments with spaces for the host's login shell to parse again, and
+//! those snow suggests running.
 
 use std::borrow::Cow;
 
 /// Quotes `word` so the host's shell reads it back unchanged. Words of only
 /// safe characters, like store paths, are left bare to keep commands readable
 /// in error messages.
-pub(crate) fn quote(word: &str) -> Cow<'_, str> {
+pub fn quote(word: &str) -> Cow<'_, str> {
     shell_escape::unix::escape(word.into())
 }
 
 /// Quotes each word and joins them into one command line
-pub(crate) fn join<'a>(words: impl IntoIterator<Item = &'a str>) -> String {
+pub fn join<'a>(words: impl IntoIterator<Item = &'a str>) -> String {
     words.into_iter().map(quote).collect::<Vec<_>>().join(" ")
 }
 
