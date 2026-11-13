@@ -91,6 +91,7 @@ fn setup_logging(is_interactive: bool) -> Option<std::path::PathBuf> {
 async fn main() -> ExitCode {
     miette::set_panic_hook();
 
+    let cli = Cli::parse();
     let is_interactive = std::io::stderr().is_terminal();
     let log_file = setup_logging(is_interactive);
 
@@ -100,7 +101,6 @@ async fn main() -> ExitCode {
         eprintln!("Logs: {}\n", path.display());
     }
 
-    let cli = Cli::parse();
     if is_interactive {
         if let Err(error) = signals::exit_on_signals() {
             tracing::warn!("Ctrl-C may leave the cursor hidden: {error}");

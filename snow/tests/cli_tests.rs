@@ -96,6 +96,14 @@ fn test_terminal_run_logs_to_a_file_in_tmpdir() {
 }
 
 #[test]
+fn test_help_version_and_usage_errors_leave_no_log_file() {
+    for args in [&["--help"][..], &["--version"], &["no-such-command"]] {
+        let logs = log_files_after_a_terminal_run(args);
+        assert!(logs.is_empty(), "snow {args:?} left {logs:?}");
+    }
+}
+
+#[test]
 fn test_fatal_error_shows_its_help_without_a_std_prefix() {
     assert_cmd::cargo::cargo_bin_cmd!("snow")
         .args(["-f", "/srv/no-such-flake", "list"])
