@@ -12,7 +12,7 @@ shows as one row per host.
 ![switch](docs/demos/switch.svg)
 
 > [!NOTE]
-> snowglobe is pre-1.0. The CLI, module options and flake interface may change between minor releases; see the [changelog](CHANGELOG.md) before upgrading. It is used in production on one homelab of NixOS (x86_64, aarch64) and nix-darwin hosts.
+> snowglobe is pre-1.0. The CLI, module options and flake interface may change between minor releases; see the [changelog](CHANGELOG.md) before upgrading. It is used in production on a homelab of 20+ NixOS (x86_64, aarch64) and nix-darwin hosts.
 
 ## Features
 

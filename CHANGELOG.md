@@ -12,8 +12,8 @@ options.
 ## [0.1.0] - YYYY-MM-DD
 
 First release. snowglobe is pre-1.0: the CLI, module options and flake
-interface may change between minor releases. It is used in production on one
-homelab of NixOS (x86_64, aarch64) and nix-darwin hosts.
+interface may change between minor releases. It is used in production on a
+homelab of 20+ NixOS (x86_64, aarch64) and nix-darwin hosts.
 
 ### Added
 
