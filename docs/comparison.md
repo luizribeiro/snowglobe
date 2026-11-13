@@ -69,6 +69,12 @@ These three push tools are also worth knowing. morph and devenv Machines can dep
 | Works without flakes | ✓ (flakes not supported) | — | ✓ (`devenv.nix`) | — |
 | Extra flake output needed | n/a (a network file) | the `clan-core.lib.clan` outputs | none (`machines` in `devenv.nix`) | none |
 
+## morph
+
+morph deploys a nixops-style network file, such as `morph deploy network.nix switch`. It does not support flakes. It builds every selected host first, then deploys them strictly one at a time: push the closure, upload secrets, run `preDeployChecks`, activate, optionally reboot, then run `healthChecks`. A health check is either a command on the host or an HTTP request from the deployer, retried until it passes. If a check fails, morph stops and leaves the remaining hosts untouched. With the default `--timeout 0`, though, a failing check retries forever, so set a timeout. morph also uploads secrets out of band with `deployment.secrets` and can prompt for a sudo password. `--reboot` reboots every host, whether or not it needs it.
+
+It is the better fit when your configuration does not use flakes and you want each host health-checked before the next one is touched. Because every host deploys in turn, a large fleet takes as long as all its hosts added together; snowglobe deploys in parallel and goes one at a time only within a serial group. morph does not detect whether a host needs a reboot, has no rollback and does not deploy to nix-darwin. It has had no release since October 2024.
+
 ## snowglobe
 
 snowglobe reads the `nixosConfigurations` and `darwinConfigurations` your flake already has, so it needs no extra flake output. Per-host settings go in the NixOS or nix-darwin configuration through a module. On top of parallel deployment it adds:
