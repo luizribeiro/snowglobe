@@ -117,7 +117,7 @@ On NixOS hosts, snowglobe can fall back to running `sudo switch-to-configuration
 - snow can't type a sudo password over SSH. Every remote command runs non-interactively, so the deploy user needs a sudo rule that asks for no password. The module provides one that is limited to the helper, instead of full passwordless sudo.
 - nix-darwin systems have no `switch-to-configuration`. The helper knows to run the closure's `activate` script, and to record the new system in `/nix/var/nix/profiles/system` first, which `activate` doesn't do on its own. Without that profile entry, the new system is not a generation: rollbacks, and activation at the next boot, would still see the previous one.
 
-Without the helper, snow takes the NixOS path: it runs `sudo nix-env --profile /nix/var/nix/profiles/system --set <new system>` and then fails, because there is no `switch-to-configuration` to run. If the SSH user happens to have passwordless sudo, the system profile is left pointing at a system that was never activated. Install the module and switch once by hand before the first deployment.
+Without the helper, snow stops at activation with `snowglobe-activate is not installed on nix-darwin host`, before it changes anything on the Mac. Install the module and switch once by hand before the first deployment.
 
 ## Determinate Nix
 
@@ -145,7 +145,7 @@ sudo -l -U deploy
 
 The output should include `(root) NOPASSWD: /run/current-system/sw/bin/snowglobe-activate`.
 
-**A warning that `snowglobe-activate` was not found, followed by a failure** means snow ran `command -v snowglobe-activate` over SSH and the deploy user's non-interactive shell didn't find it. Either the module isn't active, or `/run/current-system/sw/bin` isn't on that shell's `PATH`.
+**`snowglobe-activate is not installed on nix-darwin host`** means snow ran `command -v snowglobe-activate` over SSH and the deploy user's non-interactive shell didn't find it. Either the module isn't active, or `/run/current-system/sw/bin` isn't on that shell's `PATH`.
 
 **`nix-darwin can only switch, so your-mac can't boot`** (or `test`, `dry-activate`) means the deployment selected a Mac together with `--boot`, `--test` or `--dry-run`. Select only NixOS hosts for those modes.
 

@@ -232,6 +232,13 @@ pub enum DeployError {
         hosts: Vec<String>,
     },
 
+    #[error("snowglobe-activate is not installed on nix-darwin host '{host}'")]
+    #[diagnostic(
+        code(snow::deploy::darwin_helper_missing),
+        help("snow activates nix-darwin hosts only through snowglobe-activate. Import snowglobe's `darwinModules.default` into the host's configuration, set `snowglobe.deploy.allowedUsers` to the user snow connects as, and run `darwin-rebuild switch` on the Mac once.")
+    )]
+    DarwinHelperMissing { host: String },
+
     #[error("The ssh-agent did not answer within {seconds}s")]
     #[diagnostic(
         code(snow::deploy::ssh_agent_not_responding),

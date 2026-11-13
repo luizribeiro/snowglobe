@@ -237,11 +237,17 @@ impl DeployBackend for SshDeployBackend {
         target: &DeployTarget,
         store_path: &StorePath,
         mode: ActivationMode,
-        _system_type: SystemType,
+        system_type: SystemType,
     ) -> Result<()> {
         let mode_arg = activation_mode_to_string(mode);
 
         let helper_available = self.check_helper_available(target).await?;
+        if !helper_available && system_type == SystemType::Darwin {
+            return Err(DeployError::DarwinHelperMissing {
+                host: target.hostname.clone(),
+            }
+            .into());
+        }
 
         // Only update profile separately if helper is NOT available
         // When helper is available, it handles profile update internally
@@ -297,7 +303,7 @@ impl DeployBackend for SshDeployBackend {
         } else {
             tracing::warn!(
                 "snowglobe-activate not found on {}, falling back to direct activation. \
-                 For better security, add the snowglobe module to your NixOS/Darwin configuration.",
+                 For better security, add the snowglobe module to your NixOS configuration.",
                 target.hostname
             );
 
@@ -836,6 +842,55 @@ case "$*" in "systemctl show"*) printf %s '{show_output}' ;; esac"#
                 format!("sudo {CONDOR_SYSTEM}/bin/switch-to-configuration switch"),
             ]
         );
+    }
+
+    const FALCON_SYSTEM: &str = "/nix/store/9w2k5r7p1m3d-darwin-system-26.05.7a1c2e4";
+
+    #[tokio::test]
+    async fn test_activate_darwin_runs_the_helper_when_installed() {
+        let (dir, deployer) = recording_deployer(0);
+
+        deployer
+            .activate(
+                &condor(),
+                &StorePath::new(FALCON_SYSTEM.to_string()),
+                ActivationMode::Switch,
+                SystemType::Darwin,
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(
+            logged_commands(&dir),
+            [
+                "command -v snowglobe-activate".to_string(),
+                format!("sudo snowglobe-activate {FALCON_SYSTEM} switch"),
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn test_activate_darwin_without_the_helper_fails_before_touching_the_profile() {
+        let (dir, deployer) = recording_deployer(1);
+
+        let result = deployer
+            .activate(
+                &condor(),
+                &StorePath::new(FALCON_SYSTEM.to_string()),
+                ActivationMode::Switch,
+                SystemType::Darwin,
+            )
+            .await;
+
+        let Err(crate::error::SnowError::Deploy(error @ DeployError::DarwinHelperMissing { .. })) =
+            result
+        else {
+            panic!("expected DarwinHelperMissing, got {result:?}");
+        };
+        let help = miette::Diagnostic::help(&error).unwrap().to_string();
+        assert!(help.contains("darwinModules.default"), "{help}");
+        assert!(help.contains("snowglobe.deploy.allowedUsers"), "{help}");
+        assert_eq!(logged_commands(&dir), ["command -v snowglobe-activate"]);
     }
 
     #[tokio::test]
