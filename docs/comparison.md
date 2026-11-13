@@ -75,6 +75,14 @@ morph deploys a nixops-style network file, such as `morph deploy network.nix swi
 
 It is the better fit when your configuration does not use flakes and you want each host health-checked before the next one is touched. Because every host deploys in turn, a large fleet takes as long as all its hosts added together; snowglobe deploys in parallel and goes one at a time only within a serial group. morph does not detect whether a host needs a reboot, has no rollback and does not deploy to nix-darwin. It has had no release since October 2024.
 
+## Clan
+
+Clan is a framework for managing a whole fleet, not only a deployment tool. It covers an inventory of machines, shared services such as a VPN, backups and SSH certificates, generated secrets ("vars") and installation. Its flake is built with `clan-core.lib.clan`. `clan machines update` deploys the selected machines over SSH, all at once, and a failure on one machine does not stop the others. By default each target builds its own system; `--build-host` moves the build elsewhere. Clan uploads secrets on every update, can prompt for a sudo password and can update nix-darwin machines.
+
+Since 26.05, Clan sets the new system as the boot default before switching to it. When a NixOS switch inhibitor blocks the live switch, Clan stops and asks you to reboot the machine. It does not decide on its own that a reboot is needed, and it does not reboot.
+
+It is the better fit when you want one framework for the whole fleet, with secrets, networking, backups and installation configured through a shared inventory. It has no ordering between machines, hooks or health checks. If you need those, you can still deploy a Clan flake with another tool, because Clan also exports ordinary `nixosConfigurations`.
+
 ## snowglobe
 
 snowglobe reads the `nixosConfigurations` and `darwinConfigurations` your flake already has, so it needs no extra flake output. Per-host settings go in the NixOS or nix-darwin configuration through a module. On top of parallel deployment it adds:
