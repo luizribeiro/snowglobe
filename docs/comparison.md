@@ -51,19 +51,19 @@ It is the better fit when you need secrets upload or remote builds, when your co
 
 ## More push tools
 
-These three push tools are also worth knowing. morph and devenv Machines can deploy one host at a time and stop when a health check fails, which is the closest these push tools come to snowglobe's staged rollout. Clan is a whole fleet framework, with deployment as one part.
+These three push tools are also worth knowing. morph deploys one host at a time and stops when a health check fails. devenv Machines activates one host at a time by default and rolls a host back when its health check fails. These are the closest these push tools come to snowglobe's staged rollout. Clan is a whole fleet framework, with deployment as one part.
 
 | | [morph](https://github.com/DBCDK/morph) | [Clan](https://clan.lol/) | [devenv Machines](https://devenv.sh/machines/) | snowglobe |
 |---|---|---|---|---|
 | Many hosts per run | ✓ | ✓ | ✓ | ✓ |
 | Ordered phases that stop on failure | hosts in tag order (`--order-by-tags`), stopping at the first failure | — | batches in name order; later batches don't start after a failure | ✓ |
 | Serial groups (one node at a time) | always one host at a time | — | one at a time by default; `--max-concurrent` for batches | ✓ |
-| Health check gates the next host | `deployment.healthChecks` | — | `deploy.healthCheck` | through a [`post-deploy` hook](/snowglobe/rollback/#limit-the-blast-radius) |
+| Health check gates the next host | `deployment.healthChecks` | — | `deploy.healthCheck` rolls the host back; later batches stop after a failure | through a [`post-deploy` hook](/snowglobe/rollback/#limit-the-blast-radius) |
 | Reboot detection | `--reboot` reboots every host, without detection | stops and asks you to reboot when a switch inhibitor blocks the switch | — | ✓ |
 | Pre/post-deploy hooks | `preDeployChecks` and `healthChecks` only | — | — | ✓ |
 | nix-darwin targets | — | ✓ | ✓ | ✓ |
 | Automatic rollback | — | — | ✓ (NixOS only) | — |
-| Build on the target | — | by default; `--build-host` to change | `--use-machines-as-builders` | — |
+| Build on the target | — | by default; `--build-host` to change | builds locally; `--use-machines-as-builders` for remote builds | — |
 | Secrets upload | `deployment.secrets` | ✓ (Clan vars) | at install only | — |
 | Sudo password prompt on the target | `--passwd` / `--passcmd` | ✓ (askpass) | — | — |
 | Works without flakes | ✓ (flakes not supported) | — | ✓ (`devenv.nix`) | — |
@@ -87,7 +87,7 @@ It is the better fit when you want one framework for the whole fleet, with secre
 
 devenv 2.4 (September 2026) added `devenv machines`, which its release notes mark as experimental. Machines are configured in `devenv.nix` rather than in a flake output, and can be NixOS, nix-darwin or home-manager targets. devenv builds and copies every machine before any of them activates, shows a plan and asks for confirmation; a plan can also be saved and applied later. Machines then activate one at a time in name order, or in batches with `--max-concurrent`. If a batch fails, the machines already activating finish, but later batches do not start. After activation, `deploy.healthCheck` runs. On NixOS, a watchdog restores the previous system if activation or the health check fails, or if success is not confirmed in time. A `machines check` command also blocks a deployment that would disable SSH or root login.
 
-It is the better fit when you already use devenv, or when you want a failed health check to roll that host back automatically as well as stop the rest of the deployment. It also deploys home-manager profiles and can install new machines. It has no hooks, so there is nowhere to drain a node before it changes, and it does not reboot after a kernel change. NixOS targets need root SSH and nix-darwin targets need passwordless sudo. It is newer than snowglobe.
+It is the better fit when you already use devenv, or when you want a host rolled back automatically when its health check fails; its docs also say later batches don't start after a failure. It also deploys home-manager profiles and can install new machines. Its docs describe no deploy hooks, only the health check, and it does not reboot after a kernel change. NixOS targets need root SSH and nix-darwin targets need passwordless sudo. It is newer than snowglobe.
 
 ## comin and pull-based deployment
 
