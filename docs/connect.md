@@ -28,6 +28,7 @@ The name of the flake output does not matter. With the configuration below, snow
     modules = [
       snowglobe.nixosModules.default
       {
+        nixpkgs.hostPlatform = "x86_64-linux";
         networking.hostName = "web-01";
         networking.domain = "example.com";
       }
