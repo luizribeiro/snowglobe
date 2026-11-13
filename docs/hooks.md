@@ -89,16 +89,7 @@ Every hook sets `location`:
 - **`local`** runs on the machine running `snow`, through `sh -c`, with snow's environment (`PATH`, `KUBECONFIG`, cloud credentials) and working directory. Use it for orchestration: cluster APIs, load balancers, notifications, anything needing credentials the host should not have.
 - **`remote`** runs on the host over SSH, through `sh -c`, as the user snow connects as (your SSH config, or `--user`), without sudo. Use it for checks that only make sense on the host, such as `systemctl is-active` or a request to `localhost`.
 
-```nix
-{ pkgs, ... }:
-{
-  snowglobe.hooks.post-deploy.health = {
-    location = "remote";
-    command = "${pkgs.curl}/bin/curl -fsS --retry 5 --retry-connrefused http://localhost:8080/health";
-    timeout = 60;
-  };
-}
-```
+[Gate a rollout on health checks](/snowglobe/health-checks/) has examples of both.
 
 Remote hooks use the deployment's SSH options (batch mode, no agent forwarding) but no keepalives, since a hook may restart the network; `timeout` bounds them instead.
 
@@ -191,7 +182,7 @@ A hook fails when it exits non-zero or outlives its `timeout` (300 seconds by de
 
 After the last attempt, `continueOnFailure` decides:
 
-- **`false` (the default):** the host fails at that hook's stage. Its on-failure hooks run, the rest of its serial group is skipped, and later [phases](/snowglobe/phases/) don't run unless the host is optional, so a `post-deploy` check gates riskier phases. Other hosts in the phase carry on.
+- **`false` (the default):** the host fails at that hook's stage. Its on-failure hooks run, the rest of its serial group is skipped, and later [phases](/snowglobe/phases/) don't run unless the host is optional, so a `post-deploy` check gates riskier phases (see [Gate a rollout on health checks](/snowglobe/health-checks/)). Other hosts in the phase carry on.
 - **`true`:** the failure is logged as a warning and the host carries on. Use it for notifications, and for on-failure hooks so one failing cleanup doesn't stop the rest.
 
 A failing `pre-deploy` hook means the host is never activated:

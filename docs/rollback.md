@@ -107,23 +107,8 @@ This is why the `--test` deployment at the top of this page is worth it for chan
 A rollback is easier when few hosts need one. snow gives you three tools for that:
 
 - **[Phases](/snowglobe/phases/).** Put low-risk hosts in an early phase and important ones in later phases. If any host in a phase fails (and is not marked optional), snow does not start the later phases, so a change that breaks the first hosts never reaches the rest.
-- **Health checks in hooks.** A host that activates cleanly but serves errors is still a success to snow. A `post-deploy` [hook](/snowglobe/hooks/) that checks the service turns that into a failure, which stops later phases and, in a [serial group](/snowglobe/cluster/), the remaining nodes. The failed host itself is not rolled back; the hook only stops the deployment from spreading.
+- **Health checks.** A host that activates cleanly but serves errors is still a success to snow. A check in a hook turns that into a failure, which stops the rollout at that host. The failed host itself is not rolled back. See [Gate a rollout on health checks](/snowglobe/health-checks/).
 - **Serial groups.** Hosts in a serial group deploy one at a time. If one fails, the members that haven't started are skipped and left on their old system. An [optional](/snowglobe/phases/#hosts-that-may-be-offline) member's failure skips no one.
-
-```nix
-# web1: canary in the first phase, with a health check
-{ pkgs, ... }:
-{
-  snowglobe.deploy.phase = "p1";
-  snowglobe.hooks.post-deploy.health = {
-    location = "remote";
-    command = "${pkgs.curl}/bin/curl -fsS --retry 5 --retry-connrefused http://localhost/health";
-    timeout = 60;
-  };
-}
-```
-
-With `web1` in `p1` and the other web servers in `p2`, a change that breaks the health check stops at `web1`, and only `web1` needs rolling back.
 
 ## Related pages
 
