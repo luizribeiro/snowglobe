@@ -18,6 +18,7 @@ Compared with the three tools most users are choosing between:
 | Many hosts per run | — | ✓ | ✓ | ✓ |
 | Ordered phases that stop on failure | — | — | — | ✓ |
 | Serial groups (one node at a time) | — | — | — | ✓ |
+| Health check gates the next host | — | — | — | through a [`post-deploy` hook](/snowglobe/rollback/#limit-the-blast-radius) |
 | Reboot detection | — | — | `apply --reboot` reboots every node, without detection | ✓ |
 | Pre/post-deploy hooks | — | — | — | ✓ |
 | nix-darwin targets | — | ✓ | — | ✓ |
