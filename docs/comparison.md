@@ -99,7 +99,7 @@ comin is the better fit when hosts should pull rather than accept SSH from a dep
 
 - **[NixFleet](https://github.com/arcanesys/nixfleet)** does pull-based rollouts for NixOS and nix-darwin, in canary waves gated on health checks, with automatic rollback. It needs an agent on each host, a control plane, a binary cache and a CI signing key.
 - **[Cachix Deploy](https://docs.cachix.org/deploy/)** is a hosted service: agents on NixOS, nix-darwin or home-manager hosts fetch prebuilt systems from a Cachix cache, and each host can roll itself back. It does not order hosts or stop a rollout when one fails.
-- **[lollypops](https://github.com/pinpox/lollypops)** generates go-task tasks that copy your flake to each host, upload secrets from a local command such as `pass`, and run `nixos-rebuild` there.
+- **[lollypops](https://github.com/pinpox/lollypops)** generates go-task tasks that copy your flake to each host, upload secrets from a local command such as `pass`, and by default run `nixos-rebuild` there.
 - **[bento](https://github.com/rapenne-s/bento)** has a central server build the configurations, and each host pulls and applies its own on a timer. It can reboot when the kernel or initrd changed. It has been inactive since December 2024.
 - **[nixos-anywhere](https://github.com/nix-community/nixos-anywhere)** installs NixOS on a machine over SSH, wiping its disk. It is for the first install; afterwards you deploy with one of the tools above.
 
