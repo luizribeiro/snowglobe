@@ -1,6 +1,6 @@
 use super::{should_update_profile, DeployBackend, DeployTarget, HostSystems};
 use crate::error::Result;
-use crate::nix::{ActivationMode, StorePath};
+use crate::nix::{ActivationMode, StorePath, SystemType};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -348,6 +348,7 @@ impl DeployBackend for MockDeployBackend {
         target: &DeployTarget,
         _store_path: &StorePath,
         mode: ActivationMode,
+        _system_type: SystemType,
     ) -> Result<()> {
         // Track profile updates for modes that should update profile
         if should_update_profile(mode) {
@@ -589,7 +590,12 @@ mod tests {
 
         assert!(deployer.copy_closure(&target, &store_path).await.is_ok());
         assert!(deployer
-            .activate(&target, &store_path, ActivationMode::Switch)
+            .activate(
+                &target,
+                &store_path,
+                ActivationMode::Switch,
+                SystemType::NixOS
+            )
             .await
             .is_ok());
     }
@@ -672,7 +678,12 @@ mod tests {
 
         assert!(deployer.copy_closure(&target, &store_path).await.is_ok());
         assert!(deployer
-            .activate(&target, &store_path, ActivationMode::Switch)
+            .activate(
+                &target,
+                &store_path,
+                ActivationMode::Switch,
+                SystemType::NixOS
+            )
             .await
             .is_ok());
     }

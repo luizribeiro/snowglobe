@@ -88,9 +88,8 @@ impl DeployBackend for LocalDeployBackend {
         target: &DeployTarget,
         store_path: &StorePath,
         mode: ActivationMode,
+        system_type: SystemType,
     ) -> Result<()> {
-        let system_type = SystemType::detect_current();
-
         check_mode_supported(mode, [(target.hostname.as_str(), system_type)])?;
 
         // Create system profile generation for rollback support (persistent modes only)
@@ -178,7 +177,12 @@ mod tests {
         let store_path = StorePath::new("/nix/store/nonexistent-path".to_string());
 
         let result = backend
-            .activate(&target, &store_path, ActivationMode::Switch)
+            .activate(
+                &target,
+                &store_path,
+                ActivationMode::Switch,
+                SystemType::detect_current(),
+            )
             .await;
 
         assert!(result.is_err());
@@ -208,7 +212,9 @@ mod tests {
             ActivationMode::Test,
             ActivationMode::DryActivate,
         ] {
-            let result = backend.activate(&target, &store_path, mode).await;
+            let result = backend
+                .activate(&target, &store_path, mode, SystemType::detect_current())
+                .await;
 
             assert!(
                 matches!(
@@ -281,6 +287,7 @@ mod tests {
                 &create_test_target("bravo"),
                 &system,
                 ActivationMode::Switch,
+                SystemType::detect_current(),
             )
             .await
             .unwrap();
@@ -301,7 +308,12 @@ mod tests {
         let system = create_test_store_path("/nix/store/36vm-nixos-system-bravo");
 
         let error = backend
-            .activate(&create_test_target("bravo"), &system, ActivationMode::Boot)
+            .activate(
+                &create_test_target("bravo"),
+                &system,
+                ActivationMode::Boot,
+                SystemType::detect_current(),
+            )
             .await
             .unwrap_err();
 
@@ -320,7 +332,12 @@ mod tests {
         let store_path = create_test_store_path("/nix/store/nonexistent-nixos-system");
 
         let result = backend
-            .activate(&target, &store_path, ActivationMode::Test)
+            .activate(
+                &target,
+                &store_path,
+                ActivationMode::Test,
+                SystemType::detect_current(),
+            )
             .await;
 
         assert!(result.is_err());
@@ -347,7 +364,12 @@ mod tests {
         let store_path = create_test_store_path("/nix/store/test-system");
 
         let result = backend
-            .activate(&target, &store_path, ActivationMode::Switch)
+            .activate(
+                &target,
+                &store_path,
+                ActivationMode::Switch,
+                SystemType::detect_current(),
+            )
             .await;
 
         assert!(result.is_err());
@@ -368,7 +390,12 @@ mod tests {
         let store_path = create_test_store_path("/nix/store/test-system");
 
         let result = backend
-            .activate(&target, &store_path, ActivationMode::Boot)
+            .activate(
+                &target,
+                &store_path,
+                ActivationMode::Boot,
+                SystemType::detect_current(),
+            )
             .await;
 
         assert!(result.is_err());
@@ -389,7 +416,12 @@ mod tests {
         let store_path = create_test_store_path("/nix/store/test-system");
 
         let result = backend
-            .activate(&target, &store_path, ActivationMode::Test)
+            .activate(
+                &target,
+                &store_path,
+                ActivationMode::Test,
+                SystemType::detect_current(),
+            )
             .await;
         assert_eq!(
             commands_run(&sudo),
@@ -420,7 +452,12 @@ mod tests {
         let store_path = create_test_store_path("/nix/store/test-system");
 
         let result = backend
-            .activate(&target, &store_path, ActivationMode::DryActivate)
+            .activate(
+                &target,
+                &store_path,
+                ActivationMode::DryActivate,
+                SystemType::detect_current(),
+            )
             .await;
         assert_eq!(
             commands_run(&sudo),
@@ -452,7 +489,12 @@ mod tests {
             create_test_store_path("/nix/store/abc123def456-nixos-system-hedgehog-24.05");
 
         let result = backend
-            .activate(&target, &store_path, ActivationMode::Switch)
+            .activate(
+                &target,
+                &store_path,
+                ActivationMode::Switch,
+                SystemType::detect_current(),
+            )
             .await;
 
         assert!(result.is_err());
@@ -473,7 +515,12 @@ mod tests {
         let store_path = create_test_store_path("/nix/store/test-darwin-system");
 
         let result = backend
-            .activate(&target, &store_path, ActivationMode::Switch)
+            .activate(
+                &target,
+                &store_path,
+                ActivationMode::Switch,
+                SystemType::detect_current(),
+            )
             .await;
 
         assert!(result.is_err());

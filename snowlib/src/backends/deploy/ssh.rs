@@ -1,5 +1,5 @@
 use crate::error::{DeployError, Result};
-use crate::nix::{ActivationMode, StorePath};
+use crate::nix::{ActivationMode, StorePath, SystemType};
 use crate::process::r#async::run_command;
 use crate::process::{CommandResult, OutputMode};
 use crate::ssh_options::{
@@ -237,6 +237,7 @@ impl DeployBackend for SshDeployBackend {
         target: &DeployTarget,
         store_path: &StorePath,
         mode: ActivationMode,
+        _system_type: SystemType,
     ) -> Result<()> {
         let mode_arg = activation_mode_to_string(mode);
 
@@ -503,7 +504,12 @@ mod tests {
         let store_path = StorePath::new("/nix/store/fake-path".to_string());
 
         let result = deployer
-            .activate(&target, &store_path, ActivationMode::Test)
+            .activate(
+                &target,
+                &store_path,
+                ActivationMode::Test,
+                SystemType::NixOS,
+            )
             .await;
 
         assert!(result.is_err());
@@ -751,6 +757,7 @@ case "$*" in "command -v"*) exit {helper_status} ;; esac"#
                 &condor(),
                 &StorePath::new(CONDOR_SYSTEM.to_string()),
                 ActivationMode::Switch,
+                SystemType::NixOS,
             )
             .await
             .unwrap();
@@ -814,6 +821,7 @@ case "$*" in "systemctl show"*) printf %s '{show_output}' ;; esac"#
                 &condor(),
                 &StorePath::new(CONDOR_SYSTEM.to_string()),
                 ActivationMode::Switch,
+                SystemType::NixOS,
             )
             .await
             .unwrap();
@@ -839,6 +847,7 @@ case "$*" in "systemctl show"*) printf %s '{show_output}' ;; esac"#
                 &condor(),
                 &StorePath::new(CONDOR_SYSTEM.to_string()),
                 ActivationMode::Switch,
+                SystemType::NixOS,
             )
             .await;
 
@@ -870,7 +879,9 @@ case "$*" in "systemctl show"*) printf %s '{show_output}' ;; esac"#
             ActivationMode::Test,
             ActivationMode::DryActivate,
         ] {
-            let result = deployer.activate(&target, &store_path, mode).await;
+            let result = deployer
+                .activate(&target, &store_path, mode, SystemType::NixOS)
+                .await;
             assert!(result.is_err());
         }
     }
@@ -896,7 +907,12 @@ case "$*" in "systemctl show"*) printf %s '{show_output}' ;; esac"#
         let store_path = create_test_store_path("/nix/store/test-system");
 
         let result = deployer
-            .activate(&target, &store_path, ActivationMode::Switch)
+            .activate(
+                &target,
+                &store_path,
+                ActivationMode::Switch,
+                SystemType::NixOS,
+            )
             .await;
 
         assert!(result.is_err());
@@ -916,7 +932,12 @@ case "$*" in "systemctl show"*) printf %s '{show_output}' ;; esac"#
         let store_path = create_test_store_path("/nix/store/test-system");
 
         let result = deployer
-            .activate(&target, &store_path, ActivationMode::Boot)
+            .activate(
+                &target,
+                &store_path,
+                ActivationMode::Boot,
+                SystemType::NixOS,
+            )
             .await;
 
         assert!(result.is_err());
@@ -936,7 +957,12 @@ case "$*" in "systemctl show"*) printf %s '{show_output}' ;; esac"#
         let store_path = create_test_store_path("/nix/store/test-system");
 
         let result = deployer
-            .activate(&target, &store_path, ActivationMode::Test)
+            .activate(
+                &target,
+                &store_path,
+                ActivationMode::Test,
+                SystemType::NixOS,
+            )
             .await;
 
         assert!(result.is_err());
@@ -958,7 +984,12 @@ case "$*" in "systemctl show"*) printf %s '{show_output}' ;; esac"#
         let store_path = create_test_store_path("/nix/store/test-system");
 
         let result = deployer
-            .activate(&target, &store_path, ActivationMode::DryActivate)
+            .activate(
+                &target,
+                &store_path,
+                ActivationMode::DryActivate,
+                SystemType::NixOS,
+            )
             .await;
 
         assert!(result.is_err());
@@ -981,7 +1012,12 @@ case "$*" in "systemctl show"*) printf %s '{show_output}' ;; esac"#
             create_test_store_path("/nix/store/abc123def456-nixos-system-hedgehog-24.05");
 
         let result = deployer
-            .activate(&target, &store_path, ActivationMode::Switch)
+            .activate(
+                &target,
+                &store_path,
+                ActivationMode::Switch,
+                SystemType::NixOS,
+            )
             .await;
 
         assert!(result.is_err());

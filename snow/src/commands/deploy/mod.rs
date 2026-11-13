@@ -238,7 +238,7 @@ mod tests {
     use super::*;
     use snowlib::{
         ActivationMode, DeployBackend, DeployStrategy, DeployTarget, DeploymentFixture,
-        HostFixture, MockDeployBackend, OperationFixture, StorePath,
+        HostFixture, MockDeployBackend, OperationFixture, StorePath, SystemType,
     };
 
     #[test]
@@ -258,7 +258,12 @@ mod tests {
 
         assert!(deployer.copy_closure(&target, &store_path).await.is_ok());
         assert!(deployer
-            .activate(&target, &store_path, ActivationMode::Switch)
+            .activate(
+                &target,
+                &store_path,
+                ActivationMode::Switch,
+                SystemType::NixOS
+            )
             .await
             .is_ok());
     }
@@ -312,7 +317,12 @@ mod tests {
 
         assert!(deployer.copy_closure(&target, &store_path).await.is_ok());
         assert!(deployer
-            .activate(&target, &store_path, ActivationMode::Switch)
+            .activate(
+                &target,
+                &store_path,
+                ActivationMode::Switch,
+                SystemType::NixOS
+            )
             .await
             .is_ok());
     }
@@ -336,7 +346,12 @@ mod tests {
 
         assert!(deployer.copy_closure(&target, &store_path).await.is_ok());
         assert!(deployer
-            .activate(&target, &store_path, ActivationMode::Switch)
+            .activate(
+                &target,
+                &store_path,
+                ActivationMode::Switch,
+                SystemType::NixOS
+            )
             .await
             .is_ok());
     }
@@ -363,7 +378,12 @@ mod tests {
             .await
             .is_ok());
         assert!(deployer
-            .activate(&target_hedgehog, &store_path, ActivationMode::Switch)
+            .activate(
+                &target_hedgehog,
+                &store_path,
+                ActivationMode::Switch,
+                SystemType::NixOS
+            )
             .await
             .is_ok());
 
@@ -379,7 +399,12 @@ mod tests {
             .await
             .is_ok());
         assert!(deployer
-            .activate(&target_nuthatch, &store_path, ActivationMode::Switch)
+            .activate(
+                &target_nuthatch,
+                &store_path,
+                ActivationMode::Switch,
+                SystemType::NixOS
+            )
             .await
             .is_err());
     }

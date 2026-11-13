@@ -18,7 +18,7 @@ pub use ssh::SshDeployBackend;
 pub use target::DeployTarget;
 
 use crate::error::{DeployError, Result};
-use crate::nix::{ActivationMode, StorePath};
+use crate::nix::{ActivationMode, StorePath, SystemType};
 use async_trait::async_trait;
 
 const CURRENT_SYSTEM_LINK: &str = "/run/current-system";
@@ -103,6 +103,7 @@ pub trait DeployBackend: Send + Sync {
         target: &DeployTarget,
         store_path: &StorePath,
         mode: ActivationMode,
+        system_type: SystemType,
     ) -> Result<()>;
 }
 

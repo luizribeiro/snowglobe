@@ -21,7 +21,7 @@ pub async fn activate_reporting_failed_units(
     ignored: &[String],
 ) -> Result<Vec<String>> {
     if !reports_failing_units(mode, system_type) {
-        backend.activate(target, system, mode).await?;
+        backend.activate(target, system, mode, system_type).await?;
         return Ok(Vec::new());
     }
     let failing_before: HashSet<String> = backend
@@ -37,7 +37,7 @@ pub async fn activate_reporting_failed_units(
         .unwrap_or_default()
         .into_iter()
         .collect();
-    let Err(error) = backend.activate(target, system, mode).await else {
+    let Err(error) = backend.activate(target, system, mode, system_type).await else {
         return Ok(Vec::new());
     };
     let Some(failed) = units_failed(&error) else {
