@@ -89,6 +89,7 @@ before upgrading.
   devenv Machines and pull-based tools, including what snowglobe does not do.
 - Already using deploy-rs or colmena? See [Coming from deploy-rs or
   colmena](/snowglobe/migrating/).
+- Moving away from snowglobe? See [Stop using snowglobe](/snowglobe/leaving/).
 - Setting up a real fleet? Start with [Set up a deploy user](/snowglobe/deploy-user/)
   and [Connect to your hosts](/snowglobe/connect/), then the other guides.
 - To understand what happens during a deployment, read [How a deployment
