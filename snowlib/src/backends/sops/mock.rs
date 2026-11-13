@@ -156,9 +156,9 @@ mod tests {
         let backend = MockSopsBackend::new();
         assert!(backend.check_dependencies().is_ok());
         assert!(backend.sops_yaml_exists(Path::new("/tmp")));
-        assert!(!backend.host_exists(Path::new("/tmp"), "carbon").unwrap());
+        assert!(!backend.host_exists(Path::new("/tmp"), "heron").unwrap());
         assert!(backend
-            .add_host_key(Path::new("/tmp"), "carbon", "age1key")
+            .add_host_key(Path::new("/tmp"), "heron", "age1key")
             .is_ok());
         assert_eq!(backend.update_keys(Path::new("/tmp")).unwrap(), 3);
     }
@@ -179,15 +179,15 @@ mod tests {
 
     #[test]
     fn test_mock_existing_host() {
-        let backend = MockSopsBackend::new().with_existing_host("carbon");
-        assert!(backend.host_exists(Path::new("/tmp"), "carbon").unwrap());
+        let backend = MockSopsBackend::new().with_existing_host("heron");
+        assert!(backend.host_exists(Path::new("/tmp"), "heron").unwrap());
         assert!(!backend.host_exists(Path::new("/tmp"), "osprey").unwrap());
     }
 
     #[test]
     fn test_mock_add_key_failure() {
         let backend = MockSopsBackend::new().with_add_key_failure();
-        let result = backend.add_host_key(Path::new("/tmp"), "carbon", "age1key");
+        let result = backend.add_host_key(Path::new("/tmp"), "heron", "age1key");
         assert!(result.is_err());
     }
 
@@ -203,7 +203,7 @@ mod tests {
     fn test_mock_tracks_add_key_calls() {
         let backend = MockSopsBackend::new();
         backend
-            .add_host_key(Path::new("/tmp"), "carbon", "age1carbon")
+            .add_host_key(Path::new("/tmp"), "heron", "age1heron")
             .unwrap();
         backend
             .add_host_key(Path::new("/tmp"), "osprey", "age1osprey")
@@ -211,7 +211,7 @@ mod tests {
 
         let calls = backend.get_add_key_calls();
         assert_eq!(calls.len(), 2);
-        assert_eq!(calls[0], ("carbon".to_string(), "age1carbon".to_string()));
+        assert_eq!(calls[0], ("heron".to_string(), "age1heron".to_string()));
         assert_eq!(calls[1], ("osprey".to_string(), "age1osprey".to_string()));
     }
 
@@ -237,7 +237,7 @@ mod tests {
     fn test_update_sops_full_workflow() {
         let backend = MockSopsBackend::new().with_files_updated(5);
         let result = backend
-            .update_sops(Path::new("/tmp"), "carbon", "age1carbon")
+            .update_sops(Path::new("/tmp"), "heron", "age1heron")
             .unwrap();
 
         assert_eq!(result.sops_yaml_path, PathBuf::from("/tmp/.sops.yaml"));
@@ -246,10 +246,7 @@ mod tests {
         // Verify methods were called
         let add_calls = backend.get_add_key_calls();
         assert_eq!(add_calls.len(), 1);
-        assert_eq!(
-            add_calls[0],
-            ("carbon".to_string(), "age1carbon".to_string())
-        );
+        assert_eq!(add_calls[0], ("heron".to_string(), "age1heron".to_string()));
 
         let update_calls = backend.get_update_calls();
         assert_eq!(update_calls.len(), 1);
@@ -258,15 +255,15 @@ mod tests {
     #[test]
     fn test_update_sops_fails_when_sops_yaml_missing() {
         let backend = MockSopsBackend::new().with_no_sops_yaml();
-        let result = backend.update_sops(Path::new("/tmp"), "carbon", "age1key");
+        let result = backend.update_sops(Path::new("/tmp"), "heron", "age1key");
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("No .sops.yaml"));
     }
 
     #[test]
     fn test_update_sops_fails_when_host_exists() {
-        let backend = MockSopsBackend::new().with_existing_host("carbon");
-        let result = backend.update_sops(Path::new("/tmp"), "carbon", "age1key");
+        let backend = MockSopsBackend::new().with_existing_host("heron");
+        let result = backend.update_sops(Path::new("/tmp"), "heron", "age1key");
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("already exists"));
     }

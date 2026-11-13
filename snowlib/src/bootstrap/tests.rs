@@ -8,9 +8,9 @@ fn test_bootstrap_host_full_workflow() {
     let custom_age_key = "age1v35854ga7r4xl5x8ehwz5tf32dn2z6asrpsrfekke4tsredcwalszjx6np";
     let backend = MockKeyGenBackend::new().with_age_key(custom_age_key);
 
-    let keys = bootstrap_host("carbon", &backend).expect("Bootstrap should succeed");
+    let keys = bootstrap_host("heron", &backend).expect("Bootstrap should succeed");
 
-    assert_eq!(keys.hostname, "carbon");
+    assert_eq!(keys.hostname, "heron");
     assert_eq!(keys.age_public_key, custom_age_key);
 
     // Verify keygen was called exactly once for the host
@@ -21,8 +21,8 @@ fn test_bootstrap_host_full_workflow() {
         "Should generate keypair exactly once"
     );
     assert!(
-        keygen_calls[0].contains("carbon"),
-        "Should generate keys in carbon's directory"
+        keygen_calls[0].contains("heron"),
+        "Should generate keys in heron's directory"
     );
 
     // Verify age derivation was called with the generated public key

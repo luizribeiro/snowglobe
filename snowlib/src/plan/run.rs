@@ -372,12 +372,12 @@ mod tests {
 
     #[tokio::test]
     async fn test_host_missing_from_evaluation_is_reported_as_failed() {
-        let report = plan(&ops_backend(), &nixos(&["bravo", "xenon"]))
+        let report = plan(&ops_backend(), &nixos(&["bravo", "magpie"]))
             .await
             .unwrap();
 
-        let xenon = report.hosts.iter().find(|h| h.name == "xenon").unwrap();
-        assert!(matches!(xenon.status, HostStatus::Failed { .. }));
+        let magpie = report.hosts.iter().find(|h| h.name == "magpie").unwrap();
+        assert!(matches!(magpie.status, HostStatus::Failed { .. }));
         assert!(report.has_eval_failures());
     }
 

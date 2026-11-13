@@ -243,26 +243,26 @@ mod tests {
         let content = r#"---
 keys:
   - &alice 0123456789ABCDEF0123456789ABCDEF01234567
-  - &osprey age1gdwx7nfe6gzzu7gxm95adt3kqvwlzkmgryrvh46sz646ns0g2yaqql56hd
+  - &osprey age1osprey0000000000000000000000000000000000000000000000000000
 creation_rules:
   - path_regex: secrets/.*
 "#;
 
         let result = insert_age_key(
             content,
-            "carbon",
+            "heron",
             "age1newkey0000000000000000000000000000000000000000000000000",
         )
         .unwrap();
 
-        assert!(result.contains("- &carbon age1newkey"));
-        assert!(result.contains("- &osprey age1gdwx7nfe"));
-        // Ensure carbon comes after osprey but before creation_rules
-        let carbon_pos = result.find("- &carbon").unwrap();
+        assert!(result.contains("- &heron age1newkey"));
+        assert!(result.contains("- &osprey age1osprey"));
+        // Ensure heron comes after osprey but before creation_rules
+        let heron_pos = result.find("- &heron").unwrap();
         let osprey_pos = result.find("- &osprey").unwrap();
         let creation_pos = result.find("creation_rules:").unwrap();
-        assert!(carbon_pos > osprey_pos);
-        assert!(carbon_pos < creation_pos);
+        assert!(heron_pos > osprey_pos);
+        assert!(heron_pos < creation_pos);
     }
 
     #[test]
@@ -271,20 +271,20 @@ creation_rules:
   # GPG keys
   - &alice 0123456789ABCDEF0123456789ABCDEF01234567
   # age keys
-  - &osprey age1gdwx7nfe6gzzu7gxm95adt3kqvwlzkmgryrvh46sz646ns0g2yaqql56hd
+  - &osprey age1osprey0000000000000000000000000000000000000000000000000000
 creation_rules:
 "#;
 
         let result = insert_age_key(
             content,
-            "helium",
-            "age1helium000000000000000000000000000000000000000000000000",
+            "wren",
+            "age1wren000000000000000000000000000000000000000000000000",
         )
         .unwrap();
 
         assert!(result.contains("# GPG keys"));
         assert!(result.contains("# age keys"));
-        assert!(result.contains("- &helium age1helium"));
+        assert!(result.contains("- &wren age1wren"));
     }
 
     #[test]
@@ -294,7 +294,7 @@ creation_rules:
   - path_regex: secrets/.*
 "#;
 
-        let result = insert_age_key(content, "carbon", "age1key");
+        let result = insert_age_key(content, "heron", "age1key");
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(err.to_string().contains("No 'keys:' section"));
@@ -321,14 +321,14 @@ creation_rules:
 creation_rules:
   - path_regex: secrets/.*
 "#;
-        let result = insert_age_key(content, "carbon", "age1carbon").unwrap();
-        assert!(result.contains("- &carbon age1carbon"));
+        let result = insert_age_key(content, "heron", "age1heron").unwrap();
+        assert!(result.contains("- &heron age1heron"));
         // Key should be inserted after keys: but before creation_rules:
         let keys_pos = result.find("keys:").unwrap();
-        let carbon_pos = result.find("- &carbon").unwrap();
+        let heron_pos = result.find("- &heron").unwrap();
         let creation_pos = result.find("creation_rules:").unwrap();
-        assert!(carbon_pos > keys_pos);
-        assert!(carbon_pos < creation_pos);
+        assert!(heron_pos > keys_pos);
+        assert!(heron_pos < creation_pos);
     }
 
     #[test]
@@ -339,13 +339,13 @@ keys:
   - &osprey age1osprey0000000000000000000000000000000000000000000000000
 "#;
 
-        let result = insert_age_key(content, "carbon", "age1carbon").unwrap();
-        assert!(result.contains("- &carbon age1carbon"));
+        let result = insert_age_key(content, "heron", "age1heron").unwrap();
+        assert!(result.contains("- &heron age1heron"));
         assert!(result.contains("- &osprey age1osprey"));
-        // Carbon should come after osprey
-        let carbon_pos = result.find("- &carbon").unwrap();
+        // Heron should come after osprey
+        let heron_pos = result.find("- &heron").unwrap();
         let osprey_pos = result.find("- &osprey").unwrap();
-        assert!(carbon_pos > osprey_pos);
+        assert!(heron_pos > osprey_pos);
     }
 
     #[test]
@@ -416,32 +416,32 @@ mod integration_tests {
     fn test_host_exists_returns_false_for_new_host() {
         let temp_dir = TempDir::new().unwrap();
         let content = r#"keys:
-  - &osprey age1gdwx7nfe6gzzu7gxm95adt3kqvwlzkmgryrvh46sz646ns0g2yaqql56hd
+  - &osprey age1osprey0000000000000000000000000000000000000000000000000000
 "#;
         fs::write(temp_dir.path().join(".sops.yaml"), content).unwrap();
 
         let backend = SystemSopsBackend::new();
-        assert!(!backend.host_exists(temp_dir.path(), "carbon").unwrap());
+        assert!(!backend.host_exists(temp_dir.path(), "heron").unwrap());
     }
 
     #[test]
     fn test_host_exists_returns_true_for_existing_host() {
         let temp_dir = TempDir::new().unwrap();
         let content = r#"keys:
-  - &osprey age1gdwx7nfe6gzzu7gxm95adt3kqvwlzkmgryrvh46sz646ns0g2yaqql56hd
-  - &carbon age1carbon00000000000000000000000000000000000000000000000000
+  - &osprey age1osprey0000000000000000000000000000000000000000000000000000
+  - &heron age1heron00000000000000000000000000000000000000000000000000
 "#;
         fs::write(temp_dir.path().join(".sops.yaml"), content).unwrap();
 
         let backend = SystemSopsBackend::new();
-        assert!(backend.host_exists(temp_dir.path(), "carbon").unwrap());
+        assert!(backend.host_exists(temp_dir.path(), "heron").unwrap());
     }
 
     #[test]
     fn test_add_host_key_creates_entry() {
         let temp_dir = TempDir::new().unwrap();
         let content = r#"keys:
-  - &osprey age1gdwx7nfe6gzzu7gxm95adt3kqvwlzkmgryrvh46sz646ns0g2yaqql56hd
+  - &osprey age1osprey0000000000000000000000000000000000000000000000000000
 creation_rules:
   - path_regex: secrets/.*
 "#;
@@ -451,13 +451,13 @@ creation_rules:
         backend
             .add_host_key(
                 temp_dir.path(),
-                "carbon",
-                "age1carbon00000000000000000000000000000000000000000000000000",
+                "heron",
+                "age1heron00000000000000000000000000000000000000000000000000",
             )
             .unwrap();
 
         let result = fs::read_to_string(temp_dir.path().join(".sops.yaml")).unwrap();
-        assert!(result.contains("- &carbon age1carbon"));
+        assert!(result.contains("- &heron age1heron"));
     }
 
     #[test]

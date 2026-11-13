@@ -98,7 +98,7 @@ mod tests {
         assert!(names.contains(&"hedgehog"));
         assert!(names.contains(&"nuthatch"));
         assert!(names.contains(&"osprey"));
-        assert!(names.contains(&"helium"));
+        assert!(names.contains(&"wren"));
     }
 
     #[test]

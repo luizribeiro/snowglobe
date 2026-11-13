@@ -137,14 +137,14 @@ mod tests {
         let hosts = [
             ("falcon", SystemType::Darwin),
             ("bravo", SystemType::NixOS),
-            ("cobalt", SystemType::Darwin),
+            ("egret", SystemType::Darwin),
         ];
 
         let error = check_mode_supported(ActivationMode::Boot, hosts).unwrap_err();
 
         assert_eq!(
             error.to_string(),
-            "nix-darwin can only switch, so falcon, cobalt can't boot"
+            "nix-darwin can only switch, so falcon, egret can't boot"
         );
     }
 

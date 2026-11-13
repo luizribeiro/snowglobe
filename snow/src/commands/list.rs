@@ -277,10 +277,10 @@ mod tests {
 
     #[test]
     fn test_list_rejects_unknown_hosts() {
-        list_cmd(&["xenon"])
+        list_cmd(&["magpie"])
             .assert()
             .failure()
-            .stderr(predicate::str::contains("Unknown host: xenon"));
+            .stderr(predicate::str::contains("Unknown host: magpie"));
     }
 
     fn listed_json(args: &[&str]) -> serde_json::Value {

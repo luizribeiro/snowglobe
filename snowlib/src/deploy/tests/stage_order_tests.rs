@@ -333,7 +333,7 @@ async fn test_darwin_hosts_stop_a_deploy_that_does_not_switch_before_any_build()
             .run_deploy(vec![
                 darwin_host("falcon"),
                 kubernetes_node("bravo"),
-                darwin_host("cobalt"),
+                darwin_host("egret"),
             ])
             .await;
 
@@ -342,7 +342,7 @@ async fn test_darwin_hosts_stop_a_deploy_that_does_not_switch_before_any_build()
                 result,
                 Err(crate::error::SnowError::Deploy(
                     crate::error::DeployError::DarwinOnlySwitches { ref hosts, .. }
-                )) if hosts == &["falcon", "cobalt"]
+                )) if hosts == &["falcon", "egret"]
             ),
             "{strategy:?}: {result:?}"
         );

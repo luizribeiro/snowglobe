@@ -942,10 +942,10 @@ mod tests {
     #[test]
     fn test_image_build_failed_error() {
         let error = ProvisionerError::ImageBuildFailed {
-            host: "carbon".to_string(),
+            host: "heron".to_string(),
             stderr: "error: attribute not found".to_string(),
         };
-        assert!(error.to_string().contains("carbon"));
+        assert!(error.to_string().contains("heron"));
         assert!(error.to_string().contains("attribute not found"));
     }
 

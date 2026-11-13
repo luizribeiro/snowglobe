@@ -64,18 +64,18 @@
         };
       };
 
-      helium = {
+      wren = {
         config = {
           services.openssh.enable = false;
           services.postgresql.enable = false;
           services.nginx.enable = false;
-          networking.hostName = "helium";
+          networking.hostName = "wren";
           networking.domain = "local";
           nixpkgs.hostPlatform = "aarch64-linux";
 
           # No phase or tags - testing defaults
 
-          system.build.toplevel = makeMockToplevel "helium";
+          system.build.toplevel = makeMockToplevel "wren";
         };
       };
     };

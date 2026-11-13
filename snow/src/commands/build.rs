@@ -300,12 +300,12 @@ mod tests {
     #[test]
     fn test_build_empty_intersection() {
         // Test that when no hosts match both filter and explicit list, we get 0 hosts
-        // helium doesn't have postgresql
+        // wren doesn't have postgresql
         snow_cmd()
             .arg("build")
             .arg("-e")
             .arg("config: config.services.postgresql.enable or false")
-            .arg("helium")
+            .arg("wren")
             .assert()
             .success() // 0 hosts to build = success
             .stdout(predicate::str::contains("Building 0 host"))
@@ -374,14 +374,14 @@ mod tests {
 
     #[test]
     fn test_build_phase_with_explicit_hosts() {
-        // Test intersection: --phase production + explicit hosts (hedgehog, helium)
-        // Only hedgehog matches both (helium is dev phase)
+        // Test intersection: --phase production + explicit hosts (hedgehog, wren)
+        // Only hedgehog matches both (wren is dev phase)
         snow_cmd()
             .arg("build")
             .arg("--phase")
             .arg("production")
             .arg("hedgehog")
-            .arg("helium")
+            .arg("wren")
             .assert()
             .failure()
             .stdout(predicate::str::contains("Building 1 host"));
@@ -389,15 +389,15 @@ mod tests {
 
     #[test]
     fn test_build_tag_with_explicit_hosts() {
-        // Test intersection: --tag web + explicit hosts (hedgehog, nuthatch, helium)
-        // Only hedgehog matches both (nuthatch has database tag, helium has test tag)
+        // Test intersection: --tag web + explicit hosts (hedgehog, nuthatch, wren)
+        // Only hedgehog matches both (nuthatch has database tag, wren has test tag)
         snow_cmd()
             .arg("build")
             .arg("--tag")
             .arg("web")
             .arg("hedgehog")
             .arg("nuthatch")
-            .arg("helium")
+            .arg("wren")
             .assert()
             .failure()
             .stdout(predicate::str::contains("Building 1 host"));

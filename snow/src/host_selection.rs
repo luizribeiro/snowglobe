@@ -455,30 +455,34 @@ mod tests {
         let flake = fixture_flake();
         let backend = create_mock_backend_with_hosts(vec!["alpha", "bravo"]);
 
-        let explicit = vec!["alpha".to_string(), "xenon".to_string(), "neon".to_string()];
+        let explicit = vec![
+            "alpha".to_string(),
+            "magpie".to_string(),
+            "plover".to_string(),
+        ];
         let result = resolve_hosts(&flake, &backend, None, Some(&explicit)).await;
 
         assert_eq!(
             result.unwrap_err().to_string(),
-            "Unknown hosts: xenon, neon"
+            "Unknown hosts: magpie, plover"
         );
     }
 
     #[tokio::test]
     async fn test_resolve_hosts_lists_the_available_hosts_in_order() {
         let flake = fixture_flake();
-        let backend = create_mock_backend_with_hosts(vec!["raven", "alpha", "neon", "bravo"]);
+        let backend = create_mock_backend_with_hosts(vec!["raven", "alpha", "plover", "bravo"]);
 
-        let explicit = vec!["xenon".to_string(), "alpha".to_string()];
+        let explicit = vec!["magpie".to_string(), "alpha".to_string()];
         for filter in [None, Some("c: true")] {
             let err = resolve_hosts(&flake, &backend, filter, Some(&explicit))
                 .await
                 .unwrap_err();
 
-            assert_eq!(err.to_string(), "Unknown host: xenon");
+            assert_eq!(err.to_string(), "Unknown host: magpie");
             assert_eq!(
                 miette::Diagnostic::help(&err).unwrap().to_string(),
-                "The flake's hosts are alpha, bravo, neon, raven. Run `snow list` to see them."
+                "The flake's hosts are alpha, bravo, plover, raven. Run `snow list` to see them."
             );
         }
     }
