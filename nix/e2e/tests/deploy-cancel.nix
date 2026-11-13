@@ -69,6 +69,14 @@ in
     assert "✗ web1" not in output, output
     contains(snow_log, ("web1: switch started",))
     assert "web1: switch finished" not in snow_log, snow_log
+    # Before exiting, snow says what it leaves behind, on screen and in its log
+    left_behind = (
+        "Interrupted. Host left mid-deploy:",
+        "web1  switch (still running on the host), pre-deploy hooks ran, post-deploy hooks didn't",
+        "To finish it: snow deploy --redeploy web1",
+    )
+    contains(output, left_behind)
+    contains(snow_log, left_behind)
     web1.succeed("pgrep -f '[b]in/switch-to-configuration switch'")
     web1.wait_until_succeeds("! pgrep -f '[b]in/switch-to-configuration switch'")
     runs("web1", deployed("web1"))
