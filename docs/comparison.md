@@ -89,6 +89,20 @@ devenv 2.4 (September 2026) added `devenv machines`, which its release notes mar
 
 It is the better fit when you already use devenv, or when you want a failed health check to roll that host back automatically as well as stop the rest of the deployment. It also deploys home-manager profiles and can install new machines. It has no hooks, so there is nowhere to drain a node before it changes, and it does not reboot after a kernel change. NixOS targets need root SSH and nix-darwin targets need passwordless sudo. It is newer than snowglobe.
 
+## comin and pull-based deployment
+
+Every tool above pushes from a deploying machine over SSH. [comin](https://github.com/nlewo/comin) works the other way: an agent on each host polls one or more Git remotes, then evaluates, builds and switches the host's own `nixosConfigurations.<hostname>` or `darwinConfigurations.<hostname>`. A `testing-<hostname>` branch deploys a change in test mode. comin can check commit signatures, and it reports when the running kernel differs from the booted one, but it does not reboot.
+
+comin is the better fit when hosts should pull rather than accept SSH from a deployer, such as hosts behind NAT, or when merging to `main` should be the deployment. Each host deploys on its own schedule, so there is no way to stop a rollout at a canary or to deploy a cluster one node at a time, and every host needs the resources to build its own system. snowglobe is push-only for now; a pull mode is on the [roadmap](https://github.com/luizribeiro/snowglobe#roadmap).
+
+## Other tools
+
+- **[NixFleet](https://github.com/arcanesys/nixfleet)** does pull-based rollouts for NixOS and nix-darwin, in canary waves gated on health checks, with automatic rollback. It needs an agent on each host, a control plane, a binary cache and a CI signing key.
+- **[Cachix Deploy](https://docs.cachix.org/deploy/)** is a hosted service: agents on NixOS, nix-darwin or home-manager hosts fetch prebuilt systems from a Cachix cache, and each host can roll itself back. It does not order hosts or stop a rollout when one fails.
+- **[lollypops](https://github.com/pinpox/lollypops)** generates go-task tasks that copy your flake to each host, upload secrets from a local command such as `pass`, and run `nixos-rebuild` there.
+- **[bento](https://github.com/rapenne-s/bento)** has a central server build the configurations, and each host pulls and applies its own on a timer. It can reboot when the kernel or initrd changed. It has been inactive since December 2024.
+- **[nixos-anywhere](https://github.com/nix-community/nixos-anywhere)** installs NixOS on a machine over SSH, wiping its disk. It is for the first install; afterwards you deploy with one of the tools above.
+
 ## snowglobe
 
 snowglobe reads the `nixosConfigurations` and `darwinConfigurations` your flake already has, so it needs no extra flake output. Per-host settings go in the NixOS or nix-darwin configuration through a module. On top of parallel deployment it adds:
