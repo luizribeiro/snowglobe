@@ -64,6 +64,37 @@ fn test_version_flag_prints_the_crate_version() {
         .stdout(format!("snow {}\n", env!("CARGO_PKG_VERSION")));
 }
 
+fn log_files_after_a_terminal_run(args: &[&str]) -> Vec<std::path::PathBuf> {
+    let tmpdir = tempfile::tempdir().unwrap();
+    let pty = nix::pty::openpty(None, None).unwrap();
+    // A full pty buffer would block snow's writes to stderr. The reader is
+    // never joined, as reading a pty master after its slave closes may block.
+    let mut terminal = std::fs::File::from(pty.master);
+    std::thread::spawn(move || std::io::copy(&mut terminal, &mut std::io::sink()));
+    std::process::Command::new(assert_cmd::cargo::cargo_bin!("snow"))
+        .args(args)
+        .env("TMPDIR", tmpdir.path())
+        .env_remove("FLAKE_PATH")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::from(pty.slave))
+        .status()
+        .unwrap();
+    std::fs::read_dir(tmpdir.path())
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .filter(|path| {
+            let name = path.file_name().unwrap().to_string_lossy();
+            name.starts_with("snow-") && name.ends_with(".log")
+        })
+        .collect()
+}
+
+#[test]
+fn test_terminal_run_logs_to_a_file_in_tmpdir() {
+    let logs = log_files_after_a_terminal_run(&["-f", "/srv/no-such-flake", "list"]);
+    assert_eq!(logs.len(), 1, "{logs:?}");
+}
+
 #[test]
 fn test_fatal_error_shows_its_help_without_a_std_prefix() {
     assert_cmd::cargo::cargo_bin_cmd!("snow")

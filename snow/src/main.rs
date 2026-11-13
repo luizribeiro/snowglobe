@@ -41,15 +41,19 @@ fn default_env_filter() -> tracing_subscriber::EnvFilter {
         .unwrap_or_else(|_| "snow=info,snowlib=info".into())
 }
 
+/// The log captures hook and nix output, so only its owner may read it
+fn create_log_file() -> std::io::Result<(File, std::path::PathBuf)> {
+    tempfile::Builder::new()
+        .prefix("snow-")
+        .suffix(".log")
+        .tempfile()?
+        .keep()
+        .map_err(|error| error.error)
+}
+
 fn setup_logging(is_interactive: bool) -> Option<std::path::PathBuf> {
     if is_interactive {
-        let timestamp = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
-        let log_path = std::path::PathBuf::from(format!("/tmp/snow-{}.log", timestamp));
-
-        let log_file = File::create(&log_path).ok()?;
+        let (log_file, log_path) = create_log_file().ok()?;
         let file_writer = Arc::new(log_file);
 
         let indicatif_layer =
@@ -116,4 +120,38 @@ async fn main() -> ExitCode {
 async fn run(cli: Cli, log_file: Option<&std::path::Path>) -> snowlib::Result<()> {
     let flake = snowlib::Flake::new(cli.flake_path.as_deref())?;
     cli.command.run(&flake, log_file).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_log_files_get_distinct_paths() {
+        let (_, first) = create_log_file().unwrap();
+        let (_, second) = create_log_file().unwrap();
+        std::fs::remove_file(&first).unwrap();
+        std::fs::remove_file(&second).unwrap();
+
+        assert_ne!(first, second);
+        for path in [&first, &second] {
+            let name = path.file_name().unwrap().to_str().unwrap();
+            assert!(
+                name.starts_with("snow-") && name.ends_with(".log"),
+                "{name}"
+            );
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_log_file_is_readable_only_by_its_owner() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let (file, path) = create_log_file().unwrap();
+        let mode = file.metadata().unwrap().permissions().mode();
+        std::fs::remove_file(&path).unwrap();
+
+        assert_eq!(mode & 0o777, 0o600);
+    }
 }
