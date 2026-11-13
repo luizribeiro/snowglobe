@@ -117,7 +117,7 @@ On NixOS hosts, snowglobe can fall back to running `sudo switch-to-configuration
 - snow can't type a sudo password over SSH. Every remote command runs non-interactively, so the deploy user needs a sudo rule that asks for no password. The module provides one that is limited to the helper, instead of full passwordless sudo.
 - nix-darwin systems have no `switch-to-configuration`. The helper knows to run the closure's `activate` script, and to record the new system in `/nix/var/nix/profiles/system` first, which `activate` doesn't do on its own. Without that profile entry, the new system is not a generation: rollbacks, and activation at the next boot, would still see the previous one.
 
-Without the helper, snow stops at activation with `snowglobe-activate is not installed on nix-darwin host`, before it changes anything on the Mac. Install the module and switch once by hand before the first deployment.
+Without the helper, snow stops at activation with `snowglobe-activate is not installed on nix-darwin host`, before it touches the Mac's system profile or activates anything. Install the module and switch once by hand before the first deployment.
 
 ## Determinate Nix
 
