@@ -21,24 +21,12 @@ You need `snow` installed on the machine you deploy from; see
 already builds from your flake. Check each of the following before you go
 on; every step below assumes they work.
 
-1. **You can log in as the deploy user with a key, without any prompt.**
-   `snow` runs `ssh` in batch mode, as this command does:
+1. **You can log in to the host with an account that can run `sudo`.**
+   Step 3 uses it once, to apply the configuration that creates the deploy
+   user. After that, `snow` logs in as `deploy`. The examples call this
+   account `admin`.
 
-   ```bash
-   ssh -o BatchMode=yes deploy@web1 true
-   ```
-
-   It must exit without printing anything and without asking for a password
-   or a passphrase. If your key has a passphrase, load it into your SSH agent
-   first with `ssh-add`. If the `deploy` user does not exist yet, create it
-   first: [Set up a deploy user](/snowglobe/deploy-user/) shows how.
-
-2. **The host key is already in `known_hosts`.** In batch mode, `ssh`
-   refuses to connect to a host it has never seen. If the command above
-   failed with `Host key verification failed`, connect once interactively
-   with `ssh deploy@web1`, check the fingerprint, and accept it.
-
-3. **The name you connect to is the one `snow` will use.** `snow` connects
+2. **The name you connect to is the one `snow` will use.** `snow` connects
    to the host's `networking.hostName`, followed by `.` and
    `networking.domain` when that is set, not to the name of the flake
    attribute. Check what that is:
@@ -50,24 +38,24 @@ on; every step below assumes they work.
 
    If the domain is `null`, `snow` connects to `web1`; if it is
    `"example.com"`, it connects to `web1.example.com`, and that is the name
-   to test with `ssh`. A `Host` entry in `~/.ssh/config` can map the name to
+   to test with `ssh admin@…`. A `Host` entry in `~/.ssh/config` can map the name to
    an address; see [Connect to your hosts](/snowglobe/connect/).
 
-4. **The host already builds and switches from your flake.** For example,
+3. **The host already builds and switches from your flake.** For example,
    this works from your machine:
 
    ```bash
    nixos-rebuild switch --flake .#web1 --target-host admin@web1 --sudo --ask-sudo-password
    ```
 
-   where `admin` is any account that can already run `sudo` on `web1`, or,
-   on `web1` itself from a checkout of the flake,
-   `sudo nixos-rebuild switch --flake .#web1`.
+   or, on `web1` itself from a checkout of the flake,
+   `sudo nixos-rebuild switch --flake .#web1`. Use the name from item 2 in
+   place of `web1` if it differs.
 
    `snow` uses the same `nixosConfigurations.web1` output, so if
    `nixos-rebuild` cannot build it, `snow` cannot either.
 
-5. **Your machine can build the host's system.** `snow` builds on the
+4. **Your machine can build the host's system.** `snow` builds on the
    machine you run it on. If `web1` has a different architecture from your
    machine, set up a remote builder or emulation first; see [Build for other
    architectures](/snowglobe/architectures/).
@@ -117,19 +105,30 @@ nix flake lock
 If your flake is a Git repository, add new files with `git add` before you
 build. Nix only sees files that Git tracks.
 
-## Step 2: Let the deploy user activate the host
+## Step 2: Create the deploy user
 
-Create `hosts/common.nix` with the two settings the deploy user needs:
+Create `hosts/common.nix` with the deploy user and the two settings it
+needs. Put your own public key in place of the example, such as the
+contents of `~/.ssh/id_ed25519.pub`:
 
 ```nix
 {
+  users.users.deploy = {
+    isNormalUser = true;
+    openssh.authorizedKeys.keys = [
+      "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA... you@your-laptop"
+    ];
+  };
+
   snowglobe.deploy.allowedUsers = [ "deploy" ];
   nix.settings.trusted-users = [ "deploy" ];
 }
 ```
 
-The two lines do different jobs:
+Each part does a different job:
 
+- `users.users.deploy` creates the account `snow` logs in as, with your
+  key. Keep it out of `wheel`, so that it gets no general sudo rights.
 - `snowglobe.deploy.allowedUsers` lets `deploy` run the activation helper,
   `snowglobe-activate`, through `sudo` without a password. The helper is the
   only command this rule covers: it activates a system from the Nix store,
@@ -155,13 +154,7 @@ The `Host` line must match the name `snow` connects to: if your hosts set
 `networking.domain`, write the full names, such as `web1.example.com`, or
 a pattern such as `*.example.com`. Without a `User` entry, `ssh` logs in as
 your local user name. You can also pass `--user deploy` to each
-`snow deploy` instead. Check the entry:
-
-```bash
-ssh -o BatchMode=yes web1 id -un
-```
-
-It should print `deploy`.
+`snow deploy` instead. The account does not exist yet; step 3 creates it.
 
 ## Step 3: Apply the configuration once by hand
 
@@ -173,14 +166,26 @@ For example, from your machine:
 nixos-rebuild switch --flake .#web1 --target-host admin@web1 --sudo --ask-sudo-password
 ```
 
-Use an account that can already run `sudo` on `web1`; `--ask-sudo-password`
-prompts for its password. The deploy user cannot do this step yet, because
-its passwordless rule only exists once this system is active. Older `nixos-rebuild` versions spell
-`--sudo` as `--use-remote-sudo`. Running
+Use the `admin` account from [Before you start](#before-you-start);
+`--ask-sudo-password` prompts for its password. The deploy user cannot do this step, because it
+only exists once this system is active. Older `nixos-rebuild` versions
+spell `--sudo` as `--use-remote-sudo`. Running
 `sudo nixos-rebuild switch --flake .#web1` on `web1` works too.
 
-Then confirm, from the deploying machine, that the deploy user can run the
-helper without a password:
+Now check that `ssh` logs in as `deploy` the way `snow` will, in batch
+mode:
+
+```bash
+ssh -o BatchMode=yes web1 id -un
+```
+
+It should print `deploy` and nothing else, without asking for a password
+or a passphrase. If your key has a passphrase, load it into your SSH agent
+first with `ssh-add`. If it fails with `Host key verification failed`,
+`ssh` has never seen this host: connect once with `ssh web1`, check the
+fingerprint and accept it. In batch mode `ssh` refuses unknown hosts.
+
+Then confirm that the deploy user can run the helper without a password:
 
 ```bash
 ssh web1 sudo -n snowglobe-activate

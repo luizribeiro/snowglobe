@@ -5,7 +5,7 @@ weight: 30
 description: "Create a dedicated account that snow logs in as, and give it passwordless sudo for the activation helper only."
 ---
 
-This guide sets up a dedicated `deploy` account on each host, lets it copy systems into the Nix store, and gives it passwordless sudo for exactly one command: the activation helper, `snowglobe-activate`. When you finish, `snow deploy` can deploy to the host without root SSH logins and without `NOPASSWD: ALL`.
+This guide sets up a dedicated `deploy` account on each host, lets it copy systems into the Nix store, and gives it passwordless sudo for exactly one command: the activation helper, `snowglobe-activate`. When you finish, `snow deploy` can deploy to the host without root SSH logins and without `NOPASSWD: ALL`. The [tutorial](/snowglobe/tutorial/) already sets up this user in its step 2; read on for why each setting is needed, nix-darwin, sudo-rs, and moving an existing fleet off broad sudo rules.
 
 ## Before you start
 
