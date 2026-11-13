@@ -401,9 +401,10 @@ snow deploy
 ```
 
 `snow deploy` with no host names deploys every host in the flake, except
-hosts in the special phase `never`. It first lists the phases it is about
-to run, so you can stop it with Ctrl-C if a host you did not expect shows
-up, then reports each phase as it ends:
+hosts in the special phase `never`. It does not ask for confirmation: it
+lists the phases it is about to run, starts building straight away, and
+reports each phase as it ends. Check which hosts a run would touch with
+`snow list` first:
 
 ![snow list shows both hosts and their phases, then snow deploy deploys them in two phases](demos/tutorial-phases.cast)
 
