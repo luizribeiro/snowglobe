@@ -24,6 +24,27 @@ shows as one row per host.
 - Reads the flake's existing `nixosConfigurations` and `darwinConfigurations`.
   No extra flake output is needed.
 
+Other tools deploy many hosts too, and some roll out in order or gate on
+health checks. snowglobe's reason to exist is the combination: parallel
+builds and copies, phases and serial groups in one run, hooks that drain a
+node and gate the next one, reboots only when the new system needs one,
+and NixOS and nix-darwin hosts side by side. The
+[comparison](https://l9o.dev/snowglobe/comparison/) says where another tool
+fits better.
+
+## What it doesn't do
+
+- Build on the target. `snow` builds on the machine it runs on, or on remote
+  builders Nix is configured to use. colmena, deploy-rs and Clan can build on the target.
+- Upload secrets. Use agenix or sops-nix, or a tool that uploads them, such
+  as colmena, morph or Clan.
+- Roll back on its own. A host that fails stays on its new system until
+  you [roll it back](https://l9o.dev/snowglobe/rollback/). deploy-rs and
+  devenv Machines (NixOS targets) roll back automatically.
+- Work without flakes.
+- Pull. Every deployment is pushed over SSH; comin and other pull-based
+  tools have each host fetch its own configuration.
+
 ## Requirements
 
 - Nix with flakes on the deploying machine, Linux or macOS.
@@ -157,9 +178,8 @@ devenv Machines and pull-based tools.
 | Works without flakes | ✓ | partial | `hive.nix` | — |
 | Extra flake output needed | no | `deploy.nodes` | `colmenaHive` | no |
 
-Use deploy-rs if you need magic rollback or non-system profiles, or colmena
-if you need secrets upload or building on the target.
-[Corrections welcome](https://github.com/luizribeiro/snowglobe/issues).
+deploy-rs also deploys non-system profiles. [Corrections
+welcome](https://github.com/luizribeiro/snowglobe/issues).
 
 ## Security
 
