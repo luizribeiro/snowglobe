@@ -28,6 +28,7 @@ let
     "never-phase"
     "optional-host"
     "preexisting-failure"
+    "reboot-auto"
   ];
 
   files = lib.genAttrs names (name: import ./tests/${name}.nix);
