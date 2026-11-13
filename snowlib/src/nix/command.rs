@@ -205,12 +205,19 @@ mod tests {
 
     #[tokio::test]
     async fn test_timeout_is_reported_after_the_stderr_so_far() {
-        let stderr = failed_stderr(
-            NixCommand::tool("sh", ["-c", "echo 'copying path' >&2; sleep 5"])
-                .timeout(Duration::from_millis(500)),
-        )
-        .await;
-
-        assert_eq!(stderr, "copying path\nsh timed out");
+        // A loaded machine may not start sh before a short timeout, so it
+        // grows until sh got as far as its stderr
+        for timeout in [500, 2_000, 8_000, 30_000].map(Duration::from_millis) {
+            let stderr = failed_stderr(
+                NixCommand::tool("sh", ["-c", "echo 'copying path' >&2; sleep 60"])
+                    .timeout(timeout),
+            )
+            .await;
+            if stderr != "sh timed out" {
+                assert_eq!(stderr, "copying path\nsh timed out");
+                return;
+            }
+        }
+        panic!("sh never wrote its stderr before timing out");
     }
 }
