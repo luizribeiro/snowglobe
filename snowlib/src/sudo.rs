@@ -554,12 +554,19 @@ mod tests {
             .unwrap();
         let refreshes = || fake.calls().iter().filter(|call| *call == "-n -v").count();
 
-        tokio::time::sleep(Duration::from_millis(300)).await;
+        // Each refresh runs a process, which a loaded machine may take
+        // seconds to start
+        tokio::time::timeout(Duration::from_secs(60), async {
+            while refreshes() < 2 {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .unwrap_or_else(|_| panic!("only {} refreshes", refreshes()));
         drop(sudo);
         let at_drop = refreshes();
         tokio::time::sleep(Duration::from_millis(300)).await;
 
-        assert!(at_drop >= 2, "only {at_drop} refreshes");
         assert!(refreshes() <= at_drop + 1, "kept refreshing after the drop");
     }
 }
