@@ -1,6 +1,13 @@
 {
   description = "snowglobe - Deploy NixOS and nix-darwin hosts, in phases";
 
+  nixConfig = {
+    extra-substituters = [ "https://snowglobe.cachix.org" ];
+    extra-trusted-public-keys = [
+      "snowglobe.cachix.org-1:GZ4X+iutIwg1WKW/sM/WIfvIoJs+EKUb3VjJikArRtg="
+    ];
+  };
+
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     systems.url = "github:nix-systems/default";

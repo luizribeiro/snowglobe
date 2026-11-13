@@ -51,9 +51,26 @@ flake.
 
 ## Try it without installing
 
-`nix run` builds `snow` from the repository and runs it once. The first run
-compiles `snow` from source, which takes a few minutes; later runs reuse the
-build.
+`nix run` fetches `snow` and runs it once. snowglobe's flake points Nix at
+its binary cache, `https://snowglobe.cachix.org`, which has `snow` for
+x86_64-linux and aarch64-darwin. Nix asks whether to use the cache's
+settings; answer `y`, or pass `--accept-flake-config`. They take effect only
+if you are a trusted user of the Nix daemon, as root and single-user
+installs are. Otherwise Nix ignores them with a warning, and you can add the
+cache to the deploying machine's NixOS or nix-darwin configuration instead:
+
+```nix
+{
+  nix.settings.substituters = [ "https://snowglobe.cachix.org" ];
+  nix.settings.trusted-public-keys = [
+    "snowglobe.cachix.org-1:GZ4X+iutIwg1WKW/sM/WIfvIoJs+EKUb3VjJikArRtg="
+  ];
+}
+```
+
+Without the cache, and on aarch64-linux, which it does not cover, the first
+run compiles `snow` from source, which takes a few minutes; later runs reuse
+the build.
 
 ```bash
 nix run github:luizribeiro/snowglobe -- --version

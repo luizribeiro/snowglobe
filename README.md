@@ -61,6 +61,11 @@ nix profile add github:luizribeiro/snowglobe      # install
 
 To pin a release, use its tag: `github:luizribeiro/snowglobe/vX.Y.Z`.
 
+Builds for x86_64-linux and aarch64-darwin come from the
+[snowglobe.cachix.org](https://snowglobe.cachix.org) binary cache, which Nix
+asks to use; see [Installation](https://l9o.dev/snowglobe/installation/) for
+untrusted users. On aarch64-linux, `snow` compiles from source.
+
 ## Getting started
 
 The short version is below; the [tutorial](https://l9o.dev/snowglobe/tutorial/)
