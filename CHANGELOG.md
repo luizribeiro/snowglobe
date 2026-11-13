@@ -32,23 +32,6 @@ homelab of NixOS (x86_64, aarch64) and nix-darwin hosts.
 - Logs go to `/tmp/snow-<timestamp>.log` in a terminal, stderr otherwise.
 - `snow --version`.
 
-#### Unstable commands
-
-Not in release builds. May change or break any time. Try them with
-`nix run github:luizribeiro/snowglobe#snow-unstable -- <command>` or
-`cargo build --features unstable`.
-
-- `snow plan`: what a build would compile from source vs. fetch from a
-  substituter, with download sizes, without building. `--fail-on-build`
-  exits 2 if anything non-trivial would build. The last plan is saved under
-  `$XDG_STATE_HOME/snowglobe/`.
-- `snow status`: hosts as a table or `--json`. Doesn't query hosts yet, so
-  every status is `unknown`.
-- `snow bootstrap`: new host setup. Generates its ed25519 SSH host key,
-  optionally adds its age key to `.sops.yaml` (`--update-sops`), builds its
-  image with the host's provisioner (`manual`, `sd-image`, `raw` or
-  `proxmox-vma`). `--target` writes it to a block device or a Proxmox host.
-
 #### Deploy
 
 Details in [Roll out in phases](https://l9o.dev/snowglobe/phases/) and [Write deployment hooks](https://l9o.dev/snowglobe/hooks/).

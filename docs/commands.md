@@ -146,7 +146,3 @@ RUST_LOG=snow=debug,snowlib=debug snow deploy web1   # debug output from snow's 
 | `143` | `snow` was stopped with `SIGTERM`. |
 
 There is no separate exit code for a partial failure: a deployment in which one host of ten failed exits 1, like one in which all of them failed. To find out which hosts failed, read the last error line or the log.
-
-## Development builds
-
-Builds made with the `unstable` Cargo feature include further commands that are still being designed. Release builds do not have them, and this documentation does not cover them.

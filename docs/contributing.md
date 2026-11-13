@@ -30,14 +30,6 @@ cargo run --bin snow -- --help
 
 If you have `SNOW_FLAKE` set for your own flake, unset it while developing. `snow` reads it, and a development build pointed at a real fleet can deploy to it.
 
-Some commands are behind the `unstable` Cargo feature and left out of release builds. Build them with:
-
-```bash
-cargo build --features unstable
-```
-
-The flake's `snow-unstable` package has them too.
-
 ## Tests
 
 There are several layers of tests. Each one catches problems that the layer below cannot, and each is slower than the one below. Start with the fastest layer that can show your change works.
@@ -46,7 +38,6 @@ There are several layers of tests. Each one catches problems that the layer belo
 
 ```bash
 cargo test --workspace
-cargo test --workspace --all-features   # include the unstable commands
 ```
 
 Most of the deployment logic is tested here. Nix, SSH deploys, reboots and hooks sit behind backend traits with mock implementations, and a test observer records every event each host reports. That lets a test run a whole deployment, with phases, serial groups, hook failures and reboots, without Nix or SSH, and assert on exactly what each host did and in what order. The deployment tests live in [`snowlib/src/deploy/tests/`](https://github.com/luizribeiro/snowglobe/tree/main/snowlib/src/deploy/tests).
@@ -126,7 +117,7 @@ Comments explain why code is the way it is, not what it does; a well-named funct
 - Keep commits small, one idea each, with tests in the same commit as the code they test.
 - Keep history linear: rebase onto `main` and fast-forward, without merge commits.
 
-CI runs formatting, clippy, the Rust tests with and without the unstable feature, the documentation build, `cargo audit`, every flake check including each VM test, and `nix flake check` on macOS. See [`.github/workflows/ci.yml`](https://github.com/luizribeiro/snowglobe/blob/main/.github/workflows/ci.yml).
+CI runs formatting, clippy, the Rust tests, the documentation build, `cargo audit`, every flake check including each VM test, and `nix flake check` on macOS. See [`.github/workflows/ci.yml`](https://github.com/luizribeiro/snowglobe/blob/main/.github/workflows/ci.yml).
 
 ## Releases
 
