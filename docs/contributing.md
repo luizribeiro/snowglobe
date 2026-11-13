@@ -130,7 +130,7 @@ CI runs formatting, clippy, the Rust tests with and without the unstable feature
 
 ## Releases
 
-1. Bump the version in `snow/Cargo.toml` and in `flake.nix`, and run `cargo build` so `Cargo.lock` matches.
+1. Bump the version in `snow/Cargo.toml`, and run `cargo build` so `Cargo.lock` matches.
 2. Add a `## [X.Y.Z]` section to [`CHANGELOG.md`](https://github.com/luizribeiro/snowglobe/blob/main/CHANGELOG.md). It becomes the release notes.
 3. Push a `vX.Y.Z` tag on `main`. It must match the version in `snow/Cargo.toml`, the tagged commit must be on `main`, and CI must have passed on it, or the release workflow stops.
 

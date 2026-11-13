@@ -44,7 +44,7 @@
           pkgs = nixpkgs.legacyPackages.${system};
           snowWith = features: pkgs.rustPlatform.buildRustPackage {
             pname = "snow";
-            version = "0.1.0";
+            version = (builtins.fromTOML (builtins.readFile ./snow/Cargo.toml)).package.version;
             buildFeatures = map (feature: "snow/${feature}") features;
 
             # Only what cargo reads, so editing docs or tests in nix/ doesn't
