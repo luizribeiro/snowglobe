@@ -12,6 +12,11 @@ with lib;
 
 let
   cfg = config.snowglobe.bootstrap;
+
+  unstableNote = "\n" + ''
+    Only `snow bootstrap` reads this option. The command is unstable and
+    left out of release builds, so the option may change or go away.
+  '';
 in
 {
   options.snowglobe.bootstrap = {
@@ -22,13 +27,13 @@ in
         Provisioner to use for key injection during bootstrap.
 
         Available provisioners:
-        - `manual`: Output instructions for manual key injection (default)
+        - `manual`: Output instructions for manual key injection
         - `sd-image`: Inject keys into SD card images (Raspberry Pi, etc.)
         - `raw`: Inject keys into raw disk images
         - `proxmox-vma`: Inject keys into Proxmox VMA backup images
 
         When null, defaults to "manual".
-      '';
+      '' + unstableNote;
       example = "sd-image";
     };
 
@@ -41,12 +46,12 @@ in
         This should be a path relative to the host's configuration that
         builds a bootable image (e.g., SD card image, raw disk image).
 
-        When set, `snow bootstrap` (an unstable command, left out of release
-        builds) generates the host's SSH key, updates .sops.yaml with
-        `--update-sops`, then builds this image and injects the key into
-        it. The key comes first so the image's secrets can be encrypted
-        for the new host; if the build fails, the key is left behind.
-      '';
+        When set, `snow bootstrap` generates the host's SSH key, updates
+        .sops.yaml with `--update-sops`, then builds this image and injects
+        the key into it. The key comes first so the image's secrets can be
+        encrypted for the new host; if the build fails, the key is left
+        behind.
+      '' + unstableNote;
       example = "config.system.build.sdImage";
     };
 
@@ -58,7 +63,7 @@ in
 
         This is the directory inside the image where the generated
         ed25519 host key pair will be placed.
-      '';
+      '' + unstableNote;
       example = "/run/secrets/ssh";
     };
   };
