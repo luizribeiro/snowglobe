@@ -200,7 +200,7 @@ source is in [docs/](docs/).
 
 - [docs/demos.md](docs/demos.md): every clip is a NixOS VM test deploying to real VMs
 - [CHANGELOG.md](CHANGELOG.md)
-- [CONTRIBUTING.md](CONTRIBUTING.md)
+- [Contributing](https://l9o.dev/snowglobe/contributing/)
 
 ## Roadmap
 
@@ -214,7 +214,8 @@ Not built yet:
 
 ## Contributing
 
-Issues and pull requests are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md).
+Issues and pull requests are welcome; see the
+[contributing guide](https://l9o.dev/snowglobe/contributing/).
 
 ## License
 
