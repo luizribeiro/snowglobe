@@ -13,11 +13,11 @@ snowglobe is pre-1.0, so flags may still change between minor releases. The [cha
 
 Every command works on one flake. Without any option, `snow` looks for a `flake.nix` in the current directory, then in each parent directory in turn, and uses the first one it finds. This means you can run `snow` from anywhere inside the repository that holds your flake.
 
-To point at a flake elsewhere, pass `-f` (`--flake-path`) or set the `FLAKE_PATH` environment variable. The value is a local path, either a directory containing `flake.nix` or the `flake.nix` file itself; `~` and environment variables in it are expanded. The flag takes precedence over the variable, and both take precedence over the search.
+To point at a flake elsewhere, pass `-f` (`--flake-path`) or set the `SNOW_FLAKE` environment variable. The value is a local path, either a directory containing `flake.nix` or the `flake.nix` file itself; `~` and environment variables in it are expanded. The flag takes precedence over the variable, and both take precedence over the search.
 
 ```bash
 snow -f ~/src/infra list
-FLAKE_PATH=~/src/infra snow deploy web1
+SNOW_FLAKE=~/src/infra snow deploy web1
 ```
 
 The flag can go before or after the command name. A flake reference such as `github:owner/repo` is not accepted: `snow` needs a checkout on disk.

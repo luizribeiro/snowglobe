@@ -37,7 +37,7 @@ git worktree add ../infra-rollback HEAD~1
 snow -f ../infra-rollback deploy web1
 ```
 
-Replace `HEAD~1` with the last commit you know was good. `-f` points snow at a flake directory, the same way the `FLAKE_PATH` environment variable does.
+Replace `HEAD~1` with the last commit you know was good. `-f` points snow at a flake directory, the same way the `SNOW_FLAKE` environment variable does.
 
 snow builds the old system (quickly, if it is still in your Nix store), copies it, and activates it like any other deployment. Reboot detection and the host's [reboot policy](/snowglobe/reboots/#reboot-policies) apply as usual: if the bad deployment changed the kernel, going back changes it again, so the host may reboot. Hooks run too, so a node is drained and uncordoned as on any deployment.
 

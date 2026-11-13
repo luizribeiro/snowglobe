@@ -26,7 +26,7 @@ mod test_utils;
 #[command(about = "Deploy NixOS and nix-darwin hosts, in phases", long_about = None)]
 struct Cli {
     /// Path to the flake directory or its flake.nix (defaults to searching up from the current directory)
-    #[arg(short = 'f', long, global = true, env = "FLAKE_PATH")]
+    #[arg(short = 'f', long, global = true, env = "SNOW_FLAKE")]
     flake_path: Option<String>,
 
     #[command(subcommand)]

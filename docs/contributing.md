@@ -28,7 +28,7 @@ cargo build
 cargo run --bin snow -- --help
 ```
 
-If you have `FLAKE_PATH` set for your own flake, unset it while developing. `snow` reads it, and a development build pointed at a real fleet can deploy to it.
+If you have `SNOW_FLAKE` set for your own flake, unset it while developing. `snow` reads it, and a development build pointed at a real fleet can deploy to it.
 
 Some commands are behind the `unstable` Cargo feature and left out of release builds. Build them with:
 

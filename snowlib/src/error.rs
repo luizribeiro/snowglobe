@@ -96,7 +96,7 @@ pub enum FlakeError {
     #[error("Could not find flake.nix in '{start_dir}' or any parent directory")]
     #[diagnostic(
         code(snow::flake::not_found),
-        help("Run snow inside a flake with nixosConfigurations or darwinConfigurations, or point to one with `--flake-path` or FLAKE_PATH.")
+        help("Run snow inside a flake with nixosConfigurations or darwinConfigurations, or point to one with `--flake-path` or SNOW_FLAKE.")
     )]
     NotFound { start_dir: PathBuf },
 

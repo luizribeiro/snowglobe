@@ -76,7 +76,7 @@ fn log_files_after_a_terminal_run(args: &[&str]) -> Vec<std::path::PathBuf> {
     std::process::Command::new(assert_cmd::cargo::cargo_bin!("snow"))
         .args(args)
         .env("TMPDIR", tmpdir.path())
-        .env_remove("FLAKE_PATH")
+        .env_remove("SNOW_FLAKE")
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::from(pty.slave))
         .status()
@@ -115,6 +115,18 @@ fn test_fatal_error_shows_its_help_without_a_std_prefix() {
             "✗ Flake path '/srv/no-such-flake' does not exist\n  help: Provide a valid path",
         ))
         .stderr(predicate::str::contains("Error:").not());
+}
+
+#[test]
+fn test_snow_flake_variable_points_at_the_flake() {
+    assert_cmd::cargo::cargo_bin_cmd!("snow")
+        .env("SNOW_FLAKE", "/srv/no-such-flake")
+        .arg("list")
+        .assert()
+        .failure()
+        .stderr(predicate::str::starts_with(
+            "✗ Flake path '/srv/no-such-flake' does not exist",
+        ));
 }
 
 #[test]

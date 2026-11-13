@@ -23,7 +23,7 @@ From the flake's directory, or any directory below it:
 snow rebuild
 ```
 
-snow looks for `flake.nix` in the current directory and its parents. To use a flake elsewhere, pass `-f /path/to/flake` or set `FLAKE_PATH`.
+snow looks for `flake.nix` in the current directory and its parents. To use a flake elsewhere, pass `-f /path/to/flake` or set `SNOW_FLAKE`.
 
 A rebuild goes through these steps:
 

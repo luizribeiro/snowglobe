@@ -27,7 +27,7 @@ homelab of NixOS (x86_64, aarch64) and nix-darwin hosts.
   once at the start. If a switch needs a reboot, you get a menu: reboot
   now, next boot, switch anyway, or cancel.
 - Hosts by name, `--phase(s)`, `--tag(s)` or `-e <nix expression>`.
-- `-f` or `FLAKE_PATH` if `flake.nix` isn't in the current directory or
+- `-f` or `SNOW_FLAKE` if `flake.nix` isn't in the current directory or
   above it.
 - Logs go to `/tmp/snow-<timestamp>.log` in a terminal, stderr otherwise.
 - `snow --version`.

@@ -229,7 +229,7 @@ web1      -      -
 your-mac  -      -
 ```
 
-If your flake is elsewhere, pass its path with `-f`, or set `FLAKE_PATH`:
+If your flake is elsewhere, pass its path with `-f`, or set `SNOW_FLAKE`:
 
 ```bash
 snow -f ~/src/infra list
