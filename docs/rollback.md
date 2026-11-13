@@ -102,7 +102,17 @@ The host is then running the new system, which is also its default boot entry. U
 
 This is why the `--test` deployment at the top of this page is worth it for changes that may cut you off: power-cycling the host undoes it.
 
-Ctrl-C stops only snow: an activation it already started keeps running on the host to the end. snow does not run the host's post-deploy or on-failure hooks then, so a host that a pre-deploy hook drained stays drained. Once the host is back, deploy it again with `snow deploy --redeploy web1`: if it runs the new system, a plain `snow deploy` would skip it as unchanged and run none of its hooks.
+Ctrl-C stops only snow: an activation it already started keeps running on the host to the end. snow does not run the host's post-deploy or on-failure hooks then, so a host that a pre-deploy hook drained stays drained. Before exiting, snow lists the hosts it left like that on stderr, and also in its log file when it runs in a terminal:
+
+```text
+Interrupted. Host left mid-deploy:
+  web1  switch (still running on the host), pre-deploy hooks ran, post-deploy hooks didn't
+To finish it: snow deploy --redeploy web1
+```
+
+A host is listed while its activation or reboot is still running, when its hooks were cut short, or when its pre-deploy hooks ran and the post-deploy or on-failure hooks that would undo them did not. Hosts snow had not touched yet are left out: those still building, copying, planning or waiting for their turn, and every host of a dry run. A plain `snow deploy` deploys those as usual.
+
+Once the listed hosts have finished activating or rebooting, run the command snow gave. It repeats the flags that change how hosts are deployed, such as `--boot` or `--skip-reboot`. Use it rather than a plain `snow deploy`: a host that already runs the new system would be skipped as unchanged, and none of its hooks would run.
 
 ## Prune old generations
 
