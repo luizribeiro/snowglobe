@@ -56,7 +56,7 @@ fits better.
 
 ```bash
 nix run github:luizribeiro/snowglobe -- list      # run without installing
-nix profile install github:luizribeiro/snowglobe  # install
+nix profile add github:luizribeiro/snowglobe      # install
 ```
 
 To pin a release, use its tag: `github:luizribeiro/snowglobe/vX.Y.Z`.
