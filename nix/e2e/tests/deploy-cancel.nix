@@ -7,13 +7,9 @@ in
   name = "deploy-cancel";
 
   nodes.web1 = {
-    # The switch waits for this new unit, which keeps the activation running
-    # long enough to interrupt
-    systemd.services.slow-start = {
-      wantedBy = [ "multi-user.target" ];
-      serviceConfig.Type = "oneshot";
-      script = "touch ${slowStarted}; sleep 30";
-    };
+    # Every switch runs activation scripts, so this holds each deploy in
+    # activation for 30s, long enough to interrupt
+    system.activationScripts.slow-start = "touch ${slowStarted}; sleep 30";
     snowglobe.hooks = {
       pre-deploy.drain = {
         location = "remote";
