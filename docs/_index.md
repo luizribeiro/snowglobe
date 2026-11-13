@@ -47,9 +47,9 @@ before upgrading.
 - **No extra flake output.** `snow` reads your existing
   `nixosConfigurations` and `darwinConfigurations`; per-host settings live
   in each host's own configuration.
-- **A narrow privilege.** The deploy user gets passwordless sudo for one
-  helper, `snowglobe-activate`, rather than for everything. See
-  [Security model](/snowglobe/security/).
+- **A readable sudo rule.** The deploy user gets passwordless sudo for one
+  helper, `snowglobe-activate`, instead of `NOPASSWD: ALL`; the deploy user
+  is still effectively root. See [Security model](/snowglobe/security/).
 - **Local rebuilds.** `snow rebuild` works like `nixos-rebuild` or
   `darwin-rebuild` on the machine you are on, with the same reboot check.
   See [Rebuild the local machine](/snowglobe/rebuild/).
