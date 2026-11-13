@@ -2,14 +2,16 @@
 title: "Comparison with other tools"
 group: "Get started"
 weight: 15
-description: "How snowglobe compares with nixos-rebuild --target-host, deploy-rs and colmena, and when each is the better fit."
+description: "How snowglobe compares with nixos-rebuild --target-host, deploy-rs, colmena, morph, Clan, devenv Machines and pull-based tools, and when each is the better fit."
 ---
 
-Several tools deploy NixOS configurations to remote machines, and they overlap a lot. This page compares snowglobe with the three you are most likely to be choosing between: `nixos-rebuild --target-host`, [deploy-rs](https://github.com/serokell/deploy-rs) and [colmena](https://colmena.cli.rs/). All three are older and more widely used than snowglobe, which is pre-1.0.
+Several tools deploy NixOS configurations to remote machines, and they overlap a lot. This page compares snowglobe in detail with `nixos-rebuild --target-host`, [deploy-rs](https://github.com/serokell/deploy-rs) and [colmena](https://colmena.cli.rs/), then with morph, Clan and devenv Machines, and briefly with pull-based tools such as comin. Most of these tools are older and more widely used than snowglobe, which is pre-1.0.
 
-The short version: snowglobe is built around rolling a change out across a fleet in a controlled order, with phases, serial groups, hooks and reboot detection. It leaves out several things the other tools do, such as building on the target, uploading secrets and rolling back automatically.
+The short version: snowglobe is built around rolling a change out across a fleet in a controlled order, with phases, serial groups, hooks and reboot detection. Some other tools also deploy in order or gate a rollout on health checks; morph and devenv Machines are the closest. snowglobe leaves out several things other tools do, such as building on the target, uploading secrets and rolling back automatically.
 
 ## At a glance
+
+Compared with the three tools most users are choosing between:
 
 | | `nixos-rebuild --target-host` | deploy-rs | colmena | snowglobe |
 |---|---|---|---|---|
