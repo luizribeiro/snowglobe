@@ -42,6 +42,9 @@ To pin a release, use its tag: `github:luizribeiro/snowglobe/vX.Y.Z`.
 
 ## Getting started
 
+The short version is below; the [tutorial](https://l9o.dev/snowglobe/tutorial/)
+walks through the same steps with a check after each one.
+
 1. Import the module on each host:
 
    ```nix
@@ -60,18 +63,35 @@ To pin a release, use its tag: `github:luizribeiro/snowglobe/vX.Y.Z`.
    }
    ```
 
-2. Let a deploy user run the activation helper:
+2. Create a deploy user and let it run the activation helper:
 
    ```nix
    {
+     users.users.deploy = {
+       isNormalUser = true;
+       openssh.authorizedKeys.keys = [ "ssh-ed25519 AAAA... you@laptop" ];
+     };
      snowglobe.deploy.allowedUsers = [ "deploy" ];
      # nix copy as a non-root user needs a trusted user (or signed paths)
      nix.settings.trusted-users = [ "deploy" ];
    }
    ```
 
-3. Apply this configuration once with `nixos-rebuild switch`, then from the
-   flake's directory:
+   Tell `ssh` to log in as that user, in `~/.ssh/config`:
+
+   ```text
+   Host web1
+     User deploy
+   ```
+
+   `snow` connects to each host's `networking.hostName` (plus
+   `networking.domain`, if set), not to the flake attribute name, so that
+   is the name the `Host` line must match. If that name does not resolve,
+   add a `HostName` line; see
+   [Connect to your hosts](https://l9o.dev/snowglobe/connect/).
+
+3. Apply this configuration once with `nixos-rebuild switch`, as an account
+   that can already use `sudo`. Then, from the flake's directory:
 
    ```bash
    snow list                 # the hosts snow sees
