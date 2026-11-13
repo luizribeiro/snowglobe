@@ -35,7 +35,7 @@ let
           Additional environment variables can be set via the `environment`
           and `environmentFiles` options.
         '';
-        example = "kubectl drain \${config.networking.hostName}";
+        example = literalExpression ''"kubectl drain ''${config.networking.hostName}"'';
       };
 
       environment = mkOption {
