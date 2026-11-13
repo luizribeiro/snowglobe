@@ -1,7 +1,6 @@
 use super::{parse_hostnames, NixBackend};
 use async_trait::async_trait;
 
-use crate::bootstrap::{BootstrapConfig, BootstrapConfigJson};
 use crate::error::Result;
 use crate::hooks::{HookConfig, HookLocation, HookStage};
 use crate::host::{Host, HostMetadata};
@@ -173,85 +172,6 @@ impl NixBackend for SystemNixBackend {
                         host: host.to_string(),
                         stderr,
                     })
-                }
-                other => other,
-            })?;
-
-        let path = String::from_utf8(stdout)
-            .map_err(|e| crate::error::NixError::EvalFailed {
-                stderr: format!("Non-UTF8 build path: {:?}", e.as_bytes()),
-            })?
-            .trim()
-            .to_string();
-
-        Ok(StorePath::new(path))
-    }
-
-    async fn get_bootstrap_config(
-        &self,
-        flake: &Flake,
-        host: &str,
-        system_type: SystemType,
-    ) -> Result<BootstrapConfig> {
-        let flake_ref = format!(".#{}.{}", system_type.flake_attr(), host);
-
-        let apply_expr = r#"config: {
-          provisioner = config.config.snowglobe.bootstrap.provisioner or null;
-          imageAttr = config.config.snowglobe.bootstrap.imageAttr or null;
-          sshKeyPath = config.config.snowglobe.bootstrap.sshKeyPath or null;
-          rootFsDevice = config.config.fileSystems."/".device or null;
-        }"#;
-
-        let stdout = NixCommand::eval(flake, &flake_ref)
-            .apply(apply_expr)
-            .json()
-            .run()
-            .await
-            .map_err(|e| match e {
-                crate::error::SnowError::Nix(nix_err) => {
-                    crate::error::SnowError::Nix(crate::error::NixError::MetadataFailed {
-                        host: host.to_string(),
-                        source: Box::new(nix_err),
-                    })
-                }
-                other => other,
-            })?;
-
-        let json_config: BootstrapConfigJson = serde_json::from_slice(&stdout).map_err(|e| {
-            crate::error::NixError::OutputParseFailed {
-                output: String::from_utf8_lossy(&stdout).to_string(),
-                source: e,
-            }
-        })?;
-
-        Ok(json_config.into())
-    }
-
-    async fn build_image(
-        &self,
-        flake: &Flake,
-        host: &str,
-        system_type: SystemType,
-        image_attr: &str,
-        output_mode: OutputMode,
-    ) -> Result<StorePath> {
-        // Build the image attribute: .#nixosConfigurations.hostname.config.system.build.sdImage
-        let target = format!(".#{}.{}.{}", system_type.flake_attr(), host, image_attr);
-
-        // Images are copied out right after the build, so they need no GC root
-        let stdout = NixCommand::build(flake, &target)
-            .no_link()
-            .print_out_paths()
-            .output_mode(output_mode)
-            .run()
-            .await
-            .map_err(|e| match e {
-                crate::error::SnowError::Nix(crate::error::NixError::EvalFailed { stderr }) => {
-                    crate::error::ProvisionerError::ImageBuildFailed {
-                        host: host.to_string(),
-                        stderr,
-                    }
-                    .into()
                 }
                 other => other,
             })?;

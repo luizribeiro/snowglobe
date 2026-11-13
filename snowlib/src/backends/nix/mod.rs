@@ -10,7 +10,6 @@ use async_trait::async_trait;
 use futures::stream::{self, StreamExt, TryStreamExt};
 use std::collections::HashSet;
 
-use crate::bootstrap::BootstrapConfig;
 use crate::error::{NixError, Result};
 use crate::host::{Host, HostMetadata};
 use crate::nix::{Flake, StorePath, SystemType};
@@ -140,30 +139,6 @@ pub trait NixBackend: Send + Sync {
         system_type: SystemType,
         output_mode: OutputMode,
     ) -> Result<StorePath>;
-
-    /// Get bootstrap configuration for a host
-    ///
-    /// Evaluates the `snowglobe.bootstrap` attribute from the host's NixOS configuration.
-    /// Returns a default config (manual provisioner) if the attribute is not set.
-    async fn get_bootstrap_config(
-        &self,
-        flake: &Flake,
-        host: &str,
-        system_type: SystemType,
-    ) -> Result<BootstrapConfig>;
-
-    /// Build a host's image and return the store path
-    ///
-    /// Unlike `build_host` which builds the system toplevel, this builds a custom
-    /// attribute specified by `image_attr` (e.g., "config.system.build.sdImage").
-    async fn build_image(
-        &self,
-        flake: &Flake,
-        host: &str,
-        system_type: SystemType,
-        image_attr: &str,
-        output_mode: OutputMode,
-    ) -> Result<StorePath>;
 }
 
 #[cfg(test)]
@@ -267,26 +242,6 @@ mod tests {
             _: &Flake,
             _: &str,
             _: SystemType,
-            _: OutputMode,
-        ) -> Result<StorePath> {
-            unimplemented!()
-        }
-
-        async fn get_bootstrap_config(
-            &self,
-            _: &Flake,
-            _: &str,
-            _: SystemType,
-        ) -> Result<BootstrapConfig> {
-            unimplemented!()
-        }
-
-        async fn build_image(
-            &self,
-            _: &Flake,
-            _: &str,
-            _: SystemType,
-            _: &str,
             _: OutputMode,
         ) -> Result<StorePath> {
             unimplemented!()
@@ -497,101 +452,5 @@ mod tests {
             result.unwrap_err(),
             crate::error::SnowError::Nix(NixError::OutputParseFailed { .. })
         ));
-    }
-
-    #[tokio::test]
-    async fn test_mock_build_image_returns_store_path() {
-        let backend = MockNixBackend::new();
-        let flake = Flake::test_context();
-        let result = backend
-            .build_image(
-                &flake,
-                "testhost",
-                SystemType::NixOS,
-                "config.system.build.sdImage",
-                OutputMode::Capture,
-            )
-            .await
-            .unwrap();
-
-        assert!(result.as_str().contains("testhost"));
-        assert!(result.as_str().contains("sdImage"));
-    }
-
-    #[tokio::test]
-    async fn test_mock_build_image_extracts_last_attr_component() {
-        let backend = MockNixBackend::new();
-        let flake = Flake::test_context();
-
-        let result = backend
-            .build_image(
-                &flake,
-                "myhost",
-                SystemType::NixOS,
-                "config.system.build.rawImage",
-                OutputMode::Capture,
-            )
-            .await
-            .unwrap();
-
-        assert_eq!(result.as_str(), "/nix/store/mock-myhost-rawImage");
-    }
-
-    #[tokio::test]
-    async fn test_mock_build_image_respects_build_failures() {
-        let backend = MockNixBackend::new().with_build_failures(vec!["failhost".to_string()]);
-        let flake = Flake::test_context();
-
-        let result = backend
-            .build_image(
-                &flake,
-                "failhost",
-                SystemType::NixOS,
-                "config.system.build.sdImage",
-                OutputMode::Capture,
-            )
-            .await;
-
-        assert!(result.is_err());
-        let err = result.unwrap_err();
-        assert!(matches!(
-            err,
-            crate::error::SnowError::Provisioner(
-                crate::error::ProvisionerError::ImageBuildFailed { .. }
-            )
-        ));
-    }
-
-    #[tokio::test]
-    async fn test_mock_build_image_success_for_non_failed_host() {
-        let backend = MockNixBackend::new().with_build_failures(vec!["failhost".to_string()]);
-        let flake = Flake::test_context();
-
-        let result = backend
-            .build_image(
-                &flake,
-                "successhost",
-                SystemType::NixOS,
-                "config.system.build.sdImage",
-                OutputMode::Capture,
-            )
-            .await;
-
-        assert!(result.is_ok());
-    }
-
-    #[tokio::test]
-    async fn test_mock_get_bootstrap_config() {
-        let backend = MockNixBackend::new();
-        let flake = Flake::test_context();
-
-        let config = backend
-            .get_bootstrap_config(&flake, "testhost", SystemType::NixOS)
-            .await
-            .unwrap();
-
-        assert_eq!(config.provisioner_name(), "mock");
-        assert_eq!(config.ssh_key_path(), "/etc/ssh");
-        assert!(config.has_image_attr());
     }
 }

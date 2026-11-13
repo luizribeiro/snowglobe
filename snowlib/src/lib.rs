@@ -41,7 +41,6 @@ pub use backends::reboot::{
     DEFAULT_REBOOT_MAX_WAIT_SECS,
 };
 pub use backends::sops::{SopsBackend, SopsUpdateResult, SystemSopsBackend};
-pub use bootstrap::BootstrapConfig;
 pub use deploy::{
     deploy, phases, DeployConfiguration, DeployContext, DeployResults, DeployStrategy,
     HookExecutor, HostDeploymentResult, PhaseResult, PipelineStep, SkippedPhase,

@@ -4,7 +4,6 @@ use std::collections::HashMap;
 use std::time::Duration;
 
 use crate::backends::deploy::{BuildFixture, DeploymentFixture, MetadataFixture};
-use crate::bootstrap::BootstrapConfig;
 use crate::error::Result;
 use crate::host::{Host, HostMetadata};
 use crate::nix::{Flake, StorePath, SystemType};
@@ -178,44 +177,5 @@ impl NixBackend for MockNixBackend {
             // No build fixture - just create a fake store path
             Ok(StorePath::new(format!("/nix/store/mock-{}", host)))
         }
-    }
-
-    async fn get_bootstrap_config(
-        &self,
-        _flake: &Flake,
-        _host: &str,
-        _system_type: SystemType,
-    ) -> Result<BootstrapConfig> {
-        Ok(BootstrapConfig {
-            provisioner: Some("mock".to_string()),
-            image_attr: Some("config.system.build.image".to_string()),
-            ssh_key_path: None,
-            root_fs_device: Some("/dev/disk/by-label/nixos".to_string()),
-        })
-    }
-
-    async fn build_image(
-        &self,
-        _flake: &Flake,
-        host: &str,
-        _system_type: SystemType,
-        image_attr: &str,
-        _output_mode: OutputMode,
-    ) -> Result<StorePath> {
-        // Check if this host should fail during build
-        if self.build_failures.contains(&host.to_string()) {
-            return Err(crate::error::ProvisionerError::ImageBuildFailed {
-                host: host.to_string(),
-                stderr: "Mock image build failure".to_string(),
-            }
-            .into());
-        }
-
-        // Return a fake store path based on the image attribute
-        let attr_suffix = image_attr.split('.').next_back().unwrap_or("image");
-        Ok(StorePath::new(format!(
-            "/nix/store/mock-{}-{}",
-            host, attr_suffix
-        )))
     }
 }
