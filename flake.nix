@@ -42,10 +42,11 @@
       packages = forEachSystem (system:
         let
           pkgs = nixpkgs.legacyPackages.${system};
-          snowWith = features: pkgs.rustPlatform.buildRustPackage {
+        in
+        {
+          snow = pkgs.rustPlatform.buildRustPackage {
             pname = "snow";
             version = (builtins.fromTOML (builtins.readFile ./snow/Cargo.toml)).package.version;
-            buildFeatures = map (feature: "snow/${feature}") features;
 
             # Only what cargo reads, so editing docs or tests in nix/ doesn't
             # rebuild snow and every VM test that runs it
@@ -63,7 +64,7 @@
               lockFile = ./Cargo.lock;
             };
 
-            nativeBuildInputs = [ pkgs.pkg-config pkgs.makeWrapper ];
+            nativeBuildInputs = [ pkgs.pkg-config ];
 
             # Some tests shell out to ssh (expecting it to fail), which and
             # hostname; the darwin sandbox has no /bin on PATH
@@ -74,20 +75,11 @@
             checkFlags = [
               "--skip=commands::build::tests"
               "--skip=commands::list::tests"
-              "--skip=commands::status::tests"
-              "--skip=commands::plan::tests::test_plan_invalid_host"
               "--skip=nix::command::tests::test_tool_runs_without_a_flake"
               "--skip=nix::command::tests::test_failure_carries_stderr"
               "--skip=nix::command::tests::test_out_link_roots_the_built_path"
             ];
             buildInputs = [ ];
-
-            # Only snow plan, an unstable command, shells out to nix-eval-jobs;
-            # a user's own copy on PATH takes precedence.
-            postInstall = pkgs.lib.optionalString (builtins.elem "unstable" features) ''
-              wrapProgram $out/bin/snow \
-                --suffix PATH : ${pkgs.lib.makeBinPath [ pkgs.nix-eval-jobs ]}
-            '';
 
             meta = {
               description = "Deploy NixOS and nix-darwin hosts, in phases";
@@ -96,10 +88,6 @@
               mainProgram = "snow";
             };
           };
-        in
-        {
-          snow = snowWith [ ];
-          snow-unstable = snowWith [ "unstable" ];
 
           default = self.packages.${system}.snow;
         });
@@ -136,7 +124,6 @@
         in
         {
           snow-package = self.packages.${system}.snow;
-          snow-unstable-package = self.packages.${system}.snow-unstable;
           recorder = import ./nix/demos/record.test.nix { inherit pkgs; };
           render-demos = import ./nix/demos/render.test.nix { inherit pkgs; };
           hooks-module = runNixTests "hooks-module" (import ./modules/hooks.test.nix { inherit pkgs; });

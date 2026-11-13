@@ -115,14 +115,10 @@ jobs:
         run: nix develop --command cargo fmt --check
       - name: Run clippy
         run: nix develop --command cargo clippy --workspace --all-targets -- -D warnings
-      - name: Run clippy with the unstable commands
-        run: nix develop --command cargo clippy --workspace --all-targets --all-features -- -D warnings
       # Some tests run the real nix CLI, which the snow-package check's
       # sandbox can't
       - name: Run tests
         run: nix develop --command cargo test --workspace
-      - name: Run tests with the unstable commands
-        run: nix develop --command cargo test --workspace --all-features
       - name: Build documentation
         run: nix develop --command cargo doc --workspace --no-deps
       - name: Run security audit
