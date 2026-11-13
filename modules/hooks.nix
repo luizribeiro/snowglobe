@@ -65,12 +65,23 @@ let
           snow reads them on the machine running snow, for local and
           remote hooks alike, so they must exist there, not on the host
           being deployed. They are parsed, not sourced: blank lines and
-          lines starting with `#` are skipped, and values are only trimmed:
-          quotes are kept and variables are not expanded.
+          lines starting with `#` are skipped, each line is split at the
+          first `=`, and keys and values are only trimmed: quotes are kept
+          and variables are not expanded.
 
           Later files override earlier ones, and `environment` overrides
           them all. Give paths as strings: a Nix path such as `./deploy.env`
           is copied into the world-readable Nix store.
+
+          Local hooks get these variables on top of snow's own environment.
+          Remote hooks don't inherit snow's environment: they get the
+          `SNOW_*` variables and yours on top of what the host gives a
+          non-interactive SSH session.
+
+          If a file can't be read, the host fails at that hook's stage
+          without running it. With `continueOnFailure = true` the hook runs
+          anyway without that file's variables, so a hook needing a secret
+          from it should check the variable is set.
         '';
         example = literalExpression ''
           [
@@ -86,6 +97,8 @@ let
           Maximum time (in seconds) to wait for the hook to complete.
           If the hook exceeds this timeout, it will be terminated and
           treated as a failure (unless continueOnFailure is true).
+
+          Evaluation fails for a timeout outside 1 to 7200 seconds.
         '';
       };
 
@@ -135,6 +148,8 @@ let
 
           Useful for hooks that depend on external services that may be
           temporarily unavailable (e.g., Kubernetes API after node reboot).
+
+          Evaluation fails for more than 20 retries.
         '';
         example = 5;
       };
@@ -145,7 +160,8 @@ let
         description = ''
           Seconds to wait between retry attempts.
 
-          Only used when retries > 0.
+          Only used when retries > 0. Evaluation fails for a delay outside
+          1 to 300 seconds.
         '';
         example = 30;
       };
