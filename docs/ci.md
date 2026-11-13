@@ -48,7 +48,7 @@ On a Mac, create the account and use the same `allowedUsers` and `trusted-users`
 
 A user in `allowedUsers` can run any system closure as root through the activation helper, so it is root-equivalent on that host. Treat the CI secret that holds its key as a root credential: limit who can edit the workflow and who can run it, and consider restricting the key to your runners' addresses with an OpenSSH `from="..."` option in front of the key. See the [Security model](/snowglobe/security/).
 
-Apply the configuration once with your existing access (`nixos-rebuild switch`, `darwin-rebuild switch`, or a `snow deploy` as yourself) before the first CI run, so the user and sudo rule exist.
+Apply the configuration once with your existing access (`nixos-rebuild switch`, `darwin-rebuild switch`, or, if you already have passwordless sudo on the host, a `snow deploy` as yourself) before the first CI run, so the user and sudo rule exist.
 
 ## Generate the key and pin the host keys
 
