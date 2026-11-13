@@ -56,6 +56,8 @@ A `local` hook runs on the machine running `snow`. Use it to check the host the 
 }
 ```
 
+`config.networking.hostName` must resolve from your machine. If it does not, use the host's full domain name instead.
+
 Use `localPkgs`, not `pkgs`, in local hooks: it is built for your machine, which may not be the host's platform. See [Packages in hook commands](/snowglobe/hooks/#packages-in-hook-commands).
 
 The same kind of hook can check a whole service instead of one host: a request through the load balancer, or a query to your cluster's API, like the `kubectl wait` in [Deploy a cluster one node at a time](/snowglobe/cluster/#kubernetes-drain-deploy-wait-uncordon).
@@ -100,18 +102,12 @@ A failed check fails the host, like any other failed step. What that stops depen
 - **Later phases.** When a phase has a failed host, the later phases are skipped. Hosts in the same phase are not stopped: they deploy in parallel and finish.
 - **The rest of a serial group.** In a [serial group](/snowglobe/cluster/), the next member starts only after the current one finishes its `post-deploy` hooks. If a check fails, the members that have not had their turn are skipped and keep their old system.
 
-So put the canary alone in the first phase, and give it the check:
+So put the canary alone in the first phase, and give it a check, such as the `health` hook from [A remote check on the host](#a-remote-check-on-the-host):
 
 ```nix
 # web1: the canary
-{ pkgs, ... }:
 {
   snowglobe.deploy.phase = "p1";
-  snowglobe.hooks.post-deploy.health = {
-    location = "remote";
-    command = "${pkgs.curl}/bin/curl -fsS --retry 5 --retry-connrefused http://localhost:8080/health";
-    timeout = 60;
-  };
 }
 ```
 
@@ -129,7 +125,7 @@ A few cases weaken the gate:
 
 The failed host is not rolled back: it keeps running the new system. Its `on-failure` hooks run, so a node a `pre-deploy` hook took out of a pool or drained can be put back; see [Failure and reruns](/snowglobe/hooks/#failure-and-reruns).
 
-Then either fix the change and deploy again, or return the host to its previous system as in [Roll back a bad deployment](/snowglobe/rollback/). A host that already runs the new system is reported as unchanged and runs no hooks, so after fixing the host by hand, deploy with `--redeploy` to run its checks again.
+Then either fix the change and deploy again, or return the host to its previous system as in [Roll back a bad deployment](/snowglobe/rollback/). The failed host already runs the new system. So the next plain `snow deploy` of the same change reports it as unchanged and runs none of its hooks, checks included. To run the check again, for example after fixing the host by hand, deploy with `--redeploy`.
 
 ## Coming from morph
 
@@ -139,12 +135,12 @@ morph declares health checks per host under `deployment.healthChecks`. In snowgl
 |---|---|
 | `healthChecks.http`, requested from the deploying machine | a `local` hook running `curl` against the host |
 | `healthChecks.cmd`, run on the host | a `remote` hook |
-| repeating a check until it passes | `curl --retry`, or `retries` and `retryDelay` |
+| repeating a check every `period` until it passes, with no limit | `curl --retry`, or `retries` and `retryDelay`; snow gives up after `retries + 1` attempts (at most 20 retries), each bounded by `timeout` |
 | a check's `timeout` | the hook's `timeout`, per attempt |
 | `morph check-health` | no equivalent; run the command by hand |
 | `--skip-health-checks` | no equivalent |
 
-A check in snowglobe also decides what happens next: it stops later phases and the rest of its serial group.
+Like morph, a failed check stops the deployment before the next hosts, and does not roll back. In snowglobe, that means later phases and the rest of the host's serial group.
 
 ## Related pages
 
