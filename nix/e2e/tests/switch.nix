@@ -1,19 +1,20 @@
 {
   name = "switch";
 
-  # A fleet with a host per role, rolled out from the least to the most
-  # visible: management, then data, then the apps, then the load balancers
+  # A fleet with a host per role, rolled out by risk as the phases guide
+  # suggests: a canary and a host nobody depends on, then the stateless
+  # services, then the data, then the shared infrastructure
   nodes = {
-    bastion.snowglobe.deploy.phase = "p1";
+    api-1.snowglobe.deploy.phase = "p1";
     metrics.snowglobe.deploy.phase = "p1";
-    pg-primary.snowglobe.deploy.phase = "p2";
-    pg-replica-1.snowglobe.deploy.phase = "p2";
-    redis-1.snowglobe.deploy.phase = "p2";
-    api-1.snowglobe.deploy.phase = "p3";
-    api-2.snowglobe.deploy.phase = "p3";
-    api-3.snowglobe.deploy.phase = "p3";
-    worker-1.snowglobe.deploy.phase = "p3";
-    worker-2.snowglobe.deploy.phase = "p3";
+    api-2.snowglobe.deploy.phase = "p2";
+    api-3.snowglobe.deploy.phase = "p2";
+    worker-1.snowglobe.deploy.phase = "p2";
+    worker-2.snowglobe.deploy.phase = "p2";
+    pg-primary.snowglobe.deploy.phase = "p3";
+    pg-replica-1.snowglobe.deploy.phase = "p3";
+    redis-1.snowglobe.deploy.phase = "p3";
+    bastion.snowglobe.deploy.phase = "p4";
     lb-1.snowglobe.deploy.phase = "p4";
     lb-2.snowglobe.deploy.phase = "p4";
   };
@@ -40,16 +41,16 @@
     deploy.succeeded()
     deploy.has(
         "Deploying 12 hosts in 4 phases:",
-        "p1  bastion, metrics",
-        "p2  pg-primary, pg-replica-1, redis-1",
-        "p3  api-1, api-2, api-3, worker-1, worker-2",
-        "p4  lb-1, lb-2",
+        "p1  api-1, metrics",
+        "p2  api-2, api-3, worker-1, worker-2",
+        "p3  pg-primary, pg-replica-1, redis-1",
+        "p4  bastion, lb-1, lb-2",
         "✓ Phase p1", "✓ Phase p2", "✓ Phase p3", "✓ Phase p4",
     )
     assert "could not read installed systems" not in deploy.output, deploy.output
     deploy.logged(*(f"{host}: deployed" for host in hosts))
-    assert deploy.log.index("metrics: deployed") < deploy.log.index("pg-primary: build started"), deploy.log
-    assert deploy.log.index("worker-2: deployed") < deploy.log.index("lb-1: build started"), deploy.log
+    assert deploy.log.index("api-1: deployed") < deploy.log.index("api-2: build started"), deploy.log
+    assert deploy.log.index("redis-1: deployed") < deploy.log.index("bastion: build started"), deploy.log
     for host in hosts:
         runs(host, deployed(host))
   '';
