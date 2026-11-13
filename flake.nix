@@ -159,15 +159,7 @@
               cargo-audit
               rust-analyzer
               pre-commit
-              nix-eval-jobs
-
-              # Bootstrap dependencies
-              openssh                    # ssh-keygen
-              ssh-to-age                 # age key derivation
-              zstd                       # VMA compression
-            ] ++ lib.optionals stdenv.hostPlatform.isLinux [
-              libguestfs-with-appliance  # guestfish for image provisioning
-              (callPackage ./pkgs/vma { })  # Proxmox VMA tool
+              openssh
             ];
 
             shellHook = ''
