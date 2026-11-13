@@ -25,9 +25,12 @@ let
           using standard Nix string interpolation.
 
           Environment variables available during execution:
-          - SNOW_HOSTNAME: Target hostname
-          - SNOW_PHASE: Deployment phase (if configured)
-          - SNOW_STORE_PATH: Path to the new system in /nix/store
+          - SNOW_HOSTNAME: the host's name in the flake (its attribute under
+            `nixosConfigurations` or `darwinConfigurations`), not the address
+            snow connects to; interpolate `config.networking.hostName` for that
+          - SNOW_PHASE: the host's `snowglobe.deploy.phase`; unset when it has none
+          - SNOW_STORE_PATH: the new system's store path; unset in on-failure
+            hooks of a host whose build failed
 
           Additional environment variables can be set via the `environment`
           and `environmentFiles` options.
@@ -92,13 +95,16 @@ let
         type = types.bool;
         default = false;
         description = ''
-          Whether to continue the deployment if this hook fails.
+          Whether the host carries on when this hook still fails after its
+          last attempt.
 
-          - false (default): Hook failure aborts the deployment for this host
-          - true: Hook failure is logged but deployment continues
+          - false: the host fails at this hook's stage, and its on-failure
+            hooks run
+          - true: the failure is logged as a warning, and the host carries on
 
-          Useful for cleanup hooks that should always run (e.g., uncordoning
-          nodes even if activation failed).
+          It only decides what a failure of this hook does; it doesn't make
+          the hook run when an earlier step failed. Use it for notifications,
+          and for on-failure hooks so one failing cleanup doesn't stop the rest.
         '';
       };
 
