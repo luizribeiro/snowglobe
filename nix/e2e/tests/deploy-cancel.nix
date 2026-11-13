@@ -46,7 +46,20 @@ in
         "--setenv=HOME=/root --setenv=TERM=xterm-256color "
         "/bin/sh -c 'script -qfec \"sh /tmp/deploy.sh\" /tmp/deploy.out; echo $? > /tmp/deploy.status'"
     )
-    web1.wait_for_file("${slowStarted}")
+    def snow_exited() -> bool:
+        return deployer.execute("test -e /tmp/deploy.status")[0] == 0
+
+    def snow_output() -> str:
+        return deployer.execute("cat /tmp/deploy.out /tmp/snow-*.log")[1]
+
+    def activation_reached_or_snow_exited(last_try: bool) -> bool:
+        reached = web1.execute("test -e ${slowStarted}")[0] == 0 or snow_exited()
+        if last_try and not reached:
+            print(snow_output())
+        return reached
+
+    retry(activation_reached_or_snow_exited, timeout_seconds=600)
+    assert not snow_exited(), snow_output()
     # A terminal sends Ctrl-C's SIGINT to the whole foreground process group
     deployer.succeed("kill -INT -- -$(ps -o pgid= -p $(cat /tmp/snow.pid) | tr -d ' ')")
     deployer.wait_for_file("/tmp/deploy.status")
