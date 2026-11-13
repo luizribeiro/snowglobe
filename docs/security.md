@@ -62,7 +62,7 @@ What the helper gives you is a sudoers configuration you can read: one command a
 
 ### Allowed users are root-equivalent
 
-Every SSH-based deployment tool needs a user that can become root on the host, because activation runs as root. deploy-rs and `nixos-rebuild --target-host` can ask for that user's sudo password during a deployment; `snow deploy` cannot, so its deploy user becomes root without one. Anyone who can log in as a user in `allowedUsers` can take over the host.
+Every SSH-based deployment tool needs a user that can become root on the host, because activation runs as root. deploy-rs, morph, Clan and `nixos-rebuild --target-host` can ask for that user's sudo password during a deployment; `snow deploy` cannot, so its deploy user becomes root without one. Anyone who can log in as a user in `allowedUsers` can take over the host.
 
 ## SSH
 
