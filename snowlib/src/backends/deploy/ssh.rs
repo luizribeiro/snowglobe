@@ -2,6 +2,7 @@ use crate::error::{DeployError, Result};
 use crate::nix::{ActivationMode, StorePath, SystemType};
 use crate::process::r#async::run_command;
 use crate::process::{CommandResult, OutputMode};
+use crate::shell;
 use crate::ssh_options::{
     nix_sshopts, run_bounded, ssh_options, Keepalive, CONNECT_TIMEOUT_SECS, PROBE_TIMEOUT,
 };
@@ -16,17 +17,7 @@ use super::{
 
 /// Convert command args to a shell-like string representation for error messages
 fn args_to_command_string(program: &str, args: &[&str]) -> String {
-    let escaped_program = shell_escape::escape(program.into());
-    let escaped_args: Vec<_> = args
-        .iter()
-        .map(|arg| shell_escape::escape((*arg).into()))
-        .collect();
-
-    if escaped_args.is_empty() {
-        escaped_program.to_string()
-    } else {
-        format!("{} {}", escaped_program, escaped_args.join(" "))
-    }
+    shell::join(std::iter::once(program).chain(args.iter().copied()))
 }
 
 const READ_HOST_SYSTEMS_ARGS: [&str; 4] =
@@ -157,7 +148,9 @@ impl SshDeployBackend {
         let mut args = self.ssh_command[1..].to_vec();
         args.extend(ssh_options(CONNECT_TIMEOUT_SECS, keepalive, target.port));
         args.push(self.get_destination(target));
-        args.extend(remote_args.iter().map(|s| s.to_string()));
+        // The host's login shell parses the command, and unit names hold
+        // backslashes and globs
+        args.extend(remote_args.iter().map(|arg| shell::quote(arg).into_owned()));
         args
     }
 
@@ -221,14 +214,10 @@ impl DeployBackend for SshDeployBackend {
         program: &str,
         args: &[String],
     ) -> Result<String> {
-        // The remote login shell parses the command, and unit names hold
-        // backslashes and globs
-        let quoted: Vec<String> = std::iter::once(program)
+        let remote_args: Vec<&str> = std::iter::once(program)
             .chain(args.iter().map(String::as_str))
-            .map(|arg| shell_escape::escape(arg.into()).into_owned())
             .collect();
-        let quoted: Vec<&str> = quoted.iter().map(String::as_str).collect();
-        let result = self.probe(target, &quoted).await?;
+        let result = self.probe(target, &remote_args).await?;
         stdout_of(&target.hostname, program, args, &result)
     }
 

@@ -3,6 +3,7 @@ use crate::backends::deploy::{helper_found, DeployTarget, HELPER_CHECK};
 use crate::error::{DeployError, Result, SnowError};
 use crate::nix::StorePath;
 use crate::process::CommandResult;
+use crate::shell::quote;
 use crate::ssh_options::{run_bounded, ssh_options, Keepalive};
 use async_trait::async_trait;
 use std::time::Duration;
@@ -86,7 +87,7 @@ impl SystemRebootBackend {
         target: &DeployTarget,
         symlink_path: &str,
     ) -> Result<String> {
-        let cmd = format!("readlink -f {}", shell_escape(symlink_path));
+        let cmd = format!("readlink -f {}", quote(symlink_path));
         let result = self.ssh_exec_full(target, &cmd).await?;
 
         if !result.status.success() {
@@ -113,8 +114,8 @@ impl SystemRebootBackend {
     ) -> Result<bool> {
         let cmd = format!(
             r#"[ "$(readlink {})" = "$(readlink {})" ]"#,
-            shell_escape(path1),
-            shell_escape(path2)
+            quote(path1),
+            quote(path2)
         );
 
         let status = self.ssh_exec(target, &cmd).await?;
@@ -128,7 +129,7 @@ impl SystemRebootBackend {
         target: &DeployTarget,
         new_system: &StorePath,
     ) -> Result<String> {
-        let system = shell_escape(new_system.as_str());
+        let system = quote(new_system.as_str());
         let helper_check = self.ssh_exec_full(target, &HELPER_CHECK.join(" ")).await?;
         if helper_found(&self.get_destination(target), &helper_check)? {
             Ok(format!("sudo snowglobe-activate {system} dry-activate"))
@@ -218,7 +219,7 @@ impl SystemRebootBackend {
 
     /// Read a file from the remote host via SSH
     async fn ssh_read_file(&self, target: &DeployTarget, remote_path: &str) -> Result<String> {
-        let cmd = format!("cat {}", shell_escape(remote_path));
+        let cmd = format!("cat {}", quote(remote_path));
         let result = self.ssh_exec_full(target, &cmd).await?;
 
         if !result.status.success() {
@@ -357,10 +358,6 @@ fn dry_activate_failed(target: &DeployTarget, command: &str, result: &CommandRes
         )),
     }
     .into()
-}
-
-fn shell_escape(s: &str) -> String {
-    format!("'{}'", s.replace('\'', r"'\''"))
 }
 
 #[cfg(test)]
@@ -751,7 +748,7 @@ esac
         assert_eq!(
             dry_activate_commands(&host),
             vec![format!(
-                "sudo snowglobe-activate '{}' dry-activate",
+                "sudo snowglobe-activate {} dry-activate",
                 new_system.as_str()
             )]
         );
@@ -765,7 +762,7 @@ esac
         assert_eq!(
             dry_activate_commands(&host),
             vec![format!(
-                "sudo '{}'/bin/switch-to-configuration dry-activate",
+                "sudo {}/bin/switch-to-configuration dry-activate",
                 new_system.as_str()
             )]
         );
@@ -885,14 +882,6 @@ esac
             "-o BatchMode=yes -o ConnectTimeout=5 -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -o ForwardAgent=no \
              pusher@hedgehog.example.com cat /proc/sys/kernel/random/boot_id"
         );
-    }
-
-    #[test]
-    fn test_shell_escape() {
-        assert_eq!(shell_escape("simple"), "'simple'");
-        assert_eq!(shell_escape("with'quote"), "'with'\\''quote'");
-        assert_eq!(shell_escape("with spaces"), "'with spaces'");
-        assert_eq!(shell_escape("/nix/store/path"), "'/nix/store/path'");
     }
 
     #[test]

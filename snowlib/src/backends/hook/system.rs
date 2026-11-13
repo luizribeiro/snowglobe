@@ -8,6 +8,7 @@ use crate::error::Result;
 use crate::hooks::HookConfig;
 use crate::process::r#async::run_command;
 use crate::process::OutputMode;
+use crate::shell;
 use crate::ssh_options::{ssh_options, Keepalive, CONNECT_TIMEOUT_SECS};
 use async_trait::async_trait;
 use std::collections::HashMap;
@@ -75,12 +76,12 @@ impl SystemHookBackend {
     /// Connects as `snow deploy` does, so hooks need no SSH key of their own. Hooks may
     /// restart the host's network and are already bounded by their timeout.
     fn ssh_shell_command(&self, target: &DeployTarget, remote_command: &str) -> String {
+        let options = ssh_options(CONNECT_TIMEOUT_SECS, Keepalive::Never, target.port);
         let destination = target.ssh_destination_as(self.ssh_user.as_deref());
-        format!(
-            "ssh {} {} {}",
-            ssh_options(CONNECT_TIMEOUT_SECS, Keepalive::Never, target.port).join(" "),
-            shell_escape::escape(destination.into()),
-            shell_escape::escape(remote_command.into())
+        shell::join(
+            std::iter::once("ssh")
+                .chain(options.iter().map(String::as_str))
+                .chain([destination.as_str(), remote_command]),
         )
     }
 }
@@ -114,25 +115,16 @@ impl HookBackend for SystemHookBackend {
 /// Uses the `env` utility to set variables, which is safer than shell variable assignment.
 /// All values are escaped to prevent command injection.
 fn build_remote_command(command: &str, env: &HashMap<String, String>) -> String {
+    let sh_command = shell::join(["sh", "-c", command]);
     if env.is_empty() {
-        format!("sh -c {}", shell_escape::escape(command.into()))
+        sh_command
     } else {
         let env_args: Vec<String> = env
             .iter()
-            .map(|(k, v)| {
-                format!(
-                    "{}={}",
-                    shell_escape::escape(k.into()),
-                    shell_escape::escape(v.into())
-                )
-            })
+            .map(|(k, v)| format!("{}={}", shell::quote(k), shell::quote(v)))
             .collect();
 
-        format!(
-            "env {} sh -c {}",
-            env_args.join(" "),
-            shell_escape::escape(command.into())
-        )
+        format!("env {} {sh_command}", env_args.join(" "))
     }
 }
 

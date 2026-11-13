@@ -18,6 +18,7 @@ pub mod observer;
 pub mod plan;
 pub mod process;
 pub mod reboot;
+mod shell;
 mod ssh_options;
 pub mod sudo;
 #[cfg(test)]

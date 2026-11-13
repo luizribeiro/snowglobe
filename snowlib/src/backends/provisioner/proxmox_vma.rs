@@ -9,6 +9,7 @@ use super::{
 use crate::backends::deploy::DeployTarget;
 use crate::bootstrap::HostKeys;
 use crate::error::{ProvisionerError, Result};
+use crate::shell::quote;
 use crate::ssh_options::connection_options;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -448,9 +449,9 @@ impl<'a> VmaDeployer<'a> {
     fn extract_vma(&self) -> Result<()> {
         let cmd = format!(
             "rm -rf {} && zstd -d -c {} | vma extract - {}",
-            shell_escape(&self.extract_dir),
-            shell_escape(&self.remote_path),
-            shell_escape(&self.extract_dir)
+            quote(&self.extract_dir),
+            quote(&self.remote_path),
+            quote(&self.extract_dir)
         );
         self.provisioner
             .run_remote(&self.host, &cmd, "VMA extraction")
@@ -458,7 +459,7 @@ impl<'a> VmaDeployer<'a> {
     }
 
     fn read_vm_config(&self) -> Result<VmConfig> {
-        let cmd = format!("cat {}/qemu-server.conf", shell_escape(&self.extract_dir));
+        let cmd = format!("cat {}/qemu-server.conf", quote(&self.extract_dir));
         let output = self
             .provisioner
             .run_remote(&self.host, &cmd, "Read VM config")?;
@@ -470,7 +471,7 @@ impl<'a> VmaDeployer<'a> {
         // Look for virtio0, scsi0, sata0, ide0 in that order (common boot disk names)
         for disk_type in ["virtio0", "scsi0", "sata0", "ide0"] {
             let disk_file = format!("{}/disk-drive-{}.raw", self.extract_dir, disk_type);
-            let check_cmd = format!("test -f {} && echo exists", shell_escape(&disk_file));
+            let check_cmd = format!("test -f {} && echo exists", quote(&disk_file));
             if let Ok(output) = self
                 .provisioner
                 .run_remote(&self.host, &check_cmd, "Check disk")
@@ -484,7 +485,7 @@ impl<'a> VmaDeployer<'a> {
         // Fallback: find any .raw file
         let cmd = format!(
             "ls {}/*.raw 2>/dev/null | head -1",
-            shell_escape(&self.extract_dir)
+            quote(&self.extract_dir)
         );
         let output = self.provisioner.run_remote(&self.host, &cmd, "Find disk")?;
         let disk_path = output.stdout_str().trim().to_string();
@@ -506,12 +507,12 @@ impl<'a> VmaDeployer<'a> {
              --net0 {} --scsihw {} --ostype {} \
              --bios seabios --serial0 socket --agent {}",
             self.vmid,
-            shell_escape(&self.hostname),
+            quote(&self.hostname),
             config.memory,
             config.cores,
-            shell_escape(&config.net0),
-            shell_escape(&config.scsihw),
-            shell_escape(&config.ostype),
+            quote(&config.net0),
+            quote(&config.scsihw),
+            quote(&config.ostype),
             config.agent,
         );
         self.provisioner
@@ -523,7 +524,7 @@ impl<'a> VmaDeployer<'a> {
         let cmd = format!(
             "qm importdisk {} {} local-lvm --format raw 2>&1",
             self.vmid,
-            shell_escape(disk_path)
+            quote(disk_path)
         );
         let output = self
             .provisioner
@@ -544,7 +545,7 @@ impl<'a> VmaDeployer<'a> {
         let cmd = format!(
             "qm set {} --virtio0 {} --bootdisk virtio0 --boot order=virtio0",
             self.vmid,
-            shell_escape(disk_volume)
+            quote(disk_volume)
         );
         self.provisioner
             .run_remote(&self.host, &cmd, "Configure VM")
@@ -554,8 +555,8 @@ impl<'a> VmaDeployer<'a> {
     fn cleanup(&self) {
         let cmd = format!(
             "rm -rf {} {}",
-            shell_escape(&self.extract_dir),
-            shell_escape(&self.remote_path)
+            quote(&self.extract_dir),
+            quote(&self.remote_path)
         );
         if let Err(e) = self.provisioner.run_remote(&self.host, &cmd, "Cleanup") {
             tracing::warn!(
@@ -627,11 +628,6 @@ fn parse_imported_disk(output: &str) -> Option<String> {
     None
 }
 
-/// Escape a string for safe shell use
-fn shell_escape(s: &str) -> String {
-    format!("'{}'", s.replace('\'', "'\\''"))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -681,21 +677,6 @@ mod tests {
     fn test_parse_imported_disk_no_match() {
         let output = "Some random output without disk info";
         assert_eq!(parse_imported_disk(output), None);
-    }
-
-    #[test]
-    fn test_shell_escape_simple() {
-        assert_eq!(shell_escape("hello"), "'hello'");
-    }
-
-    #[test]
-    fn test_shell_escape_with_quotes() {
-        assert_eq!(shell_escape("it's"), "'it'\\''s'");
-    }
-
-    #[test]
-    fn test_shell_escape_with_spaces() {
-        assert_eq!(shell_escape("hello world"), "'hello world'");
     }
 
     #[test]
