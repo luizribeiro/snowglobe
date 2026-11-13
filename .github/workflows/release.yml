@@ -15,6 +15,9 @@ jobs:
   prepare:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
     steps:
       - uses: actions/checkout@v7
         with:
@@ -24,6 +27,18 @@ jobs:
         run: |
           git fetch origin main
           git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+      - name: Check CI passed on the tagged commit
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          runs=$(gh run list --commit "$GITHUB_SHA" --workflow CI \
+            --status success --limit 1 --json databaseId --jq length)
+          if [ "$runs" -eq 0 ]; then
+            echo "::error::CI hasn't passed on $GITHUB_SHA yet"
+            exit 1
+          fi
       - id: version
         env:
           TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
