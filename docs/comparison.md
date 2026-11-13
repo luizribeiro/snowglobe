@@ -49,6 +49,26 @@ colmena reads a hive, either a `hive.nix` file without flakes or a `colmenaHive`
 
 It is the better fit when you need secrets upload or remote builds, when your configuration does not use flakes, or when you want a mature, widely used tool and do not need staged rollout.
 
+## More push tools
+
+These three push tools are also worth knowing. morph and devenv Machines can deploy one host at a time and stop when a health check fails, which is the closest any tool here comes to snowglobe's staged rollout. Clan is a whole fleet framework, with deployment as one part.
+
+| | [morph](https://github.com/DBCDK/morph) | [Clan](https://clan.lol/) | [devenv Machines](https://devenv.sh/machines/) | snowglobe |
+|---|---|---|---|---|
+| Many hosts per run | ✓ | ✓ | ✓ | ✓ |
+| Ordered phases that stop on failure | hosts in tag order (`--order-by-tags`), stopping at the first failure | — | batches in name order; later batches don't start after a failure | ✓ |
+| Serial groups (one node at a time) | always one host at a time | — | one at a time by default; `--max-concurrent` for batches | ✓ |
+| Health check gates the next host | `deployment.healthChecks` | — | `deploy.healthCheck` | through a [`post-deploy` hook](/snowglobe/rollback/#limit-the-blast-radius) |
+| Reboot detection | `--reboot` reboots every host, without detection | stops and asks you to reboot when a switch inhibitor blocks the switch | — | ✓ |
+| Pre/post-deploy hooks | `preDeployChecks` and `healthChecks` only | — | — | ✓ |
+| nix-darwin targets | — | ✓ | ✓ | ✓ |
+| Automatic rollback | — | — | ✓ (NixOS only) | — |
+| Build on the target | — | by default; `--build-host` to change | `--use-machines-as-builders` | — |
+| Secrets upload | `deployment.secrets` | ✓ (Clan vars) | at install only | — |
+| Sudo password prompt on the target | `--passwd` / `--passcmd` | ✓ (askpass) | — | — |
+| Works without flakes | ✓ (flakes not supported) | — | ✓ (`devenv.nix`) | — |
+| Extra flake output needed | n/a (a network file) | the `clan-core.lib.clan` outputs | none (`machines` in `devenv.nix`) | none |
+
 ## snowglobe
 
 snowglobe reads the `nixosConfigurations` and `darwinConfigurations` your flake already has, so it needs no extra flake output. Per-host settings go in the NixOS or nix-darwin configuration through a module. On top of parallel deployment it adds:
