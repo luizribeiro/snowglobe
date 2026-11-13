@@ -828,6 +828,7 @@ mod tests {
                     "ForwardAgent=no",
                     "-p",
                     "2222",
+                    "--",
                     "root@proxmox",
                     "pvesh get /cluster/nextid"
                 ]

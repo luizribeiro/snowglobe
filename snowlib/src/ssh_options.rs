@@ -63,6 +63,12 @@ pub(crate) fn ssh_options(
     args
 }
 
+/// Ends ssh's options before `destination`, so a host name starting with
+/// `-` can't be read as an option
+pub(crate) fn destination_args(destination: String) -> [String; 2] {
+    ["--".to_string(), destination]
+}
+
 /// `NIX_SSHOPTS` for `nix copy`, after the user's own. ssh keeps the first
 /// value it sees for an option, so the user's win. An interrupted copy is
 /// safe to retry, so it uses probe keepalives.
@@ -175,6 +181,14 @@ mod tests {
         assert_eq!(
             options,
             "-o BatchMode=yes -o ConnectTimeout=10 -o ForwardAgent=no"
+        );
+    }
+
+    #[test]
+    fn test_destination_args_end_the_options_first() {
+        assert_eq!(
+            destination_args("-oProxyCommand=evil".to_string()),
+            ["--", "-oProxyCommand=evil"]
         );
     }
 

@@ -4,7 +4,8 @@ use crate::process::r#async::run_command;
 use crate::process::{CommandResult, OutputMode};
 use crate::shell;
 use crate::ssh_options::{
-    nix_sshopts, run_bounded, ssh_options, Keepalive, CONNECT_TIMEOUT_SECS, PROBE_TIMEOUT,
+    destination_args, nix_sshopts, run_bounded, ssh_options, Keepalive, CONNECT_TIMEOUT_SECS,
+    PROBE_TIMEOUT,
 };
 use async_trait::async_trait;
 use std::time::Duration;
@@ -147,7 +148,7 @@ impl SshDeployBackend {
     ) -> Vec<String> {
         let mut args = self.ssh_command[1..].to_vec();
         args.extend(ssh_options(CONNECT_TIMEOUT_SECS, keepalive, target.port));
-        args.push(self.get_destination(target));
+        args.extend(destination_args(self.get_destination(target)));
         // The host's login shell parses the command, and unit names hold
         // backslashes and globs
         args.extend(remote_args.iter().map(|arg| shell::quote(arg).into_owned()));
@@ -549,10 +550,10 @@ mod tests {
             probe.contains("-o ConnectTimeout=10 -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -o ForwardAgent=no"),
             "{probe}"
         );
-        assert!(probe.ends_with("pusher@condor.example.com readlink -f /run/current-system /nix/var/nix/profiles/system"), "{probe}");
+        assert!(probe.ends_with("-- pusher@condor.example.com readlink -f /run/current-system /nix/var/nix/profiles/system"), "{probe}");
         assert!(
             activation
-                .contains("-o ConnectTimeout=10 -o ForwardAgent=no pusher@condor.example.com"),
+                .contains("-o ConnectTimeout=10 -o ForwardAgent=no -- pusher@condor.example.com"),
             "{activation}"
         );
         assert!(!activation.contains("ServerAlive"), "{activation}");

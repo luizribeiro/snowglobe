@@ -4,7 +4,7 @@ use crate::error::{DeployError, Result, SnowError};
 use crate::nix::StorePath;
 use crate::process::CommandResult;
 use crate::shell::quote;
-use crate::ssh_options::{run_bounded, ssh_options, Keepalive};
+use crate::ssh_options::{destination_args, run_bounded, ssh_options, Keepalive};
 use async_trait::async_trait;
 use std::time::Duration;
 
@@ -169,7 +169,7 @@ impl SystemRebootBackend {
             Keepalive::Probe,
             target.port,
         );
-        args.push(self.get_destination(target));
+        args.extend(destination_args(self.get_destination(target)));
         args.push(command.to_string());
         args
     }
@@ -880,7 +880,7 @@ esac
         assert_eq!(
             args,
             "-o BatchMode=yes -o ConnectTimeout=5 -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -o ForwardAgent=no \
-             pusher@hedgehog.example.com cat /proc/sys/kernel/random/boot_id"
+             -- pusher@hedgehog.example.com cat /proc/sys/kernel/random/boot_id"
         );
     }
 
@@ -896,7 +896,7 @@ esac
             .join(" ");
 
         assert!(
-            args.ends_with("-p 2222 pusher@hedgehog.example.com true"),
+            args.ends_with("-p 2222 -- pusher@hedgehog.example.com true"),
             "{args}"
         );
     }

@@ -9,7 +9,7 @@ use crate::hooks::HookConfig;
 use crate::process::r#async::run_command;
 use crate::process::OutputMode;
 use crate::shell;
-use crate::ssh_options::{ssh_options, Keepalive, CONNECT_TIMEOUT_SECS};
+use crate::ssh_options::{destination_args, ssh_options, Keepalive, CONNECT_TIMEOUT_SECS};
 use async_trait::async_trait;
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
@@ -77,11 +77,11 @@ impl SystemHookBackend {
     /// restart the host's network and are already bounded by their timeout.
     fn ssh_shell_command(&self, target: &DeployTarget, remote_command: &str) -> String {
         let options = ssh_options(CONNECT_TIMEOUT_SECS, Keepalive::Never, target.port);
-        let destination = target.ssh_destination_as(self.ssh_user.as_deref());
+        let destination = destination_args(target.ssh_destination_as(self.ssh_user.as_deref()));
         shell::join(
             std::iter::once("ssh")
-                .chain(options.iter().map(String::as_str))
-                .chain([destination.as_str(), remote_command]),
+                .chain(options.iter().chain(&destination).map(String::as_str))
+                .chain([remote_command]),
         )
     }
 }
@@ -476,7 +476,7 @@ mod tests {
 
         assert_eq!(
             command,
-            "ssh -o BatchMode=yes -o ConnectTimeout=10 -o ForwardAgent=no 'deploy@condor.example.com' 'kubectl uncordon condor'"
+            "ssh -o BatchMode=yes -o ConnectTimeout=10 -o ForwardAgent=no -- 'deploy@condor.example.com' 'kubectl uncordon condor'"
         );
     }
 
@@ -489,7 +489,7 @@ mod tests {
         );
 
         assert!(
-            command.ends_with(" 'pusher@condor.example.com' 'kubectl uncordon condor'"),
+            command.ends_with(" -- 'pusher@condor.example.com' 'kubectl uncordon condor'"),
             "{command}"
         );
     }
@@ -502,7 +502,7 @@ mod tests {
         let command = backend.ssh_shell_command(&target, "kubectl uncordon condor");
 
         assert!(
-            command.contains("-o ForwardAgent=no -p 2222 'pusher@condor.example.com'"),
+            command.contains("-o ForwardAgent=no -p 2222 -- 'pusher@condor.example.com'"),
             "{command}"
         );
     }
@@ -516,7 +516,7 @@ mod tests {
         );
 
         assert!(
-            command.ends_with(" condor.example.com 'kubectl uncordon condor'"),
+            command.ends_with(" -- condor.example.com 'kubectl uncordon condor'"),
             "{command}"
         );
     }
