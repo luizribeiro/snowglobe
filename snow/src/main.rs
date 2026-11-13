@@ -98,8 +98,10 @@ async fn main() -> ExitCode {
         eprintln!("Logs: {}\n", path.display());
     }
 
-    if let Err(error) = signals::exit_on_signals() {
-        tracing::warn!("Ctrl-C may leave the cursor hidden: {error}");
+    if let Err(error) = signals::exit_on_signals(log_file.is_some()) {
+        tracing::warn!(
+            "Ctrl-C will end snow without showing the cursor or what it left unfinished: {error}"
+        );
     }
     let _cursor = cursor::HiddenCursor::new(cursor::Cursor::stderr());
 

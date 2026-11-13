@@ -422,6 +422,14 @@ fn test_deploy_without_a_terminal_exits_on_ctrl_c_with_the_shell_status() {
     assert_eq!(status, Some(130));
 }
 
+#[cfg(debug_assertions)]
+#[test]
+fn test_deploy_interrupted_before_touching_a_host_says_only_interrupted() {
+    let (_, stderr) = interrupt_waiting_deploy();
+
+    assert_eq!(stderr, "Interrupted.\n\n");
+}
+
 #[test]
 fn test_list_help_says_it_lists_every_host_by_default() {
     snow_cmd()

@@ -123,6 +123,8 @@ impl DeployArgs {
     /// - Call snowlib::deploy()
     /// - Print results table
     pub async fn run(self, flake: &Flake, log_file: Option<&std::path::Path>) -> Result<()> {
+        crate::signals::report_on_exit(|| vec!["Interrupted.".to_string()]);
+
         // When using --mock-fixture, use the mock flake instead of the real one
         #[cfg(debug_assertions)]
         let mock_flake;

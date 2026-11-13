@@ -22,7 +22,7 @@ parking_lot = "0.12.5"
 console = "0.15"
 dialoguer = "0.11"
 futures = "0.3"
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "signal"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "signal", "time"] }
 tempfile = "3.8"
 
 [dev-dependencies]
