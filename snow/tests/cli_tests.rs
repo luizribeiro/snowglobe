@@ -18,7 +18,9 @@ fn test_help_command() {
         .arg("--help")
         .assert()
         .success()
-        .stdout(predicate::str::contains("NixOS cluster orchestration tool"))
+        .stdout(predicate::str::contains(
+            "Deploy NixOS and nix-darwin hosts, in phases",
+        ))
         .stdout(predicate::str::contains("build"))
         .stdout(predicate::str::contains("deploy"));
 }

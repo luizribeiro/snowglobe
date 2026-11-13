@@ -1,5 +1,5 @@
 {
-  description = "snowglobe - NixOS-native cluster orchestration tool";
+  description = "snowglobe - Deploy NixOS and nix-darwin hosts, in phases";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -83,7 +83,7 @@
             '';
 
             meta = {
-              description = "NixOS-native cluster orchestration tool";
+              description = "Deploy NixOS and nix-darwin hosts, in phases";
               homepage = "https://github.com/luizribeiro/snowglobe";
               license = with pkgs.lib.licenses; [ mit asl20 ];
               mainProgram = "snow";
