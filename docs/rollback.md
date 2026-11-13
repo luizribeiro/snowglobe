@@ -13,7 +13,7 @@ snowglobe has no automatic rollback. If a host activates a broken system, snow r
 
 ## What a deployment leaves behind
 
-Rolling back works because every deployment records a normal NixOS or nix-darwin generation. When snow activates a host in switch or boot mode, the activation helper (`snowglobe-activate`) first points the host's system profile, `/nix/var/nix/profiles/system`, at the new system, then runs the activation. Each deployment therefore adds a generation, exactly as `nixos-rebuild switch` or `darwin-rebuild switch` would, and the previous generations stay in place until they are garbage-collected.
+Rolling back works because every deployment records a normal NixOS or nix-darwin generation. When snow activates a host in switch or boot mode, the activation helper (`snowglobe-activate`) first points the host's system profile, `/nix/var/nix/profiles/system`, at the new system, then runs the activation. Each deployment therefore adds a generation, exactly as `nixos-rebuild switch` or `darwin-rebuild switch` would, and the previous generations stay in place until they are [garbage-collected](#prune-old-generations).
 
 Two details matter when something goes wrong:
 
@@ -101,6 +101,34 @@ The host is then running the new system, which is also its default boot entry. U
 - Otherwise, reboot it and choose the previous generation in the boot menu, as above, then make the rollback permanent.
 
 This is why the `--test` deployment at the top of this page is worth it for changes that may cut you off: power-cycling the host undoes it.
+
+## Prune old generations
+
+Every `snow deploy` in switch or boot mode, and every `snow rebuild` that switches or sets the next boot, adds a generation to the system profile, and snowglobe never deletes one. Each generation keeps its system's store paths from being garbage-collected, so a host that is deployed often fills its disk unless something prunes them. snowglobe leaves that to the host's own settings.
+
+On NixOS:
+
+```nix
+{
+  nix.gc = {
+    automatic = true;
+    dates = "weekly";
+    options = "--delete-older-than 30d";
+  };
+
+  boot.loader.systemd-boot.configurationLimit = 10;
+}
+```
+
+`nix.gc` runs the garbage collector as root on a schedule. With `--delete-older-than 30d`, it first deletes the profile generations older than 30 days, except the one that was current 30 days ago, then the store paths nothing refers to any more. The current generation is never deleted.
+
+`configurationLimit` caps the number of boot menu entries; GRUB has the same option, `boot.loader.grub.configurationLimit`. It deletes no generations: older ones stay in the profile, and Option 2 can still switch to them until `nix.gc` removes them. The boot menu is rewritten at the next deployment or rebuild in switch or boot mode, so generations the collector deletes leave the menu then.
+
+On nix-darwin, `nix.gc.automatic` and `nix.gc.options` work the same way, with `nix.gc.interval` (a launchd calendar interval) in place of `dates`. A Mac has no boot menu, so there is no `configurationLimit`. `nix.gc.automatic` requires `nix.enable`; with Determinate Nix, which turns it off, schedule the collection yourself or run it by hand.
+
+To prune by hand, run `sudo nix-collect-garbage --delete-older-than 30d` on the host. Without `sudo` it can't delete the system profile's generations.
+
+Pruning sets how far back you can roll back. Options 2 and 3 can only reach generations that are still there: with `--delete-older-than 30d`, the ones from the last 30 days and the one that was current before them. Pick a period longer than it might take you to notice a bad change. Option 1 doesn't depend on the host's generations: snow builds the old commit again, from your Nix store or from source.
 
 ## Limit the blast radius
 
