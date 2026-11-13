@@ -51,7 +51,7 @@ It is the better fit when you need secrets upload or remote builds, when your co
 
 ## More push tools
 
-These three push tools are also worth knowing. morph and devenv Machines can deploy one host at a time and stop when a health check fails, which is the closest any tool here comes to snowglobe's staged rollout. Clan is a whole fleet framework, with deployment as one part.
+These three push tools are also worth knowing. morph and devenv Machines can deploy one host at a time and stop when a health check fails, which is the closest these push tools come to snowglobe's staged rollout. Clan is a whole fleet framework, with deployment as one part.
 
 | | [morph](https://github.com/DBCDK/morph) | [Clan](https://clan.lol/) | [devenv Machines](https://devenv.sh/machines/) | snowglobe |
 |---|---|---|---|---|
