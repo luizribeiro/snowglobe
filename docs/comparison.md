@@ -83,6 +83,12 @@ Since 26.05, Clan sets the new system as the boot default before switching to it
 
 It is the better fit when you want one framework for the whole fleet, with secrets, networking, backups and installation configured through a shared inventory. It has no ordering between machines, hooks or health checks. If you need those, you can still deploy a Clan flake with another tool, because Clan also exports ordinary `nixosConfigurations`.
 
+## devenv Machines
+
+devenv 2.4 (September 2026) added `devenv machines`, which its release notes mark as experimental. Machines are configured in `devenv.nix` rather than in a flake output, and can be NixOS, nix-darwin or home-manager targets. devenv builds and copies every machine before any of them activates, shows a plan and asks for confirmation; a plan can also be saved and applied later. Machines then activate one at a time in name order, or in batches with `--max-concurrent`. If a batch fails, the machines already activating finish, but later batches do not start. After activation, `deploy.healthCheck` runs. On NixOS, a watchdog restores the previous system if activation or the health check fails, or if success is not confirmed in time. A `machines check` command also blocks a deployment that would disable SSH or root login.
+
+It is the better fit when you already use devenv, or when you want a failed health check to roll that host back automatically as well as stop the rest of the deployment. It also deploys home-manager profiles and can install new machines. It has no hooks, so there is nowhere to drain a node before it changes, and it does not reboot after a kernel change. NixOS targets need root SSH and nix-darwin targets need passwordless sudo. It is newer than snowglobe.
+
 ## snowglobe
 
 snowglobe reads the `nixosConfigurations` and `darwinConfigurations` your flake already has, so it needs no extra flake output. Per-host settings go in the NixOS or nix-darwin configuration through a module. On top of parallel deployment it adds:
