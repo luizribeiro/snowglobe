@@ -21,7 +21,7 @@ snowglobe has two parts, and you need both:
 
 On the deploying machine:
 
-- Linux or macOS.
+- Linux, or a Mac with Apple Silicon.
 - Nix with the `nix-command` and `flakes` experimental features enabled.
   `snow` runs the `nix` command for every evaluation, build and copy, and
   does not turn these features on by itself. If they are not enabled yet,

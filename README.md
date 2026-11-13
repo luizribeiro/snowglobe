@@ -47,7 +47,7 @@ fits better.
 
 ## Requirements
 
-- Nix with flakes on the deploying machine, Linux or macOS.
+- Nix with flakes on the deploying machine: Linux, or a Mac with Apple Silicon.
 - NixOS or nix-darwin hosts.
 - SSH key authentication to each host, with its host key already in
   `known_hosts`. `snow` never prompts for a password.
