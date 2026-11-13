@@ -85,8 +85,8 @@ before upgrading.
 - New to snowglobe? [Install it](/snowglobe/installation/), then follow the
   [tutorial](/snowglobe/tutorial/) to deploy to your first host.
 - Choosing a tool? [Comparison with other tools](/snowglobe/comparison/)
-  sets snowglobe against `nixos-rebuild`, deploy-rs and colmena, including
-  what snowglobe does not do.
+  sets snowglobe against `nixos-rebuild`, deploy-rs, colmena, morph, Clan,
+  devenv Machines and pull-based tools, including what snowglobe does not do.
 - Already using deploy-rs or colmena? See [Coming from deploy-rs or
   colmena](/snowglobe/migrating/).
 - Setting up a real fleet? Start with [Set up a deploy user](/snowglobe/deploy-user/)
