@@ -21,7 +21,6 @@ let
       intro = "Commands that `snow deploy` runs around each host's deployment. Each stage is an attribute set of hooks keyed by a name of your choice; every hook takes the same options, listed once below as `snowglobe.hooks.<stage>.<name>.*`.";
     }
     { name = "localSystem"; }
-    { name = "bootstrap"; }
   ];
 
   # Every stage declares the same hook options, so one stage's stand for all

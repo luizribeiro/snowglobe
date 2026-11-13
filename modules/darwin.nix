@@ -18,7 +18,6 @@ let
 in
 {
   imports = [
-    ./bootstrap.nix
     ./hooks.nix
     ./deploy.nix
   ];
