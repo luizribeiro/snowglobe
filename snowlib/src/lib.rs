@@ -20,6 +20,8 @@ pub mod process;
 pub mod reboot;
 mod ssh_options;
 pub mod sudo;
+#[cfg(test)]
+mod test_support;
 
 pub use backends::deploy::{
     activate_reporting_failed_units, check_mode_supported, DeployBackend, DeployTarget,

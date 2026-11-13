@@ -368,6 +368,7 @@ exec "$@"
 mod tests {
     use super::test_utils::{FakeSudo, Pauses};
     use super::*;
+    use crate::test_support::eventually;
 
     async fn start(
         fake: &FakeSudo,
@@ -554,15 +555,10 @@ mod tests {
             .unwrap();
         let refreshes = || fake.calls().iter().filter(|call| *call == "-n -v").count();
 
-        // Each refresh runs a process, which a loaded machine may take
-        // seconds to start
-        tokio::time::timeout(Duration::from_secs(60), async {
-            while refreshes() < 2 {
-                tokio::time::sleep(Duration::from_millis(10)).await;
-            }
+        eventually("fewer than 2 refreshes", || {
+            (refreshes() >= 2).then_some(())
         })
-        .await
-        .unwrap_or_else(|_| panic!("only {} refreshes", refreshes()));
+        .await;
         drop(sudo);
         let at_drop = refreshes();
         tokio::time::sleep(Duration::from_millis(300)).await;
