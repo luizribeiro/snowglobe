@@ -102,6 +102,8 @@ The host is then running the new system, which is also its default boot entry. U
 
 This is why the `--test` deployment at the top of this page is worth it for changes that may cut you off: power-cycling the host undoes it.
 
+Ctrl-C stops only snow: an activation it already started keeps running on the host to the end. snow does not run the host's post-deploy or on-failure hooks then, so a host that a pre-deploy hook drained stays drained. Once the host is back, deploy it again with `snow deploy --redeploy web1`: if it runs the new system, a plain `snow deploy` would skip it as unchanged and run none of its hooks.
+
 ## Prune old generations
 
 Every `snow deploy` in switch or boot mode, and every `snow rebuild` that switches or sets the next boot, adds a generation to the system profile, and snowglobe never deletes one. Each generation keeps its system's store paths from being garbage-collected, so a host that is deployed often fills its disk unless something prunes them. snowglobe leaves that to the host's own settings.
