@@ -209,21 +209,22 @@ impl HostRun<'_, '_> {
         let hostname = self.hostname();
 
         let preparation_permit = self.scheduler.permit().await;
-        let target = self
-            .metadata
-            .deploy_target(deploy_ctx.config.ssh_user.clone());
-
-        let store_path = self
-            .step(
-                PipelineStep::Build,
-                FailureContext::default(),
-                deploy_ctx.nix_backend.build_host(
-                    deploy_ctx.flake,
-                    hostname,
-                    self.metadata.system_type,
-                    deploy_ctx.config.output_mode,
-                ),
-            )
+        let (target, store_path) = self
+            .step(PipelineStep::Build, FailureContext::default(), async {
+                let target = self
+                    .metadata
+                    .deploy_target(deploy_ctx.config.ssh_user.clone())?;
+                let store_path = deploy_ctx
+                    .nix_backend
+                    .build_host(
+                        deploy_ctx.flake,
+                        hostname,
+                        self.metadata.system_type,
+                        deploy_ctx.config.output_mode,
+                    )
+                    .await?;
+                Ok((target, store_path))
+            })
             .await?;
         let built = FailureContext {
             target: None,

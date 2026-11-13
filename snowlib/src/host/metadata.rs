@@ -1,4 +1,5 @@
 use crate::backends::deploy::DeployTarget;
+use crate::error::DeployError;
 use crate::hooks::HookConfig;
 use crate::nix::SystemType;
 use crate::reboot::RebootPolicy;
@@ -16,7 +17,8 @@ pub struct HostMetadata {
     pub name: String,
     pub phase: Option<String>,
     pub tags: Vec<String>,
-    pub fqdn: String,
+    /// networking.hostName, with networking.domain when set; None without a hostName
+    pub fqdn: Option<String>,
     pub reboot_policy: RebootPolicy,
     pub system_type: SystemType,
     /// Nix platform, e.g. "aarch64-linux"; None when the config sets none
@@ -33,12 +35,15 @@ pub struct HostMetadata {
 }
 
 impl HostMetadata {
-    pub(crate) fn deploy_target(&self, user: Option<String>) -> DeployTarget {
-        DeployTarget {
+    pub(crate) fn deploy_target(&self, user: Option<String>) -> Result<DeployTarget, DeployError> {
+        let hostname = self.fqdn.clone().ok_or_else(|| DeployError::NoHostName {
+            host: self.name.clone(),
+        })?;
+        Ok(DeployTarget {
             user,
-            hostname: self.fqdn.clone(),
+            hostname,
             port: self.ssh_port,
-        }
+        })
     }
 }
 
@@ -51,7 +56,7 @@ mod tests {
             name: "bravo".to_string(),
             phase: None,
             tags: vec![],
-            fqdn: "bravo.example.com".to_string(),
+            fqdn: Some("bravo.example.com".to_string()),
             reboot_policy: RebootPolicy::Auto,
             system_type: SystemType::NixOS,
             system: None,
@@ -65,7 +70,9 @@ mod tests {
 
     #[test]
     fn test_deploy_target_connects_to_the_hosts_ssh_port() {
-        let target = host(Some(2222)).deploy_target(Some("deploy".to_string()));
+        let target = host(Some(2222))
+            .deploy_target(Some("deploy".to_string()))
+            .unwrap();
 
         assert_eq!(target.ssh_destination(), "deploy@bravo.example.com");
         assert_eq!(target.port, Some(2222));
@@ -73,9 +80,27 @@ mod tests {
 
     #[test]
     fn test_deploy_target_without_ssh_port_leaves_it_to_ssh() {
-        let target = host(None).deploy_target(None);
+        let target = host(None).deploy_target(None).unwrap();
 
         assert_eq!(target.ssh_destination(), "bravo.example.com");
         assert_eq!(target.port, None);
+    }
+
+    #[test]
+    fn test_deploy_target_without_a_hostname_names_the_host() {
+        let falcon = HostMetadata {
+            name: "falcon".to_string(),
+            fqdn: None,
+            system_type: SystemType::Darwin,
+            ..host(None)
+        };
+
+        let error = falcon.deploy_target(None).unwrap_err();
+
+        assert!(matches!(error, DeployError::NoHostName { ref host } if host == "falcon"));
+        assert_eq!(
+            error.to_string(),
+            "Host 'falcon' has no networking.hostName; snow needs it to connect"
+        );
     }
 }

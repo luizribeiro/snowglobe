@@ -682,7 +682,7 @@ async fn test_deploy_hook_with_explicit_environment() {
 
     let hosts = vec![HostMetadata {
         name: "test-host".to_string(),
-        fqdn: "test-host.local".to_string(),
+        fqdn: Some("test-host.local".to_string()),
         phase: Some("test".to_string()),
         tags: vec![],
         reboot_policy: RebootPolicy::Never,
@@ -741,7 +741,7 @@ async fn test_full_pipeline_all_hook_stages_execute_in_order() {
 
     let hosts = vec![HostMetadata {
         name: "k8s-node-01".to_string(),
-        fqdn: "k8s-node-01.cluster.local".to_string(),
+        fqdn: Some("k8s-node-01.cluster.local".to_string()),
         phase: Some("production".to_string()),
         tags: vec![],
         reboot_policy: RebootPolicy::Always,
@@ -939,7 +939,7 @@ async fn test_pipeline_hooks_execute_by_priority_order() {
 
     let hosts = vec![HostMetadata {
         name: "priority-test".to_string(),
-        fqdn: "priority-test.local".to_string(),
+        fqdn: Some("priority-test.local".to_string()),
         phase: Some("test".to_string()),
         tags: vec![],
         reboot_policy: RebootPolicy::Never,
@@ -1010,7 +1010,7 @@ async fn test_post_reboot_hooks_not_executed_when_no_reboot_needed() {
 
     let hosts = vec![HostMetadata {
         name: "no-reboot-host".to_string(),
-        fqdn: "no-reboot-host.local".to_string(),
+        fqdn: Some("no-reboot-host.local".to_string()),
         phase: Some("test".to_string()),
         tags: vec![],
         reboot_policy: RebootPolicy::Never,
@@ -1105,7 +1105,7 @@ async fn test_hook_observer_callbacks_invoked_correctly() {
 
     let hosts = vec![HostMetadata {
         name: "observer-test".to_string(),
-        fqdn: "observer-test.local".to_string(),
+        fqdn: Some("observer-test.local".to_string()),
         phase: Some("test".to_string()),
         tags: vec![],
         reboot_policy: RebootPolicy::Never,
@@ -1252,7 +1252,7 @@ async fn test_hook_observer_callbacks_on_failure() {
 
     let hosts = vec![HostMetadata {
         name: "fail-test".to_string(),
-        fqdn: "fail-test.local".to_string(),
+        fqdn: Some("fail-test.local".to_string()),
         phase: Some("test".to_string()),
         tags: vec![],
         reboot_policy: RebootPolicy::Never,

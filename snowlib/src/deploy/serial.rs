@@ -188,7 +188,7 @@ mod tests {
             name: name.to_string(),
             phase: Some("p2".to_string()),
             tags: vec![],
-            fqdn: format!("{}.example.com", name),
+            fqdn: Some(format!("{}.example.com", name)),
             reboot_policy: RebootPolicy::Always,
             system_type: SystemType::NixOS,
             system: None,

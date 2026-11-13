@@ -250,7 +250,7 @@ mod tests {
                 name: host.to_string(),
                 phase: None,
                 tags: vec![],
-                fqdn: host.to_string(),
+                fqdn: Some(host.to_string()),
                 reboot_policy: crate::reboot::RebootPolicy::Auto,
                 system_type,
                 system: None,

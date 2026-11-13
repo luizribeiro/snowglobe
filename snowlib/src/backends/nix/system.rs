@@ -310,8 +310,9 @@ fn parse_host_metadata(
 ) -> Result<(HostMetadata, Option<String>)> {
     #[derive(serde::Deserialize)]
     struct MetadataJson {
+        // nix-darwin leaves it null by default
         #[serde(rename = "hostName")]
-        hostname: String,
+        hostname: Option<String>,
         // Domain can be null for hosts that connect to different networks (like laptops)
         // or when not configured in the NixOS/nix-darwin configuration
         domain: Option<String>,
@@ -340,10 +341,13 @@ fn parse_host_metadata(
 
     crate::deploy::check_phase(host, meta.phase.as_deref())?;
 
-    let fqdn = match meta.domain {
-        Some(domain) if !domain.is_empty() => format!("{}.{}", meta.hostname, domain),
-        _ => meta.hostname.clone(),
-    };
+    let fqdn = meta
+        .hostname
+        .filter(|hostname| !hostname.is_empty())
+        .map(|hostname| match meta.domain {
+            Some(domain) if !domain.is_empty() => format!("{hostname}.{domain}"),
+            _ => hostname,
+        });
 
     let metadata = HostMetadata {
         name: host.to_string(),
@@ -455,12 +459,43 @@ mod tests {
         );
 
         assert_eq!(meta.name, "web01");
-        assert_eq!(meta.fqdn, "macbook");
+        assert_eq!(meta.fqdn.as_deref(), Some("macbook"));
         assert_eq!(meta.phase, None);
         assert!(meta.tags.is_empty());
         assert_eq!(meta.reboot_policy, RebootPolicy::Auto);
         assert!(meta.hooks.is_empty());
         assert_eq!(meta.serial_group, None);
+    }
+
+    #[test]
+    fn test_parse_metadata_with_null_hostname() {
+        let meta = parse(
+            r#"{
+            "hostName": null,
+            "domain": "example.com",
+            "system": "aarch64-darwin",
+            "phase": null,
+            "tags": [],
+            "rebootPolicy": "auto"
+        }"#,
+        );
+
+        assert_eq!(meta.fqdn, None);
+    }
+
+    #[test]
+    fn test_parse_metadata_with_empty_hostname() {
+        let meta = parse(
+            r#"{
+            "hostName": "",
+            "domain": "example.com",
+            "phase": null,
+            "tags": [],
+            "rebootPolicy": "auto"
+        }"#,
+        );
+
+        assert_eq!(meta.fqdn, None);
     }
 
     #[test]
@@ -475,7 +510,7 @@ mod tests {
         }"#,
         );
 
-        assert_eq!(meta.fqdn, "server");
+        assert_eq!(meta.fqdn.as_deref(), Some("server"));
         assert_eq!(meta.phase, Some("p1".to_string()));
         assert_eq!(meta.tags, vec!["web"]);
         assert_eq!(meta.reboot_policy, RebootPolicy::Never);
@@ -493,7 +528,7 @@ mod tests {
         }"#,
         );
 
-        assert_eq!(meta.fqdn, "web01.example.com");
+        assert_eq!(meta.fqdn.as_deref(), Some("web01.example.com"));
         assert_eq!(meta.phase, Some("p2".to_string()));
         assert_eq!(meta.tags, vec!["mysql", "ldap"]);
         assert_eq!(meta.reboot_policy, RebootPolicy::Always);

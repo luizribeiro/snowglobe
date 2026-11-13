@@ -115,7 +115,7 @@ mod tests {
             name: name.to_string(),
             phase: None,
             tags: vec![],
-            fqdn: format!("{name}.example.com"),
+            fqdn: Some(format!("{name}.example.com")),
             reboot_policy: RebootPolicy::Auto,
             system_type: SystemType::NixOS,
             system: None,

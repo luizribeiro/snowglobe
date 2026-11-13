@@ -86,7 +86,7 @@ In the host's configuration:
 
 What each part does:
 
-- **`networking.hostName`** is required. snow reads it to know where to connect, and nix-darwin has no default for it. If the name doesn't resolve from the deploying machine, map it to an address in your `~/.ssh/config` (see [Connect to your hosts](/snowglobe/connect/)). If SSH listens on another port, set `snowglobe.deploy.sshPort`.
+- **`networking.hostName`** is required to deploy. snow reads it to know where to connect, and nix-darwin leaves it `null` by default. If the name doesn't resolve from the deploying machine, map it to an address in your `~/.ssh/config` (see [Connect to your hosts](/snowglobe/connect/)). If SSH listens on another port, set `snowglobe.deploy.sshPort`.
 - **`snowglobe.deploy.allowedUsers`** adds a sudoers rule (through `security.sudo.extraConfig`) that lets those users run `/run/current-system/sw/bin/snowglobe-activate` as root without a password, and nothing else.
 - **`nix.settings.trusted-users`** lets `nix copy` import the closure that snow sends. snow copies unsigned paths, and the Nix daemon accepts those only from trusted users.
 - **`services.openssh`** turns on the SSH server. You can instead enable Remote Login in System Settings and manage `sshd_config` yourself.
@@ -149,7 +149,7 @@ The output should include `(root) NOPASSWD: /run/current-system/sw/bin/snowglobe
 
 **`nix-darwin can only switch, so your-mac can't boot`** (or `test`, `dry-activate`) means the deployment selected a Mac together with `--boot`, `--test` or `--dry-run`. Select only NixOS hosts for those modes.
 
-**`Failed to parse Nix command output as JSON`** while snow reads the host's settings usually means `networking.hostName` is unset: nix-darwin leaves it `null`, and snow needs a name to connect to. Set it in the host's configuration.
+**`Host 'your-mac' has no networking.hostName`** means the host's `networking.hostName` is unset: nix-darwin leaves it `null`, and snow needs a name to connect to. `snow list` and deployments to other hosts still work, but this host fails before it is built. Set it in the host's configuration.
 
 **`nix copy` fails with a message about signatures or untrusted paths** means the deploy user isn't a trusted user. On Determinate Nix, set it in `/etc/nix/nix.custom.conf` as shown above.
 

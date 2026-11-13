@@ -52,7 +52,7 @@ fn make_host_metadata(
         name: name.to_string(),
         phase: phase.map(|s| s.to_string()),
         tags: vec![],
-        fqdn: format!("{}.example.com", name),
+        fqdn: Some(format!("{}.example.com", name)),
         reboot_policy,
         system_type: SystemType::NixOS,
         system: None,

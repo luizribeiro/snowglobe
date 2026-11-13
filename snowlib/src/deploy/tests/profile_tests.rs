@@ -31,7 +31,7 @@ fn create_profile_test_backends() -> (
 fn create_nixos_host_metadata(name: &str, fqdn: &str) -> HostMetadata {
     HostMetadata {
         name: name.to_string(),
-        fqdn: fqdn.to_string(),
+        fqdn: Some(fqdn.to_string()),
         phase: Some("default".to_string()),
         tags: vec![],
         reboot_policy: RebootPolicy::Auto,

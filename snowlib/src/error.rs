@@ -239,6 +239,13 @@ pub enum DeployError {
     )]
     DarwinHelperMissing { host: String },
 
+    #[error("Host '{host}' has no networking.hostName; snow needs it to connect")]
+    #[diagnostic(
+        code(snow::deploy::no_host_name),
+        help("Set networking.hostName in the host's configuration. snow connects to it, followed by networking.domain when that is set; a `Host` entry in your SSH config can point that name at another address.")
+    )]
+    NoHostName { host: String },
+
     #[error("The ssh-agent did not answer within {seconds}s")]
     #[diagnostic(
         code(snow::deploy::ssh_agent_not_responding),

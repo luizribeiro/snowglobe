@@ -84,7 +84,7 @@ mod tests {
             name: "pomegranates".to_string(),
             phase: Some("p2".to_string()),
             tags: vec![],
-            fqdn: "pomegranates.example.com".to_string(),
+            fqdn: Some("pomegranates.example.com".to_string()),
             reboot_policy: RebootPolicy::Always,
             system_type: SystemType::NixOS,
             system: None,

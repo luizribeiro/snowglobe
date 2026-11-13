@@ -1005,6 +1005,33 @@ async fn test_deploy_never_reboots_darwin_hosts() {
 }
 
 #[tokio::test]
+async fn test_host_without_a_hostname_fails_alone() {
+    let harness = DeployHarness::new();
+    let mut falcon = make_host_metadata("falcon", Some("p1"), RebootPolicy::Auto);
+    falcon.system_type = SystemType::Darwin;
+    falcon.fqdn = None;
+
+    let run = harness
+        .run(vec![
+            falcon,
+            make_host_metadata("bravo", Some("p1"), RebootPolicy::Never),
+        ])
+        .await;
+
+    let falcon = run.host("falcon");
+    assert_eq!(falcon.failed_at_step, Some(PipelineStep::Build));
+    assert!(
+        falcon
+            .error_message
+            .as_deref()
+            .is_some_and(|reason| reason.contains("Host 'falcon' has no networking.hostName")),
+        "{falcon:?}"
+    );
+    assert!(run.host("bravo").success);
+    assert_eq!(harness.deployer.copy_count("bravo.example.com"), 1);
+}
+
+#[tokio::test]
 async fn test_each_host_gets_its_closure_copied_once() {
     let harness = DeployHarness::new();
 

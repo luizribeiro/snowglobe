@@ -38,7 +38,8 @@
 
     darwinConfigurations = {
       falcon.config = {
-        networking.hostName = "falcon";
+        # nix-darwin's default, which snow list must cope with
+        networking.hostName = null;
         nixpkgs.hostPlatform.system = "aarch64-darwin";
       };
     };
