@@ -3,7 +3,6 @@
 
 # Cargo build output, wherever cargo ran
 target/
-Cargo.lock
 
 # Environment variables
 .env
