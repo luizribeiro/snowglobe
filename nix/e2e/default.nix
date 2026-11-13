@@ -12,6 +12,7 @@ let
     "deploy-boot"
     "activation-failure"
     "hook-failure"
+    "health-gate"
     "missing-hook"
     "unreachable"
     "hung-agent"
