@@ -15,6 +15,13 @@ use snowlib::{DeployStrategy, Flake, Result};
 use std::future::Future;
 use tracing_indicatif::span_ext::IndicatifSpanExt;
 
+/// So the command snow suggests works from any directory
+fn absolute_flake_path(path: &str) -> String {
+    std::fs::canonicalize(path)
+        .map(|absolute| absolute.display().to_string())
+        .unwrap_or_else(|_| path.to_string())
+}
+
 /// Shows a spinner with `message` until `work` is done: evaluating a flake
 /// can take minutes and prints nothing on its own
 async fn with_spinner<T>(message: &str, work: impl Future<Output = T>) -> T {
@@ -115,6 +122,39 @@ impl DeployArgs {
         }
     }
 
+    /// The command that deploys hosts again as this one would, before their
+    /// names. Host selection is left out, as the hosts are named, and so are
+    /// flags that only change what snow shows.
+    fn redeploy_command(&self, flake_path: Option<&str>) -> Vec<String> {
+        let mut words = vec!["snow".to_string()];
+        if let Some(path) = flake_path {
+            words.extend(["-f".to_string(), path.to_string()]);
+        }
+        words.extend(["deploy".to_string(), "--redeploy".to_string()]);
+        for (set, flag) in [
+            (self.switch, "--switch"),
+            (self.boot, "--boot"),
+            (self.test, "--test"),
+            (self.force, "--force"),
+            (self.skip_reboot, "--skip-reboot"),
+            (self.ignore_phases, "--ignore-phases"),
+        ] {
+            if set {
+                words.push(flag.to_string());
+            }
+        }
+        if let Some(user) = &self.user {
+            words.extend(["--user".to_string(), user.clone()]);
+        }
+        if self.reboot_timeout != snowlib::DEFAULT_REBOOT_MAX_WAIT_SECS {
+            words.extend([
+                "--reboot-timeout".to_string(),
+                self.reboot_timeout.to_string(),
+            ]);
+        }
+        words
+    }
+
     /// Main entry point for the deploy command
     ///
     /// Orchestrates the entire deployment process by delegating to snowlib's `deploy()` function.
@@ -123,9 +163,15 @@ impl DeployArgs {
     /// - Create backend implementations and observer
     /// - Call snowlib::deploy()
     /// - Print results table
-    pub async fn run(self, flake: &Flake, log_file: Option<&std::path::Path>) -> Result<()> {
-        let left_behind =
-            interrupted::LeftBehind::new(["snow", "deploy", "--redeploy"].map(String::from).into());
+    pub async fn run(
+        self,
+        flake: &Flake,
+        flake_path: Option<&str>,
+        log_file: Option<&std::path::Path>,
+    ) -> Result<()> {
+        let left_behind = interrupted::LeftBehind::new(
+            self.redeploy_command(flake_path.map(absolute_flake_path).as_deref()),
+        );
         crate::signals::report_on_exit({
             let left_behind = left_behind.clone();
             move || left_behind.report()
@@ -191,6 +237,7 @@ impl DeployArgs {
         for host in &hosts {
             left_behind.has_hooks(&host.name, host.hooks.iter().map(|hook| hook.stage));
         }
+
         let phases = snowlib::phases(&hosts, self.ignore_phases);
         println!("{}\n", summary::phase_overview(&phases));
         let observer = snowlib::observer::CompositeObserver::new(vec![
@@ -485,6 +532,93 @@ mod tests {
     #[test]
     fn test_reboot_timeout_must_be_positive() {
         assert!(try_deploy_args(&["--reboot-timeout", "0"]).is_err());
+    }
+
+    fn redeploy_command(flags: &[&str], flake_path: Option<&str>) -> String {
+        deploy_args(flags).redeploy_command(flake_path).join(" ")
+    }
+
+    #[test]
+    fn test_redeploy_command_of_a_plain_run() {
+        assert_eq!(
+            redeploy_command(&["--quiet", "--phase", "web", "--concurrency", "5"], None),
+            "snow deploy --redeploy"
+        );
+    }
+
+    #[test]
+    fn test_redeploy_command_keeps_the_activation_mode() {
+        assert_eq!(
+            redeploy_command(&["--boot"], None),
+            "snow deploy --redeploy --boot"
+        );
+        assert_eq!(
+            redeploy_command(&["--switch", "--force"], None),
+            "snow deploy --redeploy --switch --force"
+        );
+    }
+
+    #[test]
+    fn test_redeploy_command_keeps_how_hosts_are_reached_and_rebooted() {
+        assert_eq!(
+            redeploy_command(
+                &[
+                    "--skip-reboot",
+                    "--user",
+                    "deploy",
+                    "--reboot-timeout",
+                    "45"
+                ],
+                None
+            ),
+            "snow deploy --redeploy --skip-reboot --user deploy --reboot-timeout 45"
+        );
+    }
+
+    #[test]
+    fn test_redeploy_command_keeps_ignoring_phases() {
+        assert_eq!(
+            redeploy_command(&["--ignore-phases"], None),
+            "snow deploy --redeploy --ignore-phases"
+        );
+    }
+
+    #[test]
+    fn test_relative_flake_path_is_made_absolute() {
+        let fixtures = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+        let relative = "tests/../tests/fixtures";
+        assert!(
+            std::path::Path::new(relative).exists(),
+            "tests run in the crate's directory"
+        );
+
+        assert_eq!(
+            absolute_flake_path(relative),
+            std::fs::canonicalize(fixtures)
+                .unwrap()
+                .display()
+                .to_string()
+        );
+    }
+
+    #[test]
+    fn test_missing_flake_path_is_kept_as_given() {
+        assert_eq!(absolute_flake_path("no/such flake"), "no/such flake");
+    }
+
+    #[test]
+    fn test_redeploy_command_keeps_the_flake_path() {
+        assert_eq!(
+            deploy_args(&["--test"]).redeploy_command(Some("/srv/my flake")),
+            [
+                "snow",
+                "-f",
+                "/srv/my flake",
+                "deploy",
+                "--redeploy",
+                "--test"
+            ]
+        );
     }
 
     #[test]

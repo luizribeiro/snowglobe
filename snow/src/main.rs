@@ -116,7 +116,9 @@ async fn main() -> ExitCode {
 
 async fn run(cli: Cli, log_file: Option<&std::path::Path>) -> snowlib::Result<()> {
     let flake = snowlib::Flake::new(cli.flake_path.as_deref())?;
-    cli.command.run(&flake, log_file).await
+    cli.command
+        .run(&flake, cli.flake_path.as_deref(), log_file)
+        .await
 }
 
 #[cfg(test)]
