@@ -32,6 +32,7 @@ pub struct MockDeployBackend {
     /// Track which hosts had profile updates (hostname, mode)
     profile_updates: Arc<Mutex<Vec<(String, ActivationMode)>>>,
     copies: Arc<Mutex<Vec<String>>>,
+    activated_system_types: Arc<Mutex<Vec<(String, SystemType)>>>,
     agent_hangs: bool,
     /// Systems per target hostname; hosts not listed run a system no build matches
     host_systems: HashMap<String, HostSystems>,
@@ -54,6 +55,7 @@ impl Default for MockDeployBackend {
             activate_failures: Vec::new(),
             profile_updates: Arc::new(Mutex::new(Vec::new())),
             copies: Arc::new(Mutex::new(Vec::new())),
+            activated_system_types: Arc::new(Mutex::new(Vec::new())),
             agent_hangs: false,
             host_systems: HashMap::new(),
             host_systems_failures: Vec::new(),
@@ -108,6 +110,17 @@ impl MockDeployBackend {
             .iter()
             .filter(|h| *h == hostname)
             .count()
+    }
+
+    /// The system type each activation of the target `hostname` was told
+    pub fn activated_system_types(&self, hostname: &str) -> Vec<SystemType> {
+        self.activated_system_types
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(h, _)| h == hostname)
+            .map(|(_, system_type)| *system_type)
+            .collect()
     }
 
     /// Fails preflight the way a hung ssh-agent does
@@ -348,8 +361,13 @@ impl DeployBackend for MockDeployBackend {
         target: &DeployTarget,
         _store_path: &StorePath,
         mode: ActivationMode,
-        _system_type: SystemType,
+        system_type: SystemType,
     ) -> Result<()> {
+        self.activated_system_types
+            .lock()
+            .unwrap()
+            .push((target.hostname.clone(), system_type));
+
         // Track profile updates for modes that should update profile
         if should_update_profile(mode) {
             self.profile_updates

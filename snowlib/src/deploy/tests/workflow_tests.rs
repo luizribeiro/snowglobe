@@ -1005,6 +1005,32 @@ async fn test_deploy_never_reboots_darwin_hosts() {
 }
 
 #[tokio::test]
+async fn test_each_host_activates_as_its_own_system_type() {
+    let harness = DeployHarness::new();
+    let mut falcon = make_host_metadata("falcon", Some("p1"), RebootPolicy::Auto);
+    falcon.system_type = SystemType::Darwin;
+
+    let run = harness
+        .run(vec![
+            falcon,
+            make_host_metadata("bravo", Some("p1"), RebootPolicy::Never),
+        ])
+        .await;
+
+    assert_eq!(run.results.success_count(), 2);
+    assert_eq!(
+        harness
+            .deployer
+            .activated_system_types("falcon.example.com"),
+        [SystemType::Darwin]
+    );
+    assert_eq!(
+        harness.deployer.activated_system_types("bravo.example.com"),
+        [SystemType::NixOS]
+    );
+}
+
+#[tokio::test]
 async fn test_host_without_a_hostname_fails_alone() {
     let harness = DeployHarness::new();
     let mut falcon = make_host_metadata("falcon", Some("p1"), RebootPolicy::Auto);
