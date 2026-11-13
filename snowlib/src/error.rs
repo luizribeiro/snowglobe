@@ -59,7 +59,7 @@ pub enum NixError {
     #[error("Failed to build host configuration for '{host}':\n{stderr}")]
     #[diagnostic(
         code(snow::nix::build_failed),
-        help("Check that the host exists in your flake's nixosConfigurations and can be built:\n  nix build .#nixosConfigurations.{host}.config.system.build.toplevel")
+        help("Check that the host exists and builds on its own (darwinConfigurations for nix-darwin hosts):\n  nix build .#nixosConfigurations.{host}.config.system.build.toplevel")
     )]
     BuildFailed { host: String, stderr: String },
 
@@ -96,7 +96,7 @@ pub enum FlakeError {
     #[error("Could not find flake.nix in '{start_dir}' or any parent directory")]
     #[diagnostic(
         code(snow::flake::not_found),
-        help("snowglobe requires a flake.nix with nixosConfigurations to operate.\nRun this command from within a NixOS flake directory, or use `--flake-path` to specify the location.")
+        help("Run snow inside a flake with nixosConfigurations or darwinConfigurations, or point to one with `--flake-path` or FLAKE_PATH.")
     )]
     NotFound { start_dir: PathBuf },
 

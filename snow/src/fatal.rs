@@ -102,7 +102,7 @@ mod tests {
             styled(&error, false),
             "✗ Failed to build host configuration for 'raven':\n    \
              error: builder for wine failed\n  \
-             help: Check that the host exists in your flake's nixosConfigurations and can be built:\n    \
+             help: Check that the host exists and builds on its own (darwinConfigurations for nix-darwin hosts):\n    \
              \x20 nix build .#nixosConfigurations.raven.config.system.build.toplevel"
         );
     }
