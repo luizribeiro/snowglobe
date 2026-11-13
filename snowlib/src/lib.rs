@@ -8,7 +8,6 @@
 //! and contains no terminal-specific I/O.
 
 pub mod backends;
-pub mod bootstrap;
 pub mod deploy;
 pub mod error;
 pub mod hooks;
@@ -29,23 +28,17 @@ pub use backends::deploy::{
     LocalDeployBackend, SshDeployBackend,
 };
 pub use backends::hook::{HookBackend, SystemHookBackend};
-pub use backends::keygen::{KeyGenBackend, SshKeyPair, SystemKeyGenBackend};
 pub use backends::nix::{NixBackend, SystemNixBackend};
 pub use backends::plan::{PlanBackend, SystemPlanBackend};
-pub use backends::provisioner::{
-    get_provisioner, InjectionResult, ManualProvisioner, Provisioner, ProvisionerConfig,
-    ProvisioningResult, ProxmoxVmaProvisioner, RawProvisioner, SdImageProvisioner, TargetType,
-};
 pub use backends::reboot::{
     LocalRebootBackend, RebootBackend, RebootCheck, SystemRebootBackend,
     DEFAULT_REBOOT_MAX_WAIT_SECS,
 };
-pub use backends::sops::{SopsBackend, SopsUpdateResult, SystemSopsBackend};
 pub use deploy::{
     deploy, phases, DeployConfiguration, DeployContext, DeployResults, DeployStrategy,
     HookExecutor, HostDeploymentResult, PhaseResult, PipelineStep, SkippedPhase,
 };
-pub use error::{BootstrapError, ProvisionerError, Result};
+pub use error::Result;
 pub use hooks::{HookConfig, HookLocation, HookStage};
 pub use host::{get_hostname, Host, HostMetadata};
 pub use nix::{ActivationMode, Flake, StorePath, SystemType};
@@ -59,14 +52,8 @@ pub use backends::deploy::{DeploymentFixture, HostFixture, MockDeployBackend, Op
 #[cfg(any(debug_assertions, feature = "test-utils"))]
 pub use backends::hook::MockHookBackend;
 #[cfg(any(debug_assertions, feature = "test-utils"))]
-pub use backends::keygen::MockKeyGenBackend;
-#[cfg(any(debug_assertions, feature = "test-utils"))]
 pub use backends::nix::MockNixBackend;
 #[cfg(any(debug_assertions, feature = "test-utils"))]
 pub use backends::plan::{MockPlanBackend, MockPlanCall};
 #[cfg(any(debug_assertions, feature = "test-utils"))]
-pub use backends::provisioner::MockProvisioner;
-#[cfg(any(debug_assertions, feature = "test-utils"))]
 pub use backends::reboot::MockRebootBackend;
-#[cfg(any(debug_assertions, feature = "test-utils"))]
-pub use backends::sops::MockSopsBackend;
