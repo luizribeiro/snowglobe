@@ -1,4 +1,7 @@
 //! Tests for hosts in a serial group deploying one at a time within a phase
+//!
+//! Mock builds and hooks sleep on tokio's paused clock, so their delays order
+//! the hosts the same way however loaded the machine is.
 
 use super::*;
 use crate::backends::deploy::HostSystems;
@@ -77,7 +80,7 @@ fn assert_skipped_after(run: &HarnessRun, hostname: &str, failed: &str) {
     );
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn test_same_group_deploys_never_overlap() {
     let mut harness = DeployHarness::new();
     harness.hook_backend = Arc::new(hooks_taking(Duration::from_millis(30)));
@@ -107,7 +110,7 @@ async fn test_same_group_deploys_never_overlap() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn test_different_groups_and_ungrouped_hosts_overlap() {
     let mut harness = DeployHarness::new();
     harness.hook_backend = Arc::new(hooks_taking(Duration::from_millis(30)));
@@ -135,7 +138,7 @@ async fn test_different_groups_and_ungrouped_hosts_overlap() {
     assert!(!run.has_event_starting_with("serial_wait:"));
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn test_unchanged_host_never_takes_the_group_slot() {
     let mut harness = DeployHarness::new();
     harness.hook_backend = Arc::new(hooks_taking(Duration::from_millis(30)));
@@ -160,7 +163,7 @@ async fn test_unchanged_host_never_takes_the_group_slot() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn test_failed_deploy_skips_the_rest_of_its_group_only() {
     let mut harness = DeployHarness::new();
     harness.hook_backend = Arc::new(
@@ -190,7 +193,7 @@ async fn test_failed_deploy_skips_the_rest_of_its_group_only() {
     );
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn test_failure_before_deploy_halts_group_before_on_failure_hooks_finish() {
     let mut harness = DeployHarness::new();
     // on-failure hooks of the failed build outlast the other members' builds,
