@@ -50,11 +50,11 @@ Inside a phase, hosts do not wait for each other. Each host goes through these s
 | copy | `nix copy` the system's closure to the host | host |
 | plan | choose the activation mode, running [reboot detection](/snowglobe/reboot-detection/) if needed | host (read-only) |
 | pre-deploy | run `pre-deploy` hooks | your machine or host |
-| activate | run the activation helper with the chosen mode | host |
+| switch, boot, test or dry-run | run the activation helper in the mode the plan chose, which names the step | host |
 | reboot | reboot and wait for a new boot, if the plan calls for it; then run `post-reboot` hooks | host |
 | post-deploy | run `post-deploy` hooks | your machine or host |
 
-The step names in this table are the ones the progress board and the final report use, so a failure reads as, for example, `✗ web2 at activate`.
+The step names in this table are the ones the progress board and the final report use, so a failure reads as, for example, `✗ web2 at switch`.
 
 Because hosts are independent, a fast host can be activating while a slow one is still building, and one host's failure does not interrupt the others. `--concurrency` (3 by default) limits how many hosts are busy at once. A host waiting for its turn in a serial group does not count toward that limit, so it never blocks an unrelated host from making progress.
 

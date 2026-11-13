@@ -14,15 +14,15 @@ Each phase of a deployment ends with a report, one line per host. A host that fa
 ```text
 ✗ Phase p1 (1/2 failed in 0:41)
   ✓ web1 (switch)
-  ✗ web2 at activate: activated, but storage-agent.service is failing
+  ✗ web2 at switch: activated, but storage-agent.service is failing
 ```
 
-The step names are `build`, `check` (reading which system the host runs), `copy`, `plan` (deciding whether the host needs a reboot), `pre-deploy`, `activate`, `reboot` (which includes `post-reboot` hooks) and `post-deploy`. A host marked `⊘ … skipped, serial group '…' halted after … failed` was never started because another host in its [serial group](/snowglobe/cluster/) failed first. The step tells you where to look: a failure at `build` happened on your machine, while one at `activate` happened on the host.
+The step names are `build`, `check` (reading which system the host runs), `copy`, `plan` (deciding whether the host needs a reboot), `pre-deploy`, the activation, named after its [mode](/snowglobe/reboots/#activation-modes) (`switch`, `boot`, `test` or `dry-run`), `reboot` (which includes `post-reboot` hooks) and `post-deploy`. A host marked `⊘ … skipped, serial group '…' halted after … failed` was never started because another host in its [serial group](/snowglobe/cluster/) failed first. The step tells you where to look: a failure at `build` happened on your machine, while one at the activation (`switch`, `boot` or `test`) happened on the host.
 
 After the last phase, `snow` prints a total such as `✗ 2/3 deployed, 1 failed`, and then the error that ended the command, naming each failed host and its step:
 
 ```text
-✗ 1 of 3 hosts failed: web2 (activate)
+✗ 1 of 3 hosts failed: web2 (switch)
   help: See the per-host errors above.
 ```
 
@@ -50,7 +50,7 @@ To see the output of the commands `snow` runs (the Nix build, `nix copy`, the ac
 Could not tell whether the new system needs a reboot: `sudo snowglobe-activate '/nix/store/…' dry-activate` failed with exit status: 1. If sudo refused it, import the snowglobe module on the host and add the SSH user to snowglobe.deploy.allowedUsers.
 ```
 
-It can also fail at `activate` or `reboot`. In each case, check the following, in order:
+It can also fail at the activation (`switch`, `boot` or `test`) or at `reboot`. In each case, check the following, in order:
 
 1. The host imports `snowglobe.nixosModules.default` (or `darwinModules.default` on a Mac).
 2. The user `snow` connects as is listed in [`snowglobe.deploy.allowedUsers`](/snowglobe/options/#snowglobedeployallowedusers). If you deploy with `--user deploy`, that is `deploy`; otherwise it is whatever your SSH config or local user name gives.
@@ -82,7 +82,7 @@ nix-darwin hosts have no fallback: without the module, activation fails. See [De
 A NixOS switch fails when any systemd unit is failing afterwards, even a unit the deployment did not change: the switch starts its targets again, which reruns units that were already failing. By then the new system is active, and the report says so:
 
 ```text
-  ✗ web2 at activate: activated, but storage-agent.service is failing
+  ✗ web2 at switch: activated, but storage-agent.service is failing
 ```
 
 If the unit was failing before the deployment too, the message adds `(it was already failing before this deployment)`. When several units fail, the line says `activated, but 2 units are failing` and lists them underneath.
@@ -108,7 +108,7 @@ The host is then deployed when the listed units are the only failing ones and th
 
 When activation fails, only that host fails. Other hosts in the same phase carry on, and later phases are skipped. The report shows the command `snow` ran and the end of its output, which normally contains the reason, such as a unit that failed to start or an activation script that exited with an error. The host's on-failure hooks run.
 
-Keep in mind that a failed switch may already have changed the host. NixOS records the new system as current before it starts services, so a host that failed at `activate` may run the new system with some services not started.
+Keep in mind that a failed switch may already have changed the host. NixOS records the new system as current before it starts services, so a host that failed at `switch` may run the new system with some services not started.
 
 If the cause is in the configuration, fix it and deploy again as usual. If the configuration was fine and the failure was temporary, for example a service that depends on something that was briefly unavailable, deploy the same configuration again with `--redeploy`. Without it, `snow` may skip the host as already up to date, because the host now runs the system you built:
 

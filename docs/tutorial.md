@@ -301,7 +301,7 @@ change this per host, for example to never reboot a host automatically.
 > **If something goes wrong.** The report names the step the host failed
 > at and the error line that matters; the full output is in the log file.
 > One case surprises people: if any systemd unit is failing after the
-> switch, even one this change did not touch, the host fails at activate
+> switch, even one this change did not touch, the host fails at switch
 > although the new system is active. See [A host fails with "activated,
 > but … is failing"](/snowglobe/troubleshooting/#a-host-fails-with-activated-but--is-failing)
 > and the other entries in [Troubleshooting](/snowglobe/troubleshooting/).

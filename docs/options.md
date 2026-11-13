@@ -68,7 +68,7 @@ without failing it.
 A NixOS switch fails when any unit is failing afterwards, even one
 the deployment didn't touch: the switch starts its targets again, which
 reruns units that were already failing, such as a crash-looping
-service. snow then fails the host at activate, saying that the new
+service. snow then fails the host at switch, saying that the new
 system is active. If the only failing units are listed here, the
 host is deployed instead, and the report names the units.
 
