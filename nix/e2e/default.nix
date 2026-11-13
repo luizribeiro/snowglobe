@@ -31,6 +31,7 @@ let
     "reboot-auto"
     "switch-refuses"
     "hook-stages"
+    "deploy-cancel"
   ];
 
   files = lib.genAttrs names (name: import ./tests/${name}.nix);
