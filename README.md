@@ -118,7 +118,9 @@ Hosts that already run the built system are skipped.
 
 ## Comparison with other tools
 
-These tools overlap heavily, and snowglobe is much newer than all of them.
+Compared with the three tools most users are choosing between. The [full
+comparison](https://l9o.dev/snowglobe/comparison/) also covers morph, Clan,
+devenv Machines and pull-based tools.
 
 | | `nixos-rebuild --target-host` | deploy-rs | colmena | snowglobe |
 |---|---|---|---|---|
