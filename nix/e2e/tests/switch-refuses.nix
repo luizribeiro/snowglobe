@@ -29,7 +29,7 @@ in
         "✗ web1 at plan: systemd-sysctl.service would restart",
         "web1: failed at plan: systemd-sysctl.service would restart",
     ))
-    assert "web1: activate started" not in output, output
+    assert "web1: switch started" not in output, output
     assert hooks_ran() == ["on-failure web1"], hooks_ran()
     runs("web1", base("web1"))
     boots("web1", base("web1"))

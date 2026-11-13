@@ -574,7 +574,7 @@ mod tests {
         board.apply(
             "cactus",
             &HostEvent::Failed {
-                step: PipelineStep::Activate,
+                step: PipelineStep::Activate(ActivationMode::Switch),
                 reason: "activation failed".to_string(),
             },
             t0,
@@ -588,7 +588,7 @@ mod tests {
         );
         assert_eq!(
             brief(&row_of(&board, "cactus", t0)),
-            (RowKind::Failed, "cactus", "activate", "activation failed")
+            (RowKind::Failed, "cactus", "switch", "activation failed")
         );
     }
 
@@ -722,7 +722,11 @@ mod tests {
         );
         let waiting = row_of(&board, "cactus", t0);
         let waiting = (waiting.kind, waiting.detail);
-        board.apply("cactus", &HostEvent::Started(PipelineStep::Activate), t0);
+        board.apply(
+            "cactus",
+            &HostEvent::Started(PipelineStep::Activate(ActivationMode::Switch)),
+            t0,
+        );
 
         assert_eq!(
             waiting,
@@ -733,7 +737,24 @@ mod tests {
         );
         assert_eq!(
             brief(&row_of(&board, "cactus", t0)),
-            (RowKind::Active, "cactus", "activate", "")
+            (RowKind::Active, "cactus", "switch", "")
+        );
+    }
+
+    #[test]
+    fn test_activating_host_shows_its_mode() {
+        let t0 = Instant::now();
+        let mut board = board(t0);
+
+        board.apply(
+            "cactus",
+            &HostEvent::Started(PipelineStep::Activate(ActivationMode::Boot)),
+            t0,
+        );
+
+        assert_eq!(
+            brief(&row_of(&board, "cactus", t0)),
+            (RowKind::Active, "cactus", "boot", "")
         );
     }
 
@@ -742,8 +763,16 @@ mod tests {
         let t0 = Instant::now();
         let mut board = board(t0);
 
-        board.apply("vineyard", &HostEvent::Started(PipelineStep::Activate), t0);
-        board.apply("spruce", &HostEvent::Started(PipelineStep::Activate), t0);
+        board.apply(
+            "vineyard",
+            &HostEvent::Started(PipelineStep::Activate(ActivationMode::Switch)),
+            t0,
+        );
+        board.apply(
+            "spruce",
+            &HostEvent::Started(PipelineStep::Activate(ActivationMode::Switch)),
+            t0,
+        );
         board.apply(
             "limestone",
             &HostEvent::Done(deployed("limestone", ActivationMode::Switch, false)),
@@ -798,7 +827,10 @@ mod tests {
             (hook(HookStage::PreDeploy), Lane::Activate),
             (State::Step(PipelineStep::Plan), Lane::Activate),
             (State::Step(PipelineStep::PreDeploy), Lane::Activate),
-            (State::Step(PipelineStep::Activate), Lane::Activate),
+            (
+                State::Step(PipelineStep::Activate(ActivationMode::Switch)),
+                Lane::Activate,
+            ),
             (State::Step(PipelineStep::Reboot), Lane::Reboot),
             (hook(HookStage::PostReboot), Lane::Reboot),
             (State::Step(PipelineStep::PostDeploy), Lane::Activate),

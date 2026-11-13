@@ -360,7 +360,7 @@ mod tests {
         board.apply(
             "raven",
             &snowlib::HostEvent::Failed {
-                step: snowlib::PipelineStep::Activate,
+                step: snowlib::PipelineStep::Activate(snowlib::ActivationMode::Switch),
                 reason: "storage-agent.service failed".to_string(),
             },
             t0,

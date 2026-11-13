@@ -29,11 +29,11 @@
     deploy.failed()
     deploy.has(
         "✓ Phase p1", "✗ Phase p2 (1/2 failed", "✓ web3 (switch)",
-        "✗ web2 at activate: activated, but storage-agent.service is failing",
+        "✗ web2 at switch: activated, but storage-agent.service is failing",
         "⊘ Phase p3 (1 host skipped)", "⊘ db1", "✗ 2/4 deployed, 1 failed, 1 skipped",
     )
     assert "already failing" not in deploy.output, deploy.output
-    deploy.logged("web2: failed at activate:", "web1: deployed", "web3: deployed")
+    deploy.logged("web2: failed at switch:", "web1: deployed", "web3: deployed")
     assert "db1: build started" not in deploy.log, deploy.log
     # NixOS keeps a system whose services failed to start
     for host in ["web1", "web2", "web3"]:

@@ -277,7 +277,10 @@ async fn test_units_failing_after_activation_fail_the_host_and_halt_later_phases
         .await;
 
     let bravo = run.host("bravo");
-    assert_eq!(bravo.failed_at_step, Some(PipelineStep::Activate));
+    assert_eq!(
+        bravo.failed_at_step,
+        Some(PipelineStep::Activate(ActivationMode::Switch))
+    );
     assert_eq!(
         bravo.error_message.as_deref(),
         Some(
@@ -329,7 +332,7 @@ async fn test_deploy_with_partial_failure_in_phase() {
     assert!(run.host("host1").success);
     assert_eq!(
         run.host("host2").failed_at_step,
-        Some(PipelineStep::Activate)
+        Some(PipelineStep::Activate(ActivationMode::Switch))
     );
     assert!(run.has_event("phase_complete:p1:failed"));
 }

@@ -65,10 +65,10 @@ in
     # snow exits on the spot, its board frozen mid-activation. ssh runs the
     # activation without a terminal, so the host sends it no SIGHUP when
     # ssh dies, and it carries on without snow
-    contains(output, ("web1  activate",))
+    contains(output, ("web1  switch",))
     assert "✗ web1" not in output, output
-    contains(snow_log, ("web1: activate started",))
-    assert "web1: activate finished" not in snow_log, snow_log
+    contains(snow_log, ("web1: switch started",))
+    assert "web1: switch finished" not in snow_log, snow_log
     web1.succeed("pgrep -f '[b]in/switch-to-configuration switch'")
     web1.wait_until_succeeds("! pgrep -f '[b]in/switch-to-configuration switch'")
     runs("web1", deployed("web1"))

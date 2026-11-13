@@ -32,7 +32,8 @@ pub enum PipelineStep {
     Copy,
     Plan,
     PreDeploy,
-    Activate,
+    /// Named after its mode: `boot` installs a boot entry but activates nothing
+    Activate(ActivationMode),
     Reboot,
     PostDeploy,
     /// Never started because its serial group halted
@@ -47,7 +48,7 @@ impl fmt::Display for PipelineStep {
             PipelineStep::Copy => write!(f, "copy"),
             PipelineStep::Plan => write!(f, "plan"),
             PipelineStep::PreDeploy => write!(f, "pre-deploy"),
-            PipelineStep::Activate => write!(f, "activate"),
+            PipelineStep::Activate(mode) => write!(f, "{}", mode.label()),
             PipelineStep::Reboot => write!(f, "reboot"),
             PipelineStep::PostDeploy => write!(f, "post-deploy"),
             PipelineStep::SerialGroup => write!(f, "serial group"),
@@ -264,6 +265,28 @@ mod tests {
         assert_eq!(
             results.failure_error().unwrap().to_string(),
             "3 of 6 hosts failed: limestone (plan), seahorse (plan), vineyard (serial group)"
+        );
+    }
+
+    #[test]
+    fn test_failure_label_names_the_activation_by_its_mode() {
+        let labels: Vec<String> = [
+            ActivationMode::Switch,
+            ActivationMode::Boot,
+            ActivationMode::Test,
+            ActivationMode::DryActivate,
+        ]
+        .map(|mode| host("web1", Some(PipelineStep::Activate(mode))).failure_label())
+        .into();
+
+        assert_eq!(
+            labels,
+            [
+                "web1 (switch)",
+                "web1 (boot)",
+                "web1 (test)",
+                "web1 (dry-run)"
+            ]
         );
     }
 

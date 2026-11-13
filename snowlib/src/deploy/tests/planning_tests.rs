@@ -27,7 +27,7 @@ fn test_deploy_results_counts() {
                 HostDeploymentResult {
                     hostname: "host2".to_string(),
                     success: false,
-                    failed_at_step: Some(PipelineStep::Activate),
+                    failed_at_step: Some(PipelineStep::Activate(ActivationMode::Switch)),
                     activation_mode: None,
                     rebooted: false,
                     unchanged: false,

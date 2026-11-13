@@ -127,12 +127,12 @@ fn step_event_name(hostname: &str, event: &crate::observer::HostEvent) -> Option
     let step_name = |step: &PipelineStep| match step {
         PipelineStep::Build => Some("build"),
         PipelineStep::Copy => Some("copy"),
-        PipelineStep::Activate => Some("activation"),
+        PipelineStep::Activate(_) => Some("activation"),
         PipelineStep::Reboot => Some("reboot"),
         _ => None,
     };
     let failed = |step: &PipelineStep| {
-        if *step == PipelineStep::Activate {
+        if matches!(step, PipelineStep::Activate(_)) {
             "failed"
         } else {
             "fail"

@@ -90,7 +90,7 @@ pub fn print_summary(results: &snowlib::DeployResults) {
 /// ```text
 /// ✗ Phase p2 (1/3 failed in 0:52)
 ///   ✓ bravo (switch)
-///   ✗ cactus at activate: warning: the following units failed: storage-agent.service
+///   ✗ cactus at switch: warning: the following units failed: storage-agent.service
 ///     activating the configuration...
 ///     warning: the following units failed: storage-agent.service
 ///     … 9 more lines in /tmp/snow-1762255380.log
@@ -225,7 +225,7 @@ pub(in crate::commands) fn success_line(hostname: &str, labels: &[impl AsRef<str
 /// What a phase's report indents its hosts by
 const HOST_INDENT: usize = 2;
 
-/// "✗ cactus at activate: <cause>", the cause cut to fit `width` columns
+/// "✗ cactus at switch: <cause>", the cause cut to fit `width` columns
 fn failure_line(host: &snowlib::HostDeploymentResult, width: usize) -> String {
     let line = failed_host(&host_label(host), host.failed_at_step);
     match host.error_message.as_deref().map(error_summary) {
@@ -238,7 +238,7 @@ fn failure_line(host: &snowlib::HostDeploymentResult, width: usize) -> String {
     }
 }
 
-/// "✗ cactus at activate"
+/// "✗ cactus at switch"
 pub(in crate::commands) fn failed_host(
     hostname: &str,
     step: Option<snowlib::PipelineStep>,
@@ -514,7 +514,11 @@ mod tests {
                 duration: Duration::ZERO,
                 hosts: vec![
                     make_successful_host("hedgehog", ActivationMode::Switch, false),
-                    make_failed_host("nuthatch", PipelineStep::Activate, "activation failed"),
+                    make_failed_host(
+                        "nuthatch",
+                        PipelineStep::Activate(ActivationMode::Switch),
+                        "activation failed",
+                    ),
                 ],
             }],
             skipped_phases: vec![],
@@ -595,7 +599,11 @@ mod tests {
             duration: Duration::from_secs(52),
             hosts: vec![
                 make_successful_host("bravo", ActivationMode::Switch, false),
-                make_failed_host("cactus", PipelineStep::Activate, "activation failed"),
+                make_failed_host(
+                    "cactus",
+                    PipelineStep::Activate(ActivationMode::Switch),
+                    "activation failed",
+                ),
                 make_failed_host("raven", PipelineStep::PreDeploy, "storage degraded"),
                 HostDeploymentResult::skipped_by_serial_group("limestone", "k8s", "cactus"),
             ],
@@ -603,7 +611,7 @@ mod tests {
 
         assert_eq!(
             super::phase_report(&phase, false, 100, None),
-            "✗ Phase p2 (3/4 failed in 0:52)\n  ✓ bravo (switch)\n  ✗ cactus at activate: activation failed\n  ✗ raven at pre-deploy: storage degraded\n  ⊘ limestone skipped, serial group 'k8s' halted after cactus failed"
+            "✗ Phase p2 (3/4 failed in 0:52)\n  ✓ bravo (switch)\n  ✗ cactus at switch: activation failed\n  ✗ raven at pre-deploy: storage degraded\n  ⊘ limestone skipped, serial group 'k8s' halted after cactus failed"
         );
     }
 
@@ -616,15 +624,19 @@ mod tests {
                      Stderr:\n\
                      activating the configuration...\n\
                      warning: the following units failed: storage-agent.service";
-        let cactus = make_failed_host("cactus", PipelineStep::Activate, error);
+        let cactus = make_failed_host(
+            "cactus",
+            PipelineStep::Activate(ActivationMode::Switch),
+            error,
+        );
 
         assert_eq!(
             super::failure_line(&cactus, 100),
-            "✗ cactus at activate: warning: the following units failed: storage-agent.service"
+            "✗ cactus at switch: warning: the following units failed: storage-agent.service"
         );
         assert_eq!(
             super::failure_line(&cactus, 48),
-            "✗ cactus at activate: warning: the following u…"
+            "✗ cactus at switch: warning: the following uni…"
         );
     }
 
@@ -644,17 +656,26 @@ mod tests {
             duration: Duration::from_secs(52),
             hosts: vec![
                 make_successful_host("bravo", ActivationMode::Switch, false),
-                make_failed_host("cactus", PipelineStep::Activate, error),
+                make_failed_host(
+                    "cactus",
+                    PipelineStep::Activate(ActivationMode::Switch),
+                    error,
+                ),
                 make_failed_host("raven", PipelineStep::PreDeploy, "storage degraded"),
                 HostDeploymentResult::skipped_by_serial_group("limestone", "k8s", "cactus"),
             ],
         };
 
         assert_eq!(
-            super::phase_report(&phase, false, 100, Some(Path::new("/tmp/snow-1762255380.log"))),
+            super::phase_report(
+                &phase,
+                false,
+                100,
+                Some(Path::new("/tmp/snow-1762255380.log"))
+            ),
             "✗ Phase p2 (3/4 failed in 0:52)\n\
              \x20 ✓ bravo (switch)\n\
-             \x20 ✗ cactus at activate: warning: the following units failed: storage-agent.service\n\
+             \x20 ✗ cactus at switch: warning: the following units failed: storage-agent.service\n\
              \x20   Command: ssh sudo snowglobe-activate /nix/store/yzxw-cactus switch\n\
              \x20   activating the configuration...\n\
              \x20   warning: the following units failed: storage-agent.service\n\
@@ -674,13 +695,17 @@ mod tests {
         let phase = PhaseResult {
             phase: "p1".to_string(),
             duration: Duration::from_secs(41),
-            hosts: vec![make_failed_host("cactus", PipelineStep::Activate, error)],
+            hosts: vec![make_failed_host(
+                "cactus",
+                PipelineStep::Activate(ActivationMode::Switch),
+                error,
+            )],
         };
 
         assert_eq!(
             super::phase_report(&phase, false, 100, None),
             "✗ Phase p1 (1/1 failed in 0:41)\n\
-             \x20 ✗ cactus at activate: activated, but 2 units are failing\n\
+             \x20 ✗ cactus at switch: activated, but 2 units are failing\n\
              \x20   nginx.service\n\
              \x20   vault.service (already failing before this deployment)"
         );
@@ -706,12 +731,12 @@ mod tests {
             hosts: vec![
                 make_failed_host(
                     "bravo",
-                    PipelineStep::Activate,
+                    PipelineStep::Activate(ActivationMode::Switch),
                     &failing(vec![unit("stale-job.service", true)]),
                 ),
                 make_failed_host(
                     "cactus",
-                    PipelineStep::Activate,
+                    PipelineStep::Activate(ActivationMode::Switch),
                     &failing(vec![
                         unit("nginx.service", false),
                         unit("vault.service", true),
@@ -723,8 +748,8 @@ mod tests {
         assert_eq!(
             super::phase_report(&phase, false, 120, None),
             "✗ Phase p1 (2/2 failed in 0:41)\n\
-             \x20 ✗ bravo at activate: activated, but stale-job.service is failing (it was already failing before this deployment)\n\
-             \x20 ✗ cactus at activate: activated, but 2 units are failing\n\
+             \x20 ✗ bravo at switch: activated, but stale-job.service is failing (it was already failing before this deployment)\n\
+             \x20 ✗ cactus at switch: activated, but 2 units are failing\n\
              \x20   nginx.service\n\
              \x20   vault.service (already failing before this deployment)"
         );
@@ -743,6 +768,21 @@ mod tests {
         assert_eq!(super::failure_line(&raven, 100), "✗ raven at build");
         cactus.failed_at_step = None;
         assert_eq!(super::failure_line(&cactus, 100), "✗ cactus");
+    }
+
+    #[test]
+    fn test_failure_line_names_the_activation_by_its_mode() {
+        console::set_colors_enabled(false);
+        let web1 = |mode| make_failed_host("web1", PipelineStep::Activate(mode), "");
+
+        assert_eq!(
+            super::failure_line(&web1(ActivationMode::Boot), 100),
+            "✗ web1 at boot"
+        );
+        assert_eq!(
+            super::failure_line(&web1(ActivationMode::Test), 100),
+            "✗ web1 at test"
+        );
     }
 
     #[test]
@@ -899,7 +939,11 @@ mod tests {
             skipped_phases: vec![],
         };
         let bravo = || make_successful_host("bravo", ActivationMode::Switch, false);
-        let raven = make_failed_host("raven", PipelineStep::Activate, "activation failed");
+        let raven = make_failed_host(
+            "raven",
+            PipelineStep::Activate(ActivationMode::Switch),
+            "activation failed",
+        );
 
         assert_eq!(
             super::overall_summary(&deployed(vec![bravo(), failed_optional_host("condor")])),
@@ -935,7 +979,7 @@ mod tests {
         let mut p2 = deployed_phase(&["bravo", "raven"]);
         p2.hosts.push(make_failed_host(
             "cactus",
-            PipelineStep::Activate,
+            PipelineStep::Activate(ActivationMode::Switch),
             "activation failed",
         ));
         let skipped_phases = vec![SkippedPhase {
@@ -1025,7 +1069,11 @@ mod tests {
                 hosts: vec![
                     make_failed_host("h1", PipelineStep::Build, "build error"),
                     make_failed_host("h2", PipelineStep::Copy, "copy error"),
-                    make_failed_host("h3", PipelineStep::Activate, "activate error"),
+                    make_failed_host(
+                        "h3",
+                        PipelineStep::Activate(ActivationMode::Switch),
+                        "activate error",
+                    ),
                     make_failed_host("h4", PipelineStep::Reboot, "reboot timeout"),
                 ],
             }],
@@ -1044,7 +1092,7 @@ mod tests {
         );
         assert_eq!(
             results.phases[0].hosts[2].failed_at_step,
-            Some(PipelineStep::Activate)
+            Some(PipelineStep::Activate(ActivationMode::Switch))
         );
         assert_eq!(
             results.phases[0].hosts[3].failed_at_step,

@@ -25,7 +25,7 @@ async fn test_deploy_reports_each_step_in_order() {
 
     assert!(failed_events(&run).is_empty(), "{:?}", run.events);
     let mut previous = 0;
-    for step in ["build", "check", "copy", "plan", "activate", "reboot"] {
+    for step in ["build", "check", "copy", "plan", "boot", "reboot"] {
         let started = position(&run, &format!("started:seahorse:{step}"));
         let finished = position(&run, &format!("finished:seahorse:{step}"));
         assert!(
@@ -51,7 +51,7 @@ async fn test_failed_step_reports_its_reason_and_never_finishes() {
             h.deployer =
                 MockDeployBackend::new().with_copy_failures(vec!["cactus.example.com".into()])
         }),
-        ("activate", |h| {
+        ("switch", |h| {
             h.deployer =
                 MockDeployBackend::new().with_activate_failures(vec!["cactus.example.com".into()])
         }),
@@ -205,7 +205,7 @@ async fn test_failed_post_deploy_hook_is_not_a_failed_step() {
         run.host("raven").failed_at_step,
         Some(PipelineStep::PostDeploy)
     );
-    assert!(run.has_event("finished:raven:activate"));
+    assert!(run.has_event("finished:raven:switch"));
     assert!(failed_events(&run).is_empty(), "{:?}", run.events);
 }
 

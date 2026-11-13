@@ -31,7 +31,7 @@ in
     assert waiting, deploy.log
     waiter, holder = waiting.groups()
     assert {waiter, holder} == {"web2", "web3"}, deploy.log
-    assert deploy.log.index(f"{holder}: deployed") < deploy.log.index(f"{waiter}: activate started"), deploy.log
+    assert deploy.log.index(f"{holder}: deployed") < deploy.log.index(f"{waiter}: switch started"), deploy.log
     for host in hosts:
         runs(host, deployed(host))
   '';

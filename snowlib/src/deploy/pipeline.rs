@@ -271,7 +271,7 @@ impl HostRun<'_, '_> {
 
         let ignored_failing = self
             .step(
-                PipelineStep::Activate,
+                PipelineStep::Activate(plan.activation_mode),
                 deployable,
                 activate_reporting_failed_units(
                     deploy_ctx.deploy_backend,

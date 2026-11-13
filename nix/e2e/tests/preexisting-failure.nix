@@ -43,12 +43,12 @@
     status, output = deployer.execute(f"cd {FLAKE} && snow deploy 2>&1")
     assert status != 0, output
     contains(output, (
-        "✗ web1 at activate: activated, but stale-job.service is failing"
+        "✗ web1 at switch: activated, but stale-job.service is failing"
         " (it was already failing before this deployment)",
         "✓ web2 (switch, ignored failing crash-loop.service)",
         "⊘ Phase p2",
     ))
-    assert "web1 (switch" not in output, output
+    assert "✓ web1" not in output, output
     # Both switched, failing or not
     runs("web1", deployed("web1"))
     runs("web2", deployed("web2"))

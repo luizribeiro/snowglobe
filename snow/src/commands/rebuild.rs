@@ -198,7 +198,7 @@ impl RebuildArgs {
 
         let (deployer, host, system) = (&deploy_backend, &target, &store_path);
         let activate = |mode| async move {
-            line.start(PipelineStep::Activate);
+            line.start(PipelineStep::Activate(mode));
             // Reading the host's ignoredFailedUnits would take an evaluation
             // and a hooks build of its own, so rebuild ignores no units
             activate_reporting_failed_units(deployer, host, system, mode, system_type, &[]).await?;
@@ -408,8 +408,12 @@ mod tests {
         let took = Duration::from_secs(72);
 
         assert_eq!(
-            failed_line("bravo", Some(PipelineStep::Activate), took),
-            "✗ bravo at activate in 1:12"
+            failed_line(
+                "bravo",
+                Some(PipelineStep::Activate(ActivationMode::Switch)),
+                took
+            ),
+            "✗ bravo at switch in 1:12"
         );
         assert_eq!(failed_line("bravo", None, took), "✗ bravo in 1:12");
     }
