@@ -98,10 +98,8 @@ async fn main() -> ExitCode {
         eprintln!("Logs: {}\n", path.display());
     }
 
-    if is_interactive {
-        if let Err(error) = signals::exit_on_signals() {
-            tracing::warn!("Ctrl-C may leave the cursor hidden: {error}");
-        }
+    if let Err(error) = signals::exit_on_signals() {
+        tracing::warn!("Ctrl-C may leave the cursor hidden: {error}");
     }
     let _cursor = cursor::HiddenCursor::new(cursor::Cursor::stderr());
 

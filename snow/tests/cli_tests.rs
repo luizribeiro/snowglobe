@@ -371,6 +371,57 @@ fn test_deploy_without_a_terminal_logs_each_step_to_stderr() {
         ));
 }
 
+/// Runs `snow deploy` without a terminal until it waits on a fixture that
+/// never arrives, then sends it SIGINT; returns its exit status and the
+/// stderr it wrote after the signal
+#[cfg(debug_assertions)]
+fn interrupt_waiting_deploy() -> (Option<i32>, String) {
+    use std::io::{BufRead, BufReader, Read};
+    use std::process::{Command, Stdio};
+
+    let dir = tempfile::tempdir().unwrap();
+    let fixture = dir.path().join("fixture.json");
+    assert!(Command::new("mkfifo")
+        .arg(&fixture)
+        .status()
+        .unwrap()
+        .success());
+    let mut snow = Command::new(env!("CARGO_BIN_EXE_snow"))
+        .env("RUST_LOG", "snow=info")
+        .arg("-f")
+        .arg(fixtures_dir())
+        .args(["deploy", "--mock-fixture"])
+        .arg(&fixture)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut stderr = BufReader::new(snow.stderr.take().unwrap());
+    let mut line = String::new();
+    while !line.contains("Using the mock deployer") {
+        line.clear();
+        assert_ne!(stderr.read_line(&mut line).unwrap(), 0, "snow never waited");
+    }
+
+    nix::sys::signal::kill(
+        nix::unistd::Pid::from_raw(snow.id() as i32),
+        nix::sys::signal::Signal::SIGINT,
+    )
+    .unwrap();
+    let mut after = String::new();
+    stderr.read_to_string(&mut after).unwrap();
+    (snow.wait().unwrap().code(), after)
+}
+
+#[cfg(debug_assertions)]
+#[test]
+fn test_deploy_without_a_terminal_exits_on_ctrl_c_with_the_shell_status() {
+    let (status, _) = interrupt_waiting_deploy();
+
+    assert_eq!(status, Some(130));
+}
+
 #[test]
 fn test_list_help_says_it_lists_every_host_by_default() {
     snow_cmd()
