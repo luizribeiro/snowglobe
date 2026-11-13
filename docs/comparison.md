@@ -52,7 +52,7 @@ snowglobe reads the `nixosConfigurations` and `darwinConfigurations` your flake 
 
 - [Phases](/snowglobe/phases/) that deploy in order and stop before the next phase if a host fails.
 - [Serial groups](/snowglobe/cluster/) so cluster nodes deploy one at a time.
-- [Hooks](/snowglobe/hooks/) before and after activation, after a reboot, and on failure, running either on your machine or on the host.
+- [Hooks](/snowglobe/hooks/) before and after activation, after a reboot, and on failure, running either on your machine or on the host. A failed hook can [gate the rollout on a health check](/snowglobe/health-checks/).
 - [Reboot detection](/snowglobe/reboot-detection/) with a per-host reboot policy.
 - NixOS and [nix-darwin](/snowglobe/darwin/) hosts in the same deployment.
 

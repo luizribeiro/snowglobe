@@ -40,7 +40,8 @@ before upgrading.
   modes](/snowglobe/reboots/) and [Reboot detection](/snowglobe/reboot-detection/).
 - **Hooks.** Run commands before and after a host deploys, after it reboots,
   and when it fails: drain a node, take a host out of a load balancer, check
-  its health. See [Write deployment hooks](/snowglobe/hooks/).
+  its health. See [Write deployment hooks](/snowglobe/hooks/) and [Gate a
+  rollout on health checks](/snowglobe/health-checks/).
 - **NixOS and nix-darwin together.** Macs running nix-darwin deploy in the
   same deployment as NixOS hosts. See [Deploy nix-darwin hosts](/snowglobe/darwin/).
 - **No extra flake output.** `snow` reads your existing

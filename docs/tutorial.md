@@ -414,8 +414,10 @@ options.
 
 - [Roll out in phases](/snowglobe/phases/): plan phases by risk, and handle
   hosts that may be offline or that you only deploy on purpose.
-- [Write deployment hooks](/snowglobe/hooks/): check a host's health after
-  it deploys, so a broken change stops in the first phase.
+- [Gate a rollout on health checks](/snowglobe/health-checks/): check a
+  host's health after it deploys, so a broken change stops in the first phase.
+- [Write deployment hooks](/snowglobe/hooks/): drain a node or leave a load
+  balancer around each host's deployment.
 - [Control reboots and activation modes](/snowglobe/reboots/): reboot
   policies, `--boot`, `--switch` and `--test`.
 - [Deploy nix-darwin hosts](/snowglobe/darwin/): add Macs to the same flake.

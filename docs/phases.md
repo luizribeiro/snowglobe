@@ -16,7 +16,7 @@ Deploying every host at once is fast, but a mistake in a shared module then brea
 3. stateful services, such as databases and storage;
 4. shared infrastructure that everything else depends on.
 
-snow deploys one phase at a time. If any host in a phase fails, the later phases do not start, so a change that breaks the canary never reaches the database. A post-deploy [hook](/snowglobe/hooks/) can turn "activated without an error" into "actually healthy": if the hook's check fails, the host fails, and the deployment stops there.
+snow deploys one phase at a time. If any host in a phase fails, the later phases do not start, so a change that breaks the canary never reaches the database. A post-deploy [hook](/snowglobe/hooks/) can turn "activated without an error" into "actually healthy": if the hook's check fails, the host fails, and the deployment stops there. See [Gate a rollout on health checks](/snowglobe/health-checks/).
 
 ## Assign phases
 

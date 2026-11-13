@@ -31,7 +31,7 @@ For each host in a group, a deployment still builds the system, copies it and pl
 4. post-reboot hooks, if it rebooted,
 5. post-deploy hooks.
 
-The next node in the group starts only after the current one has finished its post-deploy hooks. That makes a post-deploy health check the gate for the next node: if the node is not healthy, the next one does not start.
+The next node in the group starts only after the current one has finished its post-deploy hooks. That makes a post-deploy health check the gate for the next node: if the node is not healthy, the next one does not start. [Gate a rollout on health checks](/snowglobe/health-checks/) shows how to write one.
 
 ![Two hosts in a serial group take turns](demos/serial-group.cast)
 
