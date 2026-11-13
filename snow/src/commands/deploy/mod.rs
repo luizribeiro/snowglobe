@@ -7,7 +7,7 @@ mod summary;
 
 pub(super) use board::format_elapsed;
 pub(super) use host_line::HostLine;
-pub(super) use summary::{failed_host, mode_label, success_line};
+pub(super) use summary::{failed_host, success_line};
 
 use clap::Args;
 use snowlib::{DeployStrategy, Flake, Result};

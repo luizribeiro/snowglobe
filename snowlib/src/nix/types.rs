@@ -63,6 +63,18 @@ pub enum ActivationMode {
     DryActivate,
 }
 
+impl ActivationMode {
+    /// What snow calls the mode in its output, named after the flag that picks it
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Switch => "switch",
+            Self::Boot => "boot",
+            Self::Test => "test",
+            Self::DryActivate => "dry-run",
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -103,6 +115,19 @@ mod tests {
             SystemType::Darwin.build_path_suffix(),
             "config.system.build.toplevel"
         );
+    }
+
+    #[test]
+    fn test_activation_mode_label_names_the_flag_that_picks_it() {
+        let labels: Vec<_> = [
+            ActivationMode::Switch,
+            ActivationMode::Boot,
+            ActivationMode::Test,
+            ActivationMode::DryActivate,
+        ]
+        .map(ActivationMode::label)
+        .into();
+        assert_eq!(labels, ["switch", "boot", "test", "dry-run"]);
     }
 
     #[test]

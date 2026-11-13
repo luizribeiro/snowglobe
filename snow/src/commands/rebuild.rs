@@ -1,4 +1,4 @@
-use super::deploy::{failed_host, format_elapsed, mode_label, success_line, HostLine};
+use super::deploy::{failed_host, format_elapsed, success_line, HostLine};
 use crate::cursor::Cursor;
 use crate::marks;
 use crate::prompt;
@@ -267,12 +267,12 @@ impl Ending {
     fn line(&self, hostname: &str, took: Duration) -> String {
         let outcome = match *self {
             Ending::Activated { mode, rebooting } => {
-                let labels = [mode_label(mode), "rebooting"];
+                let labels = [mode.label(), "rebooting"];
                 success_line(hostname, &labels[..if rebooting { 2 } else { 1 }])
             }
             Ending::SwitchedBeforeReboot => success_line(
                 hostname,
-                &[mode_label(ActivationMode::Switch), "reboot to finish"],
+                &[ActivationMode::Switch.label(), "reboot to finish"],
             ),
             Ending::Cancelled => marks::skipped_line(&format!("{hostname} (cancelled)")),
         };

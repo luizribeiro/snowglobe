@@ -159,7 +159,7 @@ fn host_label(host: &snowlib::HostDeploymentResult) -> String {
 pub(super) fn success_labels(host: &snowlib::HostDeploymentResult) -> Vec<String> {
     let mut labels = Vec::new();
     if let Some(mode) = host.activation_mode {
-        labels.push(mode_label(mode).to_string());
+        labels.push(mode.label().to_string());
     }
     if host.rebooted {
         labels.push("rebooted".to_string());
@@ -208,16 +208,6 @@ fn host_lines(
         ))
         .chain(details.into_iter().map(|line| format!("    {line}")))
         .collect()
-    }
-}
-
-pub(in crate::commands) fn mode_label(mode: snowlib::ActivationMode) -> &'static str {
-    use snowlib::ActivationMode;
-    match mode {
-        ActivationMode::Switch => "switch",
-        ActivationMode::Boot => "boot",
-        ActivationMode::Test => "test",
-        ActivationMode::DryActivate => "dry-run",
     }
 }
 
