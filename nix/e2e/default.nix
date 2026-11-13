@@ -30,6 +30,7 @@ let
     "preexisting-failure"
     "reboot-auto"
     "switch-refuses"
+    "hook-stages"
   ];
 
   files = lib.genAttrs names (name: import ./tests/${name}.nix);
