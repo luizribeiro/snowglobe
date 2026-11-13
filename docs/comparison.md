@@ -18,7 +18,7 @@ Compared with the three tools most users are choosing between:
 | Many hosts per run | — | ✓ | ✓ | ✓ |
 | Ordered phases that stop on failure | — | — | — | ✓ |
 | Serial groups (one node at a time) | — | — | — | ✓ |
-| Health check gates the next host | — | — | — | through a [`post-deploy` hook](/snowglobe/rollback/#limit-the-blast-radius) |
+| Health check gates the next host | — | — | — | through a [`post-deploy` hook](/snowglobe/health-checks/) |
 | Reboot detection | — | — | `apply --reboot` reboots every node, without detection | ✓ |
 | Pre/post-deploy hooks | — | — | — | ✓ |
 | nix-darwin targets | — | ✓ | — | ✓ |
@@ -58,7 +58,7 @@ These three push tools are also worth knowing. morph deploys one host at a time 
 | Many hosts per run | ✓ | ✓ | ✓ | ✓ |
 | Ordered phases that stop on failure | hosts in tag order (`--order-by-tags`), stopping at the first failure | — | batches in name order; later batches don't start after a failure | ✓ |
 | Serial groups (one node at a time) | always one host at a time | — | one at a time by default; `--max-concurrent` for batches | ✓ |
-| Health check gates the next host | `deployment.healthChecks` | — | `deploy.healthCheck` rolls the host back; later batches stop after a failure | through a [`post-deploy` hook](/snowglobe/rollback/#limit-the-blast-radius) |
+| Health check gates the next host | `deployment.healthChecks` | — | `deploy.healthCheck` rolls the host back; later batches stop after a failure | through a [`post-deploy` hook](/snowglobe/health-checks/) |
 | Reboot detection | `--reboot` reboots every host, without detection | stops and asks you to reboot when a switch inhibitor blocks the switch | — | ✓ |
 | Pre/post-deploy hooks | `preDeployChecks` and `healthChecks` only | — | — | ✓ |
 | nix-darwin targets | — | ✓ | ✓ | ✓ |
