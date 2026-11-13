@@ -77,7 +77,6 @@ start:
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     snowglobe.url = "github:luizribeiro/snowglobe";
-    snowglobe.inputs.nixpkgs.follows = "nixpkgs";
   };
 
   outputs = { nixpkgs, snowglobe, ... }: {
@@ -95,8 +94,8 @@ start:
 
 Keep whatever `nixpkgs` input and host modules you already have; the two
 additions are the `snowglobe` input and the `snowglobe.nixosModules.default`
-line. The `follows` line keeps a single nixpkgs in your lock file; the module
-uses each host's own nixpkgs either way. Then update the lock file so it records the new input:
+line. The module uses each host's own nixpkgs. Then update the lock file so
+it records the new input:
 
 ```bash
 nix flake lock
