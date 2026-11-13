@@ -29,6 +29,7 @@ let
     "optional-host"
     "preexisting-failure"
     "reboot-auto"
+    "switch-refuses"
   ];
 
   files = lib.genAttrs names (name: import ./tests/${name}.nix);
