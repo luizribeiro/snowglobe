@@ -1,6 +1,7 @@
 mod board;
 mod colors;
 mod host_line;
+mod interrupted;
 mod observer;
 mod styles;
 mod summary;
@@ -123,7 +124,12 @@ impl DeployArgs {
     /// - Call snowlib::deploy()
     /// - Print results table
     pub async fn run(self, flake: &Flake, log_file: Option<&std::path::Path>) -> Result<()> {
-        crate::signals::report_on_exit(|| vec!["Interrupted.".to_string()]);
+        let left_behind =
+            interrupted::LeftBehind::new(["snow", "deploy", "--redeploy"].map(String::from).into());
+        crate::signals::report_on_exit({
+            let left_behind = left_behind.clone();
+            move || left_behind.report()
+        });
 
         // When using --mock-fixture, use the mock flake instead of the real one
         #[cfg(debug_assertions)]
@@ -182,10 +188,14 @@ impl DeployArgs {
             nix_backend.load_host_metadata(flake, &hostnames),
         )
         .await?;
+        for host in &hosts {
+            left_behind.has_hooks(&host.name, host.hooks.iter().map(|hook| hook.stage));
+        }
         let phases = snowlib::phases(&hosts, self.ignore_phases);
         println!("{}\n", summary::phase_overview(&phases));
         let observer = snowlib::observer::CompositeObserver::new(vec![
             Box::new(snowlib::LogObserver::default()),
+            Box::new(left_behind),
             Box::new(observer::CliObserver::new(
                 log_file.map(Into::into),
                 phases.len() > 1,
