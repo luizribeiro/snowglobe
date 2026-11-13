@@ -14,7 +14,7 @@ pub struct BuildArgs {
     #[command(flatten)]
     pub selection: crate::host_selection::HostSelectionArgs,
 
-    /// Quiet mode - suppress subprocess output
+    /// Suppress subprocess output
     #[arg(short, long)]
     pub quiet: bool,
 

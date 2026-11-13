@@ -20,7 +20,7 @@ pub struct RebuildArgs {
     #[arg(long)]
     pub host: Option<String>,
 
-    /// Dry run - show what would change without activating
+    /// Show what would change without activating
     #[arg(long)]
     pub dry_run: bool,
 
@@ -28,11 +28,11 @@ pub struct RebuildArgs {
     #[arg(long)]
     pub switch: bool,
 
-    /// Only set for next boot (don't activate now)
+    /// Make the new system the boot default without activating it
     #[arg(long)]
     pub boot: bool,
 
-    /// Test activation without making permanent
+    /// Activate the new system without making it the boot default
     #[arg(long)]
     pub test: bool,
 
@@ -44,7 +44,7 @@ pub struct RebuildArgs {
     #[arg(long)]
     pub force: bool,
 
-    /// Quiet mode - suppress subprocess output
+    /// Suppress subprocess output
     #[arg(short, long)]
     pub quiet: bool,
 

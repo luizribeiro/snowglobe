@@ -16,10 +16,10 @@ use std::path::Path;
 /// configured in its NixOS configuration.
 #[derive(Debug, Args)]
 pub struct BootstrapArgs {
-    /// Hostname to bootstrap
+    /// Host to bootstrap
     pub hostname: String,
 
-    /// Override the provisioner (ignores host config)
+    /// Use this provisioner instead of the host's snowglobe.bootstrap.provisioner
     #[arg(long)]
     pub provisioner: Option<String>,
 

@@ -6,7 +6,7 @@ use tabled::{Table, Tabled};
 /// Show cluster status
 #[derive(Debug, Args)]
 pub struct StatusArgs {
-    /// Output as JSON
+    /// Print the status as JSON
     #[arg(long)]
     pub json: bool,
 

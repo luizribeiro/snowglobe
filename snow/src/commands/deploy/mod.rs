@@ -31,7 +31,7 @@ pub struct DeployArgs {
     #[command(flatten)]
     pub selection: crate::host_selection::HostSelectionArgs,
 
-    /// Dry run - show what would change without activating
+    /// Show what would change without activating
     #[arg(long)]
     pub dry_run: bool,
 
@@ -39,15 +39,15 @@ pub struct DeployArgs {
     #[arg(long)]
     pub switch: bool,
 
-    /// Only set for next boot (don't activate now or reboot)
+    /// Make the new system the boot default without activating it or rebooting
     #[arg(long)]
     pub boot: bool,
 
-    /// Test activation without making permanent
+    /// Activate the new system without making it the boot default
     #[arg(long)]
     pub test: bool,
 
-    /// Skip automatic reboot execution (still respects reboot policies for activation mode)
+    /// Never reboot hosts (reboot policies still choose the activation mode)
     #[arg(long)]
     pub skip_reboot: bool,
 
@@ -58,13 +58,13 @@ pub struct DeployArgs {
     #[arg(long)]
     pub redeploy: bool,
 
-    /// Override policies and safety checks (use with --switch to ignore reboot policies and detection)
+    /// With --switch, ignore reboot policies and reboot detection
     // clap waives `requires` once another mode is given, so those modes are
     // excluded explicitly
     #[arg(long, requires = "switch", conflicts_with_all = ["dry_run", "boot", "test"])]
     pub force: bool,
 
-    /// Quiet mode - suppress subprocess output, only show summary
+    /// Suppress subprocess output and show only the summary
     #[arg(short, long)]
     pub quiet: bool,
 
