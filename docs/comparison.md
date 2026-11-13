@@ -121,7 +121,7 @@ What it does not do:
 - **No sudo password prompt on remote hosts.** The deploy user runs one activation helper through passwordless sudo; the [security model](/snowglobe/security/) explains why and what that means. `snow rebuild` on the local machine does ask for your password.
 - **Flakes are required.**
 
-snowglobe is the better fit when you deploy a fleet that should change gradually: low-risk hosts first, a cluster one node at a time, a host drained before it reboots, and reboots only when a change needs them. It is also the newest of these tools, with the smallest user base.
+snowglobe is the better fit when you deploy a fleet that should change gradually: low-risk hosts first, a cluster one node at a time, a host drained before it reboots, and reboots only when a change needs them. Other tools cover parts of this. What snowglobe adds is the combination: hosts build, copy and activate in parallel, except within a serial group; several phases and groups run in one deployment; hooks drain and restore a node around its change; and a host reboots only when the new system needs it, then snow waits for it to come back. It is pre-1.0 and has a small user base.
 
 ## Moving between tools
 
