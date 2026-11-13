@@ -5,7 +5,7 @@ weight: 120
 description: "Set up a development environment, run the tests, record demos, and understand how the code and releases are organised."
 ---
 
-snowglobe welcomes issues, pull requests and questions about how things work. This page covers setting up a development environment, the layers of tests and what each one is for, recording the demos, how the code is organised, and how commits and releases are made. The canonical in-repo copy of these guidelines is [CONTRIBUTING.md](https://github.com/luizribeiro/snowglobe/blob/main/CONTRIBUTING.md).
+snowglobe welcomes issues, pull requests and questions about how things work. This page covers setting up a development environment, the layers of tests and what each one is for, recording the demos, how the code is organised, and how commits and releases are made.
 
 snowglobe is pre-1.0. Breaking changes to the CLI, the module options and the library API are acceptable when they improve the design; note them in the changelog.
 
@@ -30,11 +30,13 @@ cargo run --bin snow -- --help
 
 If you have `FLAKE_PATH` set for your own flake, unset it while developing. `snow` reads it, and a development build pointed at a real fleet can deploy to it.
 
-The commands behind the `unstable` Cargo feature are only in development builds:
+Some commands are behind the `unstable` Cargo feature and left out of release builds. Build them with:
 
 ```bash
 cargo build --features unstable
 ```
+
+The flake's `snow-unstable` package has them too.
 
 ## Tests
 
@@ -55,12 +57,10 @@ Most of the deployment logic is tested here. Nix, SSH deploys, reboots and hooks
 
 ### Nix module tests
 
-The NixOS and nix-darwin modules, the activation helpers and the store-path check have their own flake checks:
+The NixOS and nix-darwin modules, the activation helpers, the store-path check and the demo recorder have their own flake checks, listed under `checks` in [`flake.nix`](https://github.com/luizribeiro/snowglobe/blob/main/flake.nix). Build one by name:
 
 ```bash
 nix build -L .#checks.x86_64-linux.deploy-module
-nix build -L .#checks.x86_64-linux.hooks-module
-nix build -L .#checks.x86_64-linux.nixos-activate
 ```
 
 They check what options evaluate to and how the helper scripts behave, without booting anything.
@@ -124,7 +124,7 @@ CI runs formatting, clippy, the Rust tests with and without the unstable feature
 
 ## Releases
 
-1. Bump the version in `snow/Cargo.toml` and in `flake.nix`.
+1. Bump the version in `snow/Cargo.toml` and in `flake.nix`, and run `cargo build` so `Cargo.lock` matches.
 2. Add a `## [X.Y.Z]` section to [`CHANGELOG.md`](https://github.com/luizribeiro/snowglobe/blob/main/CHANGELOG.md). It becomes the release notes.
 3. Push a `vX.Y.Z` tag on `main`. It must match the version in `snow/Cargo.toml`, and the tagged commit must be on `main`, or the release workflow stops.
 
