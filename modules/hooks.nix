@@ -86,8 +86,6 @@ let
           Maximum time (in seconds) to wait for the hook to complete.
           If the hook exceeds this timeout, it will be terminated and
           treated as a failure (unless continueOnFailure is true).
-
-          Default: 300 seconds (5 minutes)
         '';
       };
 
@@ -118,8 +116,6 @@ let
           Hooks with the same priority are executed in alphabetical order
           by name.
 
-          Default: 100
-
           Common patterns:
           - Use negative values (-10, -5) for hooks that must run first
           - Use 0-50 for early hooks (e.g., pre-checks, validations)
@@ -136,7 +132,6 @@ let
           Number of times to retry the hook if it fails.
 
           The total number of attempts is retries + 1 (initial attempt plus retries).
-          Set to 0 (default) for no retries.
 
           Useful for hooks that depend on external services that may be
           temporarily unavailable (e.g., Kubernetes API after node reboot).
