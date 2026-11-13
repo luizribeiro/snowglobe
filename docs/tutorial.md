@@ -291,9 +291,9 @@ example, loads a new kernel module, which restarts
 `systemd-modules-load.service`. For such a change, `snow` sets the new
 system as the system for the next boot, reboots the host, and waits for it
 to come back. The report then reads `(boot, rebooted)`, as in this
-recording of `web1`:
+recording, where `web1`'s new system has a new initrd:
 
-![A host that must reboot is set to boot the new system, then rebooted](demos/reboot.cast)
+![A host whose new initrd needs a reboot is set to boot the new system, then rebooted](demos/reboot.cast)
 
 [Control reboots and activation modes](/snowglobe/reboots/) explains how to
 change this per host, for example to never reboot a host automatically.

@@ -16,7 +16,7 @@ With no flags, snow decides for each NixOS host whether the new system can be sw
 
 This is what you want for most hosts. A per-host policy changes it when you need something else.
 
-![A host that must reboot is set to boot the new system, then rebooted](demos/reboot.cast)
+![A host whose new initrd needs a reboot is set to boot the new system, then rebooted](demos/reboot.cast)
 
 ## Reboot policies
 

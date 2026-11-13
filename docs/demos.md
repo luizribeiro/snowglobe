@@ -40,7 +40,7 @@ here is tested.
 
 ![switch](demos/switch.svg)
 
-## A host that must reboot is set to boot the new system, then rebooted
+## A host whose new initrd needs a reboot is set to boot the new system, then rebooted
 
 `snow deploy web1`
 

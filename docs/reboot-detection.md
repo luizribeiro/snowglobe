@@ -17,7 +17,7 @@ A switch replaces the system profile, updates `/etc`, and starts, stops, restart
 
 For those changes, the safe way to apply them is to set the new system for the next boot and reboot into it, which is what `nixos-rebuild boot` followed by a reboot does. `snow` detects these cases during the plan step of each host, before any hook runs and before anything is activated.
 
-![A host that must reboot is set to boot the new system, then rebooted](demos/reboot.cast)
+![A host whose new initrd needs a reboot is set to boot the new system, then rebooted](demos/reboot.cast)
 
 ## The two checks
 
