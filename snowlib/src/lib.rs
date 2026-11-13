@@ -14,7 +14,6 @@ pub mod hooks;
 pub mod host;
 pub mod nix;
 pub mod observer;
-pub mod plan;
 pub mod process;
 pub mod reboot;
 mod shell;
@@ -29,7 +28,6 @@ pub use backends::deploy::{
 };
 pub use backends::hook::{HookBackend, SystemHookBackend};
 pub use backends::nix::{NixBackend, SystemNixBackend};
-pub use backends::plan::{PlanBackend, SystemPlanBackend};
 pub use backends::reboot::{
     LocalRebootBackend, RebootBackend, RebootCheck, SystemRebootBackend,
     DEFAULT_REBOOT_MAX_WAIT_SECS,
@@ -53,7 +51,5 @@ pub use backends::deploy::{DeploymentFixture, HostFixture, MockDeployBackend, Op
 pub use backends::hook::MockHookBackend;
 #[cfg(any(debug_assertions, feature = "test-utils"))]
 pub use backends::nix::MockNixBackend;
-#[cfg(any(debug_assertions, feature = "test-utils"))]
-pub use backends::plan::{MockPlanBackend, MockPlanCall};
 #[cfg(any(debug_assertions, feature = "test-utils"))]
 pub use backends::reboot::MockRebootBackend;

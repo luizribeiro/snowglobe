@@ -4,7 +4,6 @@
 //! commands with proper error handling and output management.
 
 use std::path::{Path, PathBuf};
-use std::time::Duration;
 
 use crate::error::{NixError, Result};
 use crate::nix::Flake;
@@ -24,7 +23,6 @@ pub(crate) struct NixCommand {
     args: Vec<String>,
     working_dir: Option<PathBuf>,
     output_mode: OutputMode,
-    timeout: Option<Duration>,
 }
 
 impl NixCommand {
@@ -32,7 +30,7 @@ impl NixCommand {
         Self::tool("nix", Vec::<String>::new()).in_flake(flake)
     }
 
-    /// Any nix-family program (`nix`, `nix-eval-jobs`), run outside a flake unless `in_flake` is used.
+    /// A nix-family program, run outside a flake unless `in_flake` is used.
     pub(crate) fn tool(
         program: &'static str,
         args: impl IntoIterator<Item = impl Into<String>>,
@@ -42,17 +40,11 @@ impl NixCommand {
             args: args.into_iter().map(Into::into).collect(),
             working_dir: None,
             output_mode: OutputMode::Capture,
-            timeout: None,
         }
     }
 
     pub(crate) fn in_flake(mut self, flake: &Flake) -> Self {
         self.working_dir = Some(flake.flake_root().to_path_buf());
-        self
-    }
-
-    pub(crate) fn timeout(mut self, timeout: Duration) -> Self {
-        self.timeout = Some(timeout);
         self
     }
 
@@ -114,23 +106,17 @@ impl NixCommand {
             self.program,
             &args,
             self.output_mode,
-            self.timeout,
+            None,
             self.working_dir.as_deref(),
             &[],
         )
         .await
         .map_err(|e| NixError::CommandFailed { source: e })?;
 
-        if result.timed_out || !result.status.success() {
-            let mut stderr = String::from_utf8_lossy(&result.stderr)
+        if !result.status.success() {
+            let stderr = String::from_utf8_lossy(&result.stderr)
                 .trim_end()
                 .to_string();
-            if result.timed_out {
-                if !stderr.is_empty() {
-                    stderr.push('\n');
-                }
-                stderr.push_str(&format!("{} timed out", self.program));
-            }
             return Err(NixError::EvalFailed { stderr }.into());
         }
 
@@ -192,32 +178,5 @@ mod tests {
 
         assert!(stderr.contains("not-a-drv"), "unexpected stderr: {stderr}");
         assert_eq!(stderr, stderr.trim_end());
-    }
-
-    #[tokio::test]
-    async fn test_timeout_is_reported() {
-        let stderr =
-            failed_stderr(NixCommand::tool("sleep", ["5"]).timeout(Duration::from_millis(100)))
-                .await;
-
-        assert_eq!(stderr, "sleep timed out");
-    }
-
-    #[tokio::test]
-    async fn test_timeout_is_reported_after_the_stderr_so_far() {
-        // A loaded machine may not start sh before a short timeout, so it
-        // grows until sh got as far as its stderr
-        for timeout in [500, 2_000, 8_000, 30_000].map(Duration::from_millis) {
-            let stderr = failed_stderr(
-                NixCommand::tool("sh", ["-c", "echo 'copying path' >&2; sleep 60"])
-                    .timeout(timeout),
-            )
-            .await;
-            if stderr != "sh timed out" {
-                assert_eq!(stderr, "copying path\nsh timed out");
-                return;
-            }
-        }
-        panic!("sh never wrote its stderr before timing out");
     }
 }
