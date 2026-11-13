@@ -65,6 +65,12 @@ nix build -L .#checks.x86_64-linux.deploy-module
 
 They check what options evaluate to and how the helper scripts behave, without booting anything.
 
+The [module options](/snowglobe/options/) page is generated from the option descriptions, and the `options-doc` check fails when `docs/options.md` is out of date. After changing an option, or updating nixpkgs, which renders the types and defaults, regenerate it:
+
+```bash
+nix build .#options-md && cat result > docs/options.md
+```
+
 ### VM tests
 
 The VM tests in [`nix/e2e/tests/`](https://github.com/luizribeiro/snowglobe/tree/main/nix/e2e/tests) boot several NixOS virtual machines and run real deployments between them: a deployer VM runs `snow` against hosts that boot a shared base system. They catch what mocks cannot, such as a non-root deploy user missing a permission, a host that never comes back from a reboot, or a switch that races systemd. They need Linux with KVM.

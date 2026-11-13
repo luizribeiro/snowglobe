@@ -112,6 +112,10 @@
           pkgs = nixpkgs.legacyPackages.${system};
         in
         nixpkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
+          options-md = import ./nix/options-doc {
+            inherit pkgs;
+            snowglobeModule = self.nixosModules.default;
+          };
           deploy-recordings = (e2eFor system).recordings;
           update-demos = pkgs.writeShellApplication {
             name = "update-demos";
@@ -146,6 +150,10 @@
           darwin-activate = import ./modules/darwin-activate.test.nix { inherit pkgs; };
         } // nixpkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux ({
           nixos-activate = import ./modules/nixos-activate.test.nix { inherit pkgs; };
+          options-doc = import ./nix/options-doc/check.nix {
+            inherit pkgs;
+            page = self.legacyPackages.${system}.options-md;
+          };
         } // nixpkgs.lib.mapAttrs'
           (name: test: nixpkgs.lib.nameValuePair "e2e-${name}" test)
           (e2eFor system).tests));
