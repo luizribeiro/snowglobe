@@ -66,7 +66,7 @@ pub enum NixError {
     #[error("Failed to get metadata for host '{host}'")]
     #[diagnostic(
         code(snow::nix::metadata_failed),
-        help("Ensure the host has the required configuration attributes.")
+        help("snow reads networking.hostName, networking.domain and the snowglobe options from the host's configuration. Trace the failing attribute (darwinConfigurations for nix-darwin hosts):\n  nix eval --show-trace .#nixosConfigurations.{host}.config.<attribute>")
     )]
     MetadataFailed {
         host: String,

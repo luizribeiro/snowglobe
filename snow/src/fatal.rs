@@ -87,7 +87,8 @@ mod tests {
              Nix command execution failed\n    \
              nix: command not found\n\n    \
              is nix installed?\n  \
-             help: Ensure the host has the required configuration attributes."
+             help: snow reads networking.hostName, networking.domain and the snowglobe options from the host's configuration. Trace the failing attribute (darwinConfigurations for nix-darwin hosts):\n    \
+             \x20 nix eval --show-trace .#nixosConfigurations.falcon.config.<attribute>"
         );
     }
 
