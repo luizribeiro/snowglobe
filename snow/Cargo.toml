@@ -2,6 +2,8 @@
 name = "snow"
 version = "0.1.0"
 edition = "2021"
+description = "Deploy NixOS and nix-darwin hosts over SSH, in phases"
+publish = false
 license.workspace = true
 repository.workspace = true
 
