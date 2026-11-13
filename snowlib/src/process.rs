@@ -299,31 +299,45 @@ pub mod r#async {
         use super::*;
         use std::time::Instant;
 
+        /// Processes may take seconds to start or be reaped on a loaded
+        /// machine, so the deadline is far beyond what an idle one needs
+        async fn eventually<T>(what: &str, mut check: impl FnMut() -> Option<T>) -> T {
+            tokio::time::timeout(Duration::from_secs(60), async {
+                loop {
+                    if let Some(value) = check() {
+                        return value;
+                    }
+                    tokio::time::sleep(Duration::from_millis(10)).await;
+                }
+            })
+            .await
+            .unwrap_or_else(|_| panic!("{what}"))
+        }
+
         #[tokio::test]
         async fn test_abandoned_command_is_killed() {
             let dir = tempfile::tempdir().unwrap();
             let pid_file = dir.path().join("pid");
             let script = format!("echo $$ > '{}'; exec sleep 30", pid_file.display());
+            let written_pid = || {
+                let written = std::fs::read_to_string(&pid_file).ok()?;
+                written.ends_with('\n').then(|| written.trim().to_string())
+            };
 
-            let abandoned = tokio::time::timeout(
-                Duration::from_millis(500),
-                run_command("sh", &["-c", &script], OutputMode::Capture, None, None, &[]),
+            let args = ["-c", script.as_str()];
+            let pid = tokio::select! {
+                result = run_command("sh", &args, OutputMode::Capture, None, None, &[]) => {
+                    panic!("the command finished: {result:?}")
+                }
+                pid = eventually("the command never wrote its pid", written_pid) => pid,
+            };
+
+            let proc_dir = std::path::PathBuf::from(format!("/proc/{pid}"));
+            eventually(
+                &format!("process {pid} still running after its caller gave up"),
+                || (!proc_dir.exists()).then_some(()),
             )
             .await;
-            assert!(abandoned.is_err());
-
-            let pid = std::fs::read_to_string(&pid_file).unwrap();
-            let proc_dir = std::path::PathBuf::from(format!("/proc/{}", pid.trim()));
-            for _ in 0..50 {
-                if !proc_dir.exists() {
-                    return;
-                }
-                tokio::time::sleep(Duration::from_millis(20)).await;
-            }
-            panic!(
-                "process {} still running after its caller gave up",
-                pid.trim()
-            );
         }
 
         #[tokio::test]
